@@ -18027,7 +18027,7 @@ impl DatabasePool {
         let mut play_state_conditions = Vec::new();
         
         if config.include_unplayed {
-            play_state_conditions.push("(h.ListenDuration IS NULL AND e.complete IS NOT TRUE)".to_string());
+            play_state_conditions.push("(h.ListenDuration IS NULL AND e.completed IS NOT TRUE)".to_string());
         }
         
         if config.include_partially_played {
