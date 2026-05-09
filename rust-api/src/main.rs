@@ -348,6 +348,8 @@ fn create_data_routes() -> Router<AppState> {
         .route("/podcast/clear_cover_preference", post(handlers::settings::clear_podcast_cover_preference))
         .route("/podcast/toggle_notifications", put(handlers::settings::toggle_podcast_notifications))
         .route("/podcast/notification_status", post(handlers::podcasts::get_notification_status))
+        .route("/podcast/toggle_favorite", put(handlers::settings::toggle_podcast_favorite))
+        .route("/podcast/favorite_status", post(handlers::podcasts::get_podcast_favorite_status))
         .route("/rss_key", get(handlers::settings::get_user_rss_key))
         .route("/verify_mfa", post(handlers::settings::verify_mfa))
         .route("/schedule_backup", post(handlers::settings::schedule_backup))

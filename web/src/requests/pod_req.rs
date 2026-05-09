@@ -369,6 +369,8 @@ pub struct Podcast {
     pub explicit: bool,
     #[serde(default)]
     pub podcastindexid: i32,
+    #[serde(default)]
+    pub is_favorite: bool,
 }
 
 pub async fn call_get_podcasts(
@@ -442,6 +444,8 @@ pub struct PodcastExtra {
     pub oldest_episode_date: Option<String>,
     #[serde(default)]
     pub is_youtube: bool,
+    #[serde(default)]
+    pub is_favorite: bool,
 }
 
 impl From<Podcast> for PodcastExtra {
@@ -464,6 +468,7 @@ impl From<Podcast> for PodcastExtra {
             episodes_played: 0,
             oldest_episode_date: None,
             is_youtube,
+            is_favorite: podcast.is_favorite,
         }
     }
 }
@@ -482,6 +487,7 @@ impl From<PodcastExtra> for Podcast {
             categories: podcast_extra.categories,
             explicit: podcast_extra.explicit,
             podcastindexid: podcast_extra.podcastindexid,
+            is_favorite: podcast_extra.is_favorite,
         }
     }
 }
@@ -3477,6 +3483,82 @@ pub async fn call_get_podcast_notifications_status(
         let error_text = response.text().await.unwrap_or_default();
         Err(Error::msg(format!(
             "Error fetching podcast notification status: {}",
+            error_text
+        )))
+    }
+}
+
+#[allow(dead_code)]
+pub async fn call_toggle_podcast_favorite(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    podcast_id: i32,
+    is_favorite: bool,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/podcast/toggle_favorite", server_name);
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "podcast_id": podcast_id,
+        "is_favorite": is_favorite
+    });
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .map_err(|e| Error::msg(format!("Failed to create request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        Ok("Favorite status updated successfully".to_string())
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        Err(Error::msg(format!(
+            "Error toggling podcast favorite: {}",
+            error_text
+        )))
+    }
+}
+
+#[allow(dead_code)]
+pub async fn call_get_podcast_favorite_status(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    podcast_id: i32,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/podcast/favorite_status", server_name);
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "podcast_id": podcast_id,
+    });
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .map_err(|e| Error::msg(format!("Failed to create request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        #[derive(Deserialize)]
+        struct FavoriteResponse {
+            is_favorite: bool,
+        }
+        response
+            .json::<FavoriteResponse>()
+            .await
+            .map(|res| res.is_favorite)
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        Err(Error::msg(format!(
+            "Error fetching podcast favorite status: {}",
             error_text
         )))
     }

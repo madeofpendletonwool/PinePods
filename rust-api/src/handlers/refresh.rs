@@ -247,27 +247,32 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                             
                             // Handle auto-download for background refresh - matches Python implementation exactly
                             if auto_download {
-                                println!("Auto-download enabled for podcast {} - processing {} new episodes", podcast_id, new_episodes.len());
-                                
-                                // Auto-download ONLY the episodes that were just inserted - 100% reliable!
-                                for episode in &new_episodes {
-                                    println!("Auto-downloading episode '{}' (ID: {}) for user {}", 
-                                        episode.episodetitle, episode.episodeid, user_id);
-                                    
-                                    // Determine if this is a YouTube episode
-                                    let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
-                                    
-                                    // Spawn download task
-                                    let task_result = if is_youtube {
-                                        state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
-                                    } else {
-                                        state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
-                                    };
-                                    
-                                    match task_result {
-                                        Ok(task_id) => println!("Auto-download task queued with ID: {}", task_id),
-                                        Err(e) => println!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
+                                let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
+                                if downloads_enabled {
+                                    println!("Auto-download enabled for podcast {} - processing {} new episodes", podcast_id, new_episodes.len());
+
+                                    // Auto-download ONLY the episodes that were just inserted - 100% reliable!
+                                    for episode in &new_episodes {
+                                        println!("Auto-downloading episode '{}' (ID: {}) for user {}",
+                                            episode.episodetitle, episode.episodeid, user_id);
+
+                                        // Determine if this is a YouTube episode
+                                        let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
+
+                                        // Spawn download task
+                                        let task_result = if is_youtube {
+                                            state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
+                                        } else {
+                                            state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
+                                        };
+
+                                        match task_result {
+                                            Ok(task_id) => println!("Auto-download task queued with ID: {}", task_id),
+                                            Err(e) => println!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
+                                        }
                                     }
+                                } else {
+                                    println!("Skipping auto-download for podcast {} - server downloads are disabled", podcast_id);
                                 }
                             }
                         }
@@ -345,27 +350,32 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                             
                             // Handle auto-download for background refresh - matches Python implementation exactly
                             if auto_download {
-                                println!("Auto-download enabled for podcast {} - processing {} new episodes", podcast_id, new_episodes.len());
-                                
-                                // Auto-download ONLY the episodes that were just inserted - 100% reliable!
-                                for episode in &new_episodes {
-                                    println!("Auto-downloading episode '{}' (ID: {}) for user {}", 
-                                        episode.episodetitle, episode.episodeid, user_id);
-                                    
-                                    // Determine if this is a YouTube episode
-                                    let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
-                                    
-                                    // Spawn download task
-                                    let task_result = if is_youtube {
-                                        state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
-                                    } else {
-                                        state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
-                                    };
-                                    
-                                    match task_result {
-                                        Ok(task_id) => println!("Auto-download task queued with ID: {}", task_id),
-                                        Err(e) => println!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
+                                let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
+                                if downloads_enabled {
+                                    println!("Auto-download enabled for podcast {} - processing {} new episodes", podcast_id, new_episodes.len());
+
+                                    // Auto-download ONLY the episodes that were just inserted - 100% reliable!
+                                    for episode in &new_episodes {
+                                        println!("Auto-downloading episode '{}' (ID: {}) for user {}",
+                                            episode.episodetitle, episode.episodeid, user_id);
+
+                                        // Determine if this is a YouTube episode
+                                        let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
+
+                                        // Spawn download task
+                                        let task_result = if is_youtube {
+                                            state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
+                                        } else {
+                                            state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
+                                        };
+
+                                        match task_result {
+                                            Ok(task_id) => println!("Auto-download task queued with ID: {}", task_id),
+                                            Err(e) => println!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
+                                        }
                                     }
+                                } else {
+                                    println!("Skipping auto-download for podcast {} - server downloads are disabled", podcast_id);
                                 }
                             }
                         }
@@ -790,28 +800,33 @@ async fn refresh_rss_feed(
     
     // Handle auto-download functionality - matches Python implementation exactly
     if podcast.auto_download {
-        tracing::info!("Auto-download enabled for podcast '{}' - processing {} new episodes", 
-            podcast.name, new_episodes.len());
-        
-        // Auto-download ONLY the episodes that were just inserted - 100% reliable!
-        for episode in &new_episodes {
-            tracing::info!("Auto-downloading episode '{}' (ID: {}) for user {}", 
-                episode.episodetitle, episode.episodeid, user_id);
-            
-            // Determine if this is a YouTube episode
-            let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
-            
-            // Spawn download task using the same task system as the API endpoint
-            let task_result = if is_youtube {
-                state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
-            } else {
-                state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
-            };
-            
-            match task_result {
-                Ok(task_id) => tracing::info!("Auto-download task queued with ID: {}", task_id),
-                Err(e) => tracing::error!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
+        let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
+        if downloads_enabled {
+            tracing::info!("Auto-download enabled for podcast '{}' - processing {} new episodes",
+                podcast.name, new_episodes.len());
+
+            // Auto-download ONLY the episodes that were just inserted - 100% reliable!
+            for episode in &new_episodes {
+                tracing::info!("Auto-downloading episode '{}' (ID: {}) for user {}",
+                    episode.episodetitle, episode.episodeid, user_id);
+
+                // Determine if this is a YouTube episode
+                let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
+
+                // Spawn download task using the same task system as the API endpoint
+                let task_result = if is_youtube {
+                    state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
+                } else {
+                    state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
+                };
+
+                match task_result {
+                    Ok(task_id) => tracing::info!("Auto-download task queued with ID: {}", task_id),
+                    Err(e) => tracing::error!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
+                }
             }
+        } else {
+            tracing::info!("Skipping auto-download for podcast '{}' - server downloads are disabled", podcast.name);
         }
     }
     

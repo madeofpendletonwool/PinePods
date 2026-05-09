@@ -4211,3 +4211,52 @@ def migration_039_add_auto_play_next_to_podcasts(conn, db_type: str):
         logger.error(f"Error adding autoplaynext column to Podcasts: {e}")
         conn.rollback()
         raise
+
+
+@register_migration("040", "add_is_favorite_to_podcasts", "Add IsFavorite column to Podcasts table for favoriting podcasts", requires=["005"])
+def migration_040_add_is_favorite_to_podcasts(conn, db_type: str):
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration to add isfavorite column to Podcasts table...")
+
+        if db_type == "postgresql":
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'Podcasts'
+                AND column_name = 'isfavorite'
+            """)
+            if cursor.fetchone():
+                logger.info("isfavorite column already exists in Podcasts table (PostgreSQL)")
+                return
+            logger.info("Adding isfavorite column to Podcasts table (PostgreSQL)...")
+            cursor.execute("""
+                ALTER TABLE "Podcasts"
+                ADD COLUMN isfavorite BOOLEAN DEFAULT FALSE
+            """)
+            conn.commit()
+            logger.info("Successfully added isfavorite column to Podcasts table (PostgreSQL)")
+
+        else:  # MySQL/MariaDB
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'IsFavorite'
+            """)
+            if cursor.fetchone():
+                logger.info("IsFavorite column already exists in Podcasts table (MySQL)")
+                return
+            logger.info("Adding IsFavorite column to Podcasts table (MySQL)...")
+            cursor.execute("""
+                ALTER TABLE Podcasts
+                ADD COLUMN IsFavorite BOOLEAN DEFAULT FALSE
+            """)
+            conn.commit()
+            logger.info("Successfully added IsFavorite column to Podcasts table (MySQL)")
+
+    except Exception as e:
+        logger.error(f"Error adding isfavorite column to Podcasts: {e}")
+        conn.rollback()
+        raise

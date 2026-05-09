@@ -3109,6 +3109,39 @@ pub async fn toggle_podcast_notifications(
     }
 }
 
+// Request struct for toggle_podcast_favorite
+#[derive(Deserialize)]
+pub struct TogglePodcastFavoriteData {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub is_favorite: bool,
+}
+
+// Toggle podcast favorite status
+pub async fn toggle_podcast_favorite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<TogglePodcastFavoriteData>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("Invalid API key"));
+    }
+
+    let success = state.db_pool.toggle_podcast_favorite(request.user_id, request.podcast_id, request.is_favorite).await?;
+
+    if success {
+        Ok(Json(serde_json::json!({ "detail": "Favorite status updated successfully" })))
+    } else {
+        Ok(Json(serde_json::json!({ "detail": "Failed to update favorite status" })))
+    }
+}
+
 // Request struct for adjust_skip_times - matches Python SkipTimesRequest model
 #[derive(Deserialize)]
 pub struct SkipTimesRequest {

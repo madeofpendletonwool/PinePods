@@ -7,7 +7,9 @@ use crate::components::gen_funcs::format_error_message;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req;
 use crate::requests::pod_req::PodcastExtra;
-use crate::requests::pod_req::{call_remove_podcasts, PodcastResponseExtra, RemovePodcastValues};
+use crate::requests::pod_req::{
+    call_remove_podcasts, call_toggle_podcast_favorite, PodcastResponseExtra, RemovePodcastValues,
+};
 use crate::requests::setting_reqs::call_add_custom_feed;
 use i18nrs::yew::use_translation;
 use serde::Deserialize;
@@ -101,6 +103,7 @@ fn render_podcasts(
     desc_dispatch: Dispatch<ExpandedDescriptions>,
     toggle_delete: Callback<(i32, std::string::String)>,
     i18n: &i18nrs::I18n,
+    on_toggle_favorite: Callback<(i32, bool)>,
 ) -> Html {
     // Add a debug log at the start of render function
     web_sys::console::log_1(&format!("Rendering {} podcasts", podcasts.len()).into());
@@ -260,16 +263,36 @@ fn render_podcasts(
                         // Get episode count
                         let episode_count = podcast.episodecount.unwrap_or(0);
 
-                        html! {
+                        {
+                            let is_fav = podcast.is_favorite;
+                            let podcast_id_fav = podcast.podcastid;
+                            let toggle_fav = on_toggle_favorite.clone();
+                            html! {
                             <div
                                 key={podcast_key}
                                 class="podcast-grid-item relative"
                                 onclick={on_click}
                             >
-                                // Episode count badge
+                                // Episode count badge (top-right)
                                 <div class="absolute top-1 right-1 z-10 bg-opacity-80 bg-gray-800 text-white rounded-full px-2 py-1 text-xs font-bold">
                                     <i class="ph ph-broadcast inline-block mr-1"></i>
                                     {episode_count}
+                                </div>
+
+                                // Favorite star badge (top-left)
+                                <div
+                                    class="absolute top-1 left-1 z-10 cursor-pointer bg-opacity-80 bg-gray-800 text-white rounded-full px-2 py-1 text-xs font-bold"
+                                    onclick={Callback::from(move |e: MouseEvent| {
+                                        e.stop_propagation();
+                                        toggle_fav.emit((podcast_id_fav, !is_fav));
+                                    })}
+                                >
+                                    <i class={classes!(
+                                        "ph",
+                                        "ph-star",
+                                        "text-xl",
+                                        if is_fav { "text-yellow-400" } else { "text-white" }
+                                    )}></i>
                                 </div>
 
                                 <div class="podcast-image-container">
@@ -283,7 +306,7 @@ fn render_podcasts(
                                     <h3 class="podcast-title-grid">{&podcast.podcastname}</h3>
                                 </div>
                             </div>
-                        }
+                        }}
                     }).collect::<Html>()}
                 </div>
             }
@@ -586,6 +609,53 @@ pub fn podcasts() -> Html {
         })
     };
 
+    let on_toggle_favorite = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id;
+        let dispatch = dispatch.clone();
+        Callback::from(move |(podcast_id, is_favorite): (i32, bool)| {
+            let server_name = server_name.clone();
+            let api_key = api_key.clone();
+            let user_id = user_id;
+            let dispatch = dispatch.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(server_name), Some(Some(api_key)), Some(user_id)) =
+                    (server_name, api_key, user_id)
+                {
+                    match call_toggle_podcast_favorite(
+                        server_name,
+                        api_key,
+                        user_id,
+                        podcast_id,
+                        is_favorite,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            dispatch.reduce_mut(|state| {
+                                if let Some(ref mut extra) = state.podcast_feed_return_extra {
+                                    if let Some(ref mut pods) = extra.pods {
+                                        for pod in pods.iter_mut() {
+                                            if pod.podcastid == podcast_id {
+                                                pod.is_favorite = is_favorite;
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error toggling favorite: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
     // Correct setup for `on_password_change`
     let update_feed = {
         let feed_url = feed_url.clone();
@@ -840,8 +910,9 @@ pub fn podcasts() -> Html {
             selected_category.clone(),
             search_term.clone(),
             sort_direction.clone(),
+            filter_state.favorites_only,
         ),
-        |(podcasts, selected_cat, search, sort_dir)| {
+        |(podcasts, selected_cat, search, sort_dir, fav_only)| {
             // Log for debugging
             web_sys::console::log_1(&"Filtering podcasts...".into());
 
@@ -877,8 +948,10 @@ pub fn podcasts() -> Html {
                             true
                         };
 
-                        // Both conditions must be true
-                        matches_search && matches_category
+                        // Favorites filter
+                        let matches_favorites = !*fav_only || podcast.is_favorite;
+
+                        matches_search && matches_category && matches_favorites
                     })
                     .collect::<Vec<_>>();
 
@@ -1126,6 +1199,7 @@ pub fn podcasts() -> Html {
                                 desc_dispatch.clone(),
                                 toggle_delete.clone(),
                                 &i18n,
+                                on_toggle_favorite.clone(),
                             )
                         }
 

@@ -6,7 +6,7 @@ use crate::components::gen_components::{
 use crate::components::loading::Loading;
 
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, FilterState, UIState};
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
@@ -15,8 +15,7 @@ use crate::pages::episode_layout::AppStateMsg;
 use crate::requests::episode::Episode;
 
 use crate::components::virtual_list::DragCallbacks;
-use crate::requests::pod_req::QueuedEpisodesResponse;
-use crate::requests::pod_req::{self};
+use crate::requests::pod_req::{self, PodcastResponseExtra, QueuedEpisodesResponse};
 use gloo_events::EventListener;
 use gloo_utils::document;
 use i18nrs::yew::use_translation;
@@ -86,6 +85,7 @@ fn stop_auto_scroll(interval_id: i32) {
 pub fn queue() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -119,6 +119,22 @@ pub fn queue() -> Html {
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
                     let dispatch = effect_dispatch.clone();
+
+                    {
+                        let dispatch_pods = dispatch.clone();
+                        let server_name_pods = server_name.clone();
+                        let api_key_pods = api_key.clone();
+                        let user_id_pods = user_id.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            if let Ok(fetched_pods) = pod_req::call_get_podcasts_extra(&server_name_pods, &api_key_pods, &user_id_pods).await {
+                                dispatch_pods.reduce_mut(move |state| {
+                                    state.podcast_feed_return_extra = Some(PodcastResponseExtra {
+                                        pods: Some(fetched_pods),
+                                    });
+                                });
+                            }
+                        });
+                    }
 
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_queued_episodes(&server_name, &api_key, &user_id)
@@ -200,7 +216,30 @@ pub fn queue() -> Html {
 
                     {
                         if let Some(queued_eps) = state.queued_episodes.clone() {
-                            if queued_eps.episodes.is_empty() {
+                            let favorite_podcast_ids: std::collections::HashSet<i32> = state
+                                .podcast_feed_return_extra
+                                .as_ref()
+                                .and_then(|pr| pr.pods.as_ref())
+                                .map(|pods| {
+                                    pods.iter()
+                                        .filter(|p| p.is_favorite)
+                                        .map(|p| p.podcastid)
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+
+                            let filtered_episodes: Vec<_> = queued_eps
+                                .episodes
+                                .into_iter()
+                                .filter(|ep| {
+                                    if !filter_state.favorites_only {
+                                        return true;
+                                    }
+                                    favorite_podcast_ids.contains(&ep.podcastid)
+                                })
+                                .collect();
+
+                            if filtered_episodes.is_empty() {
                                 // Render "No Queued Episodes Found" if episodes list is empty
                                 empty_message(
                                     &i18n.t("queue.no_queued_episodes_found"),
@@ -209,7 +248,7 @@ pub fn queue() -> Html {
                             } else {
                                 html! {
                                     <VirtualQueueList
-                                        episodes={queued_eps.episodes.clone()}
+                                        episodes={filtered_episodes}
                                     />
                                 }
                             }

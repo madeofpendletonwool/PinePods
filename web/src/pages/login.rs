@@ -118,6 +118,7 @@ pub fn login() -> Html {
     let effect_self_service = self_service_enabled.clone();
     let first_admin_created = use_state(|| true);
     let oidc_providers = use_state(|| Vec::new());
+    let disable_standard_login = use_state(|| false);
 
     use_effect_with((), move |_| {
         initialize_default_theme();
@@ -154,9 +155,11 @@ pub fn login() -> Html {
     });
 
     let effect_providers = oidc_providers.clone();
+    let effect_disable_standard_login = disable_standard_login.clone();
 
     use_effect_with((), move |_| {
         let providers = effect_providers.clone();
+        let disable_std_login = effect_disable_standard_login.clone();
         wasm_bindgen_futures::spawn_local(async move {
             let window = web_sys::window().expect("no global `window` exists");
             let location = window.location();
@@ -168,6 +171,7 @@ pub fn login() -> Html {
 
             match call_get_public_oidc_providers(server_name).await {
                 Ok(response) => {
+                    disable_std_login.set(response.disable_standard_login);
                     providers.set(response.providers);
                 }
                 Err(e) => {
@@ -1847,55 +1851,58 @@ pub fn login() -> Html {
                         </div>
                         <h1 class="item_container-text text-xl font-bold mb-2 text-center">{&i18n_pinepods}</h1>
                         <p class="item_container-text text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
-                        <input
-                            type="text"
-                            placeholder={i18n.t("auth.username")}
-                            class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                            oninput={on_login_username_change}
-                            onkeypress={on_key_press.clone()}
-                        />
-                        <input
-                            type="password"
-                            placeholder={i18n.t("auth.password")}
-                            class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                            oninput={on_login_password_change}
-                            onkeypress={on_key_press}
-                        />
-                        // Forgot Password and Create New User buttons
-                        <div class="flex justify-between">
-                            <button
-                                onclick={on_forgot_password}
-                                class="login-link text-sm"
-                            >
-                                {"Forgot Password?"}
-                            </button>
-                            // <button
-                            //     onclick={on_create_new_user}
-                            //     class="text-sm text-blue-500 hover:text-blue-700"
-                            // >
-                            //     {"Create New User"}
-                            // </button>
-                            {
-                                if *self_service_enabled {
-                                    html! {
+                        {
+                            if !*disable_standard_login {
+                                html! {
+                                    <>
+                                        <input
+                                            type="text"
+                                            placeholder={i18n.t("auth.username")}
+                                            class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
+                                            oninput={on_login_username_change}
+                                            onkeypress={on_key_press.clone()}
+                                        />
+                                        <input
+                                            type="password"
+                                            placeholder={i18n.t("auth.password")}
+                                            class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
+                                            oninput={on_login_password_change}
+                                            onkeypress={on_key_press}
+                                        />
+                                        <div class="flex justify-between">
+                                            <button
+                                                onclick={on_forgot_password}
+                                                class="login-link text-sm"
+                                            >
+                                                {"Forgot Password?"}
+                                            </button>
+                                            {
+                                                if *self_service_enabled {
+                                                    html! {
+                                                        <button
+                                                            onclick={on_create_new_user.clone()}
+                                                            class="text-sm login-link"
+                                                        >
+                                                            {&i18n.t("login.create_new_user")}
+                                                        </button>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+                                        </div>
                                         <button
-                                            onclick={on_create_new_user.clone()}
-                                            class="text-sm login-link"
+                                            onclick={on_submit_click}
+                                            class="p-2 download-button rounded"
                                         >
-                {&i18n.t("login.create_new_user")}
+                                            {&i18n_login}
                                         </button>
-                                    }
-                                } else {
-                                    html! {}
+                                    </>
                                 }
+                            } else {
+                                html! {}
                             }
-                        </div>
-                        <button
-                            onclick={on_submit_click}
-                            class="p-2 download-button rounded"
-                        >
-    {&i18n_login}
-                        </button>
+                        }
 
 
                         // In your HTML template:

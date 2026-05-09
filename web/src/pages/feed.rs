@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, FilterState, UIState};
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -8,7 +8,7 @@ use crate::components::virtual_list::VirtualList;
 use crate::requests::episode::Episode;
 use crate::requests::pod_req;
 
-use crate::requests::pod_req::RecentEps;
+use crate::requests::pod_req::{PodcastResponseExtra, RecentEps};
 use gloo::events::EventListener;
 use i18nrs::yew::use_translation;
 use wasm_bindgen::JsCast;
@@ -46,6 +46,7 @@ fn calculate_item_height(window_width: f64) -> f64 {
 pub fn feed() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -84,6 +85,22 @@ pub fn feed() -> Html {
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
                     let dispatch = effect_dispatch.clone();
+                    {
+                        let dispatch_pods = dispatch.clone();
+                        let server_name_pods = server_name.clone();
+                        let api_key_pods = api_key.clone();
+                        let user_id_pods = user_id.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            if let Ok(fetched_pods) = pod_req::call_get_podcasts_extra(&server_name_pods, &api_key_pods, &user_id_pods).await {
+                                dispatch_pods.reduce_mut(move |state| {
+                                    state.podcast_feed_return_extra = Some(PodcastResponseExtra {
+                                        pods: Some(fetched_pods),
+                                    });
+                                });
+                            }
+                        });
+                    }
+
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_recent_eps(&server_name, &api_key, &user_id).await {
                             Ok(fetched_episodes) => {
@@ -157,6 +174,27 @@ pub fn feed() -> Html {
                     if let Some(recent_eps) = state.server_feed_results.clone() {
                         let int_recent_eps = recent_eps.clone();
                         if let Some(episodes) = int_recent_eps.episodes {
+                            let favorite_podcast_ids: std::collections::HashSet<i32> = state
+                                .podcast_feed_return_extra
+                                .as_ref()
+                                .and_then(|pr| pr.pods.as_ref())
+                                .map(|pods| {
+                                    pods.iter()
+                                        .filter(|p| p.is_favorite)
+                                        .map(|p| p.podcastid)
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+
+                            let episodes: Vec<_> = episodes
+                                .into_iter()
+                                .filter(|ep| {
+                                    if !filter_state.favorites_only {
+                                        return true;
+                                    }
+                                    favorite_podcast_ids.contains(&ep.podcastid)
+                                })
+                                .collect();
 
                             if episodes.is_empty() {
                                 // Render "No Recent Episodes Found" if episodes list is empty

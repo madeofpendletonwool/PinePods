@@ -19,9 +19,10 @@ use crate::requests::pod_req::{
     call_get_auto_play_next_status,
     call_get_feed_cutoff_days, call_get_merged_podcasts, call_get_play_episode_details,
     call_get_podcast_details, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
-    call_get_podcast_notifications_status, call_get_podcasts, call_get_rss_key,
-    call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
-    call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_notifications,
+    call_get_podcast_favorite_status, call_get_podcast_notifications_status, call_get_podcasts,
+    call_get_rss_key, call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
+    call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_favorite,
+    call_toggle_podcast_notifications,
     call_unmerge_podcast, call_update_feed_cutoff_days, call_update_podcast_info,
     AddCategoryRequest, AutoDownloadRequest, BulkEpisodeActionRequest, ClearPlaybackSpeedRequest,
     DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, AutoPlayNextRequest,
@@ -492,6 +493,7 @@ pub fn episode_layout() -> Html {
     let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
     let notification_status = use_state(|| false);
+    let favorite_status = use_state(|| false);
     let feed_cutoff_days = use_state(|| 0);
     let feed_cutoff_days_input = use_state(|| "0".to_string());
     let playback_speed = use_state(|| 1.0);
@@ -967,6 +969,7 @@ pub fn episode_layout() -> Html {
         let download_status = download_status.clone();
         let auto_play_next_status = auto_play_next_status.clone();
         let notification_effect = notification_status.clone();
+        let favorite_effect = favorite_status.clone();
         // let episode_name = episode_name_pre.clone();
         // let episode_url = episode_url_pre.clone();
         let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID);
@@ -1109,6 +1112,28 @@ pub fn episode_layout() -> Html {
                                                 web_sys::console::log_1(
                                                     &format!(
                                                         "Error getting notification status: {}",
+                                                        e
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
+                                        }
+                                        // Fetch favorite status
+                                        match call_get_podcast_favorite_status(
+                                            server_name.clone(),
+                                            api_key.clone().unwrap(),
+                                            user_id,
+                                            id,
+                                        )
+                                        .await
+                                        {
+                                            Ok(status) => {
+                                                favorite_effect.set(status);
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!(
+                                                        "Error getting favorite status: {}",
                                                         e
                                                     )
                                                     .into(),
@@ -1863,6 +1888,46 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let toggle_favorite = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let favorite_status = favorite_status.clone();
+        let podcast_id = podcast_id.clone();
+        let user_id = user_id.clone();
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let favorite_status = favorite_status.clone();
+            let is_favorite = !*favorite_status;
+            let pod_id_deref = *podcast_id.clone();
+            let user_id = user_id.clone().unwrap();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_toggle_podcast_favorite(
+                        server_name.clone(),
+                        api_key.clone().unwrap(),
+                        user_id,
+                        pod_id_deref,
+                        is_favorite,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            favorite_status.set(is_favorite);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error toggling favorite: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
     let toggle_podcast_covers = {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
@@ -2241,6 +2306,18 @@ pub fn episode_layout() -> Html {
                                         checked={*notification_status}
                                         class="sr-only peer"
                                         onclick={toggle_notifications}
+                                    />
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div>
+                                <label for="favorite_settings" class="block mb-2 text-sm font-medium">{"Favorite Podcast"}</label>
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={*favorite_status}
+                                        class="sr-only peer"
+                                        onclick={toggle_favorite}
                                     />
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                 </label>

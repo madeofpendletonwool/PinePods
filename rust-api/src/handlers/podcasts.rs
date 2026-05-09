@@ -897,8 +897,14 @@ pub async fn download_podcast(
         return Err(AppError::forbidden("You can only download content for yourself!"));
     }
 
+    // Check if server downloads are enabled
+    let downloads_enabled = state.db_pool.download_status().await?;
+    if !downloads_enabled {
+        return Err(AppError::forbidden("Server downloads are disabled by the administrator."));
+    }
+
     let is_youtube = request.is_youtube.unwrap_or(false);
-    
+
     // Check if already downloaded
     let is_downloaded = state.db_pool.check_downloaded(request.user_id, request.episode_id, is_youtube).await?;
     if is_downloaded {
@@ -1380,6 +1386,43 @@ pub async fn get_notification_status(
             request.user_id
         ).await?;
         Ok(Json(NotificationStatusResponse { enabled }))
+    } else {
+        Err(AppError::forbidden("You can only check your own podcast settings"))
+    }
+}
+
+// Request for podcast favorite status
+#[derive(Deserialize)]
+pub struct PodcastFavoriteStatusRequest {
+    pub user_id: i32,
+    pub podcast_id: i32,
+}
+
+// Response for favorite status
+#[derive(Serialize)]
+pub struct FavoriteStatusResponse {
+    pub is_favorite: bool,
+}
+
+// Get podcast favorite status
+pub async fn get_podcast_favorite_status(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<PodcastFavoriteStatusRequest>,
+) -> Result<Json<FavoriteStatusResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == request.user_id || is_web_key {
+        let is_favorite = state.db_pool.get_podcast_favorite_status(request.user_id, request.podcast_id).await?;
+        Ok(Json(FavoriteStatusResponse { is_favorite }))
     } else {
         Err(AppError::forbidden("You can only check your own podcast settings"))
     }

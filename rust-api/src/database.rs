@@ -1431,7 +1431,8 @@ impl DatabasePool {
                         COALESCE(author, 'Unknown Author') as author,
                         COALESCE(categories, '') as categories,
                         COALESCE(explicit, false) as explicit,
-                        COALESCE(podcastindexid, 0) as podcastindexid
+                        COALESCE(podcastindexid, 0) as podcastindexid,
+                        COALESCE(isfavorite, false) as isfavorite
                     FROM "Podcasts"
                     WHERE userid = $1 AND COALESCE(displaypodcast, TRUE) = TRUE
                     ORDER BY podcastname"#
@@ -1457,13 +1458,14 @@ impl DatabasePool {
                         },
                         explicit: row.try_get("explicit")?,
                         podcastindexid: row.try_get::<i32, _>("podcastindexid").ok().map(|i| i as i64),
+                        is_favorite: row.try_get("isfavorite").unwrap_or(false),
                     });
                 }
                 Ok(podcasts)
             }
             DatabasePool::MySQL(pool) => {
                 let rows = sqlx::query(
-                    "SELECT 
+                    "SELECT
                         PodcastID as podcastid,
                         COALESCE(PodcastName, 'Unknown Podcast') as podcastname,
                         CASE 
@@ -1478,7 +1480,8 @@ impl DatabasePool {
                         COALESCE(Author, 'Unknown Author') as author,
                         COALESCE(Categories, '') as categories,
                         COALESCE(Explicit, false) as explicit,
-                        COALESCE(PodcastIndexID, 0) as podcastindexid
+                        COALESCE(PodcastIndexID, 0) as podcastindexid,
+                        COALESCE(IsFavorite, false) as isfavorite
                     FROM Podcasts
                     WHERE UserID = ? AND COALESCE(DisplayPodcast, 1) = 1
                     ORDER BY PodcastName"
@@ -1504,6 +1507,7 @@ impl DatabasePool {
                         },
                         explicit: row.try_get("explicit")?,
                         podcastindexid: row.try_get::<i32, _>("podcastindexid").ok().map(|i| i as i64),
+                        is_favorite: row.try_get("isfavorite").unwrap_or(false),
                     });
                 }
                 Ok(podcasts)
@@ -1535,14 +1539,15 @@ impl DatabasePool {
                         COUNT(ueh.userepisodehistoryid) as play_count,
                         COUNT(DISTINCT ueh.episodeid) as episodes_played,
                         MIN(e.episodepubdate) as oldest_episode_date,
-                        COALESCE(p.isyoutube, false) as is_youtube
+                        COALESCE(p.isyoutube, false) as is_youtube,
+                        COALESCE(p.isfavorite, false) as isfavorite
                     FROM "Podcasts" p
                     LEFT JOIN "Episodes" e ON p.podcastid = e.podcastid
                     LEFT JOIN "UserEpisodeHistory" ueh ON e.episodeid = ueh.episodeid AND ueh.userid = $1
                     WHERE p.userid = $1 AND COALESCE(p.displaypodcast, TRUE) = TRUE
-                    GROUP BY p.podcastid, p.podcastname, p.artworkurl, p.description, 
-                             p.episodecount, p.websiteurl, p.feedurl, p.author, 
-                             p.categories, p.explicit, p.podcastindexid, p.isyoutube
+                    GROUP BY p.podcastid, p.podcastname, p.artworkurl, p.description,
+                             p.episodecount, p.websiteurl, p.feedurl, p.author,
+                             p.categories, p.explicit, p.podcastindexid, p.isyoutube, p.isfavorite
                     ORDER BY p.podcastname"#
                 )
                 .bind(user_id)
@@ -1573,13 +1578,14 @@ impl DatabasePool {
                         episodes_played: row.try_get("episodes_played")?,
                         oldest_episode_date: row.try_get("oldest_episode_date").ok(),
                         is_youtube,
+                        is_favorite: row.try_get("isfavorite").unwrap_or(false),
                     });
                 }
                 Ok(podcasts)
             }
             DatabasePool::MySQL(pool) => {
                 let rows = sqlx::query(
-                    "SELECT 
+                    "SELECT
                         p.PodcastID as podcastid,
                         COALESCE(p.PodcastName, 'Unknown Podcast') as podcastname,
                         CASE 
@@ -1598,14 +1604,15 @@ impl DatabasePool {
                         COUNT(ueh.UserEpisodeHistoryID) as play_count,
                         COUNT(DISTINCT ueh.EpisodeID) as episodes_played,
                         MIN(e.EpisodePubDate) as oldest_episode_date,
-                        COALESCE(p.IsYouTubeChannel, false) as is_youtube
+                        COALESCE(p.IsYouTubeChannel, false) as is_youtube,
+                        COALESCE(p.IsFavorite, false) as isfavorite
                     FROM Podcasts p
                     LEFT JOIN Episodes e ON p.PodcastID = e.PodcastID
                     LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
                     WHERE p.UserID = ? AND COALESCE(p.DisplayPodcast, 1) = 1
-                    GROUP BY p.PodcastID, p.PodcastName, p.ArtworkURL, p.Description, 
-                             p.EpisodeCount, p.WebsiteURL, p.FeedURL, p.Author, 
-                             p.Categories, p.Explicit, p.PodcastIndexID, p.IsYouTubeChannel
+                    GROUP BY p.PodcastID, p.PodcastName, p.ArtworkURL, p.Description,
+                             p.EpisodeCount, p.WebsiteURL, p.FeedURL, p.Author,
+                             p.Categories, p.Explicit, p.PodcastIndexID, p.IsYouTubeChannel, p.IsFavorite
                     ORDER BY p.PodcastName"
                 )
                 .bind(user_id)
@@ -1637,6 +1644,7 @@ impl DatabasePool {
                         episodes_played: row.try_get("episodes_played")?,
                         oldest_episode_date: row.try_get("oldest_episode_date").ok(),
                         is_youtube,
+                        is_favorite: row.try_get("isfavorite").unwrap_or(false),
                     });
                 }
                 Ok(podcasts)
@@ -8331,6 +8339,68 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
+    // Toggle podcast favorite status
+    pub async fn toggle_podcast_favorite(&self, user_id: i32, podcast_id: i32, is_favorite: bool) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT 1 FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                if row.is_none() {
+                    return Ok(false);
+                }
+                let result = sqlx::query(r#"UPDATE "Podcasts" SET isfavorite = $1 WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(is_favorite)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT 1 FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                if row.is_none() {
+                    return Ok(false);
+                }
+                let result = sqlx::query("UPDATE Podcasts SET IsFavorite = ? WHERE PodcastID = ? AND UserID = ?")
+                    .bind(is_favorite)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
+    // Get podcast favorite status
+    pub async fn get_podcast_favorite_status(&self, user_id: i32, podcast_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT COALESCE(isfavorite, false) as isfavorite FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(row.map(|r| r.try_get::<bool, _>("isfavorite").unwrap_or(false)).unwrap_or(false))
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT COALESCE(IsFavorite, false) as isfavorite FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(row.map(|r| r.try_get::<bool, _>("isfavorite").unwrap_or(false)).unwrap_or(false))
             }
         }
     }
@@ -24192,13 +24262,13 @@ impl DatabasePool {
                     SELECT
                         se.sharecode,
                         se.expirationdate,
-                        COALESCE(e.episodetitle, ye.episodetitle) AS episodetitle,
+                        COALESCE(e.episodetitle, ye.videotitle) AS episodetitle,
                         COALESCE(p.podcastname, yp.podcastname) AS podcastname
                     FROM "SharedEpisodes" se
                     LEFT JOIN "Episodes" e ON se.episodeid = e.episodeid
                     LEFT JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                    LEFT JOIN "YoutubeVideos" ye ON se.episodeid = ye.episodeid
-                    LEFT JOIN "YoutubePodcasts" yp ON ye.podcastid = yp.podcastid
+                    LEFT JOIN "YouTubeVideos" ye ON se.episodeid = ye.videoid
+                    LEFT JOIN "Podcasts" yp ON ye.podcastid = yp.podcastid
                     WHERE se.sharedby = $1
                     ORDER BY se.expirationdate DESC
                 "#)
@@ -24208,7 +24278,7 @@ impl DatabasePool {
 
                 let result = rows.iter().map(|row| {
                     let sharecode: String = row.try_get("sharecode").unwrap_or_default();
-                    let expiration: chrono::DateTime<chrono::Utc> = row.try_get("expirationdate").unwrap_or_else(|_| chrono::Utc::now());
+                    let expiration: chrono::NaiveDateTime = row.try_get("expirationdate").unwrap_or_else(|_| chrono::Utc::now().naive_utc());
                     let episode_title: String = row.try_get("episodetitle").unwrap_or_else(|_| "Unknown".to_string());
                     let podcast_name: String = row.try_get("podcastname").unwrap_or_else(|_| "Unknown".to_string());
                     serde_json::json!({
@@ -24225,13 +24295,13 @@ impl DatabasePool {
                     "SELECT
                         se.ShareCode AS sharecode,
                         se.ExpirationDate AS expirationdate,
-                        COALESCE(e.EpisodeTitle, ye.EpisodeTitle) AS episodetitle,
+                        COALESCE(e.EpisodeTitle, ye.VideoTitle) AS episodetitle,
                         COALESCE(p.PodcastName, yp.PodcastName) AS podcastname
                     FROM SharedEpisodes se
                     LEFT JOIN Episodes e ON se.EpisodeID = e.EpisodeID
                     LEFT JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                    LEFT JOIN YoutubeVideos ye ON se.EpisodeID = ye.EpisodeID
-                    LEFT JOIN YoutubePodcasts yp ON ye.PodcastID = yp.PodcastID
+                    LEFT JOIN YouTubeVideos ye ON se.EpisodeID = ye.VideoID
+                    LEFT JOIN Podcasts yp ON ye.PodcastID = yp.PodcastID
                     WHERE se.SharedBy = ?
                     ORDER BY se.ExpirationDate DESC"
                 )
@@ -24282,17 +24352,29 @@ impl DatabasePool {
     pub async fn extend_user_shared_episode(&self, share_code: &str, user_id: i32, days: i64) -> AppResult<bool> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"
+                let current: Option<chrono::NaiveDateTime> = sqlx::query_scalar(r#"
+                    SELECT expirationdate FROM "SharedEpisodes" WHERE sharecode = $1 AND sharedby = $2
+                "#)
+                .bind(share_code)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                let Some(current) = current else { return Ok(false); };
+                let new_expiry = current + chrono::Duration::days(days);
+                tracing::info!("Extending {} from {} to {} (+{} days)", share_code, current, new_expiry, days);
+
+                sqlx::query(r#"
                     UPDATE "SharedEpisodes"
-                    SET expirationdate = expirationdate + ($1 * INTERVAL '1 day')
+                    SET expirationdate = $1
                     WHERE sharecode = $2 AND sharedby = $3
                 "#)
-                .bind(days)
+                .bind(new_expiry)
                 .bind(share_code)
                 .bind(user_id)
                 .execute(pool)
                 .await?;
-                Ok(result.rows_affected() > 0)
+                Ok(true)
             }
             DatabasePool::MySQL(pool) => {
                 let result = sqlx::query(
