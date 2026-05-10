@@ -102,6 +102,14 @@ pub struct PodcastEpisodesResponse {
 #[derive(Serialize)]
 pub struct EpisodesResponse {
     pub episodes: Vec<Episode>,
+    pub total: i64,
+}
+
+#[derive(Deserialize, Default)]
+pub struct FeedQueryParams {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub since: Option<String>, // ISO-8601 e.g. "2026-05-01T00:00:00"
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -200,26 +208,31 @@ pub struct PodcastDetails {
 // Get episodes for a user - matches Python return_episodes endpoint
 pub async fn return_episodes(
     Path(user_id): Path<i32>,
+    Query(params): Query<FeedQueryParams>,
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<EpisodesResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
-    // Verify API key
+
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only return episodes of your own!"));
     }
 
-    // Get episodes from database
-    let episodes = state.db_pool.return_episodes(user_id).await?;
-    
-    Ok(Json(EpisodesResponse { episodes }))
+    let limit  = params.limit.unwrap_or(50).min(200);
+    let offset = params.offset.unwrap_or(0).max(0);
+    // Parse since; default to epoch so the SQL clause is always present without dynamic strings
+    let since = params.since.as_deref()
+        .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").ok())
+        .unwrap_or(chrono::NaiveDateTime::UNIX_EPOCH);
+
+    let (episodes, total) = state.db_pool.return_episodes(user_id, limit, offset, since).await?;
+
+    Ok(Json(EpisodesResponse { episodes, total }))
 }
 
 // Add a new podcast - matches Python add_podcast endpoint

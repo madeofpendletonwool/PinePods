@@ -385,18 +385,26 @@ impl DatabasePool {
         }
     }
 
-    // Get episodes for user - matches Python return_episodes function
-    pub async fn return_episodes(&self, user_id: i32) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
+    // Get episodes for user - paginated with optional since filter
+    pub async fn return_episodes(
+        &self,
+        user_id: i32,
+        limit: i64,
+        offset: i64,
+        since: chrono::NaiveDateTime,
+    ) -> AppResult<(Vec<crate::handlers::podcasts::Episode>, i64)> {
         match self {
             DatabasePool::Postgres(pool) => {
+                // COUNT(*) OVER() returns the pre-LIMIT total in every row — no second query needed.
+                // Since is always bound; epoch (1970-01-01) makes the clause a no-op when omitted.
                 let rows = sqlx::query(
-                    r#"SELECT * FROM (
+                    r#"SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             "Podcasts".podcastname as podcastname,
                             "Episodes".episodetitle as episodetitle,
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "Episodes".episodeartwork
@@ -428,6 +436,7 @@ impl DatabasePool {
                             "Episodes".episodeid = "DownloadedEpisodes".episodeid
                             AND "DownloadedEpisodes".userid = $1
                         WHERE "Episodes".episodepubdate >= NOW() - INTERVAL '30 days'
+                        AND "Episodes".episodepubdate > $6
                         AND "Podcasts".userid = $1
 
                         UNION ALL
@@ -437,7 +446,7 @@ impl DatabasePool {
                             "YouTubeVideos".videotitle as episodetitle,
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "YouTubeVideos".thumbnailurl
@@ -466,17 +475,27 @@ impl DatabasePool {
                             "YouTubeVideos".videoid = "DownloadedVideos".videoid
                             AND "DownloadedVideos".userid = $4
                         WHERE "YouTubeVideos".publishedat >= NOW() - INTERVAL '30 days'
+                        AND "YouTubeVideos".publishedat > $7
                         AND "Podcasts".userid = $5
                     ) combined
-                    ORDER BY episodepubdate DESC"#
+                    ORDER BY episodepubdate DESC
+                    LIMIT $8 OFFSET $9"#
                 )
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
+                .bind(user_id)   // $1 — episodes branch user joins
+                .bind(user_id)   // $2 — youtube SavedVideos
+                .bind(user_id)   // $3 — youtube EpisodeQueue
+                .bind(user_id)   // $4 — youtube DownloadedVideos
+                .bind(user_id)   // $5 — youtube Podcasts.userid WHERE
+                .bind(since)     // $6 — episodes since filter (epoch = no-op)
+                .bind(since)     // $7 — youtube since filter
+                .bind(limit)     // $8
+                .bind(offset)    // $9
                 .fetch_all(pool)
                 .await?;
+
+                let total: i64 = rows.first()
+                    .and_then(|r| r.try_get::<i64, _>("total_count").ok())
+                    .unwrap_or(0);
 
                 let mut episodes = Vec::new();
                 for row in rows {
@@ -501,17 +520,18 @@ impl DatabasePool {
                         is_video: row.try_get("is_video")?,
                     });
                 }
-                Ok(episodes)
+                Ok((episodes, total))
             }
             DatabasePool::MySQL(pool) => {
+                // MySQL: use SQL_CALC_FOUND_ROWS + FOUND_ROWS() for total count
                 let rows = sqlx::query(
-                    "SELECT * FROM (
+                    "SELECT SQL_CALC_FOUND_ROWS * FROM (
                         SELECT
                             Podcasts.PodcastName as podcastname,
                             Episodes.EpisodeTitle as episodetitle,
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 ELSE Episodes.EpisodeArtwork
@@ -543,6 +563,7 @@ impl DatabasePool {
                             Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                             AND DownloadedEpisodes.UserID = ?
                         WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                        AND Episodes.EpisodePubDate > ?
                         AND Podcasts.UserID = ?
 
                         UNION ALL
@@ -552,7 +573,7 @@ impl DatabasePool {
                             YouTubeVideos.VideoTitle as episodetitle,
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 ELSE YouTubeVideos.ThumbnailURL
@@ -581,22 +602,34 @@ impl DatabasePool {
                             YouTubeVideos.VideoID = DownloadedVideos.VideoID
                             AND DownloadedVideos.UserID = ?
                         WHERE YouTubeVideos.PublishedAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                        AND YouTubeVideos.PublishedAt > ?
                         AND Podcasts.UserID = ?
                     ) combined
-                    ORDER BY episodepubdate DESC"
+                    ORDER BY episodepubdate DESC
+                    LIMIT ? OFFSET ?"
                 )
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
+                .bind(user_id)   // episodes UserEpisodeHistory
+                .bind(user_id)   // episodes SavedEpisodes
+                .bind(user_id)   // episodes EpisodeQueue
+                .bind(user_id)   // episodes DownloadedEpisodes
+                .bind(since)     // episodes since filter
+                .bind(user_id)   // episodes Podcasts.UserID WHERE
+                .bind(user_id)   // youtube SavedVideos
+                .bind(user_id)   // youtube EpisodeQueue
+                .bind(user_id)   // youtube DownloadedVideos
+                .bind(since)     // youtube since filter
+                .bind(user_id)   // youtube Podcasts.UserID WHERE
+                .bind(limit)
+                .bind(offset)
                 .fetch_all(pool)
                 .await?;
-                
+
+                // Fetch total from FOUND_ROWS() — must happen in the same connection
+                let total_row = sqlx::query("SELECT FOUND_ROWS() as total_count")
+                    .fetch_one(pool)
+                    .await?;
+                let total: i64 = total_row.try_get("total_count").unwrap_or(0);
+
                 let mut episodes = Vec::new();
                 for row in rows {
                     episodes.push(crate::handlers::podcasts::Episode {
@@ -620,7 +653,7 @@ impl DatabasePool {
                         is_video: row.try_get("is_video")?,
                     });
                 }
-                Ok(episodes)
+                Ok((episodes, total))
             }
         }
     }

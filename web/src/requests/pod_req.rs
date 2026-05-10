@@ -20,6 +20,42 @@ pub struct RecentEps {
     pub episodes: Option<Vec<Episode>>,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+pub struct FeedPage {
+    pub episodes: Vec<Episode>,
+    pub total: i64,
+}
+
+#[allow(dead_code)]
+pub async fn call_get_recent_eps_paged(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+    limit: i64,
+    offset: i64,
+) -> Result<FeedPage, anyhow::Error> {
+    let url = format!(
+        "{}/api/data/return_episodes/{}?limit={}&offset={}",
+        server_name, user_id, limit, offset
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch episodes: {}",
+            response.status_text()
+        )));
+    }
+    let text = response.text().await?;
+    serde_json::from_str::<FeedPage>(&text)
+        .map_err(|_| anyhow::Error::msg("Failed to deserialize feed page"))
+}
+
 #[allow(dead_code)]
 pub async fn call_get_recent_eps(
     server_name: &String,
