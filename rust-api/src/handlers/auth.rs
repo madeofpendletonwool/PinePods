@@ -71,6 +71,7 @@ pub struct SelfServiceStatusResponse {
 #[derive(Serialize)]
 pub struct PublicOidcProvidersResponse {
     pub providers: Vec<PublicOidcProviderResponse>,
+    pub disable_standard_login: bool,
 }
 
 #[derive(Serialize)]
@@ -363,6 +364,7 @@ pub async fn get_public_oidc_providers(
     
     Ok(Json(PublicOidcProvidersResponse {
         providers: response_providers,
+        disable_standard_login: state.config.oidc.disable_standard_login,
     }))
 }
 

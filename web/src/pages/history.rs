@@ -5,7 +5,7 @@ use crate::components::gen_components::{
 use crate::components::loading::Loading;
 
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, FilterState, UIState};
 use crate::components::gen_funcs::{
     get_default_sort_direction, get_filter_preference, set_filter_preference,
 };
@@ -38,6 +38,7 @@ pub enum HistorySortDirection {
 pub fn history() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -339,7 +340,30 @@ pub fn history() -> Html {
 
                             {
                                 if let Some(_history_eps) = state.episode_history.clone() {
-                                    if (*filtered_episodes).is_empty() {
+                                    let favorite_podcast_ids: std::collections::HashSet<i32> = state
+                                        .podcast_feed_return_extra
+                                        .as_ref()
+                                        .and_then(|pr| pr.pods.as_ref())
+                                        .map(|pods| {
+                                            pods.iter()
+                                                .filter(|p| p.is_favorite)
+                                                .map(|p| p.podcastid)
+                                                .collect()
+                                        })
+                                        .unwrap_or_default();
+
+                                    let display_episodes: Vec<_> = (*filtered_episodes)
+                                        .iter()
+                                        .filter(|ep| {
+                                            if !filter_state.favorites_only {
+                                                return true;
+                                            }
+                                            favorite_podcast_ids.contains(&ep.podcastid)
+                                        })
+                                        .cloned()
+                                        .collect();
+
+                                    if display_episodes.is_empty() {
                                         empty_message(
                                             &i18n_no_episode_history_found,
                                             &i18n_no_episode_history_description
@@ -347,7 +371,7 @@ pub fn history() -> Html {
                                     } else {
                                         html! {
                                             <VirtualList
-                                                episodes={(*filtered_episodes).clone()}
+                                                episodes={display_episodes}
                                             />
                                         }
                                     }

@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, ExpandedDescriptions, UIState};
+use crate::components::context::{AppState, ExpandedDescriptions, FilterState, UIState};
 use crate::components::context_menu_button::PageType;
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{
@@ -41,6 +41,7 @@ pub enum SavedSortDirection {
 pub fn saved() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -350,7 +351,30 @@ pub fn saved() -> Html {
 
                             {
                                 if state.saved_episodes.len() > 0 {
-                                    if (*filtered_episodes).is_empty() {
+                                    let favorite_podcast_ids: std::collections::HashSet<i32> = state
+                                        .podcast_feed_return_extra
+                                        .as_ref()
+                                        .and_then(|pr| pr.pods.as_ref())
+                                        .map(|pods| {
+                                            pods.iter()
+                                                .filter(|p| p.is_favorite)
+                                                .map(|p| p.podcastid)
+                                                .collect()
+                                        })
+                                        .unwrap_or_default();
+
+                                    let display_episodes: Vec<_> = (*filtered_episodes)
+                                        .iter()
+                                        .filter(|ep| {
+                                            if !filter_state.favorites_only {
+                                                return true;
+                                            }
+                                            favorite_podcast_ids.contains(&ep.podcastid)
+                                        })
+                                        .cloned()
+                                        .collect();
+
+                                    if display_episodes.is_empty() {
                                         empty_message(
                                             &i18n.t("saved.no_saved_episodes"),
                                             &i18n.t("saved.save_episodes_instructions")
@@ -358,7 +382,7 @@ pub fn saved() -> Html {
                                     } else {
                                         html! {
                                             <VirtualList
-                                                episodes={(*filtered_episodes).clone()}
+                                                episodes={display_episodes}
                                                 page_type= { PageType::Saved }
                                             />
                                         }

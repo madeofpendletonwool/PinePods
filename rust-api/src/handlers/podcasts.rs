@@ -102,6 +102,14 @@ pub struct PodcastEpisodesResponse {
 #[derive(Serialize)]
 pub struct EpisodesResponse {
     pub episodes: Vec<Episode>,
+    pub total: i64,
+}
+
+#[derive(Deserialize, Default)]
+pub struct FeedQueryParams {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub since: Option<String>, // ISO-8601 e.g. "2026-05-01T00:00:00"
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -200,26 +208,31 @@ pub struct PodcastDetails {
 // Get episodes for a user - matches Python return_episodes endpoint
 pub async fn return_episodes(
     Path(user_id): Path<i32>,
+    Query(params): Query<FeedQueryParams>,
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<EpisodesResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
-    // Verify API key
+
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only return episodes of your own!"));
     }
 
-    // Get episodes from database
-    let episodes = state.db_pool.return_episodes(user_id).await?;
-    
-    Ok(Json(EpisodesResponse { episodes }))
+    let limit  = params.limit.unwrap_or(50).min(200);
+    let offset = params.offset.unwrap_or(0).max(0);
+    // Parse since; default to epoch so the SQL clause is always present without dynamic strings
+    let since = params.since.as_deref()
+        .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").ok())
+        .unwrap_or(chrono::NaiveDateTime::UNIX_EPOCH);
+
+    let (episodes, total) = state.db_pool.return_episodes(user_id, limit, offset, since).await?;
+
+    Ok(Json(EpisodesResponse { episodes, total }))
 }
 
 // Add a new podcast - matches Python add_podcast endpoint
@@ -897,8 +910,14 @@ pub async fn download_podcast(
         return Err(AppError::forbidden("You can only download content for yourself!"));
     }
 
+    // Check if server downloads are enabled
+    let downloads_enabled = state.db_pool.download_status().await?;
+    if !downloads_enabled {
+        return Err(AppError::forbidden("Server downloads are disabled by the administrator."));
+    }
+
     let is_youtube = request.is_youtube.unwrap_or(false);
-    
+
     // Check if already downloaded
     let is_downloaded = state.db_pool.check_downloaded(request.user_id, request.episode_id, is_youtube).await?;
     if is_downloaded {
@@ -1228,6 +1247,73 @@ pub async fn get_auto_download_status(
     }))
 }
 
+#[derive(Deserialize)]
+pub struct AutoPlayNextStatusRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Serialize)]
+pub struct AutoPlayNextStatusResponse {
+    pub auto_play_next: bool,
+}
+
+// Get auto play next status for a podcast
+pub async fn get_auto_play_next_status(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<AutoPlayNextStatusRequest>,
+) -> Result<Json<AutoPlayNextStatusResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You can only get the status for your own podcast."));
+    }
+
+    let status = state.db_pool.get_auto_play_next_status(request.podcast_id, request.user_id).await?;
+    if status.is_none() {
+        return Err(AppError::not_found("Podcast not found"));
+    }
+
+    Ok(Json(AutoPlayNextStatusResponse {
+        auto_play_next: status.unwrap()
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct NextPodcastEpisodeRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+}
+
+// Get the next episode in a podcast after the given episode (chronological order)
+pub async fn get_next_podcast_episode(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<NextPodcastEpisodeRequest>,
+) -> Result<Json<Option<crate::models::QueuedEpisode>>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You can only access your own episodes."));
+    }
+
+    let episode = state.db_pool.get_next_podcast_episode(request.episode_id, request.user_id).await?;
+    Ok(Json(episode))
+}
+
 // Query parameters for get_feed_cutoff_days
 #[derive(Deserialize)]
 pub struct FeedCutoffDaysQuery {
@@ -1313,6 +1399,43 @@ pub async fn get_notification_status(
             request.user_id
         ).await?;
         Ok(Json(NotificationStatusResponse { enabled }))
+    } else {
+        Err(AppError::forbidden("You can only check your own podcast settings"))
+    }
+}
+
+// Request for podcast favorite status
+#[derive(Deserialize)]
+pub struct PodcastFavoriteStatusRequest {
+    pub user_id: i32,
+    pub podcast_id: i32,
+}
+
+// Response for favorite status
+#[derive(Serialize)]
+pub struct FavoriteStatusResponse {
+    pub is_favorite: bool,
+}
+
+// Get podcast favorite status
+pub async fn get_podcast_favorite_status(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<PodcastFavoriteStatusRequest>,
+) -> Result<Json<FavoriteStatusResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == request.user_id || is_web_key {
+        let is_favorite = state.db_pool.get_podcast_favorite_status(request.user_id, request.podcast_id).await?;
+        Ok(Json(FavoriteStatusResponse { is_favorite }))
     } else {
         Err(AppError::forbidden("You can only check your own podcast settings"))
     }

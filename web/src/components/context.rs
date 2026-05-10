@@ -572,6 +572,7 @@ impl AppState {
 pub struct FilterState {
     pub selected_category: Option<String>,
     pub category_filter_list: Option<Vec<String>>,
+    pub favorites_only: bool,
 }
 
 // Add this alongside your other state structs

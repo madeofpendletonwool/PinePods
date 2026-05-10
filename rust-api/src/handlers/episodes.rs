@@ -121,6 +121,12 @@ pub async fn bulk_download_episodes(
         return Err(AppError::forbidden("You can only download episodes for yourself!"));
     }
 
+    // Check if server downloads are enabled
+    let downloads_enabled = state.db_pool.download_status().await?;
+    if !downloads_enabled {
+        return Err(AppError::forbidden("Server downloads are disabled by the administrator."));
+    }
+
     let is_youtube = request.is_youtube.unwrap_or(false);
     let mut processed_count = 0;
     let mut failed_count = 0;

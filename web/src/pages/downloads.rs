@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, ExpandedDescriptions, UIState};
+use crate::components::context::{AppState, ExpandedDescriptions, FilterState, UIState};
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -36,6 +36,7 @@ fn group_episodes_by_podcast(episodes: Vec<Episode>) -> HashMap<i32, Vec<Episode
 pub fn downloads() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (filter_state, _filter_dispatch) = use_store::<FilterState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
 
     let expanded_state = use_state(HashMap::new);
@@ -470,7 +471,9 @@ pub fn downloads() -> Html {
 
                             html! {
                                 <>
-                                    { for state.podcast_feed_return.as_ref().unwrap().pods.as_ref().unwrap().iter().filter_map(|podcast| {
+                                    { for state.podcast_feed_return.as_ref().unwrap().pods.as_ref().unwrap().iter().filter(|podcast| {
+                                        !filter_state.favorites_only || podcast.is_favorite
+                                    }).filter_map(|podcast| {
                                         let episodes = filtered_grouped_episodes.get(&podcast.podcastid).unwrap_or(&Vec::new()).clone();
                                         if episodes.is_empty() {
                                             None

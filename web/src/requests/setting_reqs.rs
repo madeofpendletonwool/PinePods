@@ -3244,9 +3244,11 @@ pub async fn call_extend_shared_link(
     if response.ok() {
         Ok(())
     } else {
-        Err(Error::msg(format!(
-            "Error extending shared link: {}",
-            response.status_text()
-        )))
+        let error_text = response.text().await.unwrap_or_default();
+        let msg = serde_json::from_str::<serde_json::Value>(&error_text)
+            .ok()
+            .and_then(|v| v["message"].as_str().map(|s| s.to_string()))
+            .unwrap_or(error_text);
+        Err(Error::msg(msg))
     }
 }

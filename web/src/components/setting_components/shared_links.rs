@@ -229,7 +229,7 @@ pub fn shared_links() -> Html {
                                 max="365"
                                 value={extend_days.to_string()}
                                 oninput={on_days_change}
-                                class="border text-sm rounded-lg block w-full p-2.5 item_container-input"
+                                class="form-input w-full"
                             />
                         </div>
                         <div class="flex justify-between space-x-4">
@@ -302,11 +302,11 @@ pub fn shared_links() -> Html {
                                         <td class="px-6 py-4">{ &link.podcast_name }</td>
                                         <td class="px-6 py-4">{ &link.expiration_date }</td>
                                         <td class="px-6 py-4">
-                                            <div class="flex gap-2">
-                                                <button onclick={on_extend} class="settings-button text-xs font-bold py-1 px-3 rounded">
+                                            <div class="flex items-center gap-2">
+                                                <button onclick={on_extend} class="settings-button text-xs font-bold h-8 px-3 rounded" style="margin-top:0;margin-bottom:0;">
                                                     {i18n.t("shared_links.extend")}
                                                 </button>
-                                                <button onclick={on_delete} class="download-button text-xs font-bold py-1 px-3 rounded">
+                                                <button onclick={on_delete} class="download-button text-xs font-bold h-8 px-3 rounded" style="margin-bottom:0;">
                                                     {i18n.t("shared_links.delete")}
                                                 </button>
                                             </div>
