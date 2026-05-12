@@ -976,8 +976,17 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                         }
 
                                         // Now play the first episode in the queue (which is the next one to play)
-                                        // Sort by queue position to ensure we get the right one
-                                        let mut sorted_episodes = episodes.clone();
+                                        // Sort by queue position to ensure we get the right one.
+                                        // Filter out the current episode — episodes was fetched before
+                                        // the removal API call, so it still contains the just-finished
+                                        // episode. Without this filter, sorted_episodes.first() returns
+                                        // the current episode (lowest queue position), causing it to
+                                        // replay from the beginning instead of advancing to the next one.
+                                        let current_id = current_episode_id.unwrap();
+                                        let mut sorted_episodes: Vec<_> = episodes
+                                            .into_iter()
+                                            .filter(|ep| ep.episodeid != current_id)
+                                            .collect();
                                         sorted_episodes
                                             .sort_by_key(|ep| ep.queueposition.unwrap_or(999999));
 
