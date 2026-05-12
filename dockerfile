@@ -108,6 +108,10 @@ LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 # Install runtime dependencies
 RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg wget jq mariadb-connector-c-dev
 
+# Create a non-root user and group with fixed UID/GID 1000
+RUN addgroup -g 1000 pinepods && \
+    adduser -u 1000 -G pinepods -S -D -h /home/pinepods pinepods
+
 
 # Download and install latest yt-dlp binary (musllinux for Alpine)
 RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name) && \
@@ -141,6 +145,8 @@ RUN chmod +x /startup.sh
 RUN mkdir -p /pinepods
 RUN mkdir -p /var/log/pinepods/ && mkdir -p /etc/horust/services/
 COPY startup/ /pinepods/startup/
+# Pre-populate Horust services directory at build time (avoids runtime root write)
+COPY startup/services/*.toml /etc/horust/services/
 # Legacy cron scripts removed - background tasks now handled by internal Rust scheduler
 COPY clients/ /pinepods/clients/
 COPY database_functions/ /pinepods/database_functions/
@@ -160,8 +166,40 @@ RUN chmod +x /usr/local/bin/start-gpodder.sh
 RUN cp /usr/share/zoneinfo/UTC /etc/localtime && \
     echo "UTC" > /etc/timezone
 
+# Pre-create all runtime directories and set ownership to pinepods (1000:1000)
+# so the container can run without root privileges
+RUN mkdir -p \
+        /opt/pinepods/downloads \
+        /opt/pinepods/backups \
+        /opt/pinepods/certs \
+        /pinepods/cache \
+        /var/log/pinepods \
+        /etc/horust/services \
+        /var/lib/nginx \
+        /var/log/nginx \
+        /run/nginx \
+        /tmp/nginx && \
+    chown -R pinepods:pinepods \
+        /opt/pinepods \
+        /pinepods \
+        /var/log/pinepods \
+        /var/www/html \
+        /etc/horust \
+        /var/lib/nginx \
+        /var/log/nginx \
+        /run/nginx \
+        /tmp/nginx \
+        /startup.sh \
+        /usr/local/bin/pinepods-api \
+        /usr/local/bin/gpodder-api \
+        /usr/local/bin/pinepods-db-setup \
+        /usr/local/bin/start-gpodder.sh
+
+# Switch to non-root user
+USER pinepods:pinepods
+
 # Expose ports
-EXPOSE 8080 8000
+EXPOSE 8040
 
 # Start everything using the startup script
 ENTRYPOINT ["bash", "/startup.sh"]

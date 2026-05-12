@@ -17,6 +17,11 @@ services:
 
   pinepods:
     image: madeofpendletonwool/pinepods:latest
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "8040:8040"
     environment:
@@ -36,19 +41,15 @@ services:
       VALKEY_PORT: 6379
       # Enable or Disable Debug Mode for additional Printing
       DEBUG_MODE: false
-      PUID: ${UID:-911}
-      PGID: ${GID:-911}
       # Add timezone configuration
       TZ: "America/New_York"
       # Language Configuration
       DEFAULT_LANGUAGE: "en"
     volumes:
-      # Mount the download and backup locations on the server
+      # Host directories must be owned by UID 1000 before starting.
+      # Run: sudo chown -R 1000:1000 /home/user/pinepods/downloads /home/user/pinepods/backups
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
-      # Timezone volumes, HIGHLY optional. Read the timezone notes below
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
     restart: always
     depends_on:
       - db
