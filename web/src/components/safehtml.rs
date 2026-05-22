@@ -767,7 +767,7 @@ pub fn safe_html(props: &Props) -> Html {
         state.currently_playing.as_ref().map(|ud| ud.episode_id)
     });
     let current_ep = *current_ep;
-    let audio_dispatch = Dispatch::<UIState>::global();
+    let (_, audio_dispatch) = use_store::<UIState>();
 
     // Pre-capture translation strings
     let start_episode_first_msg = i18n.t("safehtml.start_episode_first");
