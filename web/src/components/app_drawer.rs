@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UserStatsStore};
+use crate::components::context::{AppState, FilterState, UserStatsStore};
 use crate::components::navigation::use_back_button;
 use crate::pages::routes::Route;
 use crate::requests::pod_req::{call_get_pinepods_version, connect_to_episode_websocket};
@@ -162,6 +162,17 @@ pub fn app_drawer() -> Html {
                     state.is_refreshing = Some(false);
                     state.clone()
                 });
+            });
+        })
+    };
+
+    let (filter_state, filter_dispatch) = use_store::<FilterState>();
+    let toggle_favorites_filter = {
+        let filter_dispatch = filter_dispatch.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            filter_dispatch.reduce_mut(|state| {
+                state.favorites_only = !state.favorites_only;
             });
         })
     };
@@ -419,8 +430,8 @@ pub fn app_drawer() -> Html {
                     html! {
                         <button
                             onclick={on_refresh_click.clone()}
-                            onmouseup={on_refresh_click.clone()}  // Add this for better mobile handling
-                            class="rounded-lg cursor-pointer touch-manipulation"  // Add touch-manipulation
+                            onmouseup={on_refresh_click.clone()}
+                            class="ml-2 rounded-lg cursor-pointer touch-manipulation"
                         >
                             <div class="flex flex-col items-center">
                                 {
@@ -436,6 +447,26 @@ pub fn app_drawer() -> Html {
                                         }
                                     }
                                 }
+                            </div>
+                        </button>
+                    }
+                } else {
+                    html! {}
+                }}
+                { if !show_back_button {
+                    let star_class = if filter_state.favorites_only {
+                        classes!("ph", "ph-star", "md:text-4xl", "text-4xl", "text-yellow-400")
+                    } else {
+                        classes!("ph", "ph-star", "md:text-4xl", "text-4xl")
+                    };
+                    html! {
+                        <button
+                            onclick={toggle_favorites_filter.clone()}
+                            class="ml-2 rounded-lg cursor-pointer"
+                            title="Toggle favorites filter"
+                        >
+                            <div class="flex flex-col items-center">
+                                <i class={star_class}></i>
                             </div>
                         </button>
                     }

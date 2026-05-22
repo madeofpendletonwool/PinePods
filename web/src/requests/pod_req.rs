@@ -20,6 +20,42 @@ pub struct RecentEps {
     pub episodes: Option<Vec<Episode>>,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+pub struct FeedPage {
+    pub episodes: Vec<Episode>,
+    pub total: i64,
+}
+
+#[allow(dead_code)]
+pub async fn call_get_recent_eps_paged(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+    limit: i64,
+    offset: i64,
+) -> Result<FeedPage, anyhow::Error> {
+    let url = format!(
+        "{}/api/data/return_episodes/{}?limit={}&offset={}",
+        server_name, user_id, limit, offset
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch episodes: {}",
+            response.status_text()
+        )));
+    }
+    let text = response.text().await?;
+    serde_json::from_str::<FeedPage>(&text)
+        .map_err(|_| anyhow::Error::msg("Failed to deserialize feed page"))
+}
+
 #[allow(dead_code)]
 pub async fn call_get_recent_eps(
     server_name: &String,
@@ -369,6 +405,8 @@ pub struct Podcast {
     pub explicit: bool,
     #[serde(default)]
     pub podcastindexid: i32,
+    #[serde(default)]
+    pub is_favorite: bool,
 }
 
 pub async fn call_get_podcasts(
@@ -442,6 +480,8 @@ pub struct PodcastExtra {
     pub oldest_episode_date: Option<String>,
     #[serde(default)]
     pub is_youtube: bool,
+    #[serde(default)]
+    pub is_favorite: bool,
 }
 
 impl From<Podcast> for PodcastExtra {
@@ -464,6 +504,7 @@ impl From<Podcast> for PodcastExtra {
             episodes_played: 0,
             oldest_episode_date: None,
             is_youtube,
+            is_favorite: podcast.is_favorite,
         }
     }
 }
@@ -482,6 +523,7 @@ impl From<PodcastExtra> for Podcast {
             categories: podcast_extra.categories,
             explicit: podcast_extra.explicit,
             podcastindexid: podcast_extra.podcastindexid,
+            is_favorite: podcast_extra.is_favorite,
         }
     }
 }
@@ -2328,6 +2370,155 @@ pub async fn call_get_auto_download_status(
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct AutoPlayNextRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub auto_play_next: bool,
+}
+
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct AutoPlayNextResponse {
+    detail: String,
+}
+
+#[allow(dead_code)]
+pub async fn call_enable_auto_play_next(
+    server_name: &String,
+    api_key: &String,
+    request_data: &AutoPlayNextRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/enable_auto_play_next", server_name);
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: AutoPlayNextResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to enable auto-play-next: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AutoPlayNextStatusRequest {
+    pub podcast_id: i32,
+    user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AutoPlayNextStatusResponse {
+    pub auto_play_next: bool,
+}
+
+#[allow(dead_code)]
+pub async fn call_get_auto_play_next_status(
+    server_name: &str,
+    user_id: i32,
+    api_key: &Option<String>,
+    podcast_id: i32,
+) -> Result<bool, anyhow::Error> {
+    let url = format!("{}/api/data/get_auto_play_next_status", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(&AutoPlayNextStatusRequest {
+        podcast_id,
+        user_id,
+    })
+    .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: AutoPlayNextStatusResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.auto_play_next)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get auto-play-next status: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Debug)]
+struct NextPodcastEpisodeRequest {
+    episode_id: i32,
+    user_id: i32,
+}
+
+#[allow(dead_code)]
+pub async fn call_get_next_podcast_episode(
+    server_name: &str,
+    api_key: &Option<String>,
+    episode_id: i32,
+    user_id: i32,
+) -> Result<Option<Episode>, anyhow::Error> {
+    let url = format!("{}/api/data/get_next_podcast_episode", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(&NextPodcastEpisodeRequest {
+        episode_id,
+        user_id,
+    })
+    .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let episode: Option<Episode> =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(episode)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get next podcast episode: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct PlaybackSpeedRequest {
     pub podcast_id: i32,
     pub user_id: i32,
@@ -3328,6 +3519,82 @@ pub async fn call_get_podcast_notifications_status(
         let error_text = response.text().await.unwrap_or_default();
         Err(Error::msg(format!(
             "Error fetching podcast notification status: {}",
+            error_text
+        )))
+    }
+}
+
+#[allow(dead_code)]
+pub async fn call_toggle_podcast_favorite(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    podcast_id: i32,
+    is_favorite: bool,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/podcast/toggle_favorite", server_name);
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "podcast_id": podcast_id,
+        "is_favorite": is_favorite
+    });
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .map_err(|e| Error::msg(format!("Failed to create request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        Ok("Favorite status updated successfully".to_string())
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        Err(Error::msg(format!(
+            "Error toggling podcast favorite: {}",
+            error_text
+        )))
+    }
+}
+
+#[allow(dead_code)]
+pub async fn call_get_podcast_favorite_status(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    podcast_id: i32,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/podcast/favorite_status", server_name);
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "podcast_id": podcast_id,
+    });
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .map_err(|e| Error::msg(format!("Failed to create request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        #[derive(Deserialize)]
+        struct FavoriteResponse {
+            is_favorite: bool,
+        }
+        response
+            .json::<FavoriteResponse>()
+            .await
+            .map(|res| res.is_favorite)
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        Err(Error::msg(format!(
+            "Error fetching podcast favorite status: {}",
             error_text
         )))
     }

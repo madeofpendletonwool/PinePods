@@ -161,6 +161,22 @@
     "podcast_successfully_added": "Podcast Successfully Added",
     "username_optional": "Username (optional)"
   },
+  "local_podcast": {
+    "add_button": "Add Local Podcast",
+    "artwork_label": "Artwork (optional)",
+    "author_placeholder": "Author (optional)",
+    "description": "Point PinePods to a directory of audio files on the server to create a local podcast. The path is relative to the server's local-media mount (e.g. 'audiobooks/dune'). Cover art is auto-detected from embedded tags or a cover.jpg file in the directory.",
+    "description_placeholder": "Description (optional)",
+    "directory_path_help": "Relative path inside the server's local-media volume, e.g. audiobooks/my-series",
+    "directory_path_placeholder": "audiobooks/my-audiobook",
+    "explicit_label": "Explicit",
+    "failed_to_add": "Failed to add local podcast: ",
+    "podcast_added": "Local podcast added successfully",
+    "podcast_name_placeholder": "Podcast Name",
+    "refresh_button": "Refresh Directory",
+    "refresh_description": "Drop new audio files in the directory and click Refresh to add them as episodes.",
+    "title": "Add Local Podcast"
+  },
   "date_formats": {
     "dmy": "DD-MM-YYYY",
     "julian": "YY/DDD (Julian)",
@@ -950,6 +966,7 @@
     "24_hour": "24 Hour",
     "account_settings": "Account Settings",
     "add_custom_feed": "Add Custom Feed",
+    "add_local_podcast": "Add Local Podcast",
     "admin_check_error": "Error checking admin status",
     "admin_settings": "Admin Settings",
     "admin_status": "Admin Status",

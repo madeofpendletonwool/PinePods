@@ -76,24 +76,36 @@ class NativeAudioPlayerService extends AudioPlayerService {
     const nativeLogChannel = MethodChannel('com.pinepods/native_logs');
     nativeLogChannel.setMethodCallHandler(_handleNativeLog);
 
-    // Defer event channel subscription to avoid blocking iOS during app startup.
-    // On iOS, the event channel may not be fully ready during widget construction,
-    // which can cause the app to hang on a black screen.
-    Future.delayed(Duration.zero, () {
-      log.info('Subscribing to native event channel');
+    // Defer subscription — on Android, configureFlutterEngine (which registers the
+    // plugin) runs on the native thread and may not finish before Dart starts.
+    // Retry with increasing delays until the plugin is ready (max ~5s total).
+    _subscribeToEventChannelWithRetry();
+
+    _loadQueue();
+  }
+
+  void _subscribeToEventChannelWithRetry([int attempt = 0]) {
+    // Delays: 0, 200, 400, 600, 800, 1000ms... capped at 1000ms per attempt (max 10 tries ~6s)
+    final delay = attempt == 0
+        ? Duration.zero
+        : Duration(milliseconds: (200 * attempt).clamp(200, 1000));
+
+    Future.delayed(delay, () {
       try {
         _nativeEventSubscription = eventChannel.receiveBroadcastStream().listen(
           _handleNativeEvent,
-          onError: (error) {
-            log.severe('Native event stream error: $error');
-          },
+          onError: (error) => log.severe('Native event stream error: $error'),
         );
+        log.info('Subscribed to native event channel (attempt ${attempt + 1})');
       } catch (e) {
-        log.severe('Failed to subscribe to native event channel: $e');
+        if (attempt < 10) {
+          log.fine('Event channel not ready yet (attempt $attempt), retrying...');
+          _subscribeToEventChannelWithRetry(attempt + 1);
+        } else {
+          log.severe('Failed to subscribe to native event channel after ${attempt + 1} attempts: $e');
+        }
       }
     });
-
-    _loadQueue();
   }
 
   /// Handle native logs from Android/iOS and forward to Flutter logger

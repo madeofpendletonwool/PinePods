@@ -5,8 +5,8 @@ use crate::components::gen_components::{
 };
 use crate::components::loading::Loading;
 
-use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::audio_player_bar::AudioPlayerBar;
+use crate::components::context::{AppState, FilterState};
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
@@ -15,8 +15,7 @@ use crate::pages::episode_layout::AppStateMsg;
 use crate::requests::episode::Episode;
 
 use crate::components::virtual_list::DragCallbacks;
-use crate::requests::pod_req::QueuedEpisodesResponse;
-use crate::requests::pod_req::{self};
+use crate::requests::pod_req::{self, PodcastResponseExtra, QueuedEpisodesResponse};
 use gloo_events::EventListener;
 use gloo_utils::document;
 use i18nrs::yew::use_translation;
@@ -86,11 +85,10 @@ fn stop_auto_scroll(interval_id: i32) {
 pub fn queue() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, _audio_dispatch) = use_store::<UIState>();
-
     let loading = use_state(|| true);
 
     // Fetch episodes on component mount
@@ -119,6 +117,22 @@ pub fn queue() -> Html {
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
                     let dispatch = effect_dispatch.clone();
+
+                    {
+                        let dispatch_pods = dispatch.clone();
+                        let server_name_pods = server_name.clone();
+                        let api_key_pods = api_key.clone();
+                        let user_id_pods = user_id.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            if let Ok(fetched_pods) = pod_req::call_get_podcasts_extra(&server_name_pods, &api_key_pods, &user_id_pods).await {
+                                dispatch_pods.reduce_mut(move |state| {
+                                    state.podcast_feed_return_extra = Some(PodcastResponseExtra {
+                                        pods: Some(fetched_pods),
+                                    });
+                                });
+                            }
+                        });
+                    }
 
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_queued_episodes(&server_name, &api_key, &user_id)
@@ -200,7 +214,30 @@ pub fn queue() -> Html {
 
                     {
                         if let Some(queued_eps) = state.queued_episodes.clone() {
-                            if queued_eps.episodes.is_empty() {
+                            let favorite_podcast_ids: std::collections::HashSet<i32> = state
+                                .podcast_feed_return_extra
+                                .as_ref()
+                                .and_then(|pr| pr.pods.as_ref())
+                                .map(|pods| {
+                                    pods.iter()
+                                        .filter(|p| p.is_favorite)
+                                        .map(|p| p.podcastid)
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+
+                            let filtered_episodes: Vec<_> = queued_eps
+                                .episodes
+                                .into_iter()
+                                .filter(|ep| {
+                                    if !filter_state.favorites_only {
+                                        return true;
+                                    }
+                                    favorite_podcast_ids.contains(&ep.podcastid)
+                                })
+                                .collect();
+
+                            if filtered_episodes.is_empty() {
                                 // Render "No Queued Episodes Found" if episodes list is empty
                                 empty_message(
                                     &i18n.t("queue.no_queued_episodes_found"),
@@ -209,7 +246,7 @@ pub fn queue() -> Html {
                             } else {
                                 html! {
                                     <VirtualQueueList
-                                        episodes={queued_eps.episodes.clone()}
+                                        episodes={filtered_episodes}
                                     />
                                 }
                             }
@@ -221,30 +258,7 @@ pub fn queue() -> Html {
                         }
                 }
             }
-        {
-            if let Some(audio_props) = &audio_state.currently_playing {
-                html! {
-                    <AudioPlayer
-                        episode={audio_props.episode.clone()}
-                        src={audio_props.src.clone()}
-                        title={audio_props.title.clone()}
-                        description={audio_props.description.clone()}
-                        release_date={audio_props.release_date.clone()}
-                        artwork_url={audio_props.artwork_url.clone()}
-                        duration={audio_props.duration.clone()}
-                        episode_id={audio_props.episode_id.clone()}
-                        duration_sec={audio_props.duration_sec.clone()}
-                        start_pos_sec={audio_props.start_pos_sec.clone()}
-                        end_pos_sec={audio_props.end_pos_sec.clone()}
-                        offline={audio_props.offline.clone()}
-                        is_youtube={audio_props.is_youtube.clone()}
-                        is_video={audio_props.is_video.clone()}
-                    />
-                }
-            } else {
-                html! {}
-            }
-        }
+        <AudioPlayerBar />
         </div>
         <App_drawer />
         </>
@@ -260,7 +274,6 @@ pub struct VirtualQueueListProps {
 pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
     let server_name = post_state
         .auth_details
         .as_ref()
@@ -308,7 +321,7 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
 
         // Find the virtual list container to scroll it instead of the window
         if let Some(document) = web_sys::window().and_then(|w| w.document()) {
-            if let Ok(Some(container)) = document.query_selector(".virtual-list-container") {
+            if let Ok(Some(container)) = document.query_selector(".queue-list-container") {
                 if let Some(container_element) = container.dyn_ref::<web_sys::HtmlElement>() {
                     let container_rect = container_element.get_bounding_client_rect();
                     let container_top = container_rect.top();
@@ -484,11 +497,23 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
         })
     };
 
+    let drag_callbacks = DragCallbacks {
+        ondragstart: Some(ondragstart),
+        ondragenter: Some(ondragenter),
+        ondragover: Some(ondragover),
+        ondrop: Some(ondrop),
+    };
+
     html! {
-        <crate::components::virtual_list::VirtualList
-            episodes={ props.episodes.clone() }
-            page_type={ PageType::Queue }
-            drag_callbacks={ DragCallbacks{ ondragstart: Some(ondragstart), ondragenter: Some(ondragenter), ondragover: Some(ondragover), ondrop: Some(ondrop) } }
-            />
+        <div class="queue-list-container flex-grow overflow-y-auto">
+            { for props.episodes.iter().map(|ep| html! {
+                <EpisodeListItem
+                    key={ep.episodeid}
+                    episode={ep.clone()}
+                    page_type={PageType::Queue}
+                    drag_callbacks={drag_callbacks.clone()}
+                />
+            }) }
+        </div>
     }
 }

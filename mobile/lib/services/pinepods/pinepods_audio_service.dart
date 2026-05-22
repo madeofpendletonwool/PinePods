@@ -43,6 +43,7 @@ class PinepodsAudioService {
   Future<void> playPinepodsEpisode({
     required PinepodsEpisode pinepodsEpisode,
     bool resume = true,
+    bool skipQueue = false,
   }) async {
     try {
       final settings = _settingsBloc.currentSettings;
@@ -107,12 +108,25 @@ class PinepodsAudioService {
         pinepodsEpisode.isYoutube,
       );
 
-      // Queue episode for tracking
-      await _pinepodsService.queueEpisode(
-        episodeId,
-        userId,
-        pinepodsEpisode.isYoutube,
-      );
+      // Queue episode for tracking (skip if auto-play-next is enabled or explicitly skipped)
+      bool shouldQueue = !skipQueue;
+      if (shouldQueue) {
+        try {
+          final autoPlayNext = await _pinepodsService.getAutoPlayNextStatus(podcastId, userId);
+          if (autoPlayNext) {
+            shouldQueue = false;
+          }
+        } catch (e) {
+          log.fine('Could not check auto-play-next status: $e');
+        }
+      }
+      if (shouldQueue) {
+        await _pinepodsService.queueEpisode(
+          episodeId,
+          userId,
+          pinepodsEpisode.isYoutube,
+        );
+      }
 
       // Increment played count
       await _pinepodsService.incrementPlayed(userId);

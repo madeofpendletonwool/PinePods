@@ -56,6 +56,7 @@ fn map_podcast_details_to_podcast(details: PodcastDetails) -> Podcast {
         categories: Some(details.categories),
         explicit: details.explicit,
         podcastindexid: details.podcastindexid,
+        is_favorite: false,
     }
 }
 
@@ -414,6 +415,7 @@ pub fn host_dropdown(
                                                         categories: details.categories,
                                                         explicit: details.explicit, // Changed from podcast_explicit
                                                         podcastindexid: details.podcastindexid, // Changed from podcast_index_id
+                                                        is_favorite: false,
                                                     })
                                                 }
                                                 Err(e) => {

@@ -217,6 +217,7 @@ pub fn settings() -> Html {
                             <AccordionItem title={i18n.t("settings.display_settings")} content={html!{ <setting_components::start_page_options::StartPageOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.notification_settings")} content={html!{ <setting_components::notifications::NotificationOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.add_custom_feed")} content={html!{ <setting_components::custom_feed::CustomFeed /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title={i18n.t("settings.add_local_podcast")} content={html!{ <setting_components::local_podcast::LocalPodcast /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.podcast_sync")} content={html!{ <setting_components::nextcloud_options::SyncOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.enable_disable_rss_feeds")} content={html!{ <setting_components::rss_feeds::RSSFeedSettings /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.match_podcasts_podcast_index")} content={html!{ <setting_components::podcast_index_matching::PodcastIndexMatching /> }} position={AccordionItemPosition::Middle}/>

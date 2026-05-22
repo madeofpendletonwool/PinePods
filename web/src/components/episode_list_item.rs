@@ -1,5 +1,5 @@
 use crate::components::audio::on_play_click;
-use crate::components::context::{AppState, ExpandedDescriptions, UIState};
+use crate::components::context::{AppState, UIState};
 use crate::components::gen_components::{on_shownotes_click, EpisodeModal, FallbackImage};
 
 use crate::components::context_menu_button::{ContextMenuButton, PageType};
@@ -62,14 +62,19 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         state.downloaded_episodes.is_local_download(episode_id)
     });
 
-    // We still need the dispatcher for actions
-    let (_app_state, app_dispatch) = use_store::<AppState>();
+    let (_, app_dispatch) = use_store::<AppState>();
+    let (_, ui_dispatch) = use_store::<UIState>();
 
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
-
-    // DEBUG: Log re-renders to confirm the fix works
-    web_sys::console::log_1(&format!("EpisodeListItem render: {}", props.episode.episodetitle).into());
+    // Selector returns (is_current, is_active_and_playing) for THIS episode only.
+    // Only this episode re-renders when its own play state changes; other episodes are unaffected.
+    let play_state = use_selector(move |state: &UIState| {
+        let is_current = state
+            .currently_playing
+            .as_ref()
+            .map_or(false, |cp| cp.episode_id == episode_id);
+        (is_current, is_current && state.audio_playing.unwrap_or(false))
+    });
+    let (is_current_episode, is_active_and_playing) = *play_state;
 
     /*
     Item Shape
@@ -160,14 +165,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     /*
     Audio Player
     */
-    let is_current_episode = audio_state
-        .currently_playing
-        .as_ref()
-        .map_or(false, |current| {
-            current.episode_id == props.episode.episodeid
-        });
-
-    let is_playing = audio_state.audio_playing.unwrap_or(false);
+    // is_current_episode and is_active_and_playing come from the play_state selector above
 
     let formatted_pub_date = {
         let date_format = match_date_format(date_format.as_deref());
@@ -207,21 +205,21 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         false
     };
 
-    // Inline on_play_pause logic to avoid needing app_state
     let on_play_pause = {
         let episode = props.episode.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
-        let audio_dispatch = audio_dispatch.clone();
-        let audio_state = audio_state.clone();
         let is_local = is_local;
+        let ui_dispatch = ui_dispatch.clone();
 
         Callback::from(move |e: MouseEvent| {
-            let is_current = audio_state
+            let audio_dispatch = ui_dispatch.clone();
+            let current_state = audio_dispatch.get();
+            let is_current = current_state
                 .currently_playing
                 .as_ref()
-                .map_or(false, |current| current.episode_id == episode.episodeid);
+                .map_or(false, |cp| cp.episode_id == episode.episodeid);
             if is_current {
                 audio_dispatch.reduce_mut(|state| {
                     let currently_playing = state.audio_playing.unwrap_or(false);
@@ -241,8 +239,9 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     user_id,
                     server_name.clone(),
                     audio_dispatch.clone(),
-                    audio_state.clone(),
+                    current_state.clone(),
                     is_local,
+                    false,
                 )
                 .emit(e);
             }
@@ -538,7 +537,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                                     onclick={on_play_pause.clone()}
                                 >
                                     {
-                                        if is_current_episode && is_playing {
+                                        if is_active_and_playing {
                                             html! { <i class="ph ph-pause-circle md:text-6xl text-4xl"></i> }
                                         } else {
                                             html! { <i class="ph ph-play-circle md:text-6xl text-4xl"></i> }

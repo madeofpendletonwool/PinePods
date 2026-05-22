@@ -3,26 +3,27 @@ use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 use crate::components::episode_list_item::EpisodeListItem;
-use crate::components::gen_components::{
-    empty_message, on_shownotes_click, Search_nav, UseScrollToTop,
-};
-use crate::components::gen_funcs::{
-    format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
-};
-use crate::pages::episode_layout::AppStateMsg;
-use crate::requests::search_pods::{call_search_database, SearchRequest, SearchResponse};
+use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
+use crate::components::loading::Loading;
+use crate::requests::episode::Episode;
+use crate::requests::search_pods::{call_search_database_paged, SearchRequest};
 use async_std::task::sleep;
 use gloo_events::EventListener;
 use i18nrs::yew::use_translation;
+use js_sys::Array;
 use std::time::Duration;
+use wasm_bindgen::prelude::Closure;
+use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use web_sys::HtmlElement;
 use web_sys::HtmlInputElement;
+use web_sys::{IntersectionObserver, IntersectionObserverEntry, IntersectionObserverInit};
 use yew::prelude::*;
-use yew::{function_component, html, use_node_ref, Callback, Html, MouseEvent, Properties};
-use yew_router::history::BrowserHistory;
+use yew::{function_component, html, use_node_ref, Callback, Html, Properties};
 use yewdux::prelude::*;
+
+const PAGE_SIZE: i64 = 50;
 
 #[derive(Properties, Clone, PartialEq)]
 pub struct SearchProps {
@@ -32,18 +33,9 @@ pub struct SearchProps {
 #[function_component(Search)]
 pub fn search(_props: &SearchProps) -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
-    let search_dispatch = dispatch.clone();
-    let active_modal = use_state(|| None::<i32>);
-    let active_modal_clone = active_modal.clone();
-    let on_modal_open = Callback::from(move |episode_id: i32| {
-        active_modal_clone.set(Some(episode_id));
-    });
-    let active_modal_clone = active_modal.clone();
+    let (post_state, _dispatch) = use_store::<AppState>();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
 
-    let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let history = BrowserHistory::new();
     let input_ref = use_node_ref();
     let input_ref_clone1 = input_ref.clone();
     let input_ref_clone2 = input_ref.clone();
@@ -61,6 +53,14 @@ pub fn search(_props: &SearchProps) -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
+
+    // Pagination state (local to this component)
+    let episodes = use_state(|| Vec::<Episode>::new());
+    let total = use_state(|| 0i64);
+    let offset = use_state(|| 0i64);
+    let loading_more = use_state(|| false);
+    let current_term = use_state(|| String::new());
+    let sentinel_ref = use_node_ref();
 
     // Track screen size for responsive adjustments
     let is_mobile = use_state(|| false);
@@ -83,10 +83,8 @@ pub fn search(_props: &SearchProps) -> Html {
                 })
             };
 
-            // Set initial state
             update_mobile_state.emit(());
 
-            // Add resize listener
             let window = window().unwrap();
             let listener = EventListener::new(&window, "resize", move |_| {
                 update_mobile_state.emit(());
@@ -100,61 +98,90 @@ pub fn search(_props: &SearchProps) -> Html {
     let user_id_submit = user_id.clone();
     let server_name_submit = server_name.clone();
 
-    let on_submit = Callback::from(move |event: SubmitEvent| {
-        event.prevent_default();
-        let container_ref_submit_clone1 = container_ref_clone1.clone();
+    let on_submit = {
+        let episodes = episodes.clone();
+        let total = total.clone();
+        let offset = offset.clone();
+        let loading_more = loading_more.clone();
+        let current_term = current_term.clone();
 
-        if let Some(form) = form_ref_clone1.cast::<HtmlElement>() {
-            form.class_list().add_1("move-to-top").unwrap();
-        }
+        Callback::from(move |event: SubmitEvent| {
+            event.prevent_default();
+            let container_ref_submit_clone1 = container_ref_clone1.clone();
 
-        if let Some(form) = input_ref_clone1.cast::<HtmlElement>() {
-            form.class_list().add_1("move-to-top").unwrap();
-        }
-
-        let server_name_submit = server_name_submit.clone();
-        let api_key_submit = api_key_submit.clone();
-        let user_id_submit = user_id_submit.clone();
-
-        let mut search_request = None;
-        if let Some(input_element) = input_ref_clone2.cast::<HtmlInputElement>() {
-            let search_term = input_element.value();
-            search_request = Some(SearchRequest {
-                search_term,
-                user_id: user_id_submit.unwrap(),
-            });
-        }
-
-        let future_dispatch = search_dispatch.clone();
-        let future = async move {
-            sleep(Duration::from_secs(1)).await;
-            if let Some(container) = container_ref_submit_clone1.cast::<HtmlElement>() {
-                container.class_list().add_1("shrink-input").unwrap();
+            if let Some(form) = form_ref_clone1.cast::<HtmlElement>() {
+                form.class_list().add_1("move-to-top").unwrap();
             }
-            if let Some(search_request) = search_request {
-                let dispatch = future_dispatch.clone();
-                match call_search_database(
-                    &server_name_submit.unwrap(),
-                    &api_key_submit.flatten(),
-                    &search_request,
-                )
-                .await
-                {
-                    Ok(results) => {
-                        dispatch.reduce_mut(move |state| {
-                            state.search_episodes = Some(SearchResponse { data: results });
-                        });
-                    }
-                    Err(e) => {
-                        web_sys::console::log_1(
-                            &format!("Failed to search database: {:?}", e).into(),
-                        );
+
+            if let Some(form) = input_ref_clone1.cast::<HtmlElement>() {
+                form.class_list().add_1("move-to-top").unwrap();
+            }
+
+            let server_name_submit = server_name_submit.clone();
+            let api_key_submit = api_key_submit.clone();
+            let user_id_submit = user_id_submit.clone();
+
+            let search_term = match input_ref_clone2.cast::<HtmlInputElement>() {
+                Some(el) => el.value(),
+                None => return,
+            };
+            if search_term.trim().is_empty() {
+                return;
+            }
+
+            // Reset state for the new search
+            episodes.set(Vec::new());
+            total.set(0);
+            offset.set(0);
+            current_term.set(search_term.clone());
+            loading_more.set(true);
+
+            let episodes = episodes.clone();
+            let total = total.clone();
+            let offset = offset.clone();
+            let loading_more = loading_more.clone();
+
+            let future = async move {
+                sleep(Duration::from_secs(1)).await;
+                if let Some(container) = container_ref_submit_clone1.cast::<HtmlElement>() {
+                    container.class_list().add_1("shrink-input").unwrap();
+                }
+
+                if let (Some(server_name), Some(api_key), Some(user_id)) = (
+                    server_name_submit,
+                    api_key_submit.flatten(),
+                    user_id_submit,
+                ) {
+                    let request = SearchRequest {
+                        search_term,
+                        user_id,
+                    };
+                    match call_search_database_paged(
+                        &server_name,
+                        &Some(api_key),
+                        &request,
+                        PAGE_SIZE,
+                        0,
+                    )
+                    .await
+                    {
+                        Ok(page) => {
+                            total.set(page.total);
+                            offset.set(page.data.len() as i64);
+                            episodes.set(page.data);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Failed to search database: {:?}", e).into(),
+                            );
+                        }
                     }
                 }
-            }
-        };
-        spawn_local(future);
-    });
+                loading_more.set(false);
+            };
+            spawn_local(future);
+        })
+    };
 
     let container_height = use_state(|| "221px".to_string());
 
@@ -189,6 +216,112 @@ pub fn search(_props: &SearchProps) -> Html {
 
             move || drop(listener)
         });
+    }
+
+    // IntersectionObserver for infinite scroll — mirrors feed.rs exactly
+    {
+        let episodes = episodes.clone();
+        let total = total.clone();
+        let offset = offset.clone();
+        let loading_more = loading_more.clone();
+        let current_term = current_term.clone();
+        let sentinel_ref = sentinel_ref.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+
+        use_effect_with(
+            (sentinel_ref.clone(), *offset, *total, (*current_term).clone()),
+            move |(sentinel_ref, _, _, _)| {
+                let sentinel_el = match sentinel_ref.cast::<web_sys::Element>() {
+                    Some(el) => el,
+                    None => return Box::new(|| ()) as Box<dyn FnOnce()>,
+                };
+
+                let episodes = episodes.clone();
+                let total = total.clone();
+                let offset = offset.clone();
+                let loading_more = loading_more.clone();
+                let current_term = current_term.clone();
+                let api_key = api_key.clone();
+                let user_id = user_id.clone();
+                let server_name = server_name.clone();
+
+                let callback = Closure::<dyn Fn(Array)>::wrap(Box::new(move |entries: Array| {
+                    let entry: IntersectionObserverEntry = entries.get(0).unchecked_into();
+                    if !entry.is_intersecting() {
+                        return;
+                    }
+
+                    let current_offset = *offset;
+                    let current_total = *total;
+                    if *loading_more || current_offset >= current_total {
+                        return;
+                    }
+
+                    let search_term = (*current_term).clone();
+                    if search_term.is_empty() {
+                        return;
+                    }
+
+                    let episodes = episodes.clone();
+                    let total = total.clone();
+                    let offset = offset.clone();
+                    let loading_more = loading_more.clone();
+                    let current_term = current_term.clone();
+                    let api_key = api_key.clone();
+                    let user_id = user_id.clone();
+                    let server_name = server_name.clone();
+
+                    loading_more.set(true);
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let (Some(server_name), Some(api_key), Some(user_id)) =
+                            (server_name, api_key.flatten(), user_id)
+                        {
+                            let request = SearchRequest {
+                                search_term: search_term.clone(),
+                                user_id,
+                            };
+                            if let Ok(page) = call_search_database_paged(
+                                &server_name,
+                                &Some(api_key),
+                                &request,
+                                PAGE_SIZE,
+                                current_offset,
+                            )
+                            .await
+                            {
+                                // Discard stale results if the search term changed mid-flight
+                                if *current_term != search_term {
+                                    loading_more.set(false);
+                                    return;
+                                }
+                                offset.set(current_offset + page.data.len() as i64);
+                                total.set(page.total);
+                                episodes.set({
+                                    let mut all = (*episodes).clone();
+                                    all.extend(page.data);
+                                    all
+                                });
+                            }
+                        }
+                        loading_more.set(false);
+                    });
+                }));
+
+                let mut opts = IntersectionObserverInit::new();
+                opts.root_margin("200px");
+                let observer = IntersectionObserver::new_with_options(
+                    callback.as_ref().unchecked_ref(),
+                    &opts,
+                )
+                .expect("IntersectionObserver creation failed");
+                observer.observe(&sentinel_el);
+                callback.forget();
+
+                Box::new(move || observer.disconnect()) as Box<dyn FnOnce()>
+            },
+        );
     }
 
     // Placeholder text changes based on screen size
@@ -235,25 +368,27 @@ pub fn search(_props: &SearchProps) -> Html {
             </div>
 
             {
-                if let Some(search_eps) = state.search_episodes.clone() {
-                    let int_search_eps = search_eps.clone();
-                    let episodes = int_search_eps.data;
-                    if episodes.is_empty() {
+                if !(*current_term).is_empty() {
+                    if (*episodes).is_empty() && !*loading_more {
                         empty_message(
                             &i18n.t("search.no_results_found"),
                             &i18n.t("search.try_different_search")
                         )
                     } else {
-                        // Wrap results in a container with proper styling for mobile
                         html! {
                             <div class={if *is_mobile { "search-results-container mobile-results" } else { "search-results-container" }}>
-                                { episodes.into_iter().map(|episode| {
+                                { for (*episodes).iter().map(|episode| {
                                     html! {
                                         <EpisodeListItem
-                                            episode={ episode.clone() }
+                                            key={episode.episodeid}
+                                            episode={episode.clone()}
                                         />
                                     }
-                                }).collect::<Html>() }
+                                }) }
+                                <div ref={sentinel_ref.clone()} style="height: 1px;" />
+                                if *loading_more {
+                                    <Loading />
+                                }
                             </div>
                         }
                     }
@@ -281,7 +416,7 @@ pub fn search(_props: &SearchProps) -> Html {
                             end_pos_sec={audio_props.end_pos_sec.clone()}
                             offline={audio_props.offline.clone()}
                             is_youtube={audio_props.is_youtube.clone()}
-                        is_video={audio_props.is_video.clone()}
+                            is_video={audio_props.is_video.clone()}
                         />
                      }
                 } else {

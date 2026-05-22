@@ -54,6 +54,9 @@ web-sys = { version = "0.3.97", features = [
     "MouseEvent",
     "MouseEventInit",
     "CustomEvent",
+    "IntersectionObserver",
+    "IntersectionObserverInit",
+    "IntersectionObserverEntry",
 ] }
 log = "0.4.29"
 wasm-bindgen = "0.2.120"

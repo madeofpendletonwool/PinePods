@@ -1,6 +1,9 @@
 // lib/ui/pinepods/home.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
 import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
@@ -1010,7 +1013,7 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _EpisodeCard extends StatelessWidget {
+class _EpisodeCard extends StatefulWidget {
   final HomeEpisode episode;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -1024,11 +1027,95 @@ class _EpisodeCard extends StatelessWidget {
   });
 
   @override
+  State<_EpisodeCard> createState() => _EpisodeCardState();
+}
+
+class _EpisodeCardState extends State<_EpisodeCard> {
+  bool _isLoading = false;
+  AudioState _audioState = AudioState.none;
+  Episode? _nowPlaying;
+  AudioBloc? _audioBloc;
+  StreamSubscription? _nowPlayingSub;
+  StreamSubscription? _audioStateSub;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bloc = Provider.of<AudioBloc>(context, listen: false);
+    if (_audioBloc != bloc) {
+      _nowPlayingSub?.cancel();
+      _audioStateSub?.cancel();
+      _audioBloc = bloc;
+
+      _nowPlayingSub = bloc.nowPlaying?.listen((ep) {
+        if (mounted) setState(() { _nowPlaying = ep; _isLoading = false; });
+      });
+      _audioStateSub = bloc.playingState?.listen((state) {
+        if (mounted) setState(() {
+          _audioState = state;
+          if (state == AudioState.error) _isLoading = false;
+        });
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _nowPlayingSub?.cancel();
+    _audioStateSub?.cancel();
+    super.dispose();
+  }
+
+  bool get _isCurrentEpisode =>
+      widget.episode.episodeUrl.isNotEmpty &&
+      _nowPlaying?.guid == widget.episode.episodeUrl;
+
+  bool get _isPlaying =>
+      _isCurrentEpisode &&
+      (_audioState == AudioState.playing ||
+          _audioState == AudioState.buffering ||
+          _audioState == AudioState.starting);
+
+  bool get _isPaused =>
+      _isCurrentEpisode && _audioState == AudioState.pausing;
+
+  void _onButtonTap() {
+    final bloc = _audioBloc;
+    if (bloc == null) return;
+    if (_isPlaying) {
+      bloc.transitionState(TransitionState.pause);
+    } else if (_isPaused) {
+      bloc.transitionState(TransitionState.play);
+    } else {
+      if (_isLoading) return;
+      setState(() => _isLoading = true);
+      widget.onPlayPressed?.call();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final showSpinner = _isLoading && !_isCurrentEpisode;
+    final IconData playIcon;
+    final Color iconColor;
+    if (_isPlaying) {
+      playIcon = Icons.pause_circle;
+      iconColor = Theme.of(context).primaryColor;
+    } else if (widget.episode.completed && !_isPaused) {
+      playIcon = Icons.check_circle;
+      iconColor = Colors.green;
+    } else if (widget.episode.listenDuration != null && widget.episode.listenDuration! > 0) {
+      playIcon = Icons.play_circle_filled;
+      iconColor = Theme.of(context).primaryColor;
+    } else {
+      playIcon = Icons.play_circle_outline;
+      iconColor = Theme.of(context).primaryColor;
+    }
+
     return Card(
       child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
+        onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -1038,7 +1125,7 @@ class _EpisodeCard extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.network(
-                episode.episodeArtwork,
+                widget.episode.episodeArtwork,
                 width: 60,
                 height: 60,
                 fit: BoxFit.cover,
@@ -1062,7 +1149,7 @@ class _EpisodeCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    episode.episodeTitle,
+                    widget.episode.episodeTitle,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -1071,7 +1158,7 @@ class _EpisodeCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    episode.podcastName,
+                    widget.episode.podcastName,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                     ),
@@ -1080,9 +1167,9 @@ class _EpisodeCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   // Progress bar for in-progress episodes
-                  if (episode.listenDuration != null && episode.listenDuration! > 0) ...[
+                  if (widget.episode.listenDuration != null && widget.episode.listenDuration! > 0) ...[
                     LinearProgressIndicator(
-                      value: episode.progressPercentage / 100,
+                      value: widget.episode.progressPercentage / 100,
                       backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
                       valueColor: AlwaysStoppedAnimation<Color>(
                         Theme.of(context).colorScheme.primary,
@@ -1093,18 +1180,18 @@ class _EpisodeCard extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          episode.formattedListenDuration ?? '',
+                          widget.episode.formattedListenDuration ?? '',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         Text(
-                          episode.formattedDuration,
+                          widget.episode.formattedDuration,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
                     ),
                   ] else ...[
                     Text(
-                      episode.formattedDuration,
+                      widget.episode.formattedDuration,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -1114,37 +1201,42 @@ class _EpisodeCard extends StatelessWidget {
             // Status indicators and play button
             Column(
               children: [
-                if (onPlayPressed != null)
-                  IconButton(
-                    onPressed: onPlayPressed,
-                    icon: Icon(
-                      episode.completed 
-                        ? Icons.check_circle 
-                        : ((episode.listenDuration != null && episode.listenDuration! > 0) 
-                            ? Icons.play_circle_filled 
-                            : Icons.play_circle_outline),
-                      color: episode.completed 
-                        ? Colors.green 
-                        : Theme.of(context).primaryColor,
-                      size: 28,
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
+                if (widget.onPlayPressed != null)
+                  SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: showSpinner
+                          ? Padding(
+                              key: const ValueKey('loading'),
+                              padding: const EdgeInsets.all(4.0),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).primaryColor,
+                                ),
+                              ),
+                            )
+                          : GestureDetector(
+                              key: ValueKey(playIcon),
+                              behavior: HitTestBehavior.opaque,
+                              onTap: _onButtonTap,
+                              child: Icon(playIcon, color: iconColor, size: 28),
+                            ),
                     ),
                   ),
                 const SizedBox(height: 4),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (episode.saved)
+                    if (widget.episode.saved)
                       Icon(
                         Icons.bookmark,
                         size: 16,
                         color: Colors.orange[600],
                       ),
-                    if (episode.downloaded)
+                    if (widget.episode.downloaded)
                       Padding(
                         padding: const EdgeInsets.only(left: 4),
                         child: Icon(
@@ -1153,7 +1245,7 @@ class _EpisodeCard extends StatelessWidget {
                           color: Colors.green[600],
                         ),
                       ),
-                    if (episode.queued)
+                    if (widget.episode.queued)
                       Padding(
                         padding: const EdgeInsets.only(left: 4),
                         child: Icon(

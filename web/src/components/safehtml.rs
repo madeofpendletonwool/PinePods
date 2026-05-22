@@ -759,19 +759,14 @@ fn process_node(
 pub fn safe_html(props: &Props) -> Html {
     let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
-    let (ui_state, _ui_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let current_ep = ui_state
-        .currently_playing
-        .as_ref()
-        .map(|ud| ud.episode_id.clone());
-
-    // Debug all the episode props being passed
-    // log_debug(format!("Episode id: {:?}", props.episode_id).as_str());
-    // log_debug(format!("Currently play Episode id: {:?}", current_ep).as_str());
-
+    // Selector: only re-render when the playing episode ID changes, not on every time tick
+    let current_ep = use_selector(|state: &UIState| {
+        state.currently_playing.as_ref().map(|ud| ud.episode_id)
+    });
+    let current_ep = *current_ep;
     let (_, audio_dispatch) = use_store::<UIState>();
 
     // Pre-capture translation strings

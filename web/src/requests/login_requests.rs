@@ -936,6 +936,7 @@ pub struct OIDCProvider {
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct PublicOIDCProvidersResponse {
     pub providers: Vec<OIDCProvider>,
+    pub disable_standard_login: bool,
 }
 
 #[allow(dead_code)]

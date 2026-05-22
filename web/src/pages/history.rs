@@ -4,12 +4,11 @@ use crate::components::gen_components::{
 };
 use crate::components::loading::Loading;
 
-use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::audio_player_bar::AudioPlayerBar;
+use crate::components::context::{AppState, FilterState};
 use crate::components::gen_funcs::{
     get_default_sort_direction, get_filter_preference, set_filter_preference,
 };
-use crate::components::virtual_list::VirtualList;
 
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::requests::pod_req::{self, HistoryDataResponse};
@@ -38,10 +37,10 @@ pub enum HistorySortDirection {
 pub fn history() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
 
     // Capture i18n strings before they get moved
@@ -339,16 +338,41 @@ pub fn history() -> Html {
 
                             {
                                 if let Some(_history_eps) = state.episode_history.clone() {
-                                    if (*filtered_episodes).is_empty() {
+                                    let favorite_podcast_ids: std::collections::HashSet<i32> = state
+                                        .podcast_feed_return_extra
+                                        .as_ref()
+                                        .and_then(|pr| pr.pods.as_ref())
+                                        .map(|pods| {
+                                            pods.iter()
+                                                .filter(|p| p.is_favorite)
+                                                .map(|p| p.podcastid)
+                                                .collect()
+                                        })
+                                        .unwrap_or_default();
+
+                                    let display_episodes: Vec<_> = (*filtered_episodes)
+                                        .iter()
+                                        .filter(|ep| {
+                                            if !filter_state.favorites_only {
+                                                return true;
+                                            }
+                                            favorite_podcast_ids.contains(&ep.podcastid)
+                                        })
+                                        .cloned()
+                                        .collect();
+
+                                    if display_episodes.is_empty() {
                                         empty_message(
                                             &i18n_no_episode_history_found,
                                             &i18n_no_episode_history_description
                                         )
                                     } else {
                                         html! {
-                                            <VirtualList
-                                                episodes={(*filtered_episodes).clone()}
-                                            />
+                                            <div class="flex-grow overflow-y-auto">
+                                                { for display_episodes.iter().map(|ep| html! {
+                                                    <EpisodeListItem key={ep.episodeid} episode={ep.clone()} />
+                                                }) }
+                                            </div>
                                         }
                                     }
                                 } else {
@@ -362,30 +386,7 @@ pub fn history() -> Html {
                     }
                 }
             }
-            {
-                if let Some(audio_props) = &audio_state.currently_playing {
-                    html! {
-                        <AudioPlayer
-                            episode={audio_props.episode.clone()}
-                            src={audio_props.src.clone()}
-                            title={audio_props.title.clone()}
-                            description={audio_props.description.clone()}
-                            release_date={audio_props.release_date.clone()}
-                            artwork_url={audio_props.artwork_url.clone()}
-                            duration={audio_props.duration.clone()}
-                            episode_id={audio_props.episode_id.clone()}
-                            duration_sec={audio_props.duration_sec.clone()}
-                            start_pos_sec={audio_props.start_pos_sec.clone()}
-                            end_pos_sec={audio_props.end_pos_sec.clone()}
-                            offline={audio_props.offline.clone()}
-                            is_youtube={audio_props.is_youtube.clone()}
-                        is_video={audio_props.is_video.clone()}
-                        />
-                    }
-                } else {
-                    html! {}
-                }
-            }
+            <AudioPlayerBar />
         </div>
         <App_drawer />
         </>

@@ -642,6 +642,48 @@ pub struct SearchResponse {
     pub data: Vec<Episode>,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+pub struct SearchPage {
+    pub data: Vec<Episode>,
+    pub total: i64,
+}
+
+pub async fn call_search_database_paged(
+    server_name: &str,
+    api_key: &Option<String>,
+    request_data: &SearchRequest,
+    limit: i64,
+    offset: i64,
+) -> Result<SearchPage, Error> {
+    let url = format!(
+        "{}/api/data/search_data?limit={}&offset={}",
+        server_name, limit, offset
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to search database: {}",
+            response.status_text()
+        )));
+    }
+
+    let text = response.text().await?;
+    serde_json::from_str::<SearchPage>(&text)
+        .map_err(|e| anyhow::Error::msg(format!("Deserialization failed: {}", e)))
+}
+
 #[allow(dead_code)]
 pub async fn call_search_database(
     server_name: &String,

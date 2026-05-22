@@ -8,6 +8,7 @@ use tower::ServiceBuilder;
 use tower_http::{
     trace::TraceLayer,
     compression::CompressionLayer,
+    services::ServeDir,
 };
 use tracing::{info, warn, error};
 
@@ -148,6 +149,7 @@ fn create_app(state: AppState) -> Router {
         .nest("/api/gpodder", create_gpodder_routes())
         .nest("/api/feed", create_feed_routes())
         .nest("/api/auth", create_auth_routes())
+        .nest_service("/api/local-media", ServeDir::new("/opt/pinepods/local-media"))
         .nest("/ws", create_websocket_routes())
         
         // Middleware stack
@@ -225,6 +227,8 @@ fn create_data_routes() -> Router<AppState> {
         .route("/get_episode_metadata", post(handlers::podcasts::get_episode_metadata))
         .route("/fetch_podcasting_2_data", get(handlers::podcasts::fetch_podcasting_2_data))
         .route("/get_auto_download_status", post(handlers::podcasts::get_auto_download_status))
+        .route("/get_auto_play_next_status", post(handlers::podcasts::get_auto_play_next_status))
+        .route("/get_next_podcast_episode", post(handlers::podcasts::get_next_podcast_episode))
         .route("/get_feed_cutoff_days", get(handlers::podcasts::get_feed_cutoff_days))
         .route("/get_play_episode_details", post(handlers::podcasts::get_play_episode_details))
         .route("/fetch_podcasting_2_pod_data", get(handlers::podcasts::fetch_podcasting_2_pod_data))
@@ -317,6 +321,9 @@ fn create_data_routes() -> Router<AppState> {
         .route("/auto_complete_episodes", get(handlers::tasks::auto_complete_episodes))
         .route("/update_playlists", get(handlers::tasks::update_playlists))
         .route("/add_custom_podcast", post(handlers::settings::add_custom_podcast))
+        .route("/add_local_podcast", post(handlers::local_podcast::add_local_podcast))
+        .route("/add_local_podcast_artwork", post(handlers::local_podcast::add_local_podcast_artwork))
+        .route("/refresh_local_podcast", post(handlers::local_podcast::refresh_local_podcast))
         .route("/user/notification_settings", get(handlers::settings::get_notification_settings))
         .route("/user/notification_settings", put(handlers::settings::update_notification_settings))
         .route("/user/set_playback_speed", post(handlers::settings::set_playback_speed_user))
@@ -337,6 +344,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/youtube/subscribe", post(handlers::youtube::subscribe_to_youtube_channel))
         .route("/check_youtube_channel", get(handlers::youtube::check_youtube_channel))
         .route("/enable_auto_download", post(handlers::settings::enable_auto_download))
+        .route("/enable_auto_play_next", post(handlers::settings::enable_auto_play_next))
         .route("/adjust_skip_times", post(handlers::settings::adjust_skip_times))
         .route("/remove_category", post(handlers::settings::remove_category))
         .route("/add_category", post(handlers::settings::add_category))
@@ -345,6 +353,8 @@ fn create_data_routes() -> Router<AppState> {
         .route("/podcast/clear_cover_preference", post(handlers::settings::clear_podcast_cover_preference))
         .route("/podcast/toggle_notifications", put(handlers::settings::toggle_podcast_notifications))
         .route("/podcast/notification_status", post(handlers::podcasts::get_notification_status))
+        .route("/podcast/toggle_favorite", put(handlers::settings::toggle_podcast_favorite))
+        .route("/podcast/favorite_status", post(handlers::podcasts::get_podcast_favorite_status))
         .route("/rss_key", get(handlers::settings::get_user_rss_key))
         .route("/verify_mfa", post(handlers::settings::verify_mfa))
         .route("/schedule_backup", post(handlers::settings::schedule_backup))

@@ -1,5 +1,5 @@
 use crate::components::app_drawer::App_drawer;
-use crate::components::audio::AudioPlayer;
+use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
@@ -8,21 +8,25 @@ use crate::components::gen_funcs::{
 };
 use crate::components::host_component::HostDropdown;
 use crate::components::loading::Loading;
-use crate::components::virtual_list::VirtualList;
+use crate::components::episode_list_item::EpisodeListItem;
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_bulk_download_episodes,
     call_bulk_mark_episodes_completed, call_bulk_queue_episodes, call_bulk_save_episodes,
     call_check_podcast, call_clear_playback_speed, call_download_all_podcast,
-    call_enable_auto_download, call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
+    call_enable_auto_download, call_enable_auto_play_next,
+    call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
+    call_get_auto_play_next_status,
     call_get_feed_cutoff_days, call_get_merged_podcasts, call_get_play_episode_details,
     call_get_podcast_details, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
-    call_get_podcast_notifications_status, call_get_podcasts, call_get_rss_key,
-    call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
-    call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_notifications,
+    call_get_podcast_favorite_status, call_get_podcast_notifications_status, call_get_podcasts,
+    call_get_rss_key, call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
+    call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_favorite,
+    call_toggle_podcast_notifications,
     call_unmerge_podcast, call_update_feed_cutoff_days, call_update_podcast_info,
     AddCategoryRequest, AutoDownloadRequest, BulkEpisodeActionRequest, ClearPlaybackSpeedRequest,
-    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, PlaybackSpeedRequest,
+    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, AutoPlayNextRequest,
+    PlaybackSpeedRequest,
     PodcastDetails, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
     RemoveYouTubeChannelValues, SkipTimesRequest, UpdateFeedCutoffDaysRequest,
 };
@@ -39,6 +43,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
+use gloo::events::EventListener;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::Element;
@@ -358,8 +363,8 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
 pub fn episode_layout() -> Html {
     let (i18n, _) = use_translation();
     let is_added = use_state(|| false);
-    let (state, _dispatch) = use_store::<UIState>();
     let (search_state, _search_dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<UIState>();
     let podcast_feed_results = search_state.podcast_feed_results.clone();
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
 
@@ -489,6 +494,7 @@ pub fn episode_layout() -> Html {
     let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
     let notification_status = use_state(|| false);
+    let favorite_status = use_state(|| false);
     let feed_cutoff_days = use_state(|| 0);
     let feed_cutoff_days_input = use_state(|| "0".to_string());
     let playback_speed = use_state(|| 1.0);
@@ -827,6 +833,7 @@ pub fn episode_layout() -> Html {
     });
 
     let download_status = use_state(|| false);
+    let auto_play_next_status = use_state(|| false);
     let podcast_id = use_state(|| 0);
     let start_skip = use_state(|| 0);
     let end_skip = use_state(|| 0);
@@ -961,7 +968,9 @@ pub fn episode_layout() -> Html {
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
         let download_status = download_status.clone();
+        let auto_play_next_status = auto_play_next_status.clone();
         let notification_effect = notification_status.clone();
+        let favorite_effect = favorite_status.clone();
         // let episode_name = episode_name_pre.clone();
         // let episode_url = episode_url_pre.clone();
         let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID);
@@ -1002,6 +1011,7 @@ pub fn episode_layout() -> Html {
                     let server_name = server_name.clone();
                     let podcast_id = podcast_id.clone();
                     let download_status = download_status.clone();
+                    let auto_play_next_status = auto_play_next_status.clone();
                     let episode_name = episode_name;
                     let episode_url = episode_url;
                     let user_id = user_id.unwrap();
@@ -1038,6 +1048,27 @@ pub fn episode_layout() -> Html {
                                                 web_sys::console::log_1(
                                                     &format!(
                                                         "Error getting auto-download status: {}",
+                                                        e
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
+                                        }
+                                        match call_get_auto_play_next_status(
+                                            &server_name,
+                                            user_id,
+                                            &Some(api_key.clone().unwrap()),
+                                            id,
+                                        )
+                                        .await
+                                        {
+                                            Ok(status) => {
+                                                auto_play_next_status.set(status);
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!(
+                                                        "Error getting auto-play-next status: {}",
                                                         e
                                                     )
                                                     .into(),
@@ -1082,6 +1113,28 @@ pub fn episode_layout() -> Html {
                                                 web_sys::console::log_1(
                                                     &format!(
                                                         "Error getting notification status: {}",
+                                                        e
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
+                                        }
+                                        // Fetch favorite status
+                                        match call_get_podcast_favorite_status(
+                                            server_name.clone(),
+                                            api_key.clone().unwrap(),
+                                            user_id,
+                                            id,
+                                        )
+                                        .await
+                                        {
+                                            Ok(status) => {
+                                                favorite_effect.set(status);
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!(
+                                                        "Error getting favorite status: {}",
                                                         e
                                                     )
                                                     .into(),
@@ -1570,6 +1623,51 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let toggle_auto_play_next = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let auto_play_next_status = auto_play_next_status.clone();
+        let podcast_id = podcast_id.clone();
+        let user_id = user_id.clone();
+
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let auto_play_next_status = auto_play_next_status.clone();
+            let auto_play_next = !*auto_play_next_status;
+            let pod_id_deref = *podcast_id.clone();
+            let user_id = user_id.clone().unwrap();
+
+            let request_data = AutoPlayNextRequest {
+                podcast_id: pod_id_deref,
+                user_id,
+                auto_play_next,
+            };
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_enable_auto_play_next(
+                        &server_name,
+                        &api_key.clone().unwrap(),
+                        &request_data,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            auto_play_next_status.set(auto_play_next);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error enabling/disabling auto-play-next: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
     let playback_speed_input_handler = Callback::from(move |e: InputEvent| {
         if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
             let value = input.value().parse::<f64>().unwrap_or(1.0);
@@ -1783,6 +1881,46 @@ pub fn episode_layout() -> Html {
                         Err(e) => {
                             web_sys::console::log_1(
                                 &format!("Error toggling notifications: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
+    let toggle_favorite = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let favorite_status = favorite_status.clone();
+        let podcast_id = podcast_id.clone();
+        let user_id = user_id.clone();
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let favorite_status = favorite_status.clone();
+            let is_favorite = !*favorite_status;
+            let pod_id_deref = *podcast_id.clone();
+            let user_id = user_id.clone().unwrap();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_toggle_podcast_favorite(
+                        server_name.clone(),
+                        api_key.clone().unwrap(),
+                        user_id,
+                        pod_id_deref,
+                        is_favorite,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            favorite_status.set(is_favorite);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error toggling favorite: {}", e).into(),
                             );
                         }
                     }
@@ -2155,6 +2293,13 @@ pub fn episode_layout() -> Html {
                                 </label>
                             </div>
                             <div>
+                                <label for="auto_play_next" class="block mb-2 text-sm font-medium">{"Auto-play next episode"}</label>
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input type="checkbox" checked={*auto_play_next_status} class="sr-only peer" onclick={toggle_auto_play_next} />
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div>
                                 <label for="notification_settings" class="block mb-2 text-sm font-medium">{&i18n_get_notifications_new_episodes}</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input
@@ -2162,6 +2307,18 @@ pub fn episode_layout() -> Html {
                                         checked={*notification_status}
                                         class="sr-only peer"
                                         onclick={toggle_notifications}
+                                    />
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div>
+                                <label for="favorite_settings" class="block mb-2 text-sm font-medium">{"Favorite Podcast"}</label>
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={*favorite_status}
+                                        class="sr-only peer"
+                                        onclick={toggle_favorite}
                                     />
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                 </label>
@@ -3271,6 +3428,49 @@ pub fn episode_layout() -> Html {
         },
     );
 
+    // Display pagination — render only the first N episodes regardless of total loaded.
+    // Window scroll listener increments display_count as the user scrolls down.
+    let display_count = use_state(|| 50usize);
+
+    // Reset display_count whenever the filtered list changes (search/sort/filter changed).
+    {
+        let display_count = display_count.clone();
+        use_effect_with(filtered_episodes.clone(), move |_| {
+            display_count.set(50);
+            || ()
+        });
+    }
+
+    // Window scroll listener: fires when user nears the bottom of the page, shows 50 more.
+    // main-container has no fixed height so the window scrolls, not any inner div.
+    {
+        let display_count = display_count.clone();
+        let filtered_episodes = filtered_episodes.clone();
+        use_effect_with(filtered_episodes.clone(), move |filtered_episodes| {
+            let total = filtered_episodes.len();
+            let display_count = display_count.clone();
+            let window = web_sys::window().unwrap();
+            let target: &web_sys::EventTarget = window.unchecked_ref();
+            let listener = EventListener::new(target, "scroll", move |_| {
+                let win = web_sys::window().unwrap();
+                let doc = win.document().unwrap();
+                let scroll_y = win.scroll_y().unwrap_or(0.0);
+                let inner_h = win.inner_height().unwrap().as_f64().unwrap_or(800.0);
+                let doc_h = doc
+                    .document_element()
+                    .map(|el| el.scroll_height() as f64)
+                    .unwrap_or(f64::MAX);
+                if scroll_y + inner_h + 400.0 >= doc_h {
+                    let current = *display_count;
+                    if current < total {
+                        display_count.set((current + 50).min(total));
+                    }
+                }
+            });
+            move || drop(listener)
+        });
+    }
+
     #[wasm_bindgen]
     extern "C" {
         #[wasm_bindgen(js_namespace = window)]
@@ -4198,9 +4398,11 @@ pub fn episode_layout() -> Html {
                                         });
 
                                         html! {
-                                            <VirtualList
-                                                episodes={ (*filtered_episodes).clone() }
-                                            />
+                                            <div class="flex-grow overflow-y-auto">
+                                                { for (*filtered_episodes).iter().take(*display_count).map(|ep| html! {
+                                                    <EpisodeListItem key={ep.episodeid} episode={ep.clone()} />
+                                                }) }
+                                            </div>
                                         }
                                     } else {
                                         html! {
@@ -4217,30 +4419,7 @@ pub fn episode_layout() -> Html {
                     }
                 }
             <App_drawer />
-            {
-                if let Some(audio_props) = &state.currently_playing {
-                    html! {
-                        <AudioPlayer
-                            episode={audio_props.episode.clone()}
-                            src={audio_props.src.clone()}
-                            title={audio_props.title.clone()}
-                            description={audio_props.description.clone()}
-                            release_date={audio_props.release_date.clone()}
-                            artwork_url={audio_props.artwork_url.clone()}
-                            duration={audio_props.duration.clone()}
-                            episode_id={audio_props.episode_id.clone()}
-                            duration_sec={audio_props.duration_sec.clone()}
-                            start_pos_sec={audio_props.start_pos_sec.clone()}
-                            end_pos_sec={audio_props.end_pos_sec.clone()}
-                            offline={audio_props.offline.clone()}
-                            is_youtube={audio_props.is_youtube.clone()}
-                        is_video={audio_props.is_video.clone()}
-                        />
-                    }
-                } else {
-                    html! {}
-                }
-            }
+            <AudioPlayerBar />
             </div>
 
         }
