@@ -1,5 +1,5 @@
 use crate::components::app_drawer::App_drawer;
-use crate::components::audio::AudioPlayer;
+use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
@@ -8,7 +8,7 @@ use crate::components::gen_funcs::{
 };
 use crate::components::host_component::HostDropdown;
 use crate::components::loading::Loading;
-use crate::components::virtual_list::VirtualList;
+use crate::components::episode_list_item::EpisodeListItem;
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_bulk_download_episodes,
@@ -43,6 +43,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
+use gloo::events::EventListener;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::Element;
@@ -362,8 +363,8 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
 pub fn episode_layout() -> Html {
     let (i18n, _) = use_translation();
     let is_added = use_state(|| false);
-    let (state, _dispatch) = use_store::<UIState>();
     let (search_state, _search_dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<UIState>();
     let podcast_feed_results = search_state.podcast_feed_results.clone();
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
 
@@ -3427,6 +3428,49 @@ pub fn episode_layout() -> Html {
         },
     );
 
+    // Display pagination — render only the first N episodes regardless of total loaded.
+    // Window scroll listener increments display_count as the user scrolls down.
+    let display_count = use_state(|| 50usize);
+
+    // Reset display_count whenever the filtered list changes (search/sort/filter changed).
+    {
+        let display_count = display_count.clone();
+        use_effect_with(filtered_episodes.clone(), move |_| {
+            display_count.set(50);
+            || ()
+        });
+    }
+
+    // Window scroll listener: fires when user nears the bottom of the page, shows 50 more.
+    // main-container has no fixed height so the window scrolls, not any inner div.
+    {
+        let display_count = display_count.clone();
+        let filtered_episodes = filtered_episodes.clone();
+        use_effect_with(filtered_episodes.clone(), move |filtered_episodes| {
+            let total = filtered_episodes.len();
+            let display_count = display_count.clone();
+            let window = web_sys::window().unwrap();
+            let target: &web_sys::EventTarget = window.unchecked_ref();
+            let listener = EventListener::new(target, "scroll", move |_| {
+                let win = web_sys::window().unwrap();
+                let doc = win.document().unwrap();
+                let scroll_y = win.scroll_y().unwrap_or(0.0);
+                let inner_h = win.inner_height().unwrap().as_f64().unwrap_or(800.0);
+                let doc_h = doc
+                    .document_element()
+                    .map(|el| el.scroll_height() as f64)
+                    .unwrap_or(f64::MAX);
+                if scroll_y + inner_h + 400.0 >= doc_h {
+                    let current = *display_count;
+                    if current < total {
+                        display_count.set((current + 50).min(total));
+                    }
+                }
+            });
+            move || drop(listener)
+        });
+    }
+
     #[wasm_bindgen]
     extern "C" {
         #[wasm_bindgen(js_namespace = window)]
@@ -4354,9 +4398,11 @@ pub fn episode_layout() -> Html {
                                         });
 
                                         html! {
-                                            <VirtualList
-                                                episodes={ (*filtered_episodes).clone() }
-                                            />
+                                            <div class="flex-grow overflow-y-auto">
+                                                { for (*filtered_episodes).iter().take(*display_count).map(|ep| html! {
+                                                    <EpisodeListItem key={ep.episodeid} episode={ep.clone()} />
+                                                }) }
+                                            </div>
                                         }
                                     } else {
                                         html! {
@@ -4373,30 +4419,7 @@ pub fn episode_layout() -> Html {
                     }
                 }
             <App_drawer />
-            {
-                if let Some(audio_props) = &state.currently_playing {
-                    html! {
-                        <AudioPlayer
-                            episode={audio_props.episode.clone()}
-                            src={audio_props.src.clone()}
-                            title={audio_props.title.clone()}
-                            description={audio_props.description.clone()}
-                            release_date={audio_props.release_date.clone()}
-                            artwork_url={audio_props.artwork_url.clone()}
-                            duration={audio_props.duration.clone()}
-                            episode_id={audio_props.episode_id.clone()}
-                            duration_sec={audio_props.duration_sec.clone()}
-                            start_pos_sec={audio_props.start_pos_sec.clone()}
-                            end_pos_sec={audio_props.end_pos_sec.clone()}
-                            offline={audio_props.offline.clone()}
-                            is_youtube={audio_props.is_youtube.clone()}
-                        is_video={audio_props.is_video.clone()}
-                        />
-                    }
-                } else {
-                    html! {}
-                }
-            }
+            <AudioPlayerBar />
             </div>
 
         }

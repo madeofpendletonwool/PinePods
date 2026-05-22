@@ -1,6 +1,7 @@
 pub mod api_keys;
 pub mod backup_server;
 pub mod custom_feed;
+pub mod local_podcast;
 pub mod download_settings;
 pub mod email_settings;
 pub mod export_settings;

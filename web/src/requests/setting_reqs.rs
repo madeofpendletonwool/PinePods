@@ -1852,6 +1852,117 @@ pub async fn call_add_custom_feed(
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct AddLocalPodcastRequest {
+    user_id: i32,
+    directory_path: String,
+    podcast_name: String,
+    description: Option<String>,
+    author: Option<String>,
+    explicit: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct AddLocalPodcastResponse {
+    data: crate::requests::pod_req::Podcast,
+}
+
+pub async fn call_add_local_podcast(
+    server_name: &str,
+    user_id: i32,
+    directory_path: &str,
+    podcast_name: &str,
+    description: Option<String>,
+    author: Option<String>,
+    explicit: Option<bool>,
+    api_key: &str,
+) -> Result<crate::requests::pod_req::Podcast, Error> {
+    let url = format!("{}/api/data/add_local_podcast", server_name);
+    let request_body = AddLocalPodcastRequest {
+        user_id,
+        directory_path: directory_path.to_string(),
+        podcast_name: podcast_name.to_string(),
+        description,
+        author,
+        explicit,
+    };
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&request_body)?)?
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        let response_text = response.text().await.map_err(Error::msg)?;
+        let parsed: AddLocalPodcastResponse =
+            serde_json::from_str(&response_text).map_err(Error::msg)?;
+        Ok(parsed.data)
+    } else {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(Error::msg(format!("Error adding local podcast: {}", error_text)))
+    }
+}
+
+pub async fn call_add_local_podcast_artwork(
+    server_name: &str,
+    api_key: &str,
+    form_data: FormData,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/add_local_podcast_artwork", server_name);
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .body(form_data)?
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        let response_text = response.text().await.map_err(Error::msg)?;
+        let parsed: serde_json::Value =
+            serde_json::from_str(&response_text).map_err(Error::msg)?;
+        Ok(parsed["artwork_url"]
+            .as_str()
+            .unwrap_or("")
+            .to_string())
+    } else {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(Error::msg(format!("Error uploading artwork: {}", error_text)))
+    }
+}
+
+pub async fn call_refresh_local_podcast(
+    server_name: &str,
+    user_id: i32,
+    podcast_id: i32,
+    api_key: &str,
+) -> Result<serde_json::Value, Error> {
+    let url = format!("{}/api/data/refresh_local_podcast", server_name);
+    let request_body = serde_json::json!({
+        "user_id": user_id,
+        "podcast_id": podcast_id,
+    });
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&request_body)?)?
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        let response_text = response.text().await.map_err(Error::msg)?;
+        Ok(serde_json::from_str(&response_text).map_err(Error::msg)?)
+    } else {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(Error::msg(format!("Error refreshing local podcast: {}", error_text)))
+    }
+}
+
 pub async fn call_podcast_opml_import(
     server_name: &str,
     api_key: &Option<String>,

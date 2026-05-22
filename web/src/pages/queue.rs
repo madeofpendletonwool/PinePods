@@ -5,8 +5,8 @@ use crate::components::gen_components::{
 };
 use crate::components::loading::Loading;
 
-use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, FilterState, UIState};
+use crate::components::audio_player_bar::AudioPlayerBar;
+use crate::components::context::{AppState, FilterState};
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
@@ -89,8 +89,6 @@ pub fn queue() -> Html {
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, _audio_dispatch) = use_store::<UIState>();
-
     let loading = use_state(|| true);
 
     // Fetch episodes on component mount
@@ -260,30 +258,7 @@ pub fn queue() -> Html {
                         }
                 }
             }
-        {
-            if let Some(audio_props) = &audio_state.currently_playing {
-                html! {
-                    <AudioPlayer
-                        episode={audio_props.episode.clone()}
-                        src={audio_props.src.clone()}
-                        title={audio_props.title.clone()}
-                        description={audio_props.description.clone()}
-                        release_date={audio_props.release_date.clone()}
-                        artwork_url={audio_props.artwork_url.clone()}
-                        duration={audio_props.duration.clone()}
-                        episode_id={audio_props.episode_id.clone()}
-                        duration_sec={audio_props.duration_sec.clone()}
-                        start_pos_sec={audio_props.start_pos_sec.clone()}
-                        end_pos_sec={audio_props.end_pos_sec.clone()}
-                        offline={audio_props.offline.clone()}
-                        is_youtube={audio_props.is_youtube.clone()}
-                        is_video={audio_props.is_video.clone()}
-                    />
-                }
-            } else {
-                html! {}
-            }
-        }
+        <AudioPlayerBar />
         </div>
         <App_drawer />
         </>
@@ -299,7 +274,6 @@ pub struct VirtualQueueListProps {
 pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
     let server_name = post_state
         .auth_details
         .as_ref()
@@ -347,7 +321,7 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
 
         // Find the virtual list container to scroll it instead of the window
         if let Some(document) = web_sys::window().and_then(|w| w.document()) {
-            if let Ok(Some(container)) = document.query_selector(".virtual-list-container") {
+            if let Ok(Some(container)) = document.query_selector(".queue-list-container") {
                 if let Some(container_element) = container.dyn_ref::<web_sys::HtmlElement>() {
                     let container_rect = container_element.get_bounding_client_rect();
                     let container_top = container_rect.top();
@@ -523,11 +497,23 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
         })
     };
 
+    let drag_callbacks = DragCallbacks {
+        ondragstart: Some(ondragstart),
+        ondragenter: Some(ondragenter),
+        ondragover: Some(ondragover),
+        ondrop: Some(ondrop),
+    };
+
     html! {
-        <crate::components::virtual_list::VirtualList
-            episodes={ props.episodes.clone() }
-            page_type={ PageType::Queue }
-            drag_callbacks={ DragCallbacks{ ondragstart: Some(ondragstart), ondragenter: Some(ondragenter), ondragover: Some(ondragover), ondrop: Some(ondrop) } }
-            />
+        <div class="queue-list-container flex-grow overflow-y-auto">
+            { for props.episodes.iter().map(|ep| html! {
+                <EpisodeListItem
+                    key={ep.episodeid}
+                    episode={ep.clone()}
+                    page_type={PageType::Queue}
+                    drag_callbacks={drag_callbacks.clone()}
+                />
+            }) }
+        </div>
     }
 }

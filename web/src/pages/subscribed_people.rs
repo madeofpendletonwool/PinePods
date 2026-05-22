@@ -1,8 +1,8 @@
 use crate::components::app_drawer::App_drawer;
-use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, ExpandedDescriptions, UIState};
+use crate::components::audio_player_bar::AudioPlayerBar;
+use crate::components::context::{AppState, ExpandedDescriptions};
+use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
-use crate::components::virtual_list::VirtualList;
 use crate::components::loading::Loading;
 use crate::requests::episode::Episode;
 use crate::requests::people_req::{self, PersonSubscription};
@@ -41,7 +41,6 @@ pub fn subscribed_people() -> Html {
 
     // let error = use_state(|| None);
     let (post_state, post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
     let expanded_state = use_state(|| std::collections::HashMap::<i32, bool>::new());
     let subscribed_people = use_state(|| Vec::<PersonWithEpisodes>::new());
@@ -186,7 +185,6 @@ pub fn subscribed_people() -> Html {
     };
 
     let people = (*subscribed_people).clone();
-    let render_audio = audio_state.clone();
     let render_people = {
         let people = people.clone();
         let active_clonedal = active_clonedal.clone();
@@ -220,10 +218,8 @@ pub fn subscribed_people() -> Html {
                                         toggle_person.reform(move |_| person.person.personid),
                                         post_state.clone(),
                                         post_dispatch.clone(),
-                                        render_audio.clone(),
                                         desc_state.clone(),
                                         desc_dispatch.clone(),
-                                        audio_dispatch.clone(),
                                         *show_modal,
                                         on_modal_open.clone(),
                                         on_modal_close.clone(),
@@ -259,30 +255,7 @@ pub fn subscribed_people() -> Html {
                     }
                 }
             }
-            {
-                if let Some(audio_props) = &audio_state.currently_playing {
-                    html! {
-                        <AudioPlayer
-                            episode={audio_props.episode.clone()}
-                            src={audio_props.src.clone()}
-                            title={audio_props.title.clone()}
-                            description={audio_props.description.clone()}
-                            release_date={audio_props.release_date.clone()}
-                            artwork_url={audio_props.artwork_url.clone()}
-                            duration={audio_props.duration.clone()}
-                            episode_id={audio_props.episode_id.clone()}
-                            duration_sec={audio_props.duration_sec.clone()}
-                            start_pos_sec={audio_props.start_pos_sec.clone()}
-                            end_pos_sec={audio_props.end_pos_sec.clone()}
-                            offline={audio_props.offline.clone()}
-                            is_youtube={audio_props.is_youtube.clone()}
-                        is_video={audio_props.is_video.clone()}
-                        />
-                    }
-                } else {
-                    html! {}
-                }
-            }
+            <AudioPlayerBar />
         </div>
         <App_drawer />
         </>
@@ -308,10 +281,8 @@ fn render_host_with_episodes(
     toggle_host_expanded: Callback<MouseEvent>,
     state: Rc<AppState>,
     dispatch: Dispatch<AppState>,
-    audio_state: Rc<UIState>,
     desc_rc: Rc<ExpandedDescriptions>,
     desc_state: Dispatch<ExpandedDescriptions>,
-    audio_dispatch: Dispatch<UIState>,
     _show_modal: bool,
     on_modal_open: Callback<i32>,
     on_modal_close: Callback<MouseEvent>,
@@ -356,13 +327,11 @@ fn render_host_with_episodes(
                 </div>
             </div>
             { if is_expanded {
-                let episode_count = episodes.len();
-                web_sys::console::log_1(&format!("Attempting to render {} episodes", episode_count).into());
                 html! {
-                    <div class="episodes-dropdown pl-4">
-                        <VirtualList
-                            episodes={ episodes }
-                        />
+                    <div class="episodes-dropdown pl-4 flex-grow overflow-y-auto">
+                        { for episodes.iter().map(|ep| html! {
+                            <EpisodeListItem key={ep.episodeid} episode={ep.clone()} />
+                        }) }
                     </div>
                 }
             } else {

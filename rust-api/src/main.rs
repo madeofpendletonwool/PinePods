@@ -8,6 +8,7 @@ use tower::ServiceBuilder;
 use tower_http::{
     trace::TraceLayer,
     compression::CompressionLayer,
+    services::ServeDir,
 };
 use tracing::{info, warn, error};
 
@@ -148,6 +149,7 @@ fn create_app(state: AppState) -> Router {
         .nest("/api/gpodder", create_gpodder_routes())
         .nest("/api/feed", create_feed_routes())
         .nest("/api/auth", create_auth_routes())
+        .nest_service("/api/local-media", ServeDir::new("/opt/pinepods/local-media"))
         .nest("/ws", create_websocket_routes())
         
         // Middleware stack
@@ -319,6 +321,9 @@ fn create_data_routes() -> Router<AppState> {
         .route("/auto_complete_episodes", get(handlers::tasks::auto_complete_episodes))
         .route("/update_playlists", get(handlers::tasks::update_playlists))
         .route("/add_custom_podcast", post(handlers::settings::add_custom_podcast))
+        .route("/add_local_podcast", post(handlers::local_podcast::add_local_podcast))
+        .route("/add_local_podcast_artwork", post(handlers::local_podcast::add_local_podcast_artwork))
+        .route("/refresh_local_podcast", post(handlers::local_podcast::refresh_local_podcast))
         .route("/user/notification_settings", get(handlers::settings::get_notification_settings))
         .route("/user/notification_settings", put(handlers::settings::update_notification_settings))
         .route("/user/set_playback_speed", post(handlers::settings::set_playback_speed_user))

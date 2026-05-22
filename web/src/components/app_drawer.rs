@@ -419,26 +419,6 @@ pub fn app_drawer() -> Html {
                 } else {
                     html! {}
                 }}
-                { if !show_back_button {
-                    let star_class = if filter_state.favorites_only {
-                        classes!("ph", "ph-star", "md:text-4xl", "text-4xl", "text-yellow-400")
-                    } else {
-                        classes!("ph", "ph-star", "md:text-4xl", "text-4xl")
-                    };
-                    html! {
-                        <button
-                            onclick={toggle_favorites_filter.clone()}
-                            class="ml-2 rounded-lg cursor-pointer"
-                            title="Toggle favorites filter"
-                        >
-                            <div class="flex flex-col items-center">
-                                <i class={star_class}></i>
-                            </div>
-                        </button>
-                    }
-                } else {
-                    html! {}
-                }}
                 { if show_back_button {
                     html! {
                         <BackButton />
@@ -450,8 +430,8 @@ pub fn app_drawer() -> Html {
                     html! {
                         <button
                             onclick={on_refresh_click.clone()}
-                            onmouseup={on_refresh_click.clone()}  // Add this for better mobile handling
-                            class="rounded-lg cursor-pointer touch-manipulation"  // Add touch-manipulation
+                            onmouseup={on_refresh_click.clone()}
+                            class="ml-2 rounded-lg cursor-pointer touch-manipulation"
                         >
                             <div class="flex flex-col items-center">
                                 {
@@ -467,6 +447,26 @@ pub fn app_drawer() -> Html {
                                         }
                                     }
                                 }
+                            </div>
+                        </button>
+                    }
+                } else {
+                    html! {}
+                }}
+                { if !show_back_button {
+                    let star_class = if filter_state.favorites_only {
+                        classes!("ph", "ph-star", "md:text-4xl", "text-4xl", "text-yellow-400")
+                    } else {
+                        classes!("ph", "ph-star", "md:text-4xl", "text-4xl")
+                    };
+                    html! {
+                        <button
+                            onclick={toggle_favorites_filter.clone()}
+                            class="ml-2 rounded-lg cursor-pointer"
+                            title="Toggle favorites filter"
+                        >
+                            <div class="flex flex-col items-center">
+                                <i class={star_class}></i>
                             </div>
                         </button>
                     }

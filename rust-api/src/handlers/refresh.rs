@@ -207,7 +207,12 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                 // Get podcast name for better logging
                 let podcast_name = result.try_get::<String, _>("podcastname").unwrap_or_else(|_| format!("Podcast {}", podcast_id));
                 println!("Running refresh for podcast {}/{}: {}", current_podcast, total_podcasts, podcast_name);
-                
+
+                if feed_url.starts_with("local://") {
+                    println!("Skipping local podcast {} - not an RSS feed", podcast_id);
+                    continue;
+                }
+
                 if is_youtube {
                     // Handle YouTube channel refresh
                     // Extract channel ID from feed URL
@@ -310,7 +315,12 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                 // Get podcast name for better logging
                 let podcast_name = result.try_get::<String, _>("PodcastName").unwrap_or_else(|_| format!("Podcast {}", podcast_id));
                 println!("Running refresh for podcast {}/{}: {}", current_podcast, total_podcasts, podcast_name);
-                
+
+                if feed_url.starts_with("local://") {
+                    println!("Skipping local podcast {} - not an RSS feed", podcast_id);
+                    continue;
+                }
+
                 if is_youtube {
                     // Handle YouTube channel refresh
                     // Extract channel ID from feed URL

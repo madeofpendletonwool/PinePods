@@ -4717,12 +4717,13 @@ input:checked + .notification-toggle-slider:before {
     /* ... other styles ... */
 }
 
-.search-input-custom-border {
+.search-input-custom-border,
+.search-input.search-input-custom-border {
     border-style: solid;
     border-width: 1px 1px 1px 0; /* top, right, bottom, left */
     border-color: var(--border-color);
     background-color: var(--background-color);
-    border-radius: 0 0.5rem 0.5rem 0; /* Keep rounded right corners */
+    border-radius: 0 0.5rem 0.5rem 0; /* right corners only — left must be flush with dropdown */
 }
 
 

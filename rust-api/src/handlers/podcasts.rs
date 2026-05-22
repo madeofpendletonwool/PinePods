@@ -15,6 +15,7 @@ use crate::{
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
 pub struct Episode {
+    pub podcastid: i32,
     pub podcastname: String,
     pub episodetitle: String,
     pub episodepubdate: String,
@@ -959,12 +960,37 @@ pub async fn delete_episode(
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
-    
-    // Delete the episode
+
+    // Prevent deleting episodes from local podcasts — manage files on disk directly
+    if let Ok(Some(feed_url)) = state.db_pool.get_feed_url_for_episode(request.episode_id).await {
+        if feed_url.starts_with("local://") {
+            return Err(AppError::bad_request(
+                "Cannot delete local podcast episodes. Manage audio files directly on the server and use Refresh to sync.",
+            ));
+        }
+    }
+
+    // Capture the file path before removing the DB record
+    let file_path = if is_youtube {
+        state.db_pool.get_video_download_location(request.user_id, request.episode_id).await.ok().flatten()
+    } else {
+        state.db_pool.get_download_location(request.episode_id, request.user_id).await.ok().flatten()
+    };
+
+    // Delete the DB record
     state.db_pool.delete_episode(request.user_id, request.episode_id, is_youtube).await?;
-    
+
+    // Remove the file from disk if one was recorded
+    if let Some(path) = file_path {
+        if tokio::fs::metadata(&path).await.is_ok() {
+            if let Err(e) = tokio::fs::remove_file(&path).await {
+                eprintln!("Warning: could not delete episode file {}: {}", path, e);
+            }
+        }
+    }
+
     let content_type = if is_youtube { "Video" } else { "Episode" };
-    
+
     Ok(Json(serde_json::json!({
         "detail": format!("{} deleted successfully.", content_type)
     })))
@@ -1717,23 +1743,40 @@ pub struct SearchDataRequest {
     pub user_id: i32,
 }
 
+#[derive(Deserialize, Default)]
+pub struct SearchQueryParams {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct SearchDataResponse {
+    pub data: Vec<serde_json::Value>,
+    pub total: i64,
+}
+
 // Search data - matches Python search_data endpoint exactly
 pub async fn search_data(
+    Query(params): Query<SearchQueryParams>,
     headers: HeaderMap,
     State(state): State<AppState>,
     Json(request): Json<SearchDataRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<SearchDataResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
-    // Verify API key
+
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
         return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
     }
 
-    let result = state.db_pool.search_data(&request.search_term, request.user_id).await?;
-    
-    Ok(Json(serde_json::json!({ "data": result })))
+    let limit  = params.limit.unwrap_or(50).min(200);
+    let offset = params.offset.unwrap_or(0).max(0);
+
+    let (result, total) = state.db_pool
+        .search_data(&request.search_term, request.user_id, limit, offset)
+        .await?;
+
+    Ok(Json(SearchDataResponse { data: result, total }))
 }
 
 // Request for fetch_transcript - proxy to avoid CORS issues
