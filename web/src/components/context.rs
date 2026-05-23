@@ -388,6 +388,7 @@ pub struct UIState {
     pub podcast_podroll: Option<Vec<PodrollItem>>,
     pub podcast_value4value: Option<Vec<Value>>,
     pub is_mobile: Option<bool>,
+    pub queue_panel_open: bool,
 }
 
 impl UIState {

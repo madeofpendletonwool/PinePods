@@ -1,0 +1,371 @@
+use crate::components::audio::on_play_click;
+use crate::components::context::{AppState, UIState};
+use crate::components::gen_components::FallbackImage;
+use crate::requests::pod_req::{
+    call_get_queued_episodes, call_remove_queued_episode, call_reorder_queue,
+    QueuePodcastRequest, QueuedEpisodesResponse,
+};
+use wasm_bindgen::JsCast;
+use web_sys::{DragEvent, MouseEvent};
+use yew::prelude::*;
+use yewdux::prelude::*;
+
+#[function_component(QueuePanel)]
+pub fn queue_panel() -> Html {
+    let (ui_state, ui_dispatch) = use_store::<UIState>();
+    let (app_state, app_dispatch) = use_store::<AppState>();
+
+    let is_open = ui_state.queue_panel_open;
+    let dragging_id = use_state(|| None::<i32>);
+
+    let close = {
+        let ui_dispatch = ui_dispatch.clone();
+        Callback::from(move |_: MouseEvent| {
+            ui_dispatch.reduce_mut(|s| s.queue_panel_open = false);
+        })
+    };
+
+    let on_scrim_click = close.clone();
+
+    // Fetch and sort queue whenever the panel opens.
+    {
+        let app_dispatch = app_dispatch.clone();
+        let app_state = app_state.clone();
+        use_effect_with(is_open, move |&open| {
+            if open {
+                if let (Some(auth), Some(user)) = (
+                    app_state.auth_details.as_ref(),
+                    app_state.user_details.as_ref(),
+                ) {
+                    let server = auth.server_name.clone();
+                    let key = auth.api_key.clone();
+                    let uid = user.UserID;
+                    let dispatch = app_dispatch.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(mut eps) =
+                            call_get_queued_episodes(&server, &key, &uid).await
+                        {
+                            eps.sort_by_key(|e| e.queueposition.unwrap_or(i32::MAX));
+                            dispatch.reduce_mut(|s| {
+                                s.queued_episodes =
+                                    Some(QueuedEpisodesResponse { episodes: eps });
+                            });
+                        }
+                    });
+                }
+            }
+            || ()
+        });
+    }
+
+    let mut queued = app_state
+        .queued_episodes
+        .as_ref()
+        .map(|r| r.episodes.clone())
+        .unwrap_or_default();
+    queued.sort_by_key(|e| e.queueposition.unwrap_or(i32::MAX));
+
+    let now_playing = ui_state.currently_playing.clone();
+    let now_playing_art = now_playing.as_ref().map(|p| p.artwork_url.clone());
+    let now_playing_title = now_playing.as_ref().map(|p| p.title.clone());
+    let is_playing = ui_state.audio_playing.unwrap_or(false);
+
+    let total_secs: i32 = queued.iter().map(|e| e.episodeduration).sum();
+    let total_h = total_secs / 3600;
+    let total_m = (total_secs % 3600) / 60;
+    let total_label = if total_h > 0 {
+        format!("{}h {}m", total_h, total_m)
+    } else {
+        format!("{}m", total_m)
+    };
+
+    // ── Drag-and-drop ─────────────────────────────────────────────────────────
+
+    let ondragstart = {
+        let dragging_id = dragging_id.clone();
+        Callback::from(move |e: DragEvent| {
+            // Walk up from the event target to find the queue-item's data-id.
+            if let Some(tgt) = e.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) {
+                let mut el = tgt;
+                for _ in 0..8 {
+                    if let Some(id_str) = el.get_attribute("data-id") {
+                        if let Ok(id) = id_str.parse::<i32>() {
+                            dragging_id.set(Some(id));
+                            if let Some(dt) = e.data_transfer() {
+                                let _ = dt.set_data("text/plain", &id_str);
+                                dt.set_effect_allowed("move");
+                            }
+                        }
+                        break;
+                    }
+                    if let Some(parent) = el.parent_element() {
+                        el = parent;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        })
+    };
+
+    let ondragover = Callback::from(|e: DragEvent| {
+        e.prevent_default();
+        if let Some(dt) = e.data_transfer() {
+            dt.set_drop_effect("move");
+        }
+    });
+
+    let ondragend = {
+        let dragging_id = dragging_id.clone();
+        Callback::from(move |_: DragEvent| dragging_id.set(None))
+    };
+
+    let ondrop = {
+        let dragging_id = dragging_id.clone();
+        let app_dispatch = app_dispatch.clone();
+        let app_state = app_state.clone();
+        Callback::from(move |e: DragEvent| {
+            e.prevent_default();
+            let dragged = match *dragging_id {
+                Some(id) => id,
+                None => return,
+            };
+
+            // Walk up from drop target to find data-id.
+            let mut target_id = None::<i32>;
+            if let Some(tgt) = e.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) {
+                let mut el = tgt;
+                for _ in 0..8 {
+                    if let Some(id_str) = el.get_attribute("data-id") {
+                        target_id = id_str.parse::<i32>().ok();
+                        break;
+                    }
+                    if let Some(parent) = el.parent_element() {
+                        el = parent;
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            if let Some(tid) = target_id {
+                if tid != dragged {
+                    if let Some(queued) = app_state.queued_episodes.as_ref() {
+                        let mut episodes = queued.episodes.clone();
+                        if let (Some(from), Some(to)) = (
+                            episodes.iter().position(|ep| ep.episodeid == dragged),
+                            episodes.iter().position(|ep| ep.episodeid == tid),
+                        ) {
+                            let item = episodes.remove(from);
+                            episodes.insert(to, item);
+
+                            let episode_ids: Vec<i32> =
+                                episodes.iter().map(|ep| ep.episodeid).collect();
+
+                            app_dispatch.reduce_mut(|s| {
+                                s.queued_episodes =
+                                    Some(QueuedEpisodesResponse { episodes: episodes });
+                            });
+
+                            if let (Some(auth), Some(user)) = (
+                                app_state.auth_details.as_ref(),
+                                app_state.user_details.as_ref(),
+                            ) {
+                                let server = auth.server_name.clone();
+                                let key = auth.api_key.clone();
+                                let uid = user.UserID;
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    if let Err(err) = call_reorder_queue(
+                                        &server,
+                                        &key,
+                                        &uid,
+                                        &episode_ids,
+                                    )
+                                    .await
+                                    {
+                                        web_sys::console::log_1(
+                                            &format!("Queue reorder failed: {:?}", err).into(),
+                                        );
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            dragging_id.set(None);
+        })
+    };
+
+    let current_dragging = *dragging_id;
+
+    html! {
+        <>
+            <div
+                class={classes!("queue-scrim", if is_open { "is-open" } else { "" })}
+                onclick={on_scrim_click}
+            />
+            <aside class={classes!("queue-panel", if is_open { "is-open" } else { "" })} aria-label="Queue">
+                <div class="queue-head">
+                    <div>
+                        <div class="queue-title">{"Up next"}</div>
+                        <div class="queue-sub">
+                            { format!("{} episode{} \u{00B7} {}", queued.len(),
+                                if queued.len() == 1 { "" } else { "s" }, total_label) }
+                        </div>
+                    </div>
+                    <div class="queue-head-actions">
+                        <button class="player-btn" onclick={close.clone()} title="Close">
+                            <i class="ph ph-x"></i>
+                        </button>
+                    </div>
+                </div>
+
+                if let (Some(art), Some(title)) = (now_playing_art, now_playing_title) {
+                    <div class="queue-nowplaying">
+                        <FallbackImage
+                            src={art}
+                            alt="Now playing art"
+                            class="queue-nowplaying-art"
+                        />
+                        <div style="min-width: 0; flex: 1;">
+                            <div class="queue-now-eyebrow">{"Now playing"}</div>
+                            <div class="queue-now-title">{ title }</div>
+                        </div>
+                        if is_playing {
+                            <div class="queue-now-equalizer" aria-hidden="true">
+                                <span></span><span></span><span></span>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="queue-list">
+                    if queued.is_empty() {
+                        <div class="queue-empty">
+                            <i class="ph ph-queue"></i>
+                            <div class="queue-empty-title">{"Queue is empty"}</div>
+                            <div class="queue-empty-sub">{"Add episodes from your feed to listen in order."}</div>
+                        </div>
+                    } else {
+                        { for queued.iter().enumerate().map(|(i, ep)| {
+                            let ep = ep.clone();
+                            let ep_for_remove = ep.clone();
+                            let ep_for_play = ep.clone();
+                            let auth = app_state.auth_details.clone();
+                            let user = app_state.user_details.clone();
+                            let ui_dispatch_play = ui_dispatch.clone();
+                            let app_dispatch_remove = app_dispatch.clone();
+                            let ui_dispatch_close = ui_dispatch.clone();
+
+                            let on_play = Callback::from(move |e: MouseEvent| {
+                                if let (Some(auth), Some(user)) = (auth.as_ref(), user.as_ref()) {
+                                    let api_key = auth.api_key.clone().unwrap_or_default();
+                                    let user_id = user.UserID;
+                                    let server_name = auth.server_name.clone();
+                                    let current_state = ui_dispatch_play.get();
+                                    ui_dispatch_close.reduce_mut(|s| s.queue_panel_open = false);
+                                    on_play_click(
+                                        ep_for_play.clone(),
+                                        api_key,
+                                        user_id,
+                                        server_name,
+                                        ui_dispatch_play.clone(),
+                                        current_state,
+                                        false,
+                                        false,
+                                    ).emit(e);
+                                }
+                            });
+
+                            let on_remove = {
+                                let auth = app_state.auth_details.clone();
+                                let user = app_state.user_details.clone();
+                                Callback::from(move |e: MouseEvent| {
+                                    e.stop_propagation();
+                                    if let (Some(auth), Some(user)) = (auth.as_ref(), user.as_ref()) {
+                                        let server = auth.server_name.clone();
+                                        let key = auth.api_key.clone();
+                                        let uid = user.UserID;
+                                        let ep_id = ep_for_remove.episodeid;
+                                        let is_yt = ep_for_remove.is_youtube;
+                                        let dispatch = app_dispatch_remove.clone();
+                                        wasm_bindgen_futures::spawn_local(async move {
+                                            let req = QueuePodcastRequest {
+                                                episode_id: ep_id,
+                                                user_id: uid,
+                                                is_youtube: is_yt,
+                                            };
+                                            let _ = call_remove_queued_episode(
+                                                &server, &key, &req,
+                                            ).await;
+                                            if let Ok(mut eps) =
+                                                call_get_queued_episodes(&server, &key, &uid).await
+                                            {
+                                                eps.sort_by_key(|e| {
+                                                    e.queueposition.unwrap_or(i32::MAX)
+                                                });
+                                                dispatch.reduce_mut(|s| {
+                                                    s.queued_episodes = Some(
+                                                        QueuedEpisodesResponse { episodes: eps },
+                                                    );
+                                                });
+                                            }
+                                        });
+                                    }
+                                })
+                            };
+
+                            let ep_art = ep.episodeartwork.clone();
+                            let ep_title = ep.episodetitle.clone();
+                            let ep_duration =
+                                crate::components::gen_funcs::format_time(ep.episodeduration);
+                            let ep_id = ep.episodeid;
+                            let is_dragged = current_dragging == Some(ep_id);
+
+                            html! {
+                                <div
+                                    class={classes!(
+                                        "queue-item",
+                                        if is_dragged { "is-dragging" } else { "" }
+                                    )}
+                                    data-id={ep_id.to_string()}
+                                    draggable="true"
+                                    ondragstart={ondragstart.clone()}
+                                    ondragover={ondragover.clone()}
+                                    ondragend={ondragend.clone()}
+                                    ondrop={ondrop.clone()}
+                                    onclick={on_play}
+                                    key={i}
+                                >
+                                    <div class="queue-drag-handle">
+                                        <i class="ph ph-dots-six-vertical"></i>
+                                    </div>
+                                    <FallbackImage
+                                        src={ep_art}
+                                        alt="Episode art"
+                                        class="queue-item-art"
+                                    />
+                                    <div class="queue-item-body">
+                                        <div class="queue-item-title">{ ep_title }</div>
+                                        <div class="queue-item-sub">
+                                            <span>{ ep_duration }</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        class="queue-item-remove"
+                                        onclick={on_remove}
+                                        title="Remove"
+                                    >
+                                        <i class="ph ph-x"></i>
+                                    </button>
+                                </div>
+                            }
+                        }) }
+                    }
+                </div>
+            </aside>
+        </>
+    }
+}

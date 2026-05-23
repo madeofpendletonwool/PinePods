@@ -97,74 +97,80 @@ pub fn rss_feed_settings() -> Html {
     }
 
     html! {
-        <div class="p-4">
-            <p class="item_container-text text-lg font-bold mb-4">{"RSS Feed Settings:"}</p>
-            <p class="item_container-text text-md mb-4">{"Enable RSS feeds to access your podcasts from any podcast app. When enabled, you can use the URL below to subscribe to your podcasts in your favorite podcast app. The URL includes your API key, so keep it private."}</p>
-
-            <label class="relative inline-flex items-center cursor-pointer mb-4">
-                <input
-                    type="checkbox"
-                    disabled={**loading.borrow()}
-                    checked={**rss_feed_status.borrow()}
-                    class="sr-only peer"
-                    onclick={Callback::from(move |_| {
-                        let api_key = api_key.clone();
-                        let server_name = server_name.clone();
-                        let rss_feed_status = html_rss_status.clone();
-                        let _dispatch = _dispatch.clone();
-                        let loading = loading.clone();
-                        let future = async move {
-                            loading.set(true);
-                            if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
-                                let response = call_toggle_rss_feeds(server_name, api_key.unwrap()).await;
-                                match response {
-                                    Ok(toggle_response) => {
-                                        rss_feed_status.set(toggle_response.enabled);
-                                    },
-                                    Err(e) => {
-                                        let formatted_error = format_error_message(&e.to_string());
-                                        _dispatch.reduce_mut(|audio_state|
-                                            audio_state.error_message = Some(format!("Error toggling RSS feeds: {}", formatted_error))
-                                        );
-                                    },
-                                }
-                            }
-                            loading.set(false);
-                        };
-                        spawn_local(future);
-                    })}
-                />
-                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                <span class="ms-3 text-sm font-medium item_container-text">{"Enable RSS Feeds"}</span>
-            </label>
-
-            if *rss_feed_status {
-                <div class="mt-4">
-                    <p class="item_container-text font-semibold mb-2">{"Your RSS Feed URL:"}</p>
-                    <div class="relative">
-                        <input
-                            type="text"
-                            value={(*rss_feed_url).clone()}
-                            readonly=true
-                            class="w-full p-2 pr-20 border rounded bg-gray-100 dark:bg-gray-700 text-sm item_container-text"
-                        />
-                        <button
-                            onclick={{
-                                let rss_feed_url = rss_feed_url.clone();
-                                Callback::from(move |_| {
-                                    if let Some(window) = web_sys::window() {
-                                        let clipboard = window.navigator().clipboard();
-                                        let _ = clipboard.write_text(&(*rss_feed_url));
+        <>
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{"Enable RSS feeds"}</div>
+                <div class="settings-row-desc">{"The URL includes your API key — keep it private."}</div>
+            </div>
+            <div class="settings-row-control">
+                <label class="toggle">
+                    <input
+                        type="checkbox"
+                        disabled={**loading.borrow()}
+                        checked={**rss_feed_status.borrow()}
+                        onclick={Callback::from(move |_| {
+                            let api_key = api_key.clone();
+                            let server_name = server_name.clone();
+                            let rss_feed_status = html_rss_status.clone();
+                            let _dispatch = _dispatch.clone();
+                            let loading = loading.clone();
+                            let future = async move {
+                                loading.set(true);
+                                if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                                    let response = call_toggle_rss_feeds(server_name, api_key.unwrap()).await;
+                                    match response {
+                                        Ok(toggle_response) => {
+                                            rss_feed_status.set(toggle_response.enabled);
+                                        },
+                                        Err(e) => {
+                                            let formatted_error = format_error_message(&e.to_string());
+                                            _dispatch.reduce_mut(|audio_state|
+                                                audio_state.error_message = Some(format!("Error toggling RSS feeds: {}", formatted_error))
+                                            );
+                                        },
                                     }
-                                })
-                            }}
-                            class="absolute right-2 top-1/2 transform -translate-y-1/2 px-4 py-1 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                        >
-                            {"Copy"}
-                        </button>
-                    </div>
-                </div>
-            }
+                                }
+                                loading.set(false);
+                            };
+                            spawn_local(future);
+                        })}
+                    />
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
+            </div>
         </div>
+        if *rss_feed_status {
+            <div class="settings-row">
+                <div>
+                    <div class="settings-row-label">{"Your RSS feed URL"}</div>
+                </div>
+                <div class="settings-row-control" style="display:flex;align-items:center;gap:8px;max-width:320px;width:100%;">
+                    <input
+                        type="text"
+                        value={(*rss_feed_url).clone()}
+                        readonly=true
+                        class="input"
+                        style="font-size:11px;"
+                    />
+                    <button
+                        onclick={{
+                            let rss_feed_url = rss_feed_url.clone();
+                            Callback::from(move |_| {
+                                if let Some(window) = web_sys::window() {
+                                    let clipboard = window.navigator().clipboard();
+                                    let _ = clipboard.write_text(&(*rss_feed_url));
+                                }
+                            })
+                        }}
+                        class="btn btn-ghost"
+                        style="padding:6px 10px;white-space:nowrap;"
+                    >
+                        <i class="ph ph-copy"></i>
+                    </button>
+                </div>
+            </div>
+        }
+        </>
     }
 }

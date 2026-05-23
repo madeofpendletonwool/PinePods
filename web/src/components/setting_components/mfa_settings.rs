@@ -34,8 +34,6 @@ pub fn mfa_options() -> Html {
     let i18n_verify_code = i18n.t("mfa_settings.verify_code").to_string();
     let i18n_verify = i18n.t("mfa_settings.verify").to_string();
     let i18n_close = i18n.t("common.cancel").to_string();
-    let i18n_mfa_options = i18n.t("mfa_settings.mfa_options").to_string();
-    let i18n_mfa_description = i18n.t("mfa_settings.mfa_description").to_string();
     let i18n_enable_mfa = i18n.t("mfa_settings.enable_mfa").to_string();
 
     let effect_user_id = user_id.clone();
@@ -347,15 +345,16 @@ pub fn mfa_options() -> Html {
             _ => html! {},
             }
         }
-        <div class="p-4"> // You can adjust the padding as needed
-            <p class="item_container-text text-lg font-bold mb-4">{&i18n_mfa_options}</p>
-            <p class="item_container-text text-md mb-4">{&i18n_mfa_description}</p> // Styled paragraph
-
-            <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" disabled={**loading.borrow()} checked={**mfa_status.borrow()} class="sr-only peer" onclick={open_setup_modal.clone()} />
-                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                <span class="ms-3 text-sm font-medium item_container-text">{&i18n_enable_mfa}</span>
-            </label>
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{&i18n_enable_mfa}</div>
+            </div>
+            <div class="settings-row-control">
+                <label class="toggle">
+                    <input type="checkbox" disabled={**loading.borrow()} checked={**mfa_status.borrow()} onclick={open_setup_modal.clone()} />
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
+            </div>
         </div>
         </>
     }

@@ -35,12 +35,6 @@ pub fn gpodder_advanced_options() -> Html {
     let i18n_failed_to_load_gpodder_devices = i18n
         .t("nextcloud_options.failed_to_load_gpodder_devices")
         .to_string();
-    let i18n_gpodder_advanced_settings = i18n
-        .t("nextcloud_options.gpodder_advanced_settings")
-        .to_string();
-    let i18n_gpodder_sync_description = i18n
-        .t("nextcloud_options.gpodder_sync_description")
-        .to_string();
     let i18n_your_gpodder_devices = i18n.t("nextcloud_options.your_gpodder_devices").to_string();
     let i18n_loading_devices = i18n.t("nextcloud_options.loading_devices").to_string();
     let i18n_no_devices_found = i18n.t("nextcloud_options.no_devices_found").to_string();
@@ -596,32 +590,34 @@ pub fn gpodder_advanced_options() -> Html {
 
     // Render the component
     html! {
-        <div class="p-4">
-            <h2 class="item_container-text text-lg font-bold mb-4">{&i18n_gpodder_advanced_settings}</h2>
-
-            <div class="mb-6">
-                <p class="item_container-text text-md mb-4">
-                    {&i18n_gpodder_sync_description}
-                </p>
-            </div>
-
+        <>
             // Devices section
-            <div class="mb-8 p-4 border rounded-lg">
-                <h3 class="item_container-text text-md font-bold mb-4">{&i18n_your_gpodder_devices}</h3>
+            <div class="settings-subsection-title">{&i18n_your_gpodder_devices}</div>
 
-                {
-                    if *is_loading_devices {
-                        html! { <div class="flex items-center mb-4"><i class="ph ph-spinner animate-spin mr-2"></i><span>{&i18n_loading_devices}</span></div> }
-                    } else if devices.is_empty() {
-                        html! { <p class="text-md mb-4">{&i18n_no_devices_found}</p> }
-                    } else {
-                        html! {
-                            <>
-                                <div class="mb-4">
-                                    <label for="device-select" class="block text-sm font-medium mb-2">{&i18n_select_device_for_operations}</label>
+            {
+                if *is_loading_devices {
+                    html! {
+                        <div class="settings-row">
+                            <div></div>
+                            <div class="settings-row-control"><i class="ph ph-spinner animate-spin"></i><span>{&i18n_loading_devices}</span></div>
+                        </div>
+                    }
+                } else if devices.is_empty() {
+                    html! {
+                        <div class="settings-row">
+                            <div><div class="settings-row-label">{&i18n_no_devices_found}</div></div>
+                            <div class="settings-row-control"></div>
+                        </div>
+                    }
+                } else {
+                    html! {
+                        <>
+                            <div class="settings-row">
+                                <div><div class="settings-row-label">{&i18n_select_device_for_operations}</div></div>
+                                <div class="settings-row-control">
                                     <select
                                         id="device-select"
-                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                        class="select"
                                         onchange={on_device_select_change}
                                     >
                                         <option value="">{&i18n_select_a_device}</option>
@@ -655,73 +651,46 @@ pub fn gpodder_advanced_options() -> Html {
                                         }
                                     </select>
                                 </div>
+                            </div>
 
-                                <div class="flex flex-wrap gap-3 mb-4">
+                            <div class="settings-row">
+                                <div></div>
+                                <div class="settings-row-control">
                                     <button
                                         onclick={on_sync_click}
                                         disabled={*is_syncing || selected_device_id.is_none()}
-                                        class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                        class="btn btn-secondary"
                                     >
-                                        {
-                                            if *is_syncing {
-                                                html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Syncing..."}</span> }
-                                            } else {
-                                                html! { <span class="flex items-center"><i class="ph ph-arrows-clockwise mr-2"></i>{"Sync GPodder"}</span> }
-                                            }
-                                        }
+                                        <i class="ph ph-arrows-clockwise"></i>
+                                        {if *is_syncing { "Syncing..." } else { "Sync GPodder" }}
                                     </button>
 
                                     <button
                                         onclick={on_push_click}
                                         disabled={*is_pushing || selected_device_id.is_none()}
-                                        class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                        class="btn btn-secondary"
                                     >
-                                        {
-                                            if *is_pushing {
-                                                html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Initial Syncing..."}</span> }
-                                            } else {
-                                                html! { <span class="flex items-center"><i class="ph ph-arrow-clockwise mr-2"></i>{"Initial Sync GPodder"}</span> }
-                                            }
-                                        }
+                                        <i class="ph ph-arrow-clockwise"></i>
+                                        {if *is_pushing { "Initial Syncing..." } else { "Initial Sync" }}
                                     </button>
 
                                     <button
                                         onclick={on_set_default_device}
                                         disabled={*is_setting_default || selected_device_id.is_none() || is_selected_device_default}
-                                        class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                        class="btn btn-ghost"
                                     >
                                         {
                                             if *is_setting_default {
-                                                html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Setting default..."}</span> }
+                                                html! { <><i class="ph ph-spinner"></i>{"Setting default..."}</> }
                                             } else if is_selected_device_default {
-                                                html! { <span class="flex items-center"><i class="ph ph-check-circle mr-2"></i>{"Current default"}</span> }
+                                                html! { <><i class="ph ph-check-circle"></i>{"Current default"}</> }
                                             } else {
-                                                html! { <span class="flex items-center"><i class="ph ph-star mr-2"></i>{"Set as default"}</span> }
+                                                html! { <><i class="ph ph-star"></i>{"Set as default"}</> }
                                             }
                                         }
                                     </button>
                                 </div>
-
-                                // Sync button explanations
-                                <div class="mb-6 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                                    <h4 class="text-sm font-bold mb-2 text-blue-800 dark:text-blue-200">{"Sync Options:"}</h4>
-                                    <div class="text-sm text-blue-700 dark:text-blue-300 space-y-1">
-                                        <div class="flex items-start">
-                                            <i class="ph ph-arrows-clockwise mr-2 mt-0.5 flex-shrink-0"></i>
-                                            <div>
-                                                <strong>{"Sync GPodder:"}</strong>
-                                                {" Regular incremental sync that downloads only new changes since last sync. Use this for daily syncing to get new subscriptions and episode progress."}
-                                            </div>
-                                        </div>
-                                        <div class="flex items-start">
-                                            <i class="ph ph-arrow-clockwise mr-2 mt-0.5 flex-shrink-0"></i>
-                                            <div>
-                                                <strong>{"Initial Sync GPodder:"}</strong>
-                                                {" Full reset sync that downloads ALL data from scratch, ignoring timestamps. Use when setting up sync or if regular sync isn't working properly."}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                            </div>
 
                                 <div class="mb-4">
                                     {
@@ -823,89 +792,68 @@ pub fn gpodder_advanced_options() -> Html {
                         }
                     }
                 }
+
+            <div class="settings-subsection-title">{"Add New Device"}</div>
+
+            <div class="settings-row">
+                <div><div class="settings-row-label">{"Device Name"}</div></div>
+                <div class="settings-row-control">
+                    <input
+                        type="text"
+                        id="device-name"
+                        class="input"
+                        placeholder="my-phone"
+                        value={(*new_device_name).clone()}
+                        oninput={on_device_name_change}
+                    />
+                </div>
             </div>
 
-            // Create device section
-            <div class="p-4 border rounded-lg">
-                <h3 class="item_container-text text-md font-bold mb-4">{"Add New Device"}</h3>
-
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div>
-                        <label for="device-name" class="block text-sm font-medium mb-2">{"Device Name (required)"}</label>
-                        <input
-                            type="text"
-                            id="device-name"
-                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-                            placeholder="my-phone"
-                            value={(*new_device_name).clone()}
-                            oninput={on_device_name_change}
-                        />
-                    </div>
-
-                    <div>
-                        <label for="device-type" class="block text-sm font-medium mb-2">{"Device Type"}</label>
-                        <select
-                            id="device-type"
-                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-                            onchange={on_device_type_change}
-                        >
-                            <option value="desktop" selected={*new_device_type == "desktop"}>{"Desktop"}</option>
-                            <option value="laptop" selected={*new_device_type == "laptop"}>{"Laptop"}</option>
-                            <option value="mobile" selected={*new_device_type == "mobile"}>{"Mobile"}</option>
-                            <option value="server" selected={*new_device_type == "server"}>{"Server"}</option>
-                            <option value="other" selected={*new_device_type == "other"}>{"Other"}</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label for="device-caption" class="block text-sm font-medium mb-2">{"Caption (optional)"}</label>
-                        <input
-                            type="text"
-                            id="device-caption"
-                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-                            placeholder="My Android Phone"
-                            value={(*new_device_caption).clone()}
-                            oninput={on_device_caption_change}
-                        />
-                    </div>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{"Device Type"}</div></div>
+                <div class="settings-row-control">
+                    <select
+                        id="device-type"
+                        class="select"
+                        onchange={on_device_type_change}
+                    >
+                        <option value="desktop" selected={*new_device_type == "desktop"}>{"Desktop"}</option>
+                        <option value="laptop" selected={*new_device_type == "laptop"}>{"Laptop"}</option>
+                        <option value="mobile" selected={*new_device_type == "mobile"}>{"Mobile"}</option>
+                        <option value="server" selected={*new_device_type == "server"}>{"Server"}</option>
+                        <option value="other" selected={*new_device_type == "other"}>{"Other"}</option>
+                    </select>
                 </div>
+            </div>
 
-                <div class="mt-4">
+            <div class="settings-row">
+                <div><div class="settings-row-label">{"Caption (optional)"}</div></div>
+                <div class="settings-row-control">
+                    <input
+                        type="text"
+                        id="device-caption"
+                        class="input"
+                        placeholder="My Android Phone"
+                        value={(*new_device_caption).clone()}
+                        oninput={on_device_caption_change}
+                    />
+                </div>
+            </div>
+
+            <div class="settings-row">
+                <div></div>
+                <div class="settings-row-control">
                     <button
                         onclick={on_create_device}
                         disabled={*is_creating_device || (*new_device_name).is_empty()}
-                        class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                        class="btn btn-primary"
                     >
-                        {
-                            if *is_creating_device {
-                                html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Creating..."}</span> }
-                            } else {
-                                html! { <span class="flex items-center"><i class="ph ph-plus mr-2"></i>{"Add Device"}</span> }
-                            }
-                        }
+                        <i class="ph ph-plus"></i>
+                        {if *is_creating_device { "Creating..." } else { "Add Device" }}
                     </button>
                 </div>
             </div>
-
-            // Add help section about default devices
-            <div class="mt-6 p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
-                <h3 class="item_container-text text-md font-bold mb-2">{"About Default Devices"}</h3>
-                <p class="text-sm mb-2">
-                    {"Setting a default device simplifies GPodder synchronization by automatically selecting it for sync operations. This is especially useful if you primarily sync with one device."}
-                </p>
-                <p class="text-sm mb-2">
-                    {"When a default device is set:"}
-                </p>
-                <ul class="list-disc pl-5 mb-2 text-sm">
-                    <li>{"It will be pre-selected in the device dropdown"}</li>
-                    <li>{"Background sync operations will use this device"}</li>
-                    <li>{"You can still manually select other devices when needed"}</li>
-                </ul>
-                <p class="text-sm italic">
-                    {"Note: You can change your default device at any time by selecting a different device and clicking 'Set as default'."}
-                </p>
-            </div>
-        </div>
+        </>
     }
 }
 
@@ -1649,13 +1597,11 @@ pub fn sync_options() -> Html {
     let should_hide_sync_options = *is_internal_gpodder_enabled || *is_sync_configured;
 
     html! {
-        <div class="p-4">
-            <p class="item_container-text text-lg font-bold mb-4">{"Podcast Sync Settings"}</p>
-            <p class="item_container-text text-md mb-4">{"With this option you can authenticate with a Nextcloud or GPodder server to use as a podcast sync client. This works great with AntennaPod on Android so you can have the same exact feed there while on mobile. In addition, if you're already using AntennaPod with Nextcloud Podcast sync you can connect your existing sync feed to quickly import everything right into Pinepods! You'll only enter information for one of the below options. Nextcloud requires that you have the gpodder sync add-on in nextcloud and the gpodder option requires you to have an external gpodder podcast sync server that authenticates via user and pass."}</p>
-
-            <div class="flex items-center mb-4">
-                <p class="item_container-text text-md mr-4">{"Current Podcast Sync Server: "}
-                    <span class="item_container-text font-bold">
+        <>
+            <div class="settings-row">
+                <div>
+                    <div class="settings-row-label">{"Current Sync Server"}</div>
+                    <div class="settings-row-desc">
                     {
                         if *is_internal_gpodder_enabled {
                             "Internal GPodder API".to_string()
@@ -1669,15 +1615,16 @@ pub fn sync_options() -> Html {
                             "Not currently syncing with any server".to_string()
                         }
                     }
-                    </span>
-                </p>
+                    </div>
+                </div>
                 {
                     if *is_sync_configured || *is_internal_gpodder_enabled {
                         html! {
+                            <div class="settings-row-control">
                             <button
                                 onclick={on_remove_sync_click}
                                 disabled={*is_loading}
-                                class="ml-4 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                class="btn btn-secondary"
                             >
                             {
                                 if *is_loading {
@@ -1687,6 +1634,7 @@ pub fn sync_options() -> Html {
                                 }
                             }
                             </button>
+                            </div>
                         }
                     } else {
                         html! {}
@@ -1694,40 +1642,29 @@ pub fn sync_options() -> Html {
                 }
             </div>
 
-            <br/>
-
             // Internal Gpodder API Section - hide when Nextcloud is active
             {
                 if !should_hide_sync_options {
                     html! {
-                        <div class="mb-6 p-4 border rounded-lg">
-                                <h3 class="item_container-text text-md font-bold mb-4">{"Internal Gpodder API"}</h3>
-                                <p class="item_container-text text-sm mb-4">
-                                    {"Enable the internal gpodder API to synchronize podcasts between Pinepods and other gpodder-compatible clients. This will disable external sync options while enabled."}
-                                </p>
-                                <div class="flex items-center">
-                                    <label class="relative inline-flex items-center cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            class="sr-only peer"
-                                            checked={*is_internal_gpodder_enabled}
-                                            disabled={*is_toggling_gpodder}
-                                            onclick={on_toggle_internal_gpodder}
-                                        />
-                                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                                        <span class="ml-3 text-sm font-medium text-gray-900 dark:text-gray-300">
-                                            {
-                                                if *is_toggling_gpodder {
-                                                    html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Processing..."}</span> }
-                                                } else if *is_internal_gpodder_enabled {
-                                                    html! { "Enabled" }
-                                                } else {
-                                                    html! { "Disabled" }
-                                                }
-                                            }
-                                        </span>
-                                    </label>
-                                </div>
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-row-label">{"Internal Gpodder API"}</div>
+                                <div class="settings-row-desc">{"Enable to sync with gpodder-compatible clients. Disables external sync options while active."}</div>
+                            </div>
+                            <div class="settings-row-control">
+                                <label class="toggle">
+                                    <input
+                                        type="checkbox"
+                                        checked={*is_internal_gpodder_enabled}
+                                        disabled={*is_toggling_gpodder}
+                                        onclick={on_toggle_internal_gpodder}
+                                    />
+                                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                                </label>
+                                if *is_toggling_gpodder {
+                                    <i class="ph ph-spinner"></i>
+                                }
+                            </div>
                         </div>
                     }
                 } else {
@@ -1739,20 +1676,19 @@ pub fn sync_options() -> Html {
             {
                 if !should_hide_sync_options {
                     html! {
-                        <div class="mb-6 p-4 border rounded-lg">
-                            <h3 class="item_container-text text-md font-bold mb-4">{"Nextcloud Sync"}</h3>
-                            <label for="server_url" class="item_container-text block mb-2 text-sm font-medium">{ "Nextcloud Server URL" }</label>
-                            <div class="flex items-center">
+                        <div class="settings-row">
+                            <div><div class="settings-row-label">{"Nextcloud Server URL"}</div></div>
+                            <div class="settings-row-control">
                                 <input
                                     type="text"
                                     id="nextcloud_url"
                                     oninput={on_server_url_change.clone()}
-                                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                    class="input"
                                     placeholder="https://nextcloud.com"
                                 />
                                 <button
                                     onclick={on_authenticate_click}
-                                    class="ml-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                    class="btn btn-secondary"
                                 >
                                     {"Authenticate"}
                                 </button>
@@ -1771,64 +1707,63 @@ pub fn sync_options() -> Html {
                         {
                             if !*is_internal_gpodder_enabled {
                                 html! {
-                                    <div class="mb-6 p-4 border rounded-lg">
-                                        <h3 class="item_container-text text-md font-bold mb-4">{"GPodder-compatible Server"}</h3>
-                                        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                            <div>
-                                                <label for="gpodder_url" class="block text-sm font-medium mb-2">{"Server URL"}</label>
+                                    <>
+                                        <div class="settings-row">
+                                            <div><div class="settings-row-label">{"GPodder Server URL"}</div></div>
+                                            <div class="settings-row-control">
                                                 <input
                                                     type="text"
                                                     id="gpodder_url"
                                                     oninput={on_server_url_change}
-                                                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                                    class="input"
                                                     placeholder="https://mypodcastsync.mydomain.com"
                                                 />
                                             </div>
-                                            <div>
-                                                <label for="gpodder_username" class="block text-sm font-medium mb-2">{"Username"}</label>
+                                        </div>
+                                        <div class="settings-row">
+                                            <div><div class="settings-row-label">{"Username"}</div></div>
+                                            <div class="settings-row-control">
                                                 <input
                                                     type="text"
                                                     id="gpodder_username"
                                                     oninput={on_username_change}
-                                                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                                    class="input"
                                                     placeholder="myusername"
                                                 />
                                             </div>
-                                            <div>
-                                                <label for="gpodder_password" class="block text-sm font-medium mb-2">{"Password"}</label>
+                                        </div>
+                                        <div class="settings-row">
+                                            <div><div class="settings-row-label">{"Password"}</div></div>
+                                            <div class="settings-row-control">
                                                 <input
                                                     type="password"
                                                     id="gpodder_password"
                                                     oninput={on_password_change}
-                                                    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                                    class="input"
                                                     placeholder="mypassword"
                                                 />
                                             </div>
                                         </div>
-
-                                        <div class="mt-4 flex space-x-4">
-                                            <button
-                                                onclick={on_test_connection}
-                                                disabled={*is_testing_connection}
-                                                class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                                            >
-                                                {
-                                                    if *is_testing_connection {
-                                                        html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Testing..."}</span> }
-                                                    } else {
-                                                        html! { <span class="flex items-center"><i class="ph ph-check-circle mr-2"></i>{"Test Connection"}</span> }
-                                                    }
-                                                }
-                                            </button>
-
-                                            <button
-                                                onclick={on_authenticate_server_click}
-                                                class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                                            >
-                                                {"Authenticate"}
-                                            </button>
+                                        <div class="settings-row">
+                                            <div></div>
+                                            <div class="settings-row-control">
+                                                <button
+                                                    onclick={on_test_connection}
+                                                    disabled={*is_testing_connection}
+                                                    class="btn btn-secondary"
+                                                >
+                                                    <i class="ph ph-check-circle"></i>
+                                                    {if *is_testing_connection { "Testing..." } else { "Test Connection" }}
+                                                </button>
+                                                <button
+                                                    onclick={on_authenticate_server_click}
+                                                    class="btn btn-primary"
+                                                >
+                                                    {"Authenticate"}
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
+                                    </>
                                 }
                             } else {
                                 html! {}
@@ -1954,20 +1889,24 @@ pub fn sync_options() -> Html {
                 // Show advanced options toggle for internal gpodder or external gpodder (but not nextcloud)
                 if *is_internal_gpodder_enabled || (*is_sync_configured && (*sync_type == "gpodder" || *sync_type == "external")) {
                     html! {
-                        <div class="mt-6">
-                            <button
-                                onclick={on_toggle_advanced}
-                                class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                            >
-                                {
-                                    if *show_advanced_options {
-                                        html! { <span class="flex items-center"><i class="ph ph-caret-up mr-2"></i>{"Hide Extra Options"}</span> }
-                                    } else {
-                                        html! { <span class="flex items-center"><i class="ph ph-caret-down mr-2"></i>{"Show Extra Options"}</span> }
-                                    }
-                                }
-                            </button>
-
+                        <>
+                            <div class="settings-row">
+                                <div></div>
+                                <div class="settings-row-control">
+                                    <button
+                                        onclick={on_toggle_advanced}
+                                        class="btn btn-ghost"
+                                    >
+                                        {
+                                            if *show_advanced_options {
+                                                html! { <><i class="ph ph-caret-up"></i>{"Hide Extra Options"}</> }
+                                            } else {
+                                                html! { <><i class="ph ph-caret-down"></i>{"Show Extra Options"}</> }
+                                            }
+                                        }
+                                    </button>
+                                </div>
+                            </div>
                             {
                                 if *show_advanced_options {
                                     html! { <GpodderAdvancedOptions /> }
@@ -1975,13 +1914,13 @@ pub fn sync_options() -> Html {
                                     html! {}
                                 }
                             }
-                        </div>
+                        </>
                     }
                 } else {
                     html! {}
                 }
             }
-        </div>
+        </>
     }
 }
 

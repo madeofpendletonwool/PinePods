@@ -37,8 +37,6 @@ pub fn api_keys() -> Html {
     let i18n_new_api_key_created = i18n.t("api_keys.new_api_key_created").to_string();
     let i18n_api_key_save_instructions = i18n.t("api_keys.api_key_save_instructions").to_string();
     let i18n_ok = i18n.t("api_keys.ok").to_string();
-    let i18n_api_keys_title = i18n.t("api_keys.api_keys_title").to_string();
-    let i18n_api_keys_description = i18n.t("api_keys.api_keys_description").to_string();
     let i18n_request_api_key = i18n.t("api_keys.request_api_key").to_string();
     let i18n_api_id = i18n.t("api_keys.api_id").to_string();
     let i18n_last_4_digits = i18n.t("api_keys.last_4_digits").to_string();
@@ -277,17 +275,18 @@ pub fn api_keys() -> Html {
                             </svg>
                             <span class="sr-only">{&i18n_close_modal}</span>
                         </button>
-                        <h3 class="text-xl font-semibold item_container-text">
+                        <h3 style="font-size:16px;font-weight:600;color:var(--text-color);margin-bottom:8px;">
                             {&i18n_delete_api_key}
                         </h3>
-                        <p class="text-m font-semibold">
-                        {&i18n_delete_api_key_confirmation}
+                        <p style="font-size:13px;color:var(--text-secondary-color);">
+                            {&i18n_delete_api_key_confirmation}
                         </p>
-                        <div class="flex justify-between space-x-4">
-                            <button onclick={delete_api_key} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                        <div class="flex justify-between space-x-4" style="margin-top:16px;">
+                            <button onclick={delete_api_key} class="btn btn-danger">
+                                <i class="ph ph-trash"></i>
                                 {&i18n_delete}
                             </button>
-                            <button onclick={close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                            <button onclick={close_modal.clone()} class="btn btn-ghost">
                                 {&i18n_cancel}
                             </button>
                         </div>
@@ -307,16 +306,16 @@ pub fn api_keys() -> Html {
                         </svg>
                         <span class="sr-only">{"Close modal"}</span>
                     </button>
-                    <h3 class="item_container-text text-xl font-semibold">
+                    <h3 style="font-size:16px;font-weight:600;color:var(--text-color);margin-bottom:8px;">
                         {&i18n_new_api_key_created}
                     </h3>
-                    <p class="text-m font-semibold item_container-text">
-                    {&i18n_api_key_save_instructions}
+                    <p style="font-size:13px;color:var(--text-secondary-color);">
+                        {&i18n_api_key_save_instructions}
                     </p>
                     <div class="mfa-code-box mt-4 p-4 rounded-md overflow-x-auto whitespace-nowrap max-w-full">
                         {api_key_display}
                     </div>
-                    <button onclick={close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                    <button onclick={close_modal.clone()} class="btn btn-primary" style="margin-top:16px;">
                         {&i18n_ok}
                     </button>
                 </div>
@@ -333,12 +332,14 @@ pub fn api_keys() -> Html {
             _ => html! {},
             }
         }
-            <div class="p-4">
-                <p class="item_container-text text-lg font-bold mb-4">{&i18n_api_keys_title}</p>
-                <p class="item_container-text text-md mb-4">{&i18n_api_keys_description}</p>
-                <button onclick={request_api_key} class="mt-4 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                    {&i18n_request_api_key}
-                </button>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{&i18n_request_api_key}</div></div>
+                <div class="settings-row-control">
+                    <button onclick={request_api_key} class="btn btn-secondary" style="padding:6px 12px;">
+                        <i class="ph ph-key"></i>
+                        <span>{&i18n_request_api_key}</span>
+                    </button>
+                </div>
             </div>
             <div class="relative overflow-x-auto">
                 <table class="w-full text-sm text-left rtl:text-right">

@@ -602,197 +602,178 @@ pub fn user_self_settings() -> Html {
     let available_languages_clone = available_languages.clone();
 
     html! {
-        <div class="user-settings-container">
-            <div class="settings-header">
-                <div class="flex items-center gap-4">
-                    <i class="ph ph-user-circle text-2xl"></i>
-                    <h2 class="text-xl font-semibold">{i18n.t("settings.account_settings")}</h2>
+        <form onsubmit={on_submit}>
+            <div class="settings-row">
+                <div>
+                    <div class="settings-row-label">{i18n.t("settings.username")}</div>
+                    if let Some(info) = &*user_info {
+                        <div class="settings-row-desc">{&info.username}</div>
+                    }
                 </div>
-                if let Some(info) = &*user_info {
-                    <div class="user-info-container mt-4 p-4 border border-solid border-opacity-10 rounded-lg overflow-hidden">
-                        <div class="flex flex-col gap-4 lg:grid lg:grid-cols-1 xl:grid-cols-3 xl:gap-6">
-                            <div class="min-w-0">
-                                <span class="text-sm opacity-80">{"Current Username:"}</span>
-                                <p class="font-medium mt-1 break-words truncate" title={info.username.clone()}>{&info.username}</p>
-                            </div>
-                            <div class="min-w-0">
-                                <span class="text-sm opacity-80">{"Current Full Name:"}</span>
-                                <p class="font-medium mt-1 break-words truncate" title={info.fullname.clone()}>{&info.fullname}</p>
-                            </div>
-                            <div class="min-w-0">
-                                <span class="text-sm opacity-80">{"Current Email:"}</span>
-                                <p class="font-medium mt-1 break-words truncate" title={info.email.clone()}>{&info.email}</p>
-                            </div>
-                        </div>
-                    </div>
-                }
-            </div>
-
-            <form onsubmit={on_submit} class="space-y-4">
-                <div class="form-group">
-                    <label for="username" class="form-label">{i18n.t("settings.username")}</label>
+                <div class="settings-row-control">
                     <input
                         type="text"
-                        id="username"
                         value={(*username).clone()}
                         oninput={on_username_change}
-                        class="form-input"
+                        class="input"
                         placeholder={i18n.t("settings.enter_username")}
                     />
                     if *show_username_error {
                         <p class="error-text">{i18n.t("settings.username_min_length")}</p>
                     }
                 </div>
+            </div>
 
-                <div class="form-group">
-                    <label for="fullname" class="form-label">{i18n.t("settings.full_name")}</label>
+            <div class="settings-row">
+                <div>
+                    <div class="settings-row-label">{i18n.t("settings.full_name")}</div>
+                    if let Some(info) = &*user_info {
+                        <div class="settings-row-desc">{&info.fullname}</div>
+                    }
+                </div>
+                <div class="settings-row-control">
                     <input
                         type="text"
-                        id="fullname"
                         value={(*fullname).clone()}
                         oninput={on_fullname_change}
-                        class="form-input"
+                        class="input"
                         placeholder={i18n.t("settings.enter_full_name")}
                     />
                 </div>
+            </div>
 
-                <div class="form-group">
-                    <label for="email" class="form-label">{i18n.t("settings.email")}</label>
+            <div class="settings-row">
+                <div>
+                    <div class="settings-row-label">{i18n.t("settings.email")}</div>
+                    if let Some(info) = &*user_info {
+                        <div class="settings-row-desc">{&info.email}</div>
+                    }
+                </div>
+                <div class="settings-row-control">
                     <input
                         type="email"
-                        id="email"
                         value={(*email).clone()}
                         oninput={on_email_change}
-                        class="form-input"
+                        class="input"
                         placeholder={i18n.t("settings.enter_email")}
                     />
                     if *show_email_error {
                         <p class="error-text">{i18n.t("settings.please_enter_valid_email")}</p>
                     }
                 </div>
+            </div>
 
-                <div class="password-section">
-                    <h3 class="text-lg font-medium">{i18n.t("settings.change_password")}</h3>
-                    <div class="form-group">
-                        <label for="new-password" class="form-label">{i18n.t("settings.new_password")}</label>
-                        <input
-                            type="password"
-                            id="new-password"
-                            value={(*new_password).clone()}
-                            oninput={on_password_change}
-                            class="form-input"
-                            placeholder={i18n.t("settings.enter_new_password")}
-                        />
-                        if *show_password_error {
-                            <p class="error-text">{i18n.t("settings.password_min_length")}</p>
-                        }
-                    </div>
+            <div class="settings-subsection-title">{i18n.t("settings.change_password")}</div>
 
-                    <div class="form-group">
-                        <label for="confirm-password" class="form-label">{i18n.t("settings.confirm_password")}</label>
-                        <input
-                            type="password"
-                            id="confirm-password"
-                            value={(*confirm_password).clone()}
-                            oninput={on_confirm_password_change}
-                            class="form-input"
-                            placeholder={i18n.t("settings.confirm_new_password")}
-                        />
-                        if *show_password_match_error {
-                            <p class="error-text">{i18n.t("settings.passwords_do_not_match")}</p>
-                        }
-                    </div>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("settings.new_password")}</div></div>
+                <div class="settings-row-control">
+                    <input
+                        type="password"
+                        value={(*new_password).clone()}
+                        oninput={on_password_change}
+                        class="input"
+                        placeholder={i18n.t("settings.enter_new_password")}
+                    />
+                    if *show_password_error {
+                        <p class="error-text">{i18n.t("settings.password_min_length")}</p>
+                    }
                 </div>
+            </div>
 
-                <div class="timezone-section">
-                    <h3 class="text-lg font-medium">{i18n.t("settings.regional_settings")}</h3>
-
-                    <div class="form-group">
-                        <label for="language" class="form-label">
-                            <i class="ph ph-translate"></i>
-                            {i18n.t("settings.language")}
-                        </label>
-                        <select
-                            id="language"
-                            class="form-input"
-                            onchange={on_language_change}
-                            value={(*user_language).clone()}
-                        >
-                            { for available_languages_clone.iter().map(|lang| {
-                                html! {
-                                    <option value={lang.code.clone()} selected={*user_language == lang.code}>{&lang.name}</option>
-                                }
-                            })}
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="timezone" class="form-label">
-                            <i class="ph ph-globe"></i>
-                            {i18n.t("settings.timezone")}
-                        </label>
-                        <select
-                            id="timezone"
-                            class="form-input"
-                            onchange={on_timezone_change}
-                            value={(*timezone).clone()}
-                        >
-                            <option value="" selected={timezone.is_empty()}>{"Select timezone..."}</option>
-                            { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz, &timezone)) }
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="date_format" class="form-label">
-                            <i class="ph ph-calendar"></i>
-                            {i18n.t("settings.date_format")}
-                        </label>
-                        <select
-                            id="date_format"
-                            class="form-input"
-                            onchange={on_date_format_change}
-                            value={(*date_format).clone()}
-                        >
-                            <option value="" selected={date_format.is_empty()}>{"Select date format..."}</option>
-                            <option value="MDY" selected={*date_format == "MDY"}>{"MM-DD-YYYY"}</option>
-                            <option value="DMY" selected={*date_format == "DMY"}>{"DD-MM-YYYY"}</option>
-                            <option value="YMD" selected={*date_format == "YMD"}>{"YYYY-MM-DD"}</option>
-                            <option value="JUL" selected={*date_format == "JUL"}>{"YY/DDD (Julian)"}</option>
-                            <option value="ISO" selected={*date_format == "ISO"}>{"ISO 8601"}</option>
-                            <option value="USA" selected={*date_format == "USA"}>{"MM/DD/YYYY"}</option>
-                            <option value="EUR" selected={*date_format == "EUR"}>{"DD.MM.YYYY"}</option>
-                            <option value="JIS" selected={*date_format == "JIS"}>{"YYYY-MM-DD"}</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="time_format" class="form-label">
-                            <i class="ph ph-clock-clockwise"></i>
-                            {i18n.t("settings.time_format")}
-                        </label>
-                        <select
-                            id="time_format"
-                            class="form-input"
-                            onchange={on_time_format_change}
-                            value={time_format.to_string()}
-                        >
-                            <option value="12" selected={*time_format == "12"}>{"12 Hour"}</option>
-                            <option value="24" selected={*time_format == "24"}>{"24 Hour"}</option>
-                        </select>
-                    </div>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("settings.confirm_password")}</div></div>
+                <div class="settings-row-control">
+                    <input
+                        type="password"
+                        value={(*confirm_password).clone()}
+                        oninput={on_confirm_password_change}
+                        class="input"
+                        placeholder={i18n.t("settings.confirm_new_password")}
+                    />
+                    if *show_password_match_error {
+                        <p class="error-text">{i18n.t("settings.passwords_do_not_match")}</p>
+                    }
                 </div>
+            </div>
 
-                if *show_success {
-                    <div class="success-message">
-                        {(*success_message).clone()}
-                    </div>
-                }
+            <div class="settings-subsection-title">{i18n.t("settings.regional_settings")}</div>
 
-                <button type="submit" class="submit-button">
-                    <i class="ph ph-floppy-disk"></i>
-                    {i18n.t("settings.save_changes")}
-                </button>
-            </form>
-        </div>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("settings.language")}</div></div>
+                <div class="settings-row-control">
+                    <select
+                        class="select"
+                        onchange={on_language_change}
+                    >
+                        { for available_languages_clone.iter().map(|lang| {
+                            html! {
+                                <option value={lang.code.clone()} selected={*user_language == lang.code}>{&lang.name}</option>
+                            }
+                        })}
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("settings.timezone")}</div></div>
+                <div class="settings-row-control">
+                    <select
+                        class="select"
+                        onchange={on_timezone_change}
+                    >
+                        <option value="" selected={timezone.is_empty()}>{"Select timezone..."}</option>
+                        { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz, &timezone)) }
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("settings.date_format")}</div></div>
+                <div class="settings-row-control">
+                    <select
+                        class="select"
+                        onchange={on_date_format_change}
+                    >
+                        <option value="" selected={date_format.is_empty()}>{"Select date format..."}</option>
+                        <option value="MDY" selected={*date_format == "MDY"}>{"MM-DD-YYYY"}</option>
+                        <option value="DMY" selected={*date_format == "DMY"}>{"DD-MM-YYYY"}</option>
+                        <option value="YMD" selected={*date_format == "YMD"}>{"YYYY-MM-DD"}</option>
+                        <option value="JUL" selected={*date_format == "JUL"}>{"YY/DDD (Julian)"}</option>
+                        <option value="ISO" selected={*date_format == "ISO"}>{"ISO 8601"}</option>
+                        <option value="USA" selected={*date_format == "USA"}>{"MM/DD/YYYY"}</option>
+                        <option value="EUR" selected={*date_format == "EUR"}>{"DD.MM.YYYY"}</option>
+                        <option value="JIS" selected={*date_format == "JIS"}>{"YYYY-MM-DD"}</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("settings.time_format")}</div></div>
+                <div class="settings-row-control">
+                    <select
+                        class="select"
+                        onchange={on_time_format_change}
+                    >
+                        <option value="12" selected={*time_format == "12"}>{"12 Hour"}</option>
+                        <option value="24" selected={*time_format == "24"}>{"24 Hour"}</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-row">
+                <div>
+                    if *show_success {
+                        <div class="success-message">{(*success_message).clone()}</div>
+                    }
+                </div>
+                <div class="settings-row-control">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="ph ph-floppy-disk"></i>
+                        {i18n.t("settings.save_changes")}
+                    </button>
+                </div>
+            </div>
+        </form>
     }
 }

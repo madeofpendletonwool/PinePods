@@ -18,8 +18,6 @@ pub fn self_service_settings() -> Html {
     let _error_message = state.error_message.clone();
 
     // Capture i18n strings before they get moved
-    let i18n_user_self_service_settings = i18n.t("user_self_service.user_self_service_settings").to_string();
-    let i18n_self_service_description = i18n.t("user_self_service.self_service_description").to_string();
     let i18n_enable_user_self_service = i18n.t("user_self_service.enable_user_self_service").to_string();
 
     let self_service_status = use_state(|| false);
@@ -56,39 +54,40 @@ pub fn self_service_settings() -> Html {
     let loading = use_state(|| false);
 
     html! {
-        <div class="p-4"> // You can adjust the padding as needed
-            <p class="item_container-text text-lg font-bold mb-4">{&i18n_user_self_service_settings}</p> // Styled paragraph
-            <p class="item_container-text text-md mb-4">{&i18n_self_service_description}</p> // Styled paragraph
-
-            <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" disabled={**loading.borrow()} checked={**self_service_status.borrow()} class="sr-only peer" onclick={Callback::from(move |_| {
-                    let api_key = api_key.clone();
-                    let server_name = server_name.clone();
-                    let self_service_status = html_self_service.clone();
-                    let _dispatch = _dispatch.clone();
-                    let loading = loading.clone();
-                    let future = async move {
-                        loading.set(true);
-                        if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
-                            let response = call_enable_disable_self_service(server_name, api_key.unwrap()).await;
-                            match response {
-                                Ok(_) => {
-                                    let current_status = self_service_status.borrow().clone();
-                                    self_service_status.set(!*current_status);
-                                },
-                                Err(e) => {
-                                    let formatted_error = format_error_message(&e.to_string());
-                                    _dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling self service: {}", formatted_error)));
-                                },
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{&i18n_enable_user_self_service}</div>
+            </div>
+            <div class="settings-row-control">
+                <label class="toggle">
+                    <input type="checkbox" disabled={**loading.borrow()} checked={**self_service_status.borrow()} onclick={Callback::from(move |_| {
+                        let api_key = api_key.clone();
+                        let server_name = server_name.clone();
+                        let self_service_status = html_self_service.clone();
+                        let _dispatch = _dispatch.clone();
+                        let loading = loading.clone();
+                        let future = async move {
+                            loading.set(true);
+                            if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                                let response = call_enable_disable_self_service(server_name, api_key.unwrap()).await;
+                                match response {
+                                    Ok(_) => {
+                                        let current_status = self_service_status.borrow().clone();
+                                        self_service_status.set(!*current_status);
+                                    },
+                                    Err(e) => {
+                                        let formatted_error = format_error_message(&e.to_string());
+                                        _dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling self service: {}", formatted_error)));
+                                    },
+                                }
                             }
-                        }
-                        loading.set(false);
-                    };
-                    spawn_local(future);
-                })} />
-                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                <span class="ms-3 text-sm font-medium item_container-text">{&i18n_enable_user_self_service}</span>
-            </label>
+                            loading.set(false);
+                        };
+                        spawn_local(future);
+                    })} />
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
+            </div>
         </div>
     }
 }

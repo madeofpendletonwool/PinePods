@@ -210,7 +210,8 @@ pub fn scope_selector(props: &ScopeSelectorProps) -> Html {
             <button
                 type="button"
                 onclick={toggle_dropdown.clone()}
-                class="search-bar-input border text-sm rounded-lg block w-full p-2.5 flex items-center"
+                class="input"
+                style="display:flex;align-items:center;text-align:left;cursor:pointer;width:100%;"
             >
                 <div class="flex items-center flex-grow">
                     <span class="flex-grow text-left">
@@ -247,35 +248,34 @@ pub fn scope_selector(props: &ScopeSelectorProps) -> Html {
                         >
                             <div class="max-h-[400px] overflow-y-auto p-2 space-y-1">
                                 if detected_provider == ProviderType::GitHub {
-                                    <div class="p-2 rounded bg-blue-900/20 mb-2">
-                                        <div class="flex items-center gap-2">
-                                            <i class="ph ph-info text-blue-400"></i>
-                                            <span class="font-medium">{"GitHub Provider Detected"}</span>
+                                    <div style="padding:8px;border-radius:6px;background:rgba(128,128,128,0.1);margin-bottom:8px;">
+                                        <div style="display:flex;align-items:center;gap:6px;">
+                                            <i class="ph ph-info" style="color:var(--accent-color);"></i>
+                                            <span style="font-size:12px;font-weight:500;color:var(--text-color);">{"GitHub Provider Detected"}</span>
                                         </div>
-                                        <p class="text-sm opacity-80 mt-1">
+                                        <p style="font-size:11px;color:var(--text-secondary-color);margin-top:4px;">
                                             {"GitHub doesn't use standard OIDC scopes. We recommend using their specific scopes for best compatibility."}
                                         </p>
                                     </div>
                                 }
 
-                                // Render scope groups
                                 if !standard_group.is_empty() {
-                                    <div class="mb-2">
-                                        <h3 class="text-sm font-medium opacity-70 mb-1 px-2">{"Standard OIDC Scopes"}</h3>
+                                    <div style="margin-bottom:8px;">
+                                        <div style="font-size:11px;font-weight:500;color:var(--text-secondary-color);margin-bottom:4px;padding:0 8px;">{"Standard OIDC Scopes"}</div>
                                         { render_scope_group(standard_group, &props.selected_scopes, &toggle_scope_selection) }
                                     </div>
                                 }
 
                                 if !github_group.is_empty() {
-                                    <div class="mb-2">
-                                        <h3 class="text-sm font-medium opacity-70 mb-1 px-2">{"GitHub Scopes"}</h3>
+                                    <div style="margin-bottom:8px;">
+                                        <div style="font-size:11px;font-weight:500;color:var(--text-secondary-color);margin-bottom:4px;padding:0 8px;">{"GitHub Scopes"}</div>
                                         { render_scope_group(github_group, &props.selected_scopes, &toggle_scope_selection) }
                                     </div>
                                 }
 
                                 if !google_group.is_empty() {
-                                    <div class="mb-2">
-                                        <h3 class="text-sm font-medium opacity-70 mb-1 px-2">{"Google Scopes"}</h3>
+                                    <div style="margin-bottom:8px;">
+                                        <div style="font-size:11px;font-weight:500;color:var(--text-secondary-color);margin-bottom:4px;padding:0 8px;">{"Google Scopes"}</div>
                                         { render_scope_group(google_group, &props.selected_scopes, &toggle_scope_selection) }
                                     </div>
                                 }
@@ -310,38 +310,27 @@ fn render_scope_group(
                 <div
                     key={scope.id.clone()}
                     {onclick}
-                    class={classes!(
-                        "flex",
-                        "items-start",
-                        "p-2",
-                        "rounded-lg",
-                        "cursor-pointer",
-                        "hover:bg-gray-700",
-                        "transition-colors",
-                        if is_selected { "bg-gray-700" } else { "" }
-                    )}
+                    style={if is_selected {
+                        "display:flex;align-items:flex-start;padding:8px;border-radius:6px;cursor:pointer;background:rgba(128,128,128,0.15);"
+                    } else {
+                        "display:flex;align-items:flex-start;padding:8px;border-radius:6px;cursor:pointer;"
+                    }}
                 >
-                    <div class="flex items-center h-5">
+                    <div style="display:flex;align-items:center;margin-top:2px;">
                         <input
                             type="checkbox"
-                            class="w-4 h-4 accent-blue-500"
+                            style="width:14px;height:14px;accent-color:var(--accent-color);"
                             checked={is_selected}
                             readonly=true
                         />
                     </div>
-                    <div class="ml-3 flex-grow">
-                        <label class="font-medium">
-                            {&scope.name}
-                        </label>
-                        <p class="text-sm opacity-70">
-                            {&scope.description}
-                        </p>
-                        <code class="text-xs opacity-50 block mt-1">
-                            {&scope.value}
-                        </code>
+                    <div style="margin-left:10px;flex:1;">
+                        <div style="font-size:13px;font-weight:500;color:var(--text-color);">{&scope.name}</div>
+                        <div style="font-size:11px;color:var(--text-secondary-color);margin-top:2px;">{&scope.description}</div>
+                        <code style="font-size:10px;color:var(--text-secondary-color);opacity:0.7;display:block;margin-top:2px;">{&scope.value}</code>
                     </div>
                     if is_selected {
-                        <i class="ph ph-check text-blue-500 text-xl"></i>
+                        <i class="ph ph-check" style="font-size:18px;color:var(--accent-color);flex-shrink:0;"></i>
                     }
                 </div>
             }
@@ -1004,52 +993,53 @@ pub fn oidc_settings() -> Html {
                             </button>
                         </div>
                         <div class="p-4 md:p-5">
-                            <div class="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4 mb-6">
-                                <div class="flex items-center gap-2 mb-2">
-                                    <i class="ph ph-info text-indigo-600 dark:text-indigo-400"></i>
-                                    <h3 class="font-medium text-indigo-900 dark:text-indigo-100">{&i18n_oidc_redirect_url}</h3>
+                            <div style="padding:12px;border-radius:8px;background:rgba(128,128,128,0.08);border:1px solid rgba(128,128,128,0.2);margin-bottom:16px;">
+                                <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                                    <i class="ph ph-info" style="color:var(--accent-color);"></i>
+                                    <span style="font-size:13px;font-weight:500;color:var(--text-color);">{&i18n_oidc_redirect_url}</span>
                                 </div>
-                                <div class="flex items-center gap-2 bg-white dark:bg-gray-800 rounded p-2">
-                                    <code class="text-sm text-gray-800 dark:text-gray-200 flex-grow">
+                                <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(0,0,0,0.15);border-radius:4px;">
+                                    <code style="font-size:12px;color:var(--text-color);flex:1;word-break:break-all;">
                                         {redirect_url.clone()}
                                     </code>
                                     <button
                                         onclick={onclick_copy.clone()}
-                                        class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 p-1 rounded"
+                                        class="btn btn-ghost"
+                                        style="padding:4px 6px;"
                                         title="Copy to clipboard"
                                     >
-                                        <i class="ph ph-copy text-lg"></i>
+                                        <i class="ph ph-copy"></i>
                                     </button>
                                 </div>
-                                <p class="text-sm text-indigo-700 dark:text-indigo-300 mt-2">
-    {&i18n_use_this_url_when_configuring}
+                                <p style="font-size:11px;color:var(--text-secondary-color);margin-top:6px;">
+                                    {&i18n_use_this_url_when_configuring}
                                 </p>
                             </div>
                             <form class="space-y-4" action="#" onsubmit={on_submit}>
                                 <div class="grid grid-cols-2 gap-4">
-                                    <div class="form-group">
-                                        <label class="form-label">{&i18n_provider_name}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_provider_name}</label>
                                         <input
                                             type="text"
-                                            class="form-input"
+                                            class="input"
                                             value={(*provider_name).clone()}
                                             oninput={on_provider_name_change}
                                             placeholder="Google"
                                             required=true
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{&i18n_client_id}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_client_id}</label>
                                         <input
                                             type="text"
-                                            class="form-input"
+                                            class="input"
                                             value={(*client_id).clone()}
                                             oninput={on_client_id_change}
                                             required=true
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{&i18n_client_secret}
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_client_secret}
                                             {match &*page_state {
                                                 PageState::EditProvider(_) => html! { <span class="text-sm opacity-70">{" (leave empty to keep current)"}</span> },
                                                 _ => html! {}
@@ -1057,7 +1047,7 @@ pub fn oidc_settings() -> Html {
                                         </label>
                                         <input
                                             type="password"
-                                            class="form-input"
+                                            class="input"
                                             value={(*client_secret).clone()}
                                             oninput={on_client_secret_change}
                                             required={match &*page_state {
@@ -1067,41 +1057,41 @@ pub fn oidc_settings() -> Html {
                                             }}
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{&i18n_authorization_url}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_authorization_url}</label>
                                         <input
                                             type="url"
-                                            class="form-input"
+                                            class="input"
                                             value={(*auth_url).clone()}
                                             oninput={on_auth_url_change}
                                             placeholder="https://provider.com/oauth2/auth"
                                             required=true
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{&i18n_token_url}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_token_url}</label>
                                         <input
                                             type="url"
-                                            class="form-input"
+                                            class="input"
                                             value={(*token_url).clone()}
                                             oninput={on_token_url_change}
                                             placeholder="https://provider.com/oauth2/token"
                                             required=true
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{&i18n_user_info_url}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_user_info_url}</label>
                                         <input
                                             type="url"
-                                            class="form-input"
+                                            class="input"
                                             value={(*user_info_url).clone()}
                                             oninput={on_user_info_url_change}
                                             placeholder="https://provider.com/oauth2/userinfo"
                                             required=true
                                         />
                                     </div>
-                                    <div class="form-group col-span-2">
-                                        <label class="form-label">{"Scopes"}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;grid-column:span 2;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Scopes"}</label>
                                         <ScopeSelector
                                             selected_scopes={(*selected_scopes).clone()}
                                             on_select={scope_on_select}
@@ -1110,106 +1100,106 @@ pub fn oidc_settings() -> Html {
                                             user_info_url={(*user_info_url).clone()}
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{"Button Text"}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Text"}</label>
                                         <input
                                             type="text"
-                                            class="form-input"
+                                            class="input"
                                             value={(*button_text).clone()}
                                             oninput={on_button_text_change}
                                             placeholder="Login with Provider"
                                             required=true
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{"Button Color"}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Color"}</label>
                                         <input
                                             type="color"
-                                            class="form-input h-[42px]"
+                                            class="input" style="height:38px;padding:4px 8px;"
                                             value={(*button_color).clone()}
                                             oninput={on_button_color_change}
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{"Button Text Color"}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Text Color"}</label>
                                         <input
                                             type="color"
-                                            class="form-input h-[42px]"
+                                            class="input" style="height:38px;padding:4px 8px;"
                                             value={(*button_text_color).clone()}
                                             oninput={on_button_text_color_change}
                                         />
                                     </div>
-                                    <div class="form-group col-span-2">
-                                        <label class="form-label">{"Icon SVG (optional)"}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;grid-column:span 2;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Icon SVG (optional)"}</label>
                                         <textarea
-                                            class="form-input min-h-[100px]"
+                                            class="input" style="min-height:80px;"
                                             value={(*icon_svg).clone()}
                                             oninput={on_icon_svg_change}
                                             placeholder="<svg>...</svg>"
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{"Name Claim"}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Name Claim"}</label>
                                         <input
                                             type="text"
-                                            class="form-input"
+                                            class="input"
                                             value={(*name_claim).clone()}
                                             oninput={on_name_claim_change}
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{"Email Claim"}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Email Claim"}</label>
                                         <input
                                             type="text"
-                                            class="form-input"
+                                            class="input"
                                             value={(*email_claim).clone()}
                                             oninput={on_email_claim_change}
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{"Username Claim"}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Username Claim"}</label>
                                         <input
                                             type="text"
-                                            class="form-input"
+                                            class="input"
                                             value={(*username_claim).clone()}
                                             oninput={on_username_claim_change}
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{"Roles Claim"}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Roles Claim"}</label>
                                         <input
                                             type="text"
-                                            class="form-input"
+                                            class="input"
                                             value={(*roles_claim).clone()}
                                             oninput={on_roles_claim_change}
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{"User Role"}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"User Role"}</label>
                                         <input
                                             type="text"
-                                            class="form-input"
+                                            class="input"
                                             value={(*user_role).clone()}
                                             oninput={on_user_role_change}
                                         />
                                     </div>
-                                    <div class="form-group">
-                                        <label class="form-label">{"Admin Role"}</label>
+                                    <div style="display:flex;flex-direction:column;gap:4px;">
+                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Admin Role"}</label>
                                         <input
                                             type="text"
-                                            class="form-input"
+                                            class="input"
                                             value={(*admin_role).clone()}
                                             oninput={on_admin_role_change}
                                         />
                                     </div>
                                 </div>
-                                <div class="flex justify-end mt-4">
-                                    <button type="submit" class="download-button focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">
-    {match &*page_state {
-        PageState::AddProvider => &i18n_add,
-        PageState::EditProvider(_) => &i18n_update,
-        PageState::Hidden => &i18n_submit, // fallback
-    }}
+                                <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+                                    <button type="submit" class="btn btn-primary">
+                                        {match &*page_state {
+                                            PageState::AddProvider => &i18n_add,
+                                            PageState::EditProvider(_) => &i18n_update,
+                                            PageState::Hidden => &i18n_submit,
+                                        }}
                                     </button>
                                 </div>
                             </form>
@@ -1220,49 +1210,38 @@ pub fn oidc_settings() -> Html {
         };
 
     html! {
-            <div class="user-settings-container">
-
-                <div class="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4 mb-6">
-                    <div class="flex items-center gap-2 mb-2">
-                        <i class="ph ph-info text-indigo-600 dark:text-indigo-400"></i>
-                        <h3 class="font-medium text-indigo-900 dark:text-indigo-100">{"OIDC Redirect URL"}</h3>
-                    </div>
-                    <div class="flex items-center gap-2 bg-white dark:bg-gray-800 rounded p-2">
-                        <code class="text-sm text-gray-800 dark:text-gray-200 flex-grow">
-                            {redirect_url}
-                        </code>
-                        <button
-                            onclick={onclick_copy}
-                            class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 p-1 rounded"
-                            title="Copy to clipboard"
-                        >
-                            <i class="ph ph-copy text-lg"></i>
-                        </button>
-                    </div>
-                    <p class="text-sm text-indigo-700 dark:text-indigo-300 mt-2">
-                        {"Use this URL when configuring your OIDC provider's callback/redirect settings."}
-                    </p>
+        <>
+            <div class="settings-row">
+                <div>
+                    <div class="settings-row-label">{&i18n_oidc_redirect_url}</div>
+                    <div class="settings-row-desc">{&i18n_use_this_url_when_configuring}</div>
                 </div>
-
-                <div class="settings-header">
-                    <div class="flex items-center gap-4">
-                        <i class="ph ph-key text-2xl"></i>
-                        <h2 class="text-xl font-semibold">{&i18n_oidc_provider_management}</h2>
-                    </div>
-                </div>
-
-                <div class="mb-6">
-                    <button onclick={on_add_provider} class="settings-button">
-                        <i class="ph ph-plus"></i>
-    {&i18n_add_provider}
+                <div class="settings-row-control">
+                    <code style="font-size:12px;color:var(--text-color);padding:4px 8px;background:rgba(128,128,128,0.1);border-radius:4px;word-break:break-all;">
+                        {redirect_url}
+                    </code>
+                    <button onclick={onclick_copy} class="btn btn-ghost" style="padding:6px 8px;" title="Copy to clipboard">
+                        <i class="ph ph-copy"></i>
                     </button>
                 </div>
+            </div>
 
-                if (*providers).is_empty() {
-                    <div class="oidc-empty-state">
-                        <p>{&i18n_no_oidc_providers_configured}</p>
-                    </div>
-                } else {
+            <div class="settings-row">
+                <div></div>
+                <div class="settings-row-control">
+                    <button onclick={on_add_provider} class="btn btn-secondary" style="padding:6px 12px;">
+                        <i class="ph ph-plus"></i>
+                        <span>{&i18n_add_provider}</span>
+                    </button>
+                </div>
+            </div>
+
+            if (*providers).is_empty() {
+                <div class="settings-row">
+                    <div><div class="settings-row-desc">{&i18n_no_oidc_providers_configured}</div></div>
+                </div>
+            } else {
+                <div style="display:flex;flex-direction:column;gap:8px;">
                     {
                         (*providers).iter().map(|provider| {
                             let on_remove = {
@@ -1282,32 +1261,47 @@ pub fn oidc_settings() -> Html {
                             };
 
                             html! {
-                                <div class="oidc-provider-card">
-                                    <div class="oidc-provider-header">
-                                        <div>
-                                            <div class="flex items-center gap-2">
-                                                <h3 class="text-lg font-medium">{&provider.provider_name}</h3>
+                                <div class="modal-container" style="border-radius:8px;padding:12px 16px;border:1px solid rgba(128,128,128,0.2);">
+                                    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+                                        <div style="flex:1;min-width:0;">
+                                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                                                <span style="font-size:14px;font-weight:600;color:var(--text-color);">{&provider.provider_name}</span>
                                                 if provider.initialized_from_env {
-                                                    <span class="px-2 py-1 text-xs rounded-full bg-blue-900/20 text-blue-300 border border-blue-800/30">
+                                                    <span style="font-size:11px;padding:2px 6px;border-radius:10px;background:rgba(99,102,241,0.15);color:var(--accent-color);border:1px solid rgba(99,102,241,0.3);">
                                                         {"Environment"}
                                                     </span>
                                                 }
                                             </div>
-                                            <p class="text-sm opacity-70">{&provider.client_id}</p>
+                                            <div style="font-size:11px;color:var(--text-secondary-color);margin-bottom:8px;">{&provider.client_id}</div>
+                                            <div style="display:flex;flex-direction:column;gap:3px;">
+                                                <div style="font-size:11px;color:var(--text-secondary-color);">
+                                                    <span style="font-weight:500;">{&i18n_authorization_url}{": "}</span>
+                                                    {&provider.authorization_url}
+                                                </div>
+                                                <div style="font-size:11px;color:var(--text-secondary-color);">
+                                                    <span style="font-weight:500;">{&i18n_token_url}{": "}</span>
+                                                    {&provider.token_url}
+                                                </div>
+                                                <div style="font-size:11px;color:var(--text-secondary-color);">
+                                                    <span style="font-weight:500;">{&i18n_user_info_url}{": "}</span>
+                                                    {&provider.user_info_url}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div class="flex items-center gap-2">
-                                            <button onclick={on_edit} class="oidc-edit-button">
+                                        <div style="display:flex;gap:8px;flex-shrink:0;">
+                                            <button onclick={on_edit} class="btn btn-secondary" style="padding:4px 10px;font-size:12px;">
                                                 <i class="ph ph-pencil"></i>
                                                 {"Edit"}
                                             </button>
                                             if !provider.initialized_from_env {
-                                                <button onclick={on_remove} class="oidc-remove-button">
+                                                <button onclick={on_remove} class="btn btn-danger" style="padding:4px 10px;font-size:12px;">
                                                     <i class="ph ph-trash"></i>
                                                     {&i18n_remove}
                                                 </button>
                                             } else {
                                                 <button
-                                                    class="oidc-remove-button opacity-50 cursor-not-allowed"
+                                                    class="btn btn-danger"
+                                                    style="padding:4px 10px;font-size:12px;opacity:0.4;cursor:not-allowed;"
                                                     disabled=true
                                                     title="Cannot remove environment-initialized providers"
                                                 >
@@ -1317,33 +1311,20 @@ pub fn oidc_settings() -> Html {
                                             }
                                         </div>
                                     </div>
-                                    <div class="oidc-provider-info">
-                                        <div class="oidc-info-group">
-                                            <div class="oidc-info-label">{&i18n_authorization_url}</div>
-                                            <div class="oidc-info-value">{&provider.authorization_url}</div>
-                                        </div>
-                                        <div class="oidc-info-group">
-                                            <div class="oidc-info-label">{&i18n_token_url}</div>
-                                            <div class="oidc-info-value">{&provider.token_url}</div>
-                                        </div>
-                                        <div class="oidc-info-group">
-                                            <div class="oidc-info-label">{&i18n_user_info_url}</div>
-                                            <div class="oidc-info-value">{&provider.user_info_url}</div>
-                                        </div>
-                                    </div>
                                 </div>
                             }
                         }).collect::<Html>()
                     }
-                }
+                </div>
+            }
 
-                {
-                    match *page_state {
-                        PageState::AddProvider => add_provider_modal,
-                        PageState::EditProvider(_) => add_provider_modal, // Reuse the same modal for editing
-                        PageState::Hidden => html! {},
-                    }
+            {
+                match *page_state {
+                    PageState::AddProvider => add_provider_modal,
+                    PageState::EditProvider(_) => add_provider_modal,
+                    PageState::Hidden => html! {},
                 }
-            </div>
-        }
+            }
+        </>
+    }
 }

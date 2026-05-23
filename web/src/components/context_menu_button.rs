@@ -71,6 +71,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         .map(|ud| ud.server_name.clone());
     let dropdown_ref = use_node_ref();
     let button_ref = use_node_ref();
+    // Fixed viewport position for the dropdown, computed on open
+    let dropdown_pos = use_state(|| (0i32, 0i32));
 
     // Update dropdown_open if show_menu_only prop changes
     {
@@ -85,9 +87,18 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();
+        let button_ref = button_ref.clone();
+        let dropdown_pos = dropdown_pos.clone();
         Callback::from(move |e: MouseEvent| {
             e.stop_propagation();
-            dropdown_open.set(!*dropdown_open);
+            let opening = !*dropdown_open;
+            if opening {
+                if let Some(btn) = button_ref.cast::<web_sys::HtmlElement>() {
+                    let rect = btn.get_bounding_client_rect();
+                    dropdown_pos.set((rect.right() as i32, rect.bottom() as i32));
+                }
+            }
+            dropdown_open.set(opening);
         })
     };
 
@@ -980,28 +991,31 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <button
                     ref={button_ref.clone()}
                     onclick={toggle_dropdown.clone()}
-                    class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                    class="ico"
                 >
-                    <i class="ph ph-dots-three-circle md:text-6xl text-4xl"></i>
+                    <i class="ph ph-dots-three"></i>
                 </button>
             }
             if *dropdown_open {
                 <div
                     ref={dropdown_ref.clone()}
-                    class="dropdown-content-class border border-solid absolute z-50 divide-y rounded-lg shadow w-48"
+                    class="ep-context-menu"
                     style={
                         if props.show_menu_only {
+                            // Long-press: position at touch point
                             if let Some((x, y)) = props.position {
-                                format!("position: fixed; top: {}px; left: {}px; z-index: 1000;", y, x)
+                                format!("position: fixed; top: {}px; left: {}px;", y, x)
                             } else {
                                 String::new()
                             }
                         } else {
-                            String::new()
+                            // Button click: anchor to button's bottom-right via fixed pos
+                            let (right, bottom_of_btn) = *dropdown_pos;
+                            format!("position: fixed; top: {}px; right: calc(100vw - {}px);", bottom_of_btn + 4, right)
                         }
                     }
                 >
-                    <ul class="dropdown-container py-2 text-sm text-gray-700">
+                    <ul class="ep-context-menu-list">
                         { action_buttons }
                     </ul>
                 </div>

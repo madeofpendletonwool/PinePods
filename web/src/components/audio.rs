@@ -1539,182 +1539,199 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                  } else {
                      String::new()
                  }}>
-                <div class="top-section">
-                    <div>
-                    <button onclick={title_click.clone()} class="retract-button">
-                        <div class="drawer-text flex items-center justify-center">
-                            <i class="ph ph-caret-circle-down text-4xl"></i>
-                        </div>
-                    </button>
-                    // Show video player if is_video is true, otherwise show artwork
-                    {
-                        if audio_props.is_video {
-                            // Render video container for video podcasts in fullscreen mode
-                            html! {
-                                <div class="video-player-container" style="width: 100%; background: #000;">
-                                    <div ref={video_container_ref.clone()} id="video-player-mount" style="width: 100%; max-height: 400px; display: flex; justify-content: center; align-items: center;">
-                                        // Video element will be mounted here via use_effect
-                                    </div>
-                                </div>
-                            }
-                        } else {
-                            // Show artwork for audio podcasts
-                            html! {
-                                <div onclick={title_click.clone()} class="audio-image-container">
-                                    <img src={(*current_chapter_image).clone()} />
-                                </div>
-                            }
-                        }
-                    }
-                    <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
-                    </div>
-                    // Desktop scrubber
-                    <div class="flex-grow flex items-center sm:block hidden">
-                        <div class="flex items-center flex-nowrap">
-                            <span class="time-display px-2">{(*current_time_formatted_local).clone()}</span>
-                            <input type="range"
-                                class="flex-grow h-1 cursor-pointer"
-                                min="0.0"
-                                max={audio_props.duration_sec.to_string().clone()}
-                                value={(*current_time_local).to_string()}
-                                oninput={update_time.clone()} />
-                            <span class="time-display px-2">{formatted_duration.clone()}</span>
-                        </div>
-                    </div>
-                    // Mobile scrubber
-                    <div class="w-full flex items-center justify-center sm:hidden">
-                        <div class="flex items-center flex-nowrap w-full px-4">
-                            <span class="time-display px-2">{(*current_time_formatted_local).clone()}</span>
-                            <input type="range"
-                                class="flex-grow h-1 cursor-pointer"
-                                min="0.0"
-                                max={audio_props.duration_sec.to_string().clone()}
-                                value={(*current_time_local).to_string()}
-                                oninput={update_time.clone()} />
-                            <span class="time-display px-2">{formatted_duration.clone()}</span>
-                        </div>
-                    </div>
+                // Blurred backdrop + overlay (only visible when expanded)
+                <div class="player-fs-backdrop"
+                    style={format!("background-image: url('{}');", audio_props.artwork_url)}
+                />
+                <div class="player-fs-overlay" />
 
-                    <div class="episode-button-container flex items-center justify-center">
-                        <PlaybackControl
-                            speed={audio_state.playback_speed}
-                            on_speed_change={update_playback_closure}
-                        />
-                        <button onclick={skip_backward.clone()} class="pronounce-mobile rewind-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                            <i class="ph ph-rewind md:text-2xl text-4xl"></i>
+                // Fullscreen layout
+                <div class="player-fs">
+                    <div class="player-fs-topbar">
+                        <button onclick={title_click.clone()} class="player-btn" title="Collapse">
+                            <i class="ph ph-caret-down" style="font-size:24px;"></i>
                         </button>
-                        <button onclick={toggle_playback.clone()} class="pronounce-mobile audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                                { if audio_state.audio_playing.unwrap_or(false) {
-                                    html! { <i class="ph ph-pause md:text-2xl text-4xl"></i> }
-                                } else {
-                                    html! { <i class="ph ph-play md:text-2xl text-4xl"></i> }
-                                }}
-                        </button>
-                        <button onclick={skip_forward.clone()} class="pronounce-mobile skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                            <i class="ph ph-fast-forward md:text-2xl text-4xl"></i>
-                        </button>
-                        <button onclick={skip_episode.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                            <i class="ph ph-skip-forward text-2xl"></i>
+                        <span class="player-fs-eyebrow">{"Now playing"}</span>
+                        <button onclick={Callback::from({
+                            let audio_dispatch = _audio_dispatch.clone();
+                            move |_: MouseEvent| {
+                                audio_dispatch.reduce_mut(|s| s.queue_panel_open = !s.queue_panel_open);
+                            }
+                        })} class="player-btn" title="Queue">
+                            <i class="ph ph-queue" style="font-size:22px;"></i>
                         </button>
                     </div>
 
-                    <div class="episode-button-container flex items-center justify-center">
-                    {
-                        if episode_in_db {
-                            html! {
-                                <>
-                                <button onclick={Callback::from(move |e: MouseEvent| {
-                                    on_shownotes_click.emit(e.clone());
-                                    // title_click_emit.emit(e);
-                                })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
-                                    { &i18n_shownotes }
-                                </button>
-                                {
-                                    if let Some(chapters) = &audio_state.episode_chapters {
-                                        if !chapters.is_empty() {
-                                            html! {
-                                                <button onclick={Callback::from(move |_: MouseEvent| {
-                                                    on_chapter_select.emit(());
-                                                })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
-                                                    { &i18n_chapters }
-                                                </button>
-                                            }
-                                        } else {
-                                            html! {}
-                                        }
-                                    } else {
-                                        html! {}
-                                    }
+                    <div class="player-fs-main">
+                        // Album art — inline, not fixed-position
+                        <div class="player-fs-cover-slot">
+                        {
+                            if audio_props.is_video {
+                                html! {
+                                    <div ref={video_container_ref.clone()} id="video-player-mount"
+                                        style="width:100%;height:100%;background:#000;display:flex;align-items:center;justify-content:center;" />
                                 }
-                                </>
-                            }
-                        } else {
-                            html! {
-                                <button disabled=true class="item-container-button audio-full-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center opacity-50 cursor-not-allowed">
-                                    { &i18n_shownotes_unavailable }
-                                </button>
+                            } else {
+                                html! {
+                                    <img
+                                        src={(*current_chapter_image).clone()}
+                                        alt="Album art"
+                                        class="player-fs-art"
+                                    />
+                                }
                             }
                         }
-                    }
-                    <VolumeControl
-                        volume={audio_state.audio_volume}
-                        on_volume_change={update_volume_closure}
-                    />
-                    </div>
-                    </div>
+                        </div>
 
-                </div>
-                <div class="line-content">
-                <div class="mobile-progress-container md:hidden">
-                    <div
-                        class="mobile-progress-bar"
-                        style={format!("width: {}%",
-                            (audio_state.current_time_seconds / audio_props.duration_sec * 100.0).clamp(0.0, 100.0)
-                        )}
-                    />
-                </div>
-                <div class="left-group"
-                     onclick={title_click.clone()}
-                     ontouchstart={on_touch_start.clone()}
-                     ontouchmove={on_touch_move.clone()}
-                     ontouchend={on_touch_end.clone()}
-                     style="cursor: pointer; touch-action: none;">
-                    <div class="artwork-container">
-                        <FallbackImage
-                            src={audio_props.artwork_url.clone()}
-                            alt={format!("Cover for audio")}
-                            class={Some(artwork_class.to_string())}
-                        />
-                    </div>
-                    <div class="title">
-                        <span>{ &audio_props.title }</span>
-                    </div>
-                </div>
-                <div class="right-group">
-                    <button onclick={toggle_playback} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                        { if audio_state.audio_playing.unwrap_or(false) {
-                            html! { <i class="ph ph-pause text-2xl"></i> }
-                        } else {
-                            html! { <i class="ph ph-play text-2xl"></i> }
-                        }}
-                    </button>
-                    <button onclick={skip_forward} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                        <i class="ph ph-fast-forward text-2xl"></i>
-                    </button>
-                    <div class="seek-bar-container md:flex hidden items-center">
-                        <div class="flex items-center flex-nowrap w-full">
-                            <span class="time-display px-2">{(*current_time_formatted_local).clone()}</span>
-                            <input type="range"
-                                class="flex-grow h-1 cursor-pointer mx-2"
-                                min="0.0"
-                                max={audio_props.duration_sec.to_string().clone()}
-                                value={(*current_time_local).to_string()}
-                                oninput={update_time.clone()} />
-                            <span class="time-display px-2">{formatted_duration.clone()}</span>
+                        <div class="player-fs-meta">
+                            <div class="player-fs-title">{ &audio_props.title }</div>
+                        </div>
+
+                        // Scrub bar
+                        <div class="player-fs-scrub-area">
+                            <div class="player-track player-track-big" style="cursor:pointer;">
+                                <div class="player-fill" style={format!("width: {}%;",
+                                    (audio_state.current_time_seconds / audio_props.duration_sec * 100.0).clamp(0.0, 100.0)
+                                )} />
+                                <div class="player-thumb player-thumb-big" style={format!("left: {}%;",
+                                    (audio_state.current_time_seconds / audio_props.duration_sec * 100.0).clamp(0.0, 100.0)
+                                )} />
+                                <input type="range"
+                                    style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;"
+                                    min="0.0"
+                                    max={audio_props.duration_sec.to_string()}
+                                    value={(*current_time_local).to_string()}
+                                    oninput={update_time.clone()} />
+                            </div>
+                            <div class="player-fs-times">
+                                <span>{(*current_time_formatted_local).clone()}</span>
+                                <span>{"−"}{formatted_duration.clone()}</span>
+                            </div>
+                        </div>
+
+                        // Transport controls
+                        <div class="player-fs-controls">
+                            <button onclick={skip_backward.clone()} class="player-fs-ctrl" title="Back 15s">
+                                <i class="ph ph-rewind"></i>
+                            </button>
+                            <button onclick={toggle_playback.clone()} class="player-fs-ctrl player-fs-ctrl-big" title="Play / Pause">
+                                { if audio_state.audio_playing.unwrap_or(false) {
+                                    html! { <i class="ph ph-pause-circle"></i> }
+                                } else {
+                                    html! { <i class="ph ph-play-circle"></i> }
+                                }}
+                            </button>
+                            <button onclick={skip_forward.clone()} class="player-fs-ctrl" title="Forward 30s">
+                                <i class="ph ph-fast-forward"></i>
+                            </button>
+                            <button onclick={skip_episode.clone()} class="player-fs-ctrl" title="Next episode">
+                                <i class="ph ph-skip-forward"></i>
+                            </button>
+                        </div>
+
+                        // Footer: speed, volume, shownotes
+                        <div class="player-fs-footer">
+                            <PlaybackControl
+                                speed={audio_state.playback_speed}
+                                on_speed_change={update_playback_closure}
+                            />
+                            <VolumeControl
+                                volume={audio_state.audio_volume}
+                                on_volume_change={update_volume_closure}
+                            />
+                            {
+                                if episode_in_db {
+                                    html! {
+                                        <>
+                                        <button onclick={Callback::from(move |e: MouseEvent| {
+                                            on_shownotes_click.emit(e);
+                                        })} class="player-btn" title="Show notes">
+                                            <i class="ph ph-article"></i>
+                                        </button>
+                                        {
+                                            if let Some(chapters) = &audio_state.episode_chapters {
+                                                if !chapters.is_empty() {
+                                                    html! {
+                                                        <button onclick={Callback::from(move |_: MouseEvent| {
+                                                            on_chapter_select.emit(());
+                                                        })} class="player-btn" title="Chapters">
+                                                            <i class="ph ph-list-numbers"></i>
+                                                        </button>
+                                                    }
+                                                } else { html! {} }
+                                            } else { html! {} }
+                                        }
+                                        </>
+                                    }
+                                } else { html! {} }
+                            }
                         </div>
                     </div>
                 </div>
-            </div>
+                <div class="player-bar">
+                    <div class="mobile-progress-container">
+                        <div
+                            class="mobile-progress-bar"
+                            style={format!("width: {}%",
+                                (audio_state.current_time_seconds / audio_props.duration_sec * 100.0).clamp(0.0, 100.0)
+                            )}
+                        />
+                    </div>
+                    // Left: artwork circle + episode title
+                    <div class="player-left"
+                         onclick={title_click.clone()}
+                         ontouchstart={on_touch_start.clone()}
+                         ontouchmove={on_touch_move.clone()}
+                         ontouchend={on_touch_end.clone()}>
+                        <div class="artwork-container">
+                            <FallbackImage
+                                src={audio_props.artwork_url.clone()}
+                                alt={format!("Cover for audio")}
+                                class={Some(artwork_class.to_string())}
+                            />
+                        </div>
+                        <div class="player-info">
+                            <div class="player-title">{ &audio_props.title }</div>
+                        </div>
+                    </div>
+                    // Center: transport controls + scrub bar
+                    <div class="player-center">
+                        <div class="player-buttons">
+                            <button onclick={skip_backward.clone()} class="player-btn" title="Skip back 15s">
+                                <i class="ph ph-rewind"></i>
+                            </button>
+                            <button onclick={toggle_playback.clone()} class="player-btn play" title="Play / Pause">
+                                { if audio_state.audio_playing.unwrap_or(false) {
+                                    html! { <i class="ph ph-pause"></i> }
+                                } else {
+                                    html! { <i class="ph ph-play"></i> }
+                                }}
+                            </button>
+                            <button onclick={skip_forward.clone()} class="player-btn" title="Skip forward 15s">
+                                <i class="ph ph-fast-forward"></i>
+                            </button>
+                            <button onclick={skip_episode.clone()} class="player-btn" title="Next episode">
+                                <i class="ph ph-skip-forward"></i>
+                            </button>
+                        </div>
+                        <div class="player-scrub">
+                            <span class="player-time">{(*current_time_formatted_local).clone()}</span>
+                            <input type="range"
+                                class="player-range"
+                                min="0.0"
+                                max={audio_props.duration_sec.to_string()}
+                                value={(*current_time_local).to_string()}
+                                oninput={update_time.clone()} />
+                            <span class="player-time">{formatted_duration.clone()}</span>
+                        </div>
+                    </div>
+                    // Right: expand button
+                    <div class="player-right">
+                        <button onclick={title_click.clone()} class="player-btn" title="Expand player">
+                            <i class="ph ph-arrows-out"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
             {
                 if *show_modal && audio_state.currently_playing.is_some() {

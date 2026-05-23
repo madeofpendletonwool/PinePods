@@ -359,17 +359,17 @@ pub fn search_bar() -> Html {
 
     let on_dropdown_select_itunes = {
         let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_| on_dropdown_select("itunes"))
+        Callback::from(move |_: MouseEvent| on_dropdown_select("itunes"))
     };
 
     let on_dropdown_select_podcast_index = {
         let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_| on_dropdown_select("podcast_index"))
+        Callback::from(move |_: MouseEvent| on_dropdown_select("podcast_index"))
     };
 
     let on_dropdown_select_youtube = {
         let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_| on_dropdown_select("youtube"))
+        Callback::from(move |_: MouseEvent| on_dropdown_select("youtube"))
     };
 
     let search_index_display = match search_index.as_str() {
@@ -379,134 +379,101 @@ pub fn search_bar() -> Html {
         _ => "Unknown",
     };
 
+    let (_, ui_dispatch) = use_store::<UIState>();
+    let (app_state_for_queue, _) = use_store::<AppState>();
+    let queue_count = app_state_for_queue.queued_episode_ids
+        .as_ref()
+        .map(|ids| ids.len())
+        .unwrap_or(0);
+
+    let toggle_queue = {
+        let ui_dispatch = ui_dispatch.clone();
+        Callback::from(move |_: MouseEvent| {
+            ui_dispatch.reduce_mut(|s| s.queue_panel_open = !s.queue_panel_open);
+        })
+    };
+
+    let src_dropdown_open = use_state(|| false);
+
+    let toggle_src_dropdown = {
+        let src_dropdown_open = src_dropdown_open.clone();
+        Callback::from(move |_: MouseEvent| {
+            src_dropdown_open.set(!*src_dropdown_open);
+        })
+    };
+
+    let select_src = {
+        let search_index = search_index.clone();
+        let src_dropdown_open = src_dropdown_open.clone();
+        move |val: &'static str| {
+            search_index.set(val.to_string());
+            src_dropdown_open.set(false);
+        }
+    };
+
+    let select_podcast_index = { let s = select_src.clone(); Callback::from(move |_: MouseEvent| s("podcast_index")) };
+    let select_itunes = { let s = select_src.clone(); Callback::from(move |_: MouseEvent| s("itunes")) };
+    let select_youtube = { let s = select_src.clone(); Callback::from(move |_: MouseEvent| s("youtube")) };
+
     html! {
-        <div class="episodes-container w-full search-background">
-            <form class="search-bar-container flex justify-end w-full mx-auto border-solid border-b-2 border-color" onsubmit={on_submit}>
-                <div class="relative inline-flex">
-                    <button
-                        id="dropdown-button"
-                        onclick={toggle_dropdown}
-                        class="dropdown-button hidden md:flex md:block flex-shrink-0 z-10 inline-flex items-center py-2.5 px-4 text-sm font-medium text-center border border-r-0 border-gray-300 dark:border-gray-700 rounded-l-lg focus:ring-4 focus:outline-none"
-                        type="button"
-                    >
-                        {format!("{} ", search_index_display)}
-                        <svg class="w-2.5 h-2.5 ms-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
-                        </svg>
-                    </button>
-                    {
-                        if *dropdown_open {
-                            html! {
-                                <div class="search-dropdown-content-class absolute z-10 divide-y rounded-lg shadow">
-                                    <ul class="dropdown-container py-2 text-sm">
-                                        <li class="dropdown-option" onclick={on_dropdown_select_itunes.clone()}>{ "iTunes" }</li>
-                                        <li class="dropdown-option" onclick={on_dropdown_select_podcast_index.clone()}>{ "Podcast Index" }</li>
-                                        <li class="dropdown-option" onclick={on_dropdown_select_youtube.clone()}>{ "YouTube" }</li>
-                                    </ul>
-                                </div>
-                            }
-                        } else {
-                            html! {}
-                        }
-                    }
-
-                    <input
-                        type="search"
-                        id="search-dropdown"
-                        class="search-input search-input-custom-border block p-2.5 w-full z-20 text-sm rounded-r-lg border hidden md:inline-flex"
-                        placeholder="Search"
-                        required=true
-                        oninput={on_input_change.clone()}
-                    />
+        <div class="episodes-container w-full">
+            <div class="topbar">
+                <div class="topbar-left">
+                    // Left spacer — drawer-icon buttons float above this area at z-49
                 </div>
-                <button
-                    type="submit"
-                    class="search-btn p-2.5 text-sm font-medium rounded-lg border focus:ring-4 focus:outline-none"
-                    onclick={on_search_click.clone()}
-                >
-                    <svg class="w-4 h-4" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
-                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
-                    </svg>
-                </button>
-                {
-                    if *mobile_dropdown_open {
-                        html! {
-                            <div class={if *mobile_dropdown_animating { "search-drop-solid dropdown-visible" } else { "search-drop-solid dropdown-hiding" }}>
-                                <div class="flex justify-between mb-4" role="group">
-                                    <button
-                                        type="button"
-                                        class={format!("p-2 rounded-lg search-drop-button flex items-center justify-center w-10 h-10 hover:bg-opacity-20 {}",
-                                            if *search_index == "podcast_index" { "active" } else { "" })}
-                                        onclick={on_dropdown_select_podcast_index}
-                                    >
-                                        <img
-                                            src="/static/assets/logos/podcastindex.svg"
-                                            alt="Podcast Index"
-                                            class="w-6 h-6"
-                                        />
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        class={format!("p-2 rounded-lg search-drop-button flex items-center justify-center w-10 h-10 hover:bg-opacity-20 {}",
-                                            if *search_index == "itunes" { "active" } else { "" })}
-                                        onclick={on_dropdown_select_itunes}
-                                    >
-                                        <img
-                                            src="/static/assets/logos/itunes.png"
-                                            alt="iTunes"
-                                            class="w-6 h-6"
-                                        />
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        class={format!("p-2 rounded-lg search-drop-button flex items-center justify-center w-10 h-10 hover:bg-opacity-20 {}",
-                                            if *search_index == "youtube" { "active" } else { "" })}
-                                        onclick={on_dropdown_select_youtube}
-                                    >
-                                        <img
-                                            src="/static/assets/logos/youtube.png"
-                                            alt="YouTube"
-                                            class="w-6 h-6"
-                                        />
-                                    </button>
-                                </div>
-
-                                <input
-                                    type="text"
-                                    class="search-input search-input-dropdown-border block p-2 w-full text-sm rounded-lg mb-4"
-                                    placeholder="Search"
-                                    value={(*podcast_value).clone()}
-                                    oninput={on_input_change.clone()}
-                                    onkeydown={
-                                        let handle_submit = handle_submit.clone();
-                                        Callback::from(move |e: KeyboardEvent| {
-                                            if e.key() == "Enter" {
-                                                e.prevent_default();
-                                                handle_submit();
-                                            }
-                                        })
-                                    }
-                                />
-
-                                <button
-                                    class="search-btn w-full font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                                    onclick={on_submit_click.clone()}
-                                >
-                                    {"Search"}
+                <form class="topbar-right" onsubmit={on_submit.clone()}>
+                    <button
+                        type="button"
+                        class="iconbtn"
+                        onclick={toggle_queue}
+                        title="Queue"
+                    >
+                        <i class="ph ph-queue"></i>
+                        if queue_count > 0 {
+                            <span class="topbar-queue-badge">{ queue_count }</span>
+                        }
+                    </button>
+                    <div style="position: relative;">
+                        <button
+                            type="button"
+                            class="src-source"
+                            onclick={toggle_src_dropdown}
+                        >
+                            <span>{ search_index_display }</span>
+                            <i class="ph ph-caret-down"></i>
+                        </button>
+                        if *src_dropdown_open {
+                            <div class="src-dropdown">
+                                <button type="button" class={classes!("src-dropdown-item", (*search_index == "podcast_index").then_some("is-active"))} onclick={select_podcast_index}>
+                                    {"Podcast Index"}
+                                </button>
+                                <button type="button" class={classes!("src-dropdown-item", (*search_index == "itunes").then_some("is-active"))} onclick={select_itunes}>
+                                    {"iTunes"}
+                                </button>
+                                <button type="button" class={classes!("src-dropdown-item", (*search_index == "youtube").then_some("is-active"))} onclick={select_youtube}>
+                                    {"YouTube"}
                                 </button>
                             </div>
                         }
-                    } else {
-                        html! {}
-                    }
-                }
-                // Add the NotificationCenter component here
-                <div class="ml-2">
+                    </div>
+                    <div class="src-input">
+                        <input
+                            type="search"
+                            placeholder="Search\u{2026}"
+                            oninput={on_input_change.clone()}
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        class="iconbtn"
+                        onclick={on_search_click.clone()}
+                        title="Search"
+                    >
+                        <i class="ph ph-magnifying-glass"></i>
+                    </button>
                     <NotificationCenter />
-                </div>
-            </form>
+                </form>
+            </div>
             <ToastNotification />
         </div>
     }

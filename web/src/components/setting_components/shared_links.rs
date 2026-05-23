@@ -255,10 +255,6 @@ pub fn shared_links() -> Html {
                 ModalState::Hidden => html! {},
             }
         }
-        <div class="p-4">
-            <p class="item_container-text text-lg font-bold mb-4">{i18n.t("shared_links.title")}</p>
-            <p class="item_container-text text-md mb-4">{i18n.t("shared_links.description")}</p>
-        </div>
         <div class="relative overflow-x-auto">
             <table class="w-full text-sm text-left rtl:text-right">
                 <thead class="text-xs uppercase table-header">

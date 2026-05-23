@@ -11,9 +11,8 @@ use crate::components::safehtml::SafeHtml;
 use crate::components::virtual_list::DragCallbacks;
 use crate::requests::episode::Episode;
 use yew_router::history::{BrowserHistory, History};
-use gloo_events::EventListener;
 use wasm_bindgen::prelude::*;
-use web_sys::{window, MouseEvent};
+use web_sys::MouseEvent;
 use yew::prelude::*;
 use yew::Callback;
 use yewdux::prelude::*;
@@ -79,46 +78,10 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     /*
     Item Shape
     */
-    let container_height: UseStateHandle<String> = use_state(|| "221px".to_string()); // Should be em?
-
     let is_narrow_viewport = {
         let window = web_sys::window().expect("no global window exists");
         window.inner_width().unwrap().as_f64().unwrap() < 500.0
     };
-
-    // resize evt listener
-    {
-        let container_height = container_height.clone();
-        use_effect_with((), move |_| {
-            let update_height = {
-                let container_height = container_height.clone();
-                Callback::from(move |_| {
-                    if let Some(window) = window() {
-                        if let Ok(width) = window.inner_width() {
-                            if let Some(width) = width.as_f64() {
-                                let new_height = if width <= 530.0 {
-                                    "122px"
-                                } else if width <= 768.0 {
-                                    "150px"
-                                } else {
-                                    "221px"
-                                };
-                                container_height.set(new_height.to_string());
-                            }
-                        }
-                    }
-                })
-            };
-
-            update_height.emit(());
-
-            let listener = EventListener::new(&window().unwrap(), "resize", move |_| {
-                update_height.emit(());
-            });
-
-            move || drop(listener)
-        });
-    }
 
     // let desc_expanded = desc_state
     //     .expanded_descriptions
@@ -377,16 +340,10 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         <div>
             <div
                 class={classes!(
-                    "item-container", "border-solid", "border", "flex", "items-start", "mb-4",
-                    "shadow-md", "rounded-lg", "touch-manipulation", "transition-all", "duration-150",
-                    if *is_pressing_state {
-                        "bg-accent-color bg-opacity-20 transform scale-[0.98]"
-                    } else {
-                        ""
-                    }
+                    "ep-row",
+                    if *is_pressing_state { "ep-row--pressing" } else { "" }
                 )}
-                style={format!("height: {}; overflow: hidden; user-select: {};",
-                    *container_height,
+                style={format!("user-select: {};",
                     if *is_pressing_state { "none" } else { "auto" }
                 )}
                 ontouchstart={ on_touch_start.clone() }
@@ -401,14 +358,12 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
                 data-id={ props.episode.episodeid.to_string() }
             >
-
                 {
-                    if props.drag_callbacks.draggable()
-                    {
+                    if props.drag_callbacks.draggable() {
                         html!{
                             <div class="drag-handle-wrapper flex items-center justify-center w-10 h-full touch-none">
                                 <button class="drag-handle cursor-grab">
-                                    <i class="ph ph-dots-six-vertical text-2xl"></i>
+                                    <i class="ph ph-dots-six-vertical"></i>
                                 </button>
                             </div>
                         }
@@ -419,144 +374,96 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
                 {
                     if props.is_delete_mode {
-                    html! {
-                        <div class="flex items-center pl-4">
-                            <input
-                                type="checkbox"
-                                checked={*selected_for_deletion}
-                                class="podcast-dropdown-checkbox h-5 w-5 rounded border-2 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer appearance-none checked:bg-primary checked:border-primary"
-                                onchange={props.on_checkbox_change.reform(move |_| checkbox_ep)}
-                            />
-                        </div>
-                    }
-                } else {
-                    html! {}
+                        html! {
+                            <div class="flex items-center pl-2">
+                                <input
+                                    type="checkbox"
+                                    checked={*selected_for_deletion}
+                                    class="podcast-dropdown-checkbox h-5 w-5 rounded border-2 cursor-pointer"
+                                    onchange={props.on_checkbox_change.reform(move |_| checkbox_ep)}
+                                />
+                            </div>
+                        }
+                    } else {
+                        html! {}
                     }
                 }
 
-                <div class="flex flex-col w-auto object-cover pl-4">
+                <div class="ep-art-wrap">
                     <FallbackImage
                         src={props.episode.episodeartwork.clone()}
                         alt={format!("Cover for {}", props.episode.episodetitle)}
-                        class="episode-image"
+                        class="ep-art-img"
                     />
+                    if *is_completed {
+                        <div class="ep-art-badge"><i class="ph ph-check-circle"></i></div>
+                    }
                 </div>
-                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12 self-start">
-                    <div class="flex items-center space-x-2 cursor-pointer" onclick={on_shownotes_click.clone()}>
-                    <p class="item_container-text episode-title font-semibold line-clamp-2">
-                        {props.episode.episodetitle.clone()}
-                    </p>
-                    {
-                        if *is_completed {
-                            html! {
-                                <i class="ph ph-check-circle text-2xl text-green-500"></i>
-                            }
-                        } else {
-                            html! {}
-                        }
-                    }
-                    </div>
-                    <hr class="my-2 border-t hidden md:block"/>
-                    {
-                        html! {
-                            <div class="item-description-text cursor-pointer hidden md:block"
-                                onclick={let episode_id = props.episode.episodeid;
-                                        let omo = on_modal_open.clone();
-                                        Callback::from(move |e: MouseEvent| {
-                                            e.prevent_default();
-                                            omo.emit(episode_id);
-                                        })}>
-                                <div class="item_container-text line-clamp-2">
-                                    <SafeHtml html={strip_images_from_html(&episode_description)} />
-                                </div>
-                            </div>
-                        }
-                    }
 
-                    <div class="episode-time-badge-container" style="max-width: 100%; overflow: hidden;">
-                        <span
-                            class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2"
-                            style="flex-grow: 0; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
-                        >
-                            <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
-                            </svg>
-                            { formatted_pub_date.clone() }
-                        </span>
+                <div class="ep-body">
+                    <div class="ep-title cursor-pointer" onclick={on_shownotes_click.clone()}>
+                        { props.episode.episodetitle.clone() }
                     </div>
-                    {
-                        if *is_completed {
-                            if is_narrow_viewport {
-                                html! {
-                                    <div class="flex items-center space-x-2">
-                                        <span class="item_container-text">{"Completed"}</span>
-                                    </div>
+                    <hr class="ep-divider" />
+                    <div class="ep-desc cursor-pointer"
+                        onclick={
+                            let episode_id = props.episode.episodeid;
+                            let omo = on_modal_open.clone();
+                            Callback::from(move |e: MouseEvent| {
+                                e.prevent_default();
+                                omo.emit(episode_id);
+                            })
+                        }
+                    >
+                        <SafeHtml html={strip_images_from_html(&episode_description)} />
+                    </div>
+                    <div class="ep-meta">
+                        <span>{ formatted_pub_date.clone() }</span>
+                        {
+                            if *is_completed {
+                                if is_narrow_viewport {
+                                    html! { <span>{"Completed"}</span> }
+                                } else {
+                                    html! { <span>{ format!("{} \u{2014} Completed", episode_duration_str) }</span> }
                                 }
-                            } else {
+                            } else if props.episode.listenduration > 0 {
                                 html! {
-                                    <div class="flex items-center space-x-2">
-                                        <span class="item_container-text">{ episode_duration_str }</span>
-                                        <span class="item_container-text">{ "- Completed" }</span>
-                                    </div>
-                                }
-                            }
-                        } else {
-                            if props.episode.listenduration > 0 {
-                                html! {
-                                    <div class="flex items-center space-x-2">
-                                        {
-                                            if !is_narrow_viewport {
-                                                html! {
-                                                    <span class="item_container-text">{ format_time(props.episode.listenduration) }</span>
-                                                }
-                                            } else {
-                                                html! {}
-                                            }
-                                        }
-                                        <div class="progress-bar-container">
-                                            <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
+                                    <>
+                                        <div class="ep-progress">
+                                            <div class="ep-progress-fill" style={ format!("width: {}%;", listen_duration_percentage) }></div>
                                         </div>
-                                        <span class="item_container-text">{ episode_duration_str }</span>
-                                    </div>
+                                        <span>{ episode_duration_str }</span>
+                                    </>
                                 }
                             } else {
-                                html! {
-                                    <span class="item_container-text">{ episode_duration_str }</span>
-                                }
+                                html! { <span>{ episode_duration_str }</span> }
                             }
                         }
-                    }
+                    </div>
                 </div>
-                {
-                    html! {
-                        <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
-                            // only show links if there is a url to link to
-                            if !props.episode.episodeurl.is_empty() {
-                                <button
-                                    class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                                    onclick={on_play_pause.clone()}
-                                >
-                                    {
-                                        if is_active_and_playing {
-                                            html! { <i class="ph ph-pause-circle md:text-6xl text-4xl"></i> }
-                                        } else {
-                                            html! { <i class="ph ph-play-circle md:text-6xl text-4xl"></i> }
-                                        }
-                                    }
-                                </button>
 
-                                <div class="hidden sm:block"> // Standard desktop context button
-                                    <div ref={context_button_ref.clone()}>
-                                        <ContextMenuButton episode={props.episode.clone()} page_type={props.page_type.clone()} />
-                                    </div>
-                                </div>
+                if !props.episode.episodeurl.is_empty() {
+                    <div class="ep-actions">
+                        <button
+                            class="ico"
+                            onclick={on_play_pause.clone()}
+                            title="Play / Pause"
+                        >
+                            {
+                                if is_active_and_playing {
+                                    html! { <i class="ph ph-pause"></i> }
+                                } else {
+                                    html! { <i class="ph ph-play"></i> }
+                                }
                             }
+                        </button>
+                        <div ref={context_button_ref.clone()}>
+                            <ContextMenuButton episode={props.episode.clone()} page_type={props.page_type.clone()} />
                         </div>
-                    }
+                    </div>
                 }
             </div>
 
-            // This shows the context menu via long press
             {
                 if *show_context_menu {
                     html! {
