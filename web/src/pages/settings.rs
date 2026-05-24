@@ -1,5 +1,5 @@
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::setting_components;
 use crate::requests::setting_reqs::call_user_admin_check;
@@ -147,7 +147,7 @@ pub fn settings() -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                audio_admin.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}: {:?}",
                                         admin_check_error_msg, formatted_error

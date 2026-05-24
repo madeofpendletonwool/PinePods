@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::setting_reqs::{
@@ -18,7 +18,6 @@ pub fn mfa_options() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let _error_message = state.error_message.clone();
     let mfa_status = use_state(|| false);
     let code = use_state(|| "".to_string());
 
@@ -61,7 +60,7 @@ pub fn mfa_options() -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                dispatch_effect.reduce_mut(|audio_state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                                     audio_state.error_message = Option::from(format!(
                                         "{}{}",
                                         i18n_error_getting_mfa_status.clone(),
@@ -102,7 +101,7 @@ pub fn mfa_options() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch_refresh.reduce_mut(|audio_state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                                 audio_state.error_message = Option::from(format!(
                                     "{}{}",
                                     i18n_error_getting_mfa_status.clone(),
@@ -259,7 +258,7 @@ pub fn mfa_options() -> Html {
                             mfa_status_update.set(true); // Update MFA status
                                                          // refresh_mfa_status.emit(());
                         } else {
-                            _dispatch.reduce_mut(|audio_state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                                 audio_state.error_message =
                                     Option::from(i18n_mfa_code_verification_failed.clone())
                             });
@@ -268,7 +267,7 @@ pub fn mfa_options() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        _dispatch.reduce_mut(|audio_state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                             audio_state.error_message = Option::from(format!(
                                 "{}{}",
                                 i18n_failed_to_verify_mfa_code,

@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_components::{EpisodeModal, FallbackImage};
 use crate::components::gen_funcs::format_time_rm_hour;
 #[cfg(not(feature = "server_build"))]
@@ -2326,7 +2326,7 @@ pub fn on_play_click_offline(
         let file_path = match episode_info_for_closure.downloadedlocation {
             Some(path) => path,
             None => {
-                app_dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Some("Episode file location not found".to_string());
                 });
                 return;

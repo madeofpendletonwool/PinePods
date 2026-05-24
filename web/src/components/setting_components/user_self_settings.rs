@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{encode_password, validate_email, validate_username};
 use crate::requests::setting_reqs::{
@@ -91,7 +91,7 @@ pub fn user_self_settings() -> Html {
                                 }
                                 Err(e) => {
                                     let formatted_error = format_error_message(&e.to_string());
-                                    _dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Some(format!(
                                             "Failed to fetch user info: {}",
                                             formatted_error
@@ -299,7 +299,7 @@ pub fn user_self_settings() -> Html {
                                 &format!("Username update failed: {}", e).into(),
                             );
                             let formatted_error = format_error_message(&e.to_string());
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("Failed to update username: {}", formatted_error));
                             });
@@ -338,7 +338,7 @@ pub fn user_self_settings() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("Failed to update email: {}", formatted_error));
                             });
@@ -371,7 +371,7 @@ pub fn user_self_settings() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "Failed to update full name: {}",
                                     formatted_error
@@ -424,7 +424,7 @@ pub fn user_self_settings() -> Html {
                                 }
                                 Err(e) => {
                                     let formatted_error = format_error_message(&e.to_string());
-                                    _dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Some(format!(
                                             "Failed to update password: {}",
                                             formatted_error
@@ -436,7 +436,7 @@ pub fn user_self_settings() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        _dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("Error encoding password: {}", formatted_error));
                         });
@@ -468,7 +468,7 @@ pub fn user_self_settings() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("Failed to update timezone: {}", formatted_error));
                             });
@@ -502,7 +502,7 @@ pub fn user_self_settings() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "Failed to update date format: {}",
                                     formatted_error
@@ -544,7 +544,7 @@ pub fn user_self_settings() -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                _dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "Failed to update time format: {}",
                                         formatted_error
@@ -588,7 +588,7 @@ pub fn user_self_settings() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("Failed to update language: {}", formatted_error));
                             });

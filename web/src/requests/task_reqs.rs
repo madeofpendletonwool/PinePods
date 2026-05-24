@@ -12,7 +12,7 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::console;
 use yewdux::prelude::*;
 
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::notification_center::TaskProgress;
 
 // Response structs
@@ -121,7 +121,7 @@ pub async fn connect_to_task_websocket(
     server_name: String,
     user_id: i32,
     api_key: String,
-    dispatch: Dispatch<AppState>,
+    dispatch: Dispatch<NotificationState>,
 ) -> Result<(), Error> {
     // Normalize server name for WebSocket connection
     let clean_server_name = server_name
@@ -457,7 +457,7 @@ pub async fn fetch_active_tasks(
     server_name: String,
     user_id: i32,
     api_key: String,
-    dispatch: Dispatch<AppState>,
+    dispatch: Dispatch<NotificationState>,
 ) -> Result<(), Error> {
     console::log_1(&"Fetching active tasks via REST API".into());
 
@@ -506,7 +506,7 @@ pub async fn fetch_active_tasks(
 }
 
 // Initialize WebSocket connection or fall back to REST API
-pub fn init_task_monitoring(state: &AppState, dispatch: Dispatch<AppState>) {
+pub fn init_task_monitoring(state: &AppState, dispatch: Dispatch<NotificationState>) {
     if let (Some(user_id), Some(Some(api_key)), Some(server_name)) = (
         state.user_details.as_ref().map(|ud| ud.UserID.clone()),
         state.auth_details.as_ref().map(|ud| ud.api_key.clone()),

@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_enable_disable_self_service, call_self_service_status};
 use std::borrow::Borrow;
@@ -15,7 +15,6 @@ pub fn self_service_settings() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let _error_message = state.error_message.clone();
 
     // Capture i18n strings before they get moved
     let i18n_enable_user_self_service = i18n.t("user_self_service.enable_user_self_service").to_string();
@@ -77,7 +76,7 @@ pub fn self_service_settings() -> Html {
                                     },
                                     Err(e) => {
                                         let formatted_error = format_error_message(&e.to_string());
-                                        _dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling self service: {}", formatted_error)));
+                                        Dispatch::<NotificationState>::global().reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling self service: {}", formatted_error)));
                                     },
                                 }
                             }

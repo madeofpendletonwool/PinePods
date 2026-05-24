@@ -1,5 +1,5 @@
 // navigation.rs
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::generate_gravatar_url;
 use crate::components::loading::Loading;
 use crate::requests::login_requests::{
@@ -175,7 +175,7 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
                                                                         user_id,
                                                                     ).await {
                                                                     if !unmatched_response.podcasts.is_empty() {
-                                                                        dispatch_unmatched.reduce_mut(|state| {
+                                                                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                             state.info_message = Some(
                                                                                 format!("{}", i18n_unmatched_podcasts_notification.replace("{count}", &unmatched_response.podcasts.len().to_string()))
                                                                             );

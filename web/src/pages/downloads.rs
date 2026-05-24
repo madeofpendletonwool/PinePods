@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, ExpandedDescriptions, FilterState, UIState};
+use crate::components::context::{AppState, ExpandedDescriptions, FilterState, NotificationState, UIState};
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -256,12 +256,13 @@ pub fn downloads() -> Html {
                                     for id in selected_episode_ids {
                                         state.downloaded_episodes.remove_server(id);
                                     }
-
+                                });
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message = Some(success_message);
                                 });
                             }
                             Err(e) => {
-                                dispatch_for_future.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Some(format!("Failed to delete episodes: {}", e));
                                 });

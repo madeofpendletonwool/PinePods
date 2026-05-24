@@ -2,7 +2,7 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{
@@ -479,6 +479,10 @@ pub fn epsiode() -> Html {
         .t("episode.something_went_wrong_description")
         .to_string();
     let i18n_cover_alt_text = i18n.t("episode.cover_alt_text").to_string();
+    let i18n_failed_to_find_podcast_metadata =
+        i18n.t("failed_to_find_podcast_metadata").to_string();
+    let i18n_no_hosts_found = i18n.t("host_component.no_hosts_found").to_string();
+    let i18n_add_hosts_here = i18n.t("host_component.add_hosts_here").to_string();
 
     let (app_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
@@ -827,7 +831,7 @@ pub fn epsiode() -> Html {
                     });
                 } else {
                     page_state.set(PageState::Err(
-                        i18n.t("failed_to_find_podcast_metadata").to_string(),
+                        i18n_failed_to_find_podcast_metadata.clone(),
                     ));
                     return;
                 }
@@ -1201,9 +1205,9 @@ pub fn epsiode() -> Html {
                                         }
                                         Err(e) => {
                                             let formatted_error = format_error_message(&e.to_string());
-                                            post_dispatch.reduce_mut(|state| {
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message = Option::from(format!("{}", formatted_error))
-                                            });
+});
                                             // Handle error, e.g., display the error message
                                         }
                                     }
@@ -1260,9 +1264,9 @@ pub fn epsiode() -> Html {
                                         }
                                         Err(e) => {
                                             let formatted_error = format_error_message(&e.to_string());
-                                            post_dispatch.reduce_mut(|state| {
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message = Option::from(format!("{}", formatted_error))
-                                            });
+});
                                             // Handle error, e.g., display the error message
                                         }
                                     }
@@ -1323,7 +1327,7 @@ pub fn epsiode() -> Html {
                                         },
                                         Err(e) => {
                                             let formatted_error = format_error_message(&e.to_string());
-                                            queue_post.reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
                                         }
                                     }
                                 };
@@ -1365,7 +1369,7 @@ pub fn epsiode() -> Html {
                                         },
                                         Err(e) => {
                                             let formatted_error = format_error_message(&e.to_string());
-                                            post_state.reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
                                         }
                                     }
                                 };
@@ -1408,7 +1412,7 @@ pub fn epsiode() -> Html {
                                         },
                                         Err(e) => {
                                             let formatted_error = format_error_message(&e.to_string());
-                                            post_state.reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
                                         }
                                     }
 
@@ -1509,8 +1513,8 @@ pub fn epsiode() -> Html {
                                             web_sys::console::log_1(&format!(
                                                 "Error fetching podcast details: {}", error
                                             ).into());
-                                            dispatch.reduce_mut(move |state| {
-                                                let formatted_error = format_error_message(&error.to_string());
+                                            let formatted_error = format_error_message(&error.to_string());
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message = Some(format!(
                                                     "Failed to load details: {}", formatted_error
                                                 ));
@@ -1673,38 +1677,60 @@ pub fn epsiode() -> Html {
                                     { if !*ep_2_loading {
                                         if let Some(people) = &audio_state.episode_page_people {
                                             if !people.is_empty() {
-                                                let server = server_for_proxy.clone();
-                                                html! {
-                                                    <div class="ep-mobile-hosts">
-                                                        <p class="ep-mobile-section-label">{ &i18n_in_this_episode }</p>
-                                                        <div class="ep-mobile-hosts-scroll">
-                                                        { for people.iter().map(|person| {
-                                                            let name = person.name.clone();
-                                                            let role = person.role.clone();
-                                                            let img_url = person.img.as_ref().map(|url| {
-                                                                format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
-                                                            });
-                                                            let hist = history_for_host.clone();
-                                                            let nav_name = name.clone();
-                                                            let on_chip_click = Callback::from(move |_: MouseEvent| {
-                                                                hist.push(format!("/person/{}", nav_name));
-                                                            });
-                                                            html! {
-                                                                <div class="ep-mobile-host-chip" onclick={on_chip_click}>
-                                                                    { if let Some(src) = img_url {
-                                                                        html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
-                                                                    } else {
-                                                                        html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
-                                                                    }}
-                                                                    <span class="ep-mobile-host-name">{ &person.name }</span>
-                                                                    { if let Some(r) = &role {
-                                                                        html! { <span class="ep-mobile-host-role">{ r }</span> }
-                                                                    } else { html! {} }}
-                                                                </div>
-                                                            }
-                                                        })}
+                                                let has_unknown_host = people.len() == 1
+                                                    && people[0].name == "Unknown Host"
+                                                    && people[0].role == Some("Host".to_string());
+                                                if has_unknown_host {
+                                                    let people_url = state.server_details.as_ref()
+                                                        .and_then(|sd| sd.people_url.as_ref())
+                                                        .cloned()
+                                                        .unwrap_or_default();
+                                                    let host_url = format!("{}/podcast/{}", people_url, episode.podcastid);
+                                                    html! {
+                                                        <div class="ep-mobile-hosts">
+                                                            <p class="ep-mobile-section-label">{ &i18n_in_this_episode }</p>
+                                                            <p class="ep-mobile-no-hosts-msg">
+                                                                { i18n_no_hosts_found.clone() }
+                                                                <a href={host_url} target="_blank" class="ep-mobile-no-hosts-link">
+                                                                    { i18n_add_hosts_here.clone() }
+                                                                </a>
+                                                            </p>
                                                         </div>
-                                                    </div>
+                                                    }
+                                                } else {
+                                                    let server = server_for_proxy.clone();
+                                                    html! {
+                                                        <div class="ep-mobile-hosts">
+                                                            <p class="ep-mobile-section-label">{ &i18n_in_this_episode }</p>
+                                                            <div class="ep-mobile-hosts-scroll">
+                                                            { for people.iter().map(|person| {
+                                                                let name = person.name.clone();
+                                                                let role = person.role.clone();
+                                                                let img_url = person.img.as_ref().map(|url| {
+                                                                    format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
+                                                                });
+                                                                let hist = history_for_host.clone();
+                                                                let nav_name = name.clone();
+                                                                let on_chip_click = Callback::from(move |_: MouseEvent| {
+                                                                    hist.push(format!("/person/{}", nav_name));
+                                                                });
+                                                                html! {
+                                                                    <div class="ep-mobile-host-chip" onclick={on_chip_click}>
+                                                                        { if let Some(src) = img_url {
+                                                                            html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
+                                                                        } else {
+                                                                            html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
+                                                                        }}
+                                                                        <span class="ep-mobile-host-name">{ &person.name }</span>
+                                                                        { if let Some(r) = &role {
+                                                                            html! { <span class="ep-mobile-host-role">{ r }</span> }
+                                                                        } else { html! {} }}
+                                                                    </div>
+                                                                }
+                                                            })}
+                                                            </div>
+                                                        </div>
+                                                    }
                                                 }
                                             } else { html! {} }
                                         } else { html! {} }

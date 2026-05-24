@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::call_add_custom_feed;
 use web_sys::HtmlInputElement;
@@ -92,7 +92,7 @@ pub fn custom_feed() -> Html {
                 {
                     Ok(_) => {
                         // Update global state with success message
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg.clone());
                         });
                     }
@@ -101,7 +101,7 @@ pub fn custom_feed() -> Html {
                         let formatted_error = format_error_message(&e.to_string());
 
                         // Update global state with error message
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("{}{}", error_prefix.clone(), formatted_error));
                         });
@@ -149,7 +149,7 @@ pub fn custom_feed() -> Html {
                 {
                     Ok(_) => {
                         // Update global state with success message
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg.clone());
                         });
                     }
@@ -158,7 +158,7 @@ pub fn custom_feed() -> Html {
                         let formatted_error = format_error_message(&e.to_string());
 
                         // Update global state with error message
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("{}{}", error_prefix.clone(), formatted_error));
                         });

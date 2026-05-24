@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::requests::setting_reqs::{
     call_get_email_settings, call_save_email_settings, call_send_test_email, EmailSettingsResponse,
     TestEmailSettings,
@@ -104,7 +104,7 @@ pub fn email_settings() -> Html {
                                 current_settings.set(settings);
                             }
                             Err(e) => {
-                                dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}{}",
                                         i18n_error_loading_email_settings.clone(),
@@ -242,12 +242,12 @@ pub fn email_settings() -> Html {
                     match call_send_test_email(server_name, api_key.unwrap(), test_settings).await {
                         Ok(_) => {
                             test_success.set(true);
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(i18n_test_email_success.clone());
                             });
                         }
                         Err(e) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("{}{}", i18n_test_email_failed.clone(), e));
                             });
@@ -307,12 +307,12 @@ pub fn email_settings() -> Html {
                         .await
                     {
                         Ok(_) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(i18n_email_settings_saved.clone());
                             });
                         }
                         Err(e) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("{}{}", i18n_save_settings_failed.clone(), e));
                             });

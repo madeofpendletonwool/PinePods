@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_list_backup_files, call_restore_backup_file, call_restore_server,
@@ -68,7 +68,7 @@ pub fn restore_server() -> Html {
                                     }
                                 }
                                 Err(e) => {
-                                    dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Some(format!(
                                             "{}{}",
                                             i18n_failed_to_load_backup_files.clone(),
@@ -95,7 +95,7 @@ pub fn restore_server() -> Html {
                 if let Some(file) = files.get(0) {
                     // Check file size (e.g., limit to 100MB)
                     if file.size() > 100.0 * 1024.0 * 1024.0 {
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(i18n_file_size_too_large.clone());
                         });
                         return;
@@ -121,14 +121,14 @@ pub fn restore_server() -> Html {
 
             // Validate inputs
             if selected_file.is_none() {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Some("Please select a backup file".to_string());
                 });
                 return;
             }
 
             if database_password.trim().is_empty() {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Some("Database password is required".to_string());
                 });
                 return;
@@ -152,7 +152,7 @@ pub fn restore_server() -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 match call_restore_server(&server_name, form_data, &api_key.unwrap()).await {
                     Ok(message) => {
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message =
                                 Some(format!("Server restore started successfully: {}", message));
                         });
@@ -160,7 +160,7 @@ pub fn restore_server() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("Failed to restore server: {}", formatted_error));
                         });
@@ -201,7 +201,7 @@ pub fn restore_server() -> Html {
                     .await
                     {
                         Ok(_) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(
                                     "Restore from backup file started successfully".to_string(),
                                 );
@@ -209,7 +209,7 @@ pub fn restore_server() -> Html {
                             history.push("/sign_out");
                         }
                         Err(e) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "Failed to restore from backup file: {}",
                                     format_error_message(&e.to_string())
@@ -220,7 +220,7 @@ pub fn restore_server() -> Html {
                     }
                 });
             } else {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Some("Please select a backup file".to_string());
                 });
             }

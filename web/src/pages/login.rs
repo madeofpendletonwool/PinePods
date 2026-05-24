@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_components::{AdminSetupData, FirstAdminModal};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{encode_password, validate_user_input, ValidationError};
@@ -647,7 +647,7 @@ pub fn login() -> Html {
                                             }
                                         }
                                         Err(_) => {
-                                            post_state.reduce_mut(|state| {
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message =
                                                     Option::from((&i18n_error_checking_mfa).clone())
                                             });
@@ -658,7 +658,7 @@ pub fn login() -> Html {
                                 }
                             }
                             Err(_) => {
-                                post_state.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Option::from((&i18n_error_checking_first_login).clone())
                                 });
@@ -682,7 +682,7 @@ pub fn login() -> Html {
                         page_state.set(PageState::MFAPrompt);
                     }
                     Err(_) => {
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Option::from((&i18n_credentials_incorrect).clone())
                         });
@@ -878,7 +878,7 @@ pub fn login() -> Html {
                                 Ok(success) => {
                                     if success {
                                         page_state.set(PageState::Default);
-                                        create_state.reduce_mut(|state| {
+                                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                             state.info_message =
                                                 Some((&i18n_account_created_success).clone())
                                         });
@@ -886,7 +886,7 @@ pub fn login() -> Html {
                                 }
                                 Err(e) => {
                                     // The error message is now user-friendly from our updated call_add_login_user
-                                    create_state.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Some(e.to_string())
                                     });
                                 }
@@ -895,7 +895,7 @@ pub fn login() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        create_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!(
                                 "{}: {}",
                                 i18n_error_creating_account, formatted_error
@@ -1115,21 +1115,21 @@ pub fn login() -> Html {
 
             // Validate password confirmation
             if reset_password.is_empty() || reset_password_confirm.is_empty() {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Option::from(i18n_fill_password_fields.clone());
                 });
                 return;
             }
 
             if reset_password != reset_password_confirm {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Option::from(i18n_passwords_no_match.clone());
                 });
                 return;
             }
 
             if reset_code.is_empty() {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Option::from(i18n_enter_reset_code.clone());
                 });
                 return;
@@ -1157,19 +1157,19 @@ pub fn login() -> Html {
                             Ok(success) => {
                                 if success.message == i18n_password_reset_successfully {
                                     page_state.set(PageState::Default);
-                                    dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.info_message =
                                             Option::from(i18n_password_reset_success.clone());
                                     });
                                 } else {
-                                    dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message =
                                             Option::from(i18n_invalid_reset_code.clone());
                                     });
                                 }
                             }
                             Err(_e) => {
-                                dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Option::from("Invalid reset code or code has expired. Please request a new reset code.".to_string());
                                 });
                             }
@@ -1178,7 +1178,7 @@ pub fn login() -> Html {
                 }
                 Err(e) => {
                     let formatted_error = format_error_message(&e.to_string());
-                    dispatch.reduce_mut(|state| {
+                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                         state.error_message = Option::from(format!(
                             "Unable to hash new password: {:?}",
                             formatted_error
@@ -1408,19 +1408,19 @@ pub fn login() -> Html {
                                     }
                                 }
                                 Err(_) => {
-                                    dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message =
                                             Option::from((&i18n_error_checking_mfa).clone())
                                     });
                                 }
                             }
                         } else {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from((&i18n_error_setting_up_timezone).clone())
                             });
                             page_state.set(PageState::Default);
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_setup_timezone.clone())
                             });
@@ -1429,7 +1429,7 @@ pub fn login() -> Html {
                     Err(e) => {
                         page_state.set(PageState::Default);
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!(
                                 "Error setting up time zone: {:?}",
                                 formatted_error
@@ -1707,7 +1707,7 @@ pub fn login() -> Html {
                     Err(e) => {
                         page_state.set(PageState::Default);
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!(
                                 "MFA verification failed: {}",
                                 formatted_error
@@ -1751,14 +1751,14 @@ pub fn login() -> Html {
                 match call_create_first_admin(&server_name, request).await {
                     Ok(_) => {
                         first_admin_created.set(true);
-                        audio_dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(i18n_admin_created_success.clone());
                         });
                         history.push("/"); // Redirect to login
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        audio_dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("Failed to create admin: {}", formatted_error));
                         });
@@ -2296,7 +2296,7 @@ pub fn login() -> Html {
                                             }
                                         }
                                         Err(_) => {
-                                            post_state.reduce_mut(|state| {
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message =
                                                     Option::from((&i18n_error_checking_mfa).clone())
                                             });
@@ -2307,7 +2307,7 @@ pub fn login() -> Html {
                                 }
                             }
                             Err(_) => {
-                                post_state.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Option::from((&i18n_error_checking_first_login).clone())
                                 });
@@ -2316,7 +2316,7 @@ pub fn login() -> Html {
                     }
                     Err(_) => {
                         // console::log_1(&format!("Error logging into server: {}", server_name).into());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Option::from((&i18n_credentials_incorrect).clone())
                         });
@@ -2403,7 +2403,7 @@ pub fn login() -> Html {
             if let Ok(value_int) = value_str.parse::<i32>() {
                 time_pref.set(value_int);
             } else {
-                time_state_error.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Option::from(i18n_error_parsing_time.clone())
                 });
             }
@@ -2537,14 +2537,14 @@ pub fn login() -> Html {
                                     }
                                 }
                                 Err(_) => {
-                                    post_state.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message =
                                             Option::from((&i18n_error_checking_mfa).clone())
                                     });
                                 }
                             }
                         } else {
-                            post_state.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from((&i18n_error_setting_up_timezone).clone())
                             });
@@ -2555,7 +2555,7 @@ pub fn login() -> Html {
                         page_state.set(PageState::Default);
                         // dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
                         let formatted_error = format_error_message(&e.to_string());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!(
                                 "Error setting up time zone: {:?}",
                                 formatted_error
@@ -2809,7 +2809,7 @@ pub fn login() -> Html {
                             });
                         } else {
                             page_state.set(PageState::Default);
-                            post_state.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_validating_mfa.clone())
                             });
@@ -2818,7 +2818,7 @@ pub fn login() -> Html {
                     Err(e) => {
                         page_state.set(PageState::Default);
                         let formatted_error = format_error_message(&e.to_string());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!(
                                 "Error setting up time zone: {:?}",
                                 formatted_error

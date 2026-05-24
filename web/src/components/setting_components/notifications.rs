@@ -1,5 +1,5 @@
 // notifications.rs
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_get_notification_settings, call_test_notification, call_update_notification_settings,
@@ -193,7 +193,7 @@ pub fn notification_settings() -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                _dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}{}",
                                         i18n_failed_to_fetch_notification_settings.clone(),
@@ -277,7 +277,7 @@ pub fn notification_settings() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch_call.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!(
                                 "{}{}",
                                 i18n_failed_to_update_notification_settings,
@@ -309,14 +309,14 @@ pub fn notification_settings() -> Html {
                 match call_test_notification(test_server, test_api, test_user, platform_value).await
                 {
                     Ok(_) => {
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(i18n_test_notification_sent.clone())
                         });
                     }
                     Err(e) => {
                         // Format the error message to be more user-friendly
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!(
                                 "{}{}",
                                 i18n_failed_to_send_test_notification,

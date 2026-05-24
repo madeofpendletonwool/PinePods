@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_create_api_key, call_delete_api_key, call_get_api_info, DeleteAPIRequest,
@@ -19,8 +19,6 @@ pub fn api_keys() -> Html {
     let api_infos = use_state(|| Vec::new());
     let new_api_key = use_state(|| String::new());
     let selected_api_key_id: UseStateHandle<Option<i32>> = use_state(|| None);
-    let _error_message = state.error_message.clone();
-    let _info_message = state.info_message.clone();
     let dispatch_effect = _dispatch.clone();
     let dispatch_call = _dispatch.clone();
 
@@ -72,7 +70,7 @@ pub fn api_keys() -> Html {
                                 Err(e) => {
                                     let formatted_error = format_error_message(&e.to_string());
                                     let error_msg = format!("{}{}", error_prefix, formatted_error);
-                                    dispatch_effect.reduce_mut(|audio_state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                                         audio_state.error_message = Option::from(error_msg)
                                     });
                                 }
@@ -115,7 +113,7 @@ pub fn api_keys() -> Html {
                                 Err(e) => {
                                     let formatted_error = format_error_message(&e.to_string());
                                     let error_msg = format!("{}{}", error_prefix, formatted_error);
-                                    dispatch_refresh.reduce_mut(|audio_state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                                         audio_state.error_message = Option::from(error_msg)
                                     });
                                 }
@@ -193,7 +191,7 @@ pub fn api_keys() -> Html {
                         page_state.set(PageState::Shown); // Move to the edit page state
                     }
                     Err(e) => {
-                        _dispatch.reduce_mut(|audio_state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                             audio_state.error_message = Option::from(e.to_string())
                         });
                     }
@@ -234,7 +232,7 @@ pub fn api_keys() -> Html {
                 .await
                 {
                     Ok(_) => {
-                        dispatch.reduce_mut(|audio_state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                             audio_state.info_message = Option::from(success_msg)
                         });
                         // Update UI accordingly, e.g., remove the deleted API key from the list
@@ -242,7 +240,7 @@ pub fn api_keys() -> Html {
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
                         let error_msg = format!("{}{}", error_prefix, formatted_error);
-                        dispatch.reduce_mut(|audio_state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                             audio_state.error_message = Option::from(error_msg)
                         });
                     }

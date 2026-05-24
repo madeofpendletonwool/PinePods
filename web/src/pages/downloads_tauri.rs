@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, ExpandedDescriptions, UIState};
+use crate::components::context::{AppState, ExpandedDescriptions, NotificationState, UIState};
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -505,6 +505,8 @@ pub fn downloads() -> Html {
                                 for ep_id in selected_episodes.iter() {
                                     state.downloaded_episodes.remove_local(*ep_id);
                                 }
+                            });
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(format!(
                                     "{} {}",
                                     selected_episodes.len(),
@@ -516,7 +518,7 @@ pub fn downloads() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error deleting episodes: {:?}", e).into(),
                             );
-                            dispatch_for_future.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(i18n_failed_to_delete_episodes.clone());
                             });
                         }

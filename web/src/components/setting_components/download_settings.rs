@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::requests::setting_reqs::{call_download_status, call_enable_disable_downloads};
 use std::borrow::Borrow;
 use yew::platform::spawn_local;
@@ -13,7 +13,6 @@ pub fn download_settings() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let _error_message = state.error_message.clone();
     let download_status = use_state(|| false);
     let dispatch_effect = _dispatch.clone();
 
@@ -40,7 +39,7 @@ pub fn download_settings() -> Html {
                             }
                             Err(e) => {
                                 let error_msg = format!("{}{}", error_prefix, e);
-                                dispatch_effect.reduce_mut(|audio_state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                                     audio_state.error_message = Option::from(error_msg)
                                 });
                             }
@@ -82,7 +81,7 @@ pub fn download_settings() -> Html {
                                             download_status.set(!*current_status);
                                         },
                                         Err(e) => {
-                                            _dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("{}{}", error_prefix.clone(), e)));
+                                            Dispatch::<NotificationState>::global().reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("{}{}", error_prefix.clone(), e)));
                                         },
                                     }
                                 }

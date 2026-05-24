@@ -3879,6 +3879,11 @@ input[type="range"]::-moz-range-thumb {
     padding: 12px 16px 0;
 }
 
+/* Podcast header on episode_layout — no bottom audio-player padding needed */
+.ep-mobile-pod-header {
+    padding-bottom: 4px;
+}
+
 /* Episode layout mobile extras */
 .ep-mobile-desc-section {
     padding: 8px 16px 4px;

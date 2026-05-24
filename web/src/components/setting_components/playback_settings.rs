@@ -1,6 +1,6 @@
 // src/components/setting_components/playback_settings.rs
 
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_get_auto_complete_seconds, call_update_auto_complete_seconds};
 use anyhow::Error;
@@ -179,7 +179,7 @@ pub fn playback_settings() -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}{}",
                                         i18n_failed_to_fetch_playback_speed.clone(),
@@ -220,7 +220,7 @@ pub fn playback_settings() -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}{}",
                                         i18n_failed_to_fetch_auto_complete_seconds.clone(),
@@ -294,7 +294,7 @@ pub fn playback_settings() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     i18n_failed_to_update_playback_speed,
@@ -363,7 +363,7 @@ pub fn playback_settings() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     i18n_failed_to_update_auto_complete_seconds,

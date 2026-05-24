@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::validate_user_input;
 use crate::components::gen_funcs::{
     encode_password, validate_email, validate_username, ValidationError,
@@ -31,8 +31,6 @@ pub fn user_settings() -> Html {
     let fullname = use_state(|| "".to_string());
     let admin_status = use_state(|| false);
     let selected_user_id = use_state(|| None);
-    let _error_message = state.error_message.clone();
-    let _info_message = state.info_message.clone();
     let error_message_container = use_state(|| "".to_string());
     let admin_edit_status = use_state(|| 0);
     let update_trigger = use_state(|| false);
@@ -62,7 +60,7 @@ pub fn user_settings() -> Html {
                             Err(e) => {
                                 console::log_1(&format!("Error getting user info: {}", e).into());
 
-                                // user_dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error getting user info: {}", e).to_string()))
+                                // Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Option::from(format!("Error getting user info: {}", e).to_string()))
                             }
                         }
                     }
@@ -384,7 +382,7 @@ pub fn user_settings() -> Html {
             // admin_edit_status.set(is_admin);
             Callback::from(move |_| {
                 if select_user_id == 1 {
-                    user_dispatch.reduce_mut(|state| {
+                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                         state.error_message =
                             Option::from("You cannot edit the background_tasks user.".to_string())
                     });
@@ -419,7 +417,7 @@ pub fn user_settings() -> Html {
                         .await
                     {
                         Ok(_response) => {
-                            user_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some("User deleted successfully".to_string())
                             });
                             page_state.set(PageState::Hidden); // Navigate back to the list page state
@@ -428,14 +426,14 @@ pub fn user_settings() -> Html {
                             web_sys::console::log_1(
                                 &format!("Failed to delete user: {}", e).into(),
                             );
-                            user_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some("Failed to delete user".to_string())
                             });
                         }
                     }
                 });
             } else {
-                user_dispatch
+                Dispatch::<NotificationState>::global()
                     .reduce_mut(|state| state.error_message = Some("No user selected".to_string()));
             }
         })
@@ -533,21 +531,21 @@ pub fn user_settings() -> Html {
                                         }
                                     }
                                 } else {
-                                    fullname_dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Option::from(
                                             "User ID not available for name update.".to_string(),
                                         )
                                     });
                                 }
                             } else {
-                                fullname_dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Option::from(
                                         "API key not available for name update.".to_string(),
                                     )
                                 });
                             }
                         } else {
-                            fullname_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(
                                     "Server name not available for name update.".to_string(),
                                 )
@@ -606,7 +604,7 @@ pub fn user_settings() -> Html {
                                         }
                                     }
                                 } else {
-                                    dispatch_wasm.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Option::from(
                                             "API key not available for username update."
                                                 .to_string(),
@@ -614,14 +612,14 @@ pub fn user_settings() -> Html {
                                     });
                                 }
                             } else {
-                                dispatch_wasm.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Option::from(
                                         "API key not available for username update.".to_string(),
                                     )
                                 });
                             }
                         } else {
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(
                                     "Server name not available for username update.".to_string(),
                                 )

@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::parse_opml;
 use gloo::timers::callback::Interval;
 use wasm_bindgen::closure::Closure;
@@ -156,7 +156,7 @@ pub fn import_options() -> Html {
                                                     dispatch_wasm.reduce_mut(|state| {
                                                         state.is_loading = Some(false)
                                                     });
-                                                    dispatch_wasm.reduce_mut(|audio_state| {
+                                                    Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                                                         audio_state.info_message = Option::from(success_msg_callback)
                                                     });
                                                 }
@@ -189,8 +189,10 @@ pub fn import_options() -> Html {
                                 log::error!("Failed to import OPML: {:?}", e);
                                 dispatch_wasm_call.reduce_mut(|state| {
                                     state.is_loading = Some(false);
-                                    state.info_message = Option::from(error_msg);
                                     state.clone()
+                                });
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                    state.info_message = Option::from(error_msg);
                                 });
                             }
                         }

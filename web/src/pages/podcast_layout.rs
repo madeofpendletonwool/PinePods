@@ -1,6 +1,6 @@
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, PodcastState, UIState};
+use crate::components::context::{AppState, NotificationState, PodcastState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req::{
@@ -17,6 +17,7 @@ use web_sys::MouseEvent;
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
+use yewdux::dispatch::Dispatch;
 use yewdux::use_store;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -306,13 +307,13 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             podcast_dispatch.reduce_mut(|state| {
                                 state.added_podcast_urls.remove(&podcast_url);
                             });
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(podcast_removed_msg);
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("{}: {:?}", remove_error_msg, formatted_error));
                             });
@@ -352,13 +353,13 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                                 new_set.insert(podcast_url.clone());
                                 state.added_podcast_urls = new_set;
                             });
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(podcast_added_msg);
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("{}: {:?}", add_error_msg, formatted_error));
                             });

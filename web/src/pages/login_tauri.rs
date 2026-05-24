@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::notification_center::ToastNotification;
 use crate::requests::login_requests::{self, call_check_mfa_enabled};
@@ -132,8 +132,9 @@ pub fn login() -> Html {
     let password = use_state(|| "".to_string());
     let (app_state, dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
-    let _error_message = app_state.error_message.clone();
-    let error_message = app_state.error_message.clone();
+    let (notif_state, _notif_dispatch) = use_store::<NotificationState>();
+    let _error_message = notif_state.error_message.clone();
+    let error_message = notif_state.error_message.clone();
     let time_zone = use_state(|| "".to_string());
     let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
@@ -142,7 +143,7 @@ pub fn login() -> Html {
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
-    let info_message = app_state.info_message.clone();
+    let info_message = notif_state.info_message.clone();
     // Define the initial state
     // Define states for both self-service and first admin
     let page_state = use_state(|| PageState::Default);
@@ -534,7 +535,7 @@ pub fn login() -> Html {
                                             }
                                         }
                                         Err(_) => {
-                                            post_state.reduce_mut(|state| {
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message = Option::from(
                                                     i18n_error_checking_mfa_status_clone,
                                                 )
@@ -546,7 +547,7 @@ pub fn login() -> Html {
                                 }
                             }
                             Err(_) => {
-                                post_state.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Option::from(i18n_error_checking_first_login_clone)
                                 });
@@ -555,7 +556,7 @@ pub fn login() -> Html {
                     }
                     Err(_) => {
                         // console::log_1(&format!("Error logging into server: {}", server_name).into());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(i18n_credentials_incorrect.clone())
                         });
                         // Handle error
@@ -636,7 +637,7 @@ pub fn login() -> Html {
             if let Ok(value_int) = value_str.parse::<i32>() {
                 time_pref.set(value_int);
             } else {
-                time_state_error.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Option::from(i18n_error_parsing_time.clone())
                 });
             }
@@ -707,14 +708,14 @@ pub fn login() -> Html {
                                     }
                                 }
                                 Err(_) => {
-                                    post_state.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message =
                                             Option::from(i18n_error_checking_mfa_status_clone)
                                     });
                                 }
                             }
                         } else {
-                            post_state.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_setting_timezone_clone)
                             });
@@ -723,9 +724,8 @@ pub fn login() -> Html {
                     }
                     Err(e) => {
                         page_state.set(PageState::Default);
-                        // dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
                         let formatted_error = format_error_message(&e.to_string());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!(
                                 "Error setting up time zone: {:?}",
                                 formatted_error
@@ -895,7 +895,7 @@ pub fn login() -> Html {
                             history.push("/home"); // Use the route path
                         } else {
                             page_state.set(PageState::Default);
-                            post_state.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_validating_mfa.clone())
                             });
@@ -904,7 +904,7 @@ pub fn login() -> Html {
                     Err(e) => {
                         page_state.set(PageState::Default);
                         let formatted_error = format_error_message(&e.to_string());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!(
                                 "{}: {:?}",
                                 i18n_error_setting_timezone_details.clone(),

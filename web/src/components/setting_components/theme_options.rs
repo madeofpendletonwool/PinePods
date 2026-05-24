@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_get_theme, call_set_theme, call_get_custom_themes, call_delete_custom_theme,
@@ -160,7 +160,7 @@ pub fn theme(props: &ThemeOptionsProps) -> Html {
                         call_set_theme(&Some(server_name), &Some(api_key), &request).await
                     {
                         let formatted = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|s| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| {
                             s.error_message =
                                 Some(format!("Failed to update theme: {}", formatted));
                         });
@@ -223,7 +223,7 @@ pub fn theme(props: &ThemeOptionsProps) -> Html {
                         call_set_theme(&Some(server_name), &Some(api_key), &request).await
                     {
                         let formatted = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|s| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| {
                             s.error_message =
                                 Some(format!("Failed to update theme: {}", formatted));
                         });
@@ -268,7 +268,7 @@ pub fn theme(props: &ThemeOptionsProps) -> Html {
                 spawn_local(async move {
                     if let Err(e) = call_delete_custom_theme(&server_name, &api_key, &req).await {
                         let formatted = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|s| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| {
                             s.error_message =
                                 Some(format!("Failed to delete theme: {}", formatted));
                         });

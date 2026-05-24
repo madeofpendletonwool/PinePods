@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::connect_to_episode_websocket;
 use crate::requests::setting_reqs::{
@@ -18,6 +18,7 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlInputElement;
 use web_sys::HtmlSelectElement;
 use yew::prelude::*;
+use yewdux::dispatch::Dispatch;
 use yewdux::use_store;
 
 #[function_component(GpodderAdvancedOptions)]
@@ -95,9 +96,7 @@ pub fn gpodder_advanced_options() -> Html {
                                     i18n_failed_to_load_default_gpodder_device.clone(),
                                     e
                                 );
-                                dispatch.reduce_mut(|state| {
-                                    state.error_message = Some(error_msg);
-                                });
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(error_msg); });
                             }
                         }
                     }
@@ -164,9 +163,7 @@ pub fn gpodder_advanced_options() -> Html {
                         Err(e) => {
                             let error_msg =
                                 format!("{}{}", i18n_failed_to_load_gpodder_devices.clone(), e);
-                            dispatch.reduce_mut(|state| {
-                                state.error_message = Some(error_msg);
-                            });
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(error_msg); });
                         }
                     }
 
@@ -310,7 +307,7 @@ pub fn gpodder_advanced_options() -> Html {
                                 device_clone.is_default = Some(true);
                                 default_device_clone.set(Some(device_clone));
 
-                                dispatch_clone.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Some("Default GPodder device set successfully".to_string());
                                 });
@@ -321,9 +318,7 @@ pub fn gpodder_advanced_options() -> Html {
                                 &format!("Error setting default device: {}", e).into(),
                             );
                             let error_msg = format!("Failed to set default device: {}", e);
-                            dispatch_clone.reduce_mut(|state| {
-                                state.error_message = Some(error_msg);
-                            });
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(error_msg); });
                         }
                     }
                     is_set_default.set(false);
@@ -351,9 +346,7 @@ pub fn gpodder_advanced_options() -> Html {
             let create_device = is_creating_device.clone();
 
             if device_name.is_empty() {
-                dispatch.reduce_mut(|state| {
-                    state.error_message = Some("Device name cannot be empty".to_string());
-                });
+                Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some("Device name cannot be empty".to_string()); });
                 return;
             }
 
@@ -391,16 +384,14 @@ pub fn gpodder_advanced_options() -> Html {
                             new_device_name_clone.set(String::new());
                             new_device_caption_clone.set(String::new());
 
-                            dispatch_clone.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message =
                                     Some("Device created successfully".to_string());
                             });
                         }
                         Err(e) => {
                             let error_msg = format!("Failed to create device: {}", e);
-                            dispatch_clone.reduce_mut(|state| {
-                                state.error_message = Some(error_msg);
-                            });
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(error_msg); });
                         }
                     }
 
@@ -454,8 +445,10 @@ pub fn gpodder_advanced_options() -> Html {
                             Ok(response) => {
                                 if response.success {
                                     dispatch_clone.reduce_mut(|state| {
-                                        state.info_message = Some(response.message);
                                         state.is_refreshing = Some(true);
+                                    });
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                        state.info_message = Some(response.message);
                                     });
 
                                     // Optionally refresh podcasts via websocket
@@ -464,7 +457,7 @@ pub fn gpodder_advanced_options() -> Html {
                                         &user_id,
                                         &api_key.clone().unwrap(),
                                         true,
-                                        dispatch_clone.clone(),
+                                        Dispatch::<NotificationState>::global(),
                                     )
                                     .await
                                     {
@@ -478,16 +471,12 @@ pub fn gpodder_advanced_options() -> Html {
                                         state.is_refreshing = Some(false);
                                     });
                                 } else {
-                                    dispatch_clone.reduce_mut(|state| {
-                                        state.error_message = Some(response.message);
-                                    });
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(response.message); });
                                 }
                             }
                             Err(e) => {
                                 let error_msg = format!("Failed to sync with GPodder: {}", e);
-                                dispatch_clone.reduce_mut(|state| {
-                                    state.error_message = Some(error_msg);
-                                });
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(error_msg); });
                             }
                         }
 
@@ -495,7 +484,7 @@ pub fn gpodder_advanced_options() -> Html {
                     });
                 } else {
                     // Display error if no device is selected
-                    dispatch.reduce_mut(|state| {
+                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                         state.error_message =
                             Some("No device selected for synchronization".to_string());
                     });
@@ -547,28 +536,24 @@ pub fn gpodder_advanced_options() -> Html {
                         {
                             Ok(response) => {
                                 if response.success {
-                                    dispatch_clone.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.info_message = Some(response.message);
                                     });
                                 } else {
-                                    dispatch_clone.reduce_mut(|state| {
-                                        state.error_message = Some(response.message);
-                                    });
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(response.message); });
                                 }
                             }
                             Err(e) => {
                                 let error_msg =
                                     format!("Failed to perform initial sync with GPodder: {}", e);
-                                dispatch_clone.reduce_mut(|state| {
-                                    state.error_message = Some(error_msg);
-                                });
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(error_msg); });
                             }
                         }
                         is_pushing.set(false);
                     });
                 } else {
                     // Display error if no device is selected
-                    dispatch.reduce_mut(|state| {
+                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                         state.error_message =
                             Some("No device selected for initial sync".to_string());
                     });
@@ -887,8 +872,6 @@ pub fn sync_options() -> Html {
     let server_pass = use_state(|| String::new());
     let auth_status = use_state(|| String::new());
     let nextcloud_url = use_state(|| String::new()); // State to hold the Nextcloud server URL
-    let _error_message = state.error_message.clone();
-    let _info_message = state.info_message.clone();
     let is_internal_gpodder_enabled = use_state(|| false);
     let is_toggling_gpodder = use_state(|| false);
 
@@ -930,9 +913,7 @@ pub fn sync_options() -> Html {
                         }
                         Err(e) => {
                             let error_msg = format!("Error fetching gpodder API status: {}", e);
-                            dispatch.reduce_mut(|state| {
-                                state.error_message = Some(error_msg);
-                            });
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(error_msg); });
                         }
                     }
                 });
@@ -1107,15 +1088,13 @@ pub fn sync_options() -> Html {
                             "Internal gpodder API disabled"
                         };
 
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(message.to_string());
                         });
                     }
                     Err(e) => {
                         let error_msg = format!("Error toggling gpodder API: {}", e);
-                        dispatch.reduce_mut(|state| {
-                            state.error_message = Some(error_msg);
-                        });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(error_msg); });
                     }
                 }
                 is_toggling_gpodder.set(false);
@@ -1194,7 +1173,7 @@ pub fn sync_options() -> Html {
                                             Ok(response) => {
                                                 if response.data {
                                                     log::info!("gPodder settings have been set up");
-                                                    dispatch.reduce_mut(|state| state.info_message = Option::from("Nextcloud server has been authenticated successfully".to_string()));
+                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| state.info_message = Option::from("Nextcloud server has been authenticated successfully".to_string()));
 
                                                     // Set `is_refreshing` to true and start the WebSocket refresh
                                                     let server_name_call = server_name.clone();
@@ -1212,7 +1191,7 @@ pub fn sync_options() -> Html {
                                                                 &user_id_call.unwrap(),
                                                                 &api_key_call.unwrap().unwrap(),
                                                                 true,
-                                                                dispatch_clone.clone(),
+                                                                Dispatch::<NotificationState>::global(),
                                                             )
                                                             .await
                                                         {
@@ -1251,7 +1230,7 @@ pub fn sync_options() -> Html {
                                 Err(e) => {
                                     log::error!("Error calling add_nextcloud_server: {:?}", e);
                                     let formatted_error = format_error_message(&e.to_string());
-                                    dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Option::from(
                                             format!(
                                                 "Error calling add_nextcloud_server: {}",
@@ -1268,7 +1247,7 @@ pub fn sync_options() -> Html {
                                 "Failed to initiate Nextcloud login: {:?}",
                                 e
                             )));
-                            dispatch.reduce_mut(|state| state.error_message = Option::from("Failed to initiate Nextcloud login. Please check the server URL.".to_string()));
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Option::from("Failed to initiate Nextcloud login. Please check the server URL.".to_string()));
                             auth_status.set(
                                 "Failed to initiate Nextcloud login. Please check the server URL."
                                     .to_string(),
@@ -1278,7 +1257,7 @@ pub fn sync_options() -> Html {
                 });
             } else {
                 auth_status.set("Please enter a Nextcloud server URL.".to_string());
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message =
                         Option::from("Please enter a Nextcloud Server URL".to_string())
                 });
@@ -1325,12 +1304,12 @@ pub fn sync_options() -> Html {
                             is_sync_configured.set(false);
                             sync_type.set("None".to_string());
                             is_internal_gpodder_enabled.set(false);
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message =
                                     Some("Podcast sync settings removed successfully".to_string());
                             });
                         } else {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some("Failed to remove sync settings".to_string());
                             });
@@ -1338,7 +1317,7 @@ pub fn sync_options() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("Error removing sync settings: {}", formatted_error));
                         });
@@ -1367,7 +1346,7 @@ pub fn sync_options() -> Html {
             let testing_connection = test_connect.clone();
 
             if server_url.is_empty() || server_user.is_empty() || server_pass.is_empty() {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message =
                         Some("Please enter server URL, username, and password".to_string());
                 });
@@ -1394,20 +1373,16 @@ pub fn sync_options() -> Html {
                 {
                     Ok(response) => {
                         if response.success {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(response.message);
                             });
                         } else {
-                            dispatch.reduce_mut(|state| {
-                                state.error_message = Some(response.message);
-                            });
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(response.message); });
                         }
                     }
                     Err(e) => {
                         let error_msg = format!("Failed to test GPodder connection: {}", e);
-                        dispatch.reduce_mut(|state| {
-                            state.error_message = Some(error_msg);
-                        });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(error_msg); });
                     }
                 }
 
@@ -1475,7 +1450,7 @@ pub fn sync_options() -> Html {
                                         log::info!(
                                             "Gpodder server now added and podcasts syncing!"
                                         );
-                                        dispatch_clone.reduce_mut(|state| {
+                                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                             state.info_message = Option::from(
                                                 "Gpodder server now added and podcasts syncing!"
                                                     .to_string(),
@@ -1496,7 +1471,7 @@ pub fn sync_options() -> Html {
                                                 &user_id_call.unwrap(),
                                                 &api_key_call.unwrap().unwrap(),
                                                 true,
-                                                dispatch_clone.clone(),
+                                                Dispatch::<NotificationState>::global(),
                                             )
                                             .await
                                             {
@@ -1526,7 +1501,7 @@ pub fn sync_options() -> Html {
                                             e
                                         )));
                                         let formatted_error = format_error_message(&e.to_string());
-                                        dispatch_clone.reduce_mut(|state| state.error_message = Option::from("Failed to add Gpodder server. Please check the server URL.".to_string()));
+                                        Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Option::from("Failed to add Gpodder server. Please check the server URL.".to_string()));
                                         auth_status.set(
                                             format!("Failed to add Gpodder server. Please check the server URL and credentials. {:?}", formatted_error)
                                                 .to_string(),
@@ -1537,7 +1512,7 @@ pub fn sync_options() -> Html {
                                 web_sys::console::log_1(&JsValue::from_str(
                                     "Authentication failed.",
                                 ));
-                                dispatch_clone.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Option::from(
                                         "Authentication failed. Please check your credentials."
                                             .to_string(),
@@ -1554,7 +1529,7 @@ pub fn sync_options() -> Html {
                                 "Failed to verify Gpodder auth: {:?}",
                                 e
                             )));
-                            dispatch_clone.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(
                                     "Failed to verify Gpodder auth. Please check the server URL."
                                         .to_string(),
@@ -1569,7 +1544,7 @@ pub fn sync_options() -> Html {
                 });
             } else {
                 auth_status.set("Please enter a Gpodder server URL.".to_string());
-                dispatch_clone.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message =
                         Option::from("Please enter a Gpodder Server URL".to_string())
                 });
@@ -1964,9 +1939,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                             }
                             Err(e) => {
                                 let error_msg = format!("Failed to load GPodder statistics: {}", e);
-                                dispatch_clone.reduce_mut(|state| {
-                                    state.error_message = Some(error_msg);
-                                });
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(error_msg); });
                             }
                         }
                         is_loading_clone.set(false);
@@ -1998,9 +1971,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                         }
                         Err(e) => {
                             let error_msg = format!("Failed to refresh GPodder statistics: {}", e);
-                            dispatch_clone.reduce_mut(|state| {
-                                state.error_message = Some(error_msg);
-                            });
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| { state.error_message = Some(error_msg); });
                         }
                     }
                     is_loading_clone.set(false);

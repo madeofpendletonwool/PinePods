@@ -98,8 +98,6 @@ pub struct AppState {
     pub user_details: Option<GetUserDetails>,
     pub auth_details: Option<LoginServerRequest>,
     pub server_details: Option<GetApiDetails>,
-    pub error_message: Option<String>,
-    pub info_message: Option<String>,
     pub search_results: Option<PodcastSearchResult>,
     pub podcast_feed_results: Option<PodcastFeedResult>,
     pub people_feed_results: Option<PeopleFeedResult>,
@@ -144,7 +142,6 @@ pub struct AppState {
     pub completed_episodes: Option<Vec<i32>>,
     pub queued_episode_ids: Option<Vec<i32>>,
     pub podcast_layout: Option<PodcastLayout>,
-    pub refresh_progress: Option<RefreshProgress>,
     pub youtube_search_results: Option<YouTubeSearchResults>,
     pub selected_youtube_channel: Option<YouTubeChannel>,
     pub is_youtube_loading: Option<bool>,
@@ -154,13 +151,23 @@ pub struct AppState {
     pub playlists: Option<Vec<Playlist>>,
     pub current_playlist_info: Option<PlaylistInfo>,
     pub current_playlist_episodes: Option<Vec<Episode>>,
-    pub active_tasks: Option<Vec<TaskProgress>>,
 }
+
 
 impl AppState {
     pub fn saved_episode_ids(&self) -> impl Iterator<Item = i32> + '_ {
         self.saved_episodes.iter().map(|e| e.episodeid)
     }
+}
+
+/// Notification-only state, kept separate from AppState so that episode list pages
+/// do not re-render when a toast fires.
+#[derive(Default, Clone, PartialEq, Store, Debug)]
+pub struct NotificationState {
+    pub info_message: Option<String>,
+    pub error_message: Option<String>,
+    pub active_tasks: Option<Vec<TaskProgress>>,
+    pub refresh_progress: Option<RefreshProgress>,
 }
 
 /// A collection of records for episodes downloaded either locally or on the server.

@@ -1,7 +1,7 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::{
     format_error_message, get_default_sort_direction, get_filter_preference, set_filter_preference,
@@ -1380,7 +1380,7 @@ pub fn episode_layout() -> Html {
                 match result {
                     Ok(success) => {
                         if success {
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(
                                     if pod_feed_url_check.starts_with("https://www.youtube.com") {
                                         i18n_youtube_channel_successfully_removed
@@ -1399,7 +1399,7 @@ pub fn episode_layout() -> Html {
                                 hist.push("/podcasts");
                             }
                         } else {
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(if is_youtube {
                                     i18n_failed_to_remove_youtube_channel
                                 } else {
@@ -1412,7 +1412,7 @@ pub fn episode_layout() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch_wasm.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("Error removing content: {:?}", formatted_error))
                         });
@@ -1492,14 +1492,14 @@ pub fn episode_layout() -> Html {
                         .await
                         {
                             Ok(success_message) => {
-                                call_down_dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Option::from(format!("{}", success_message))
                                 });
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                call_down_dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Option::from(format!("{}", formatted_error))
                                 });
@@ -1507,8 +1507,8 @@ pub fn episode_layout() -> Html {
                         }
                     }
                     Err(e) => {
-                        call_down_dispatch.reduce_mut(|state| {
-                            let formatted_error = format_error_message(&e.to_string());
+                        let formatted_error = format_error_message(&e.to_string());
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!(
                                 "Failed to get podcast ID: {}",
                                 formatted_error
@@ -1710,7 +1710,7 @@ pub fn episode_layout() -> Html {
 
                     match call_set_playback_speed(&server_name, &api_key, &request).await {
                         Ok(_) => {
-                            call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Option::from(i18n_playback_speed_updated)
                             });
                         }
@@ -1718,7 +1718,7 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error updating playback speed: {}", e).into(),
                             );
-                            call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_updating_playback_speed)
                             });
@@ -1754,7 +1754,7 @@ pub fn episode_layout() -> Html {
                     };
                     match call_clear_playback_speed(&server_name, &api_key, &request).await {
                         Ok(_) => {
-                            call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Option::from(i18n_playback_speed_reset_default)
                             });
                         }
@@ -1762,7 +1762,7 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error resetting playback speed: {}", e).into(),
                             );
-                            call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_resetting_playback_speed)
                             });
@@ -1825,7 +1825,7 @@ pub fn episode_layout() -> Html {
                     {
                         Ok(_) => {
                             feed_cutoff_days.set(days);
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message =
                                     Option::from(i18n_youtube_episode_limit_updated)
                             });
@@ -1836,7 +1836,7 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error updating feed cutoff days: {}", err).into(),
                             );
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(format!(
                                     "Error updating feed cutoff days: {:?}",
                                     err
@@ -1959,7 +1959,7 @@ pub fn episode_layout() -> Html {
                     {
                         Ok(_) => {
                             use_podcast_covers.set(new_setting);
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(format!(
                                     "Podcast cover preference {} for this podcast",
                                     if new_setting { "enabled" } else { "disabled" }
@@ -1967,7 +1967,7 @@ pub fn episode_layout() -> Html {
                             });
                         }
                         Err(e) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("Error updating podcast cover preference: {}", e));
                             });
@@ -2018,7 +2018,7 @@ pub fn episode_layout() -> Html {
 
                     match call_adjust_skip_times(&server_name, &api_key, &request).await {
                         Ok(_) => {
-                            skip_call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Option::from(i18n_skip_times_adjusted)
                             });
                         }
@@ -2026,7 +2026,7 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error updating skip times: {}", e).into(),
                             );
-                            skip_call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(i18n_error_adjusting_skip_times)
                             });
                         }
@@ -2853,7 +2853,7 @@ pub fn episode_layout() -> Html {
                                                                             if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key.as_ref(), server_name.as_ref(), user_id.as_ref()) {
                                                                                 match call_unmerge_podcast(server_name, &api_key, primary_id, merged_id).await {
                                                                                     Ok(_) => {
-                                                                                        dispatch.reduce_mut(|state| {
+                                                                                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                             state.info_message = Some("Podcast unmerged successfully".to_string())
                                                                                         });
 
@@ -2882,7 +2882,7 @@ pub fn episode_layout() -> Html {
                                                                                         }
                                                                                     },
                                                                                     Err(e) => {
-                                                                                        dispatch.reduce_mut(|state| {
+                                                                                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                             state.error_message = Some(format!("Failed to unmerge podcast: {}", e))
                                                                                         });
                                                                                     }
@@ -2956,7 +2956,7 @@ pub fn episode_layout() -> Html {
                                                                     selected_podcasts_to_merge.set(Vec::new());
 
                                                                     // Show success message
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.info_message = Some(format!("Successfully merged {} podcast(s)", podcast_ids.len()))
                                                                     });
 
@@ -2985,7 +2985,7 @@ pub fn episode_layout() -> Html {
                                                                     }
                                                                 },
                                                                 Err(e) => {
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.error_message = Some(format!("Failed to merge podcasts: {}", e))
                                                                     });
                                                                 }
@@ -3052,7 +3052,7 @@ pub fn episode_layout() -> Html {
                                                     spawn_local(async move {
                                                         // Check if podcast is loaded
                                                         if current_podcast_id == 0 {
-                                                            dispatch.reduce_mut(|state| {
+                                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                 state.error_message = Some("Please wait for podcast to load before editing".to_string())
                                                             });
                                                             return;
@@ -3117,7 +3117,7 @@ pub fn episode_layout() -> Html {
                                                         if feed_url.is_none() && username.is_none() && password.is_none() &&
                                                            podcast_name.is_none() && description.is_none() && author.is_none() &&
                                                            artwork_url.is_none() && website_url.is_none() && podcast_index_id.is_none() {
-                                                            dispatch.reduce_mut(|state| {
+                                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                 state.info_message = Some("No changes to save".to_string())
                                                             });
                                                             return;
@@ -3140,18 +3140,18 @@ pub fn episode_layout() -> Html {
                                                         ).await {
                                                             Ok(response) => {
                                                                 if response.success {
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.info_message = Some("Podcast updated successfully".to_string())
                                                                     });
                                                                     page_state.set(PageState::Hidden);
                                                                 } else {
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.error_message = Some(format!("Update failed: {}", response.message))
                                                                     });
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                dispatch.reduce_mut(|state| {
+                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                     state.error_message = Some(format!("Error updating podcast: {}", e))
                                                                 });
                                                             }
@@ -3283,7 +3283,7 @@ pub fn episode_layout() -> Html {
 
                             // First issue: response_body.podcast_id is now i32, not Option<i32>
                             if response_body.success {
-                                dispatch_wasm.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Option::from(i18n_podcast_successfully_added)
                                 });
@@ -3329,7 +3329,7 @@ pub fn episode_layout() -> Html {
                                     state.podcast_added = Some(podcast_added);
                                 });
                             } else {
-                                dispatch_wasm.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Option::from(i18n_failed_to_add_podcast)
                                 });
                                 app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
@@ -3337,7 +3337,7 @@ pub fn episode_layout() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(format!(
                                     "Error adding podcast: {:?}",
                                     formatted_error
@@ -3537,7 +3537,7 @@ pub fn episode_layout() -> Html {
                                         let layout = if state.is_mobile.unwrap_or(false) {
                                             let server_for_proxy = server_name.clone().unwrap_or_default();
                                             html! {
-                                                <div class="mobile-layout ep-mobile-page">
+                                                <div class="mobile-layout ep-mobile-pod-header">
 
                                                     // ── Compact header: artwork + title + actions ──
                                                     <div class="ep-mobile-header">
@@ -3652,38 +3652,60 @@ pub fn episode_layout() -> Html {
                                                             }
                                                         } else if let Some(people) = &state.podcast_people {
                                                             if !people.is_empty() {
-                                                                let server = server_for_proxy.clone();
-                                                                html! {
-                                                                    <div class="ep-mobile-hosts">
-                                                                        <p class="ep-mobile-section-label">{"Hosts"}</p>
-                                                                        <div class="ep-mobile-hosts-scroll">
-                                                                        { for people.iter().map(|person| {
-                                                                            let name = person.name.clone();
-                                                                            let role = person.role.clone();
-                                                                            let img_url = person.img.as_ref().map(|url| {
-                                                                                format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
-                                                                            });
-                                                                            let hist = history.clone();
-                                                                            let nav_name = name.clone();
-                                                                            let on_chip_click = Callback::from(move |_: MouseEvent| {
-                                                                                hist.push(format!("/person/{}", nav_name));
-                                                                            });
-                                                                            html! {
-                                                                                <div class="ep-mobile-host-chip" onclick={on_chip_click}>
-                                                                                    { if let Some(src) = img_url {
-                                                                                        html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
-                                                                                    } else {
-                                                                                        html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
-                                                                                    }}
-                                                                                    <span class="ep-mobile-host-name">{ &person.name }</span>
-                                                                                    { if let Some(r) = &role {
-                                                                                        html! { <span class="ep-mobile-host-role">{ r }</span> }
-                                                                                    } else { html! {} }}
-                                                                                </div>
-                                                                            }
-                                                                        })}
+                                                                let has_unknown_host = people.len() == 1
+                                                                    && people[0].name == "Unknown Host"
+                                                                    && people[0].role == Some("Host".to_string());
+                                                                if has_unknown_host {
+                                                                    let people_url = search_state.server_details.as_ref()
+                                                                        .and_then(|sd| sd.people_url.as_ref())
+                                                                        .cloned()
+                                                                        .unwrap_or_default();
+                                                                    let host_url = format!("{}/podcast/{}", people_url, podcast_info.podcastindexid);
+                                                                    html! {
+                                                                        <div class="ep-mobile-hosts">
+                                                                            <p class="ep-mobile-section-label">{"Hosts"}</p>
+                                                                            <p class="ep-mobile-no-hosts-msg">
+                                                                                { i18n.t("host_component.no_hosts_found") }
+                                                                                <a href={host_url} target="_blank" class="ep-mobile-no-hosts-link">
+                                                                                    { i18n.t("host_component.add_hosts_here") }
+                                                                                </a>
+                                                                            </p>
                                                                         </div>
-                                                                    </div>
+                                                                    }
+                                                                } else {
+                                                                    let server = server_for_proxy.clone();
+                                                                    html! {
+                                                                        <div class="ep-mobile-hosts">
+                                                                            <p class="ep-mobile-section-label">{"Hosts"}</p>
+                                                                            <div class="ep-mobile-hosts-scroll">
+                                                                            { for people.iter().map(|person| {
+                                                                                let name = person.name.clone();
+                                                                                let role = person.role.clone();
+                                                                                let img_url = person.img.as_ref().map(|url| {
+                                                                                    format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
+                                                                                });
+                                                                                let hist = history.clone();
+                                                                                let nav_name = name.clone();
+                                                                                let on_chip_click = Callback::from(move |_: MouseEvent| {
+                                                                                    hist.push(format!("/person/{}", nav_name));
+                                                                                });
+                                                                                html! {
+                                                                                    <div class="ep-mobile-host-chip" onclick={on_chip_click}>
+                                                                                        { if let Some(src) = img_url {
+                                                                                            html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
+                                                                                        } else {
+                                                                                            html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
+                                                                                        }}
+                                                                                        <span class="ep-mobile-host-name">{ &person.name }</span>
+                                                                                        { if let Some(r) = &role {
+                                                                                            html! { <span class="ep-mobile-host-role">{ r }</span> }
+                                                                                        } else { html! {} }}
+                                                                                    </div>
+                                                                                }
+                                                                            })}
+                                                                            </div>
+                                                                        </div>
+                                                                    }
                                                                 }
                                                             } else { html! {} }
                                                         } else { html! {} }
@@ -4182,13 +4204,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }
@@ -4227,13 +4249,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }
@@ -4272,13 +4294,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }
@@ -4317,13 +4339,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }

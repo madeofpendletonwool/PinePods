@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_add_local_podcast, call_add_local_podcast_artwork, call_refresh_local_podcast,
@@ -110,7 +110,7 @@ pub fn local_podcast() -> Html {
             let error_prefix = error_prefix.clone();
 
             if podcast_name.is_empty() || directory_path.is_empty() {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Some("Podcast name and directory path are required.".to_string());
                 });
                 return;
@@ -150,13 +150,13 @@ pub fn local_podcast() -> Html {
                             }
                         }
 
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg.clone());
                         });
                     }
                     Err(e) => {
                         let formatted = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!("{}{}", error_prefix, formatted));
                         });
                     }
@@ -197,13 +197,13 @@ pub fn local_podcast() -> Html {
                 {
                     Ok(result) => {
                         let count = result["new_episodes"].as_i64().unwrap_or(0);
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(format!("Refresh complete: {} new episode(s) added", count));
                         });
                     }
                     Err(e) => {
                         let formatted = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!("Failed to refresh: {}", formatted));
                         });
                     }

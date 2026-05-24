@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::pages::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
@@ -204,18 +204,19 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 {
                     Ok(success_message) => {
                         queue_post.reduce_mut(|state| {
-                            state.info_message = Option::from(format!("{}", success_message));
                             if let Some(ref mut queued_episodes) = state.queued_episode_ids {
                                 queued_episodes.push(episode_clone.episodeid);
                             }
                         });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                            state.info_message = Option::from(format!("{}", success_message));
+                        });
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        queue_post.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!("{}", formatted_error))
                         });
-                        // Handle error, e.g., display the error message
                     }
                 }
             };
@@ -255,7 +256,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
                         // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
                         post_dispatch.reduce_mut(|state| {
-                            // Here, you should remove the episode from the queued_episodes
                             if let Some(ref mut queued_episodes) = state.queued_episodes {
                                 queued_episodes
                                     .episodes
@@ -264,16 +264,16 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             if let Some(ref mut queued_episode_ids) = state.queued_episode_ids {
                                 queued_episode_ids.retain(|&id| id != episode_id);
                             }
-                            // Optionally, you can update the info_message with success message
+                        });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(format!("{}", formatted_info).to_string());
                         });
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        post_dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!("{}", formatted_error))
                         });
-                        // Handle error, e.g., display the error message
                     }
                 }
             };
@@ -325,18 +325,19 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     Ok(success_message) => {
                         let formatted_info = format_error_message(&success_message.to_string());
                         post_state.reduce_mut(|state| {
-                            state.info_message = Option::from(format!("{}", formatted_info));
                             if !state.saved_episode_ids().any(|id| id == episode.episodeid) {
                                 state.saved_episodes.push(ep);
                             }
                         });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                            state.info_message = Option::from(format!("{}", formatted_info));
+                        });
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!("{}", formatted_error))
                         });
-                        // Handle error, e.g., display the error message
                     }
                 }
             };
@@ -369,20 +370,20 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     Ok(success_message) => {
                         let formatted_info = format_error_message(&success_message.to_string());
 
-                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
                         post_dispatch.reduce_mut(|state| {
                             state
                                 .saved_episodes
                                 .retain(|e| e.episodeid != episode.episodeid);
+                        });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(format!("{}", formatted_info).to_string());
                         });
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        post_dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!("{}", formatted_error))
                         });
-                        // Handle error, e.g., display the error message
                     }
                 }
             };
@@ -433,16 +434,17 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 {
                     Ok(success_message) => {
                         post_state.reduce_mut(|state| {
-                            state.info_message = Option::from(format!("{}", success_message));
                             state.downloaded_episodes.push_server(episode);
+                        });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                            state.info_message = Option::from(format!("{}", success_message));
                         });
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!("{}", formatted_error))
                         });
-                        // Handle error, e.g., display the error message
                     }
                 }
             };
@@ -483,15 +485,16 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
                         post_dispatch.reduce_mut(|state| {
                             state.downloaded_episodes.remove_local(episode.episodeid);
+                        });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(format!("{}", formatted_info).to_string());
                         });
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        post_dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!("{}", formatted_error))
                         });
-                        // Handle error, e.g., display the error message
                     }
                 }
             };
@@ -552,17 +555,18 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         let filename = format!("episode_{}.mp3", episode_id);
                         let artwork_filename = format!("artwork_{}.jpg", episode_id);
                         post_state.reduce_mut(|state| {
-                            state.info_message = Some(format!("Episode download queued!"));
-
                             // Add to locally downloaded episodes list
                             state.downloaded_episodes.push_local(episode);
+                        });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                            state.info_message = Some(format!("Episode download queued!"));
                         });
                         // Download audio
                         match download_file(audio_url, filename.clone()).await {
                             Ok(_) => {}
                             Err(e) => {
-                                post_state.reduce_mut(|state| {
-                                    let formatted_error = format_error_message(&format!("{:?}", e));
+                                let formatted_error = format_error_message(&format!("{:?}", e));
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "Failed to download episode audio: {}",
                                         formatted_error.clone()
@@ -574,8 +578,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
                         // Download artwork
                         if let Err(e) = download_file(artwork_url, artwork_filename.clone()).await {
-                            post_state.reduce_mut(|state| {
-                                let formatted_error = format_error_message(&format!("{:?}", e));
+                            let formatted_error = format_error_message(&format!("{:?}", e));
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "Failed to download episode artwork: {}",
                                     formatted_error.clone()
@@ -586,8 +590,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
                         // Update local JSON database
                         if let Err(e) = update_local_database(episode_info.clone()).await {
-                            post_state.reduce_mut(|state| {
-                                let formatted_error = format_error_message(&format!("{:?}", e));
+                            let formatted_error = format_error_message(&format!("{:?}", e));
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "Failed to update local database: {}",
                                     formatted_error.clone()
@@ -609,9 +613,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         {
                             Ok(podcast_details) => {
                                 if let Err(e) = update_podcast_database(podcast_details).await {
-                                    post_state.reduce_mut(|state| {
-                                        let formatted_error =
-                                            format_error_message(&format!("{:?}", e));
+                                    let formatted_error =
+                                        format_error_message(&format!("{:?}", e));
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Some(format!(
                                             "Failed to update podcast database: {}",
                                             formatted_error
@@ -620,8 +624,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                                 }
                             }
                             Err(e) => {
-                                post_state.reduce_mut(|state| {
-                                    let formatted_error = format_error_message(&e.to_string());
+                                let formatted_error = format_error_message(&e.to_string());
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "Failed to fetch podcast metadata: {:?}",
                                         formatted_error
@@ -632,7 +636,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!("s {:?}", formatted_error))
                         });
                     }
@@ -663,13 +667,13 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 // Download audio
                 match remove_episode_from_local_db(episode_id).await {
                     Ok(_) => {
-                        // Update info_message and remove from locally_downloaded_episodes
                         post_state.reduce_mut(|state| {
-                            state.info_message =
-                                Some(format!("Local episode {} deleted!", filename));
-
                             // Remove from locally downloaded episodes list
                             state.downloaded_episodes.remove_local(episode_id);
+                        });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                            state.info_message =
+                                Some(format!("Local episode {} deleted!", filename));
                         });
 
                         // Update local_download_increment in ui_state
@@ -683,7 +687,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&format!("{:?}", e));
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!(
                                 "Failed to download episode audio: {}",
                                 formatted_error
@@ -725,7 +729,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 .await
                 {
                     Ok(success_message) => {
-                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
                         post_dispatch.reduce_mut(|state| {
                             if let Some(completed_episodes) = state.completed_episodes.as_mut() {
                                 if let Some(pos) =
@@ -738,14 +741,15 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             } else {
                                 state.completed_episodes = Some(vec![episode_id]);
                             }
+                        });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(format!("{}", success_message));
                         });
                     }
                     Err(e) => {
-                        post_dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!("{}", e))
                         });
-                        // Handle error, e.g., display the error message
                     }
                 }
             };
@@ -782,7 +786,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 .await
                 {
                     Ok(success_message) => {
-                        // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
                         post_dispatch.reduce_mut(|state| {
                             if let Some(completed_episodes) = state.completed_episodes.as_mut() {
                                 if let Some(pos) =
@@ -795,15 +798,16 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             } else {
                                 state.completed_episodes = Some(vec![episode_id]);
                             }
+                        });
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(format!("{}", success_message));
                         });
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        post_dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!("{}", formatted_error))
                         });
-                        // Handle error, e.g., display the error message
                     }
                 }
             };

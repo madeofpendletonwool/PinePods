@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::pages::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
@@ -242,9 +242,11 @@ pub fn search_bar() -> Html {
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
+                                state.is_loading = Some(false);
+                            });
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("YouTube search error: {}", formatted_error));
-                                state.is_loading = Some(false);
                             });
                         }
                     }

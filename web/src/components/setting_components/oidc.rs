@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_add_oidc_provider, call_list_oidc_providers, call_remove_oidc_provider,
@@ -580,7 +580,7 @@ pub fn oidc_settings() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     i18n_failed_to_fetch_oidc_providers.clone(),
@@ -664,14 +664,14 @@ pub fn oidc_settings() -> Html {
                     match call_remove_oidc_provider(server_name, api_key, provider_id).await {
                         Ok(_) => {
                             update_trigger.set(!*update_trigger);
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message =
                                     Some(i18n_provider_successfully_removed.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     i18n_failed_to_remove_provider, formatted_error
@@ -899,14 +899,14 @@ pub fn oidc_settings() -> Html {
                                 Ok(_) => {
                                     call_trigger.set(!*call_trigger);
                                     call_page_state.set(PageState::Hidden);
-                                    call_dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.info_message =
                                             Some(i18n_oidc_provider_successfully_added.clone());
                                     });
                                 }
                                 Err(e) => {
                                     let formatted_error = format_error_message(&e.to_string());
-                                    call_dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Some(format!(
                                             "{}{}",
                                             i18n_failed_to_add_provider, formatted_error
@@ -927,14 +927,14 @@ pub fn oidc_settings() -> Html {
                                 Ok(_) => {
                                     call_trigger.set(!*call_trigger);
                                     call_page_state.set(PageState::Hidden);
-                                    call_dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.info_message =
                                             Some(i18n_oidc_provider_successfully_updated.clone());
                                     });
                                 }
                                 Err(e) => {
                                     let formatted_error = format_error_message(&e.to_string());
-                                    call_dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Some(format!(
                                             "{}{}",
                                             i18n_failed_to_update_provider, formatted_error

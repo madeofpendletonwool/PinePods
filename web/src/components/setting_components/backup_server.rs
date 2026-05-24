@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_backup_server, call_get_scheduled_backup, call_manual_backup_to_directory,
@@ -62,7 +62,7 @@ pub fn backup_server() -> Html {
                             }
                         }
                         Err(e) => {
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     error_prefix,
@@ -94,7 +94,7 @@ pub fn backup_server() -> Html {
             let dispatch_call = dispatch_call.clone();
             let db_pass = (*database_password).trim().to_string();
             if db_pass.is_empty() {
-                dispatch_call.reduce_mut(|audio_state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                     audio_state.error_message = Option::from(empty_password_msg.clone())
                 });
                 return;
@@ -133,7 +133,7 @@ pub fn backup_server() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch_call.reduce_mut(|audio_state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                             audio_state.error_message = Option::from(format!(
                                 "{}{}",
                                 backup_error_prefix.clone(),
@@ -198,7 +198,7 @@ pub fn backup_server() -> Html {
                     .await
                     {
                         Ok(_) => {
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(if new_enabled {
                                     enabled_msg.clone()
                                 } else {
@@ -208,7 +208,7 @@ pub fn backup_server() -> Html {
                         }
                         Err(e) => {
                             schedule_enabled_for_async.set(!new_enabled); // Revert on error
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     error_prefix.clone(),
@@ -252,13 +252,13 @@ pub fn backup_server() -> Html {
                                 .get("filename")
                                 .and_then(|f| f.as_str())
                                 .unwrap_or("backup file");
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message =
                                     Some(success_template.clone().replace("{}", filename));
                             });
                         }
                         Err(e) => {
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     error_prefix.clone(),

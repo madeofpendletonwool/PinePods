@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_components::FallbackImage;
 use crate::requests::search_pods::{call_get_podcast_info, UnifiedPodcast};
 use crate::requests::setting_reqs::{
@@ -256,14 +256,14 @@ pub fn podcast_index_matching() -> Html {
                             manual_podcast_id.set(String::new());
 
                             // Show success message
-                            dispatch_effect.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(
                                     "Podcast successfully matched to Podcast Index!".to_string(),
                                 );
                             });
                         }
                         Err(e) => {
-                            dispatch_effect.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("Error updating podcast index ID: {}", e));
                             });
@@ -324,7 +324,7 @@ pub fn podcast_index_matching() -> Html {
                                     ignored_podcasts.set(updated_ignored);
                                 }
 
-                                dispatch_effect.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Some("Podcast ignored from index matching".to_string());
                                 });
@@ -348,14 +348,14 @@ pub fn podcast_index_matching() -> Html {
                                     unmatched_podcasts.set(updated_unmatched);
                                 }
 
-                                dispatch_effect.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Some("Podcast restored to index matching".to_string());
                                 });
                             }
                         }
                         Err(e) => {
-                            dispatch_effect.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("Error updating podcast ignore status: {}", e));
                             });

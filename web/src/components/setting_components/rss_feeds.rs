@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_get_rss_key, call_rss_feed_status, call_toggle_rss_feeds,
@@ -125,7 +125,7 @@ pub fn rss_feed_settings() -> Html {
                                         },
                                         Err(e) => {
                                             let formatted_error = format_error_message(&e.to_string());
-                                            _dispatch.reduce_mut(|audio_state|
+                                            Dispatch::<NotificationState>::global().reduce_mut(|audio_state|
                                                 audio_state.error_message = Some(format!("Error toggling RSS feeds: {}", formatted_error))
                                             );
                                         },

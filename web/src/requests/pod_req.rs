@@ -1,6 +1,6 @@
 use anyhow::{Context, Error};
 // use futures_util::stream::StreamExt;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::notification_center::TaskProgress;
 use crate::requests::episode::Episode;
 use futures::StreamExt;
@@ -2901,7 +2901,7 @@ pub async fn connect_to_episode_websocket(
     user_id: &i32,
     api_key: &str,
     nextcloud_refresh: bool,
-    dispatch: Dispatch<AppState>,
+    dispatch: Dispatch<NotificationState>,
 ) -> Result<Vec<EpisodeWebsocketResponse>, Error> {
     let clean_server_name = server_name
         .trim_start_matches("http://")
@@ -3049,10 +3049,11 @@ pub async fn connect_to_episode_websocket(
                                     );
 
                                     // Reset refreshing state when complete
-                                    dispatch.reduce_mut(|state| {
+                                    Dispatch::<AppState>::global().reduce_mut(|state| {
                                         state.is_refreshing = Some(false);
+                                    });
+                                    dispatch.reduce_mut(|state| {
                                         state.refresh_progress = None;
-                                        state.clone()
                                     });
 
                                     break;

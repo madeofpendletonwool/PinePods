@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::call_backup_user;
 use wasm_bindgen::JsCast;
@@ -65,7 +65,7 @@ pub fn export_options() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        _dispatch.reduce_mut(|audio_state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                             audio_state.error_message =
                                 Option::from(format!("{}{}", error_prefix.clone(), formatted_error))
                         });

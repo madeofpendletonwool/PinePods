@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, FilterState, UserStatsStore};
+use crate::components::context::{AppState, FilterState, NotificationState, UserStatsStore};
 use crate::components::queue_panel::QueuePanel;
 use crate::components::navigation::use_back_button;
 use crate::pages::routes::Route;
@@ -62,6 +62,7 @@ pub fn app_drawer() -> Html {
     };
     let (state, _dispatch) = use_store::<AppState>();
     let (post_state, _post_dispatch) = use_store::<AppState>();
+    let (_, notif_dispatch) = use_store::<NotificationState>();
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -120,6 +121,7 @@ pub fn app_drawer() -> Html {
         let user_id = user_id.clone();
         let api_key = api_key.clone();
         let dispatch = _dispatch.clone();
+        let notif_dispatch_refresh = notif_dispatch.clone();
 
         // Use Callback<MouseEvent> instead of just MouseEvent
         Callback::from(move |event: MouseEvent| {
@@ -130,6 +132,7 @@ pub fn app_drawer() -> Html {
             let user_id_call = user_id.clone();
             let api_key_call = api_key.clone();
             let dispatch_clone = dispatch.clone();
+            let notif_dispatch_clone = notif_dispatch_refresh.clone();
 
             // Set refreshing state before starting
             dispatch_clone.reduce_mut(|state| {
@@ -145,7 +148,7 @@ pub fn app_drawer() -> Html {
                     &user_id_call.unwrap(),
                     &api_key_call.unwrap().unwrap(),
                     false,
-                    dispatch_clone.clone(),
+                    notif_dispatch_clone,
                 )
                 .await
                 {

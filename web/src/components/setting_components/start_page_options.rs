@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_get_startpage, call_set_startpage, call_set_global_podcast_cover_preference, call_get_podcast_cover_preference};
 use wasm_bindgen_futures::spawn_local;
@@ -134,13 +134,13 @@ pub fn startpage() -> Html {
                         .await
                     {
                         Ok(_) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(success_msg.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!("{}{}", error_prefix.clone(), formatted_error));
                             });
                         }
@@ -171,13 +171,13 @@ pub fn startpage() -> Html {
                     spawn_local(async move {
                         match call_set_global_podcast_cover_preference(&server_name, &api_key, user_id, new_value, None).await {
                             Ok(_) => {
-                                dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message = Some(success_msg.clone());
                                 });
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!("{}{}", error_prefix.clone(), formatted_error));
                                 });
                             }
