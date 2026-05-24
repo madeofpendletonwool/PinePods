@@ -62,7 +62,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let dropdown_state = use_state(|| Option::<(i32, i32)>::None);
     let dropdown_open = dropdown_state.is_some();
     let (post_state, post_dispatch) = use_store::<AppState>();
-    let (_, _ui_dispatch) = use_store::<UIState>();
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -648,17 +647,13 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     };
 
     #[cfg(not(feature = "server_build"))]
-    let ui_dispatch = _ui_dispatch.clone();
-
-    #[cfg(not(feature = "server_build"))]
     let on_remove_locally_downloaded_episode = {
         let episode = props.episode.clone();
-        let download_ui_dispatch = ui_dispatch.clone();
         let download_local_post = post_dispatch.clone();
 
         Callback::from(move |_: MouseEvent| {
             let post_state = download_local_post.clone();
-            let ui_state = download_ui_dispatch.clone();
+            let ui_state = Dispatch::<UIState>::global();
             let episode_id = episode.episodeid;
 
             let future = async move {

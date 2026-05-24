@@ -61,9 +61,6 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         state.downloaded_episodes.is_local_download(episode_id)
     });
 
-    let (_, app_dispatch) = use_store::<AppState>();
-    let (_, ui_dispatch) = use_store::<UIState>();
-
     // Selector returns (is_current, is_active_and_playing) for THIS episode only.
     // Only this episode re-renders when its own play state changes; other episodes are unaffected.
     let play_state = use_selector(move |state: &UIState| {
@@ -174,10 +171,9 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         let user_id = user_id.clone();
         let server_name = server_name.clone();
         let is_local = is_local;
-        let ui_dispatch = ui_dispatch.clone();
 
         Callback::from(move |e: MouseEvent| {
-            let audio_dispatch = ui_dispatch.clone();
+            let audio_dispatch = Dispatch::<UIState>::global();
             let current_state = audio_dispatch.get();
             let is_current = current_state
                 .currently_playing
@@ -319,7 +315,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
         on_shownotes_click(
             browser_history.clone(),
-            app_dispatch.clone(),
+            Dispatch::<AppState>::global(),
             props.episode.episodeid.clone(),
             props.episode.feedurl.clone(),
             src,
