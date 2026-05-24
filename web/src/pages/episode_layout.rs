@@ -3535,115 +3535,111 @@ pub fn episode_layout() -> Html {
                                         };
                                         let sanitized_description = sanitize_html(&podcast_info.description);
                                         let layout = if state.is_mobile.unwrap_or(false) {
+                                            let server_for_proxy = server_name.clone().unwrap_or_default();
                                             html! {
-                                                <div class="mobile-layout">
-                                                    <div class="button-container">
+                                                <div class="mobile-layout ep-mobile-page">
+
+                                                    // ── Compact header: artwork + title + actions ──
+                                                    <div class="ep-mobile-header">
+                                                        <FallbackImage
+                                                            src={podcast_info.artworkurl.clone()}
+                                                            alt={format!("Cover for {}", &podcast_info.podcastname)}
+                                                            class="ep-mobile-art rounded-corners"
+                                                        />
+                                                        <div class="ep-mobile-meta">
+                                                            <h2 class="ep-mobile-title">{ &podcast_info.podcastname }</h2>
+                                                            <p class="ep-mobile-podcast-name">{ &podcast_info.author }</p>
+                                                            <p class="ep-mobile-subinfo">
+                                                                { format!("{}{} · {}{}",
+                                                                    i18n_episode_count,
+                                                                    &podcast_info.episodecount,
+                                                                    i18n_explicit,
+                                                                    if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    // ── Icon action bar ──
+                                                    <div class="ep-mobile-actions">
+                                                        // Subscribe / unsubscribe — always shown
+                                                        <button onclick={toggle_podcast} title="Add or remove podcast" class="ep-mobile-action-btn ep-mobile-action-play">
+                                                            { button_content }
+                                                        </button>
+                                                        // Website link — always shown
                                                         <button
                                                             onclick={
                                                                 let pod_link = pod_link.clone();
                                                                 Callback::from(move |_| web_link.emit(pod_link.clone()))
                                                             }
-                                                            title="Visit external podcast website" class="item-container-button font-bold rounded-full self-center mr-4">
+                                                            title="Visit podcast website"
+                                                            class="ep-mobile-action-btn"
+                                                        >
                                                             { website_icon }
                                                         </button>
-                                                        {
-                                                            if let Some(funding_list) = &state.podcast_funding {
-                                                                if !funding_list.is_empty() {
-                                                                    let funding_list_clone = funding_list.clone();
-                                                                    html! {
-                                                                        <>
-                                                                        { for funding_list_clone.iter().map(|funding| {
-                                                                            let open_in_new_tab = open_in_new_tab.clone();
-                                                                            let payment_icon = payment_icon.clone();
-                                                                            let url = funding.url.clone();
-                                                                            html! {
-                                                                                <button
-                                                                                    onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
-                                                                                    title={funding.description.clone()}
-                                                                                    class="item-container-button font-bold rounded-full self-center mr-4"
-                                                                                >
-                                                                                    { payment_icon } // Replace with your payment_icon component
-                                                                                </button>
-                                                                            }
-                                                                        })}
-                                                                        </>
+                                                        // Subscribed-only actions
+                                                        { if search_state.podcast_added.unwrap() {
+                                                            html! {
+                                                                <>
+                                                                <button onclick={toggle_download} title="Download all episodes" class="ep-mobile-action-btn">
+                                                                    { download_all }
+                                                                </button>
+                                                                <button
+                                                                    onclick={
+                                                                        let page_state = page_state.clone();
+                                                                        Callback::from(move |_| page_state.set(PageState::RSSFeed))
                                                                     }
-                                                                } else {
-                                                                    html! {}
-                                                                }
-                                                            } else {
-                                                                html! {}
+                                                                    title="Get RSS Feed URL"
+                                                                    class="ep-mobile-action-btn"
+                                                                >
+                                                                    { rss_icon }
+                                                                </button>
+                                                                <button onclick={toggle_settings} title="Podcast settings" class="ep-mobile-action-btn">
+                                                                    { setting_content }
+                                                                </button>
+                                                                </>
                                                             }
-                                                        }
-                                                        {
-                                                            if search_state.podcast_added.unwrap() {
+                                                        } else { html! {} }}
+                                                        // Funding buttons (if any)
+                                                        { if let Some(funding_list) = &state.podcast_funding {
+                                                            if !funding_list.is_empty() {
+                                                                let funding_list_clone = funding_list.clone();
                                                                 html! {
-                                                                    <button
-                                                                        onclick={
-                                                                            let page_state = page_state.clone();
-                                                                            Callback::from(move |_| {
-                                                                                page_state.set(PageState::RSSFeed);
-                                                                            })
+                                                                    <>
+                                                                    { for funding_list_clone.iter().map(|funding| {
+                                                                        let open_in_new_tab = open_in_new_tab.clone();
+                                                                        let payment_icon = payment_icon.clone();
+                                                                        let url = funding.url.clone();
+                                                                        html! {
+                                                                            <button
+                                                                                onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
+                                                                                title={funding.description.clone()}
+                                                                                class="ep-mobile-action-btn"
+                                                                            >
+                                                                                { payment_icon }
+                                                                            </button>
                                                                         }
-                                                                        title="Get RSS Feed URL"
-                                                                        class="item-container-button font-bold rounded-full self-center mr-4"
-                                                                        style="width: 30px; height: 30px;"
-                                                                    >
-                                                                        { rss_icon }
-                                                                    </button>
+                                                                    })}
+                                                                    </>
                                                                 }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        {
-                                                            if search_state.podcast_added.unwrap() {
-                                                                html! {
-                                                                    <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                        { download_all }
-                                                                    </button>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                            { button_content }
-                                                        </button>
-                                                        {
-                                                            if search_state.podcast_added.unwrap() {
-                                                                html! {
-                                                                    <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                        { setting_content }
-                                                                    </button>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                    </div>
-                                                    <div class="item-header-mobile-cover-container">
-                                                        <FallbackImage
-                                                            src={podcast_info.artworkurl.clone()}
-                                                            // onclick={on_title_click.clone()}
-                                                            alt={format!("Cover for {}", &podcast_info.podcastname)}
-                                                            class={"item-header-mobile-cover"}
-                                                        />
+                                                            } else { html! {} }
+                                                        } else { html! {} }}
                                                     </div>
 
-                                                    <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
-                                                    <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
-                                                        { sanitized_description }
-                                                        <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
+                                                    // ── Description (collapsed) ──
+                                                    <div class="ep-mobile-desc-section">
+                                                        <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
+                                                            { sanitized_description }
+                                                            <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
+                                                        </div>
                                                     </div>
-                                                    <p class="header-info">{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</p>
-                                                    <p class="header-info">{ format!("{}{}", i18n_authors, &podcast_info.author) }</p>
-                                                    <p class="header-info">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</p>
-                                                    {
-                                                        if !podcast_info.is_youtube.unwrap_or(false) {  // Only show if not a YouTube channel
-                                                            if podcast_info.podcastindexid == 0 {
-                                                                html! {
-                                                                    <div class="import-box mt-2">
+
+                                                    // ── Host strip or unmatched warning ──
+                                                    { if !podcast_info.is_youtube.unwrap_or(false) {
+                                                        if podcast_info.podcastindexid == 0 {
+                                                            html! {
+                                                                <div class="ep-mobile-hosts">
+                                                                    <div class="import-box">
                                                                         <p class="item_container-text text-sm">
                                                                             {"⚠️ This podcast isn't matched to Podcast Index. "}
                                                                             <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
@@ -3652,50 +3648,60 @@ pub fn episode_layout() -> Html {
                                                                             {" to enable host and guest information."}
                                                                         </p>
                                                                     </div>
-                                                                }
-                                                            } else if let Some(people) = &state.podcast_people {
-                                                                if !people.is_empty() {
-                                                                    html! {
-                                                                        <div class="header-info relative">
-                                                                            <div class="max-w-full overflow-x-auto">
-                                                                                <HostDropdown
-                                                                                    title="Hosts"
-                                                                                    hosts={people.clone()}
-                                                                                    podcast_feed_url={podcast_info.feedurl}
-                                                                                    podcast_id={*podcast_id}
-                                                                                    podcast_index_id={podcast_info.podcastindexid}
-                                                                                />
-                                                                            </div>
+                                                                </div>
+                                                            }
+                                                        } else if let Some(people) = &state.podcast_people {
+                                                            if !people.is_empty() {
+                                                                let server = server_for_proxy.clone();
+                                                                html! {
+                                                                    <div class="ep-mobile-hosts">
+                                                                        <p class="ep-mobile-section-label">{"Hosts"}</p>
+                                                                        <div class="ep-mobile-hosts-scroll">
+                                                                        { for people.iter().map(|person| {
+                                                                            let name = person.name.clone();
+                                                                            let role = person.role.clone();
+                                                                            let img_url = person.img.as_ref().map(|url| {
+                                                                                format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
+                                                                            });
+                                                                            let hist = history.clone();
+                                                                            let nav_name = name.clone();
+                                                                            let on_chip_click = Callback::from(move |_: MouseEvent| {
+                                                                                hist.push(format!("/person/{}", nav_name));
+                                                                            });
+                                                                            html! {
+                                                                                <div class="ep-mobile-host-chip" onclick={on_chip_click}>
+                                                                                    { if let Some(src) = img_url {
+                                                                                        html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
+                                                                                    } else {
+                                                                                        html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
+                                                                                    }}
+                                                                                    <span class="ep-mobile-host-name">{ &person.name }</span>
+                                                                                    { if let Some(r) = &role {
+                                                                                        html! { <span class="ep-mobile-host-role">{ r }</span> }
+                                                                                    } else { html! {} }}
+                                                                                </div>
+                                                                            }
+                                                                        })}
                                                                         </div>
-                                                                    }
-                                                                } else {
-                                                                    html! {}
+                                                                    </div>
                                                                 }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    <div>
-                                                    <div class="categories-container">
-                                                    {
-                                                        if let Some(categories) = &podcast_info.categories {
-                                                            html! {
-                                                                <>
-                                                                { for categories.iter().map(|(_, category_name)| {
-                                                                    html! { <span class="category-box">{ category_name }</span> }
-                                                                }) }
-                                                                </>
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    </div>
+                                                            } else { html! {} }
+                                                        } else { html! {} }
+                                                    } else { html! {} }}
 
-                                                    </div>
+                                                    // ── Categories ──
+                                                    { if let Some(categories) = &podcast_info.categories {
+                                                        if !categories.is_empty() {
+                                                            html! {
+                                                                <div class="ep-mobile-categories">
+                                                                    { for categories.iter().map(|(_, category_name)| {
+                                                                        html! { <span class="category-box">{ category_name }</span> }
+                                                                    })}
+                                                                </div>
+                                                            }
+                                                        } else { html! {} }
+                                                    } else { html! {} }}
+
                                                 </div>
                                             }
                                         } else {

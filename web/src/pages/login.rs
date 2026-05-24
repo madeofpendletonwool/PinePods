@@ -915,7 +915,7 @@ pub fn login() -> Html {
                             <h3 class="text-xl font-semibold">
     {&i18n.t("login.create_new_user")}
                             </h3>
-                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <button onclick={on_close_modal.clone()} class="modal-close-btn">
                                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                     <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                                 </svg>
@@ -925,8 +925,7 @@ pub fn login() -> Html {
                         <div class="p-4 md:p-5">
                             <form class="space-y-4" action="#">
                                 <div>
-                                    <label for="username" class="block mb-2 text-sm font-medium">{&i18n.t("common.username")}</label>
-                                    <input oninput={on_username_change.clone()} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                    <input oninput={on_username_change.clone()} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.username")} required=true />
                                     {
                                         match *username_error {
                                             username_error_notice::Hidden => html! {},
@@ -935,12 +934,10 @@ pub fn login() -> Html {
                                     }
                                 </div>
                                 <div>
-                                    <label for="fullname" class="block mb-2 text-sm font-medium">{&i18n.t("common.full_name")}</label>
-                                    <input oninput={on_fullname_change} type="text" id="fullname" name="fullname" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                    <input oninput={on_fullname_change} type="text" id="fullname" name="fullname" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.full_name")} required=true />
                                 </div>
                                 <div>
-                                    <label for="email" class="block mb-2 text-sm font-medium">{&i18n.t("common.email")}</label>
-                                    <input oninput={on_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                    <input oninput={on_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.email")} required=true />
                                     {
                                         match *email_error {
                                             email_error_notice::Hidden => html! {},
@@ -949,8 +946,7 @@ pub fn login() -> Html {
                                     }
                                 </div>
                                 <div>
-                                    <label for="password" class="block mb-2 text-sm font-medium">{&i18n.t("common.password")}</label>
-                                    <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                    <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.password")} required=true />
                                     {
                                         match *password_error {
                                             password_error_notice::Hidden => html! {},
@@ -958,7 +954,7 @@ pub fn login() -> Html {
                                         }
                                     }
                                 </div>
-                                <button type="submit" onclick={on_create_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{&i18n.t("common.submit")}</button>
+                                <button type="submit" onclick={on_create_submit} class="modal-button w-full">{&i18n.t("common.submit")}</button>
                             </form>
                         </div>
                     </div>
@@ -1038,7 +1034,7 @@ pub fn login() -> Html {
                             <h3 class="text-xl font-semibold">
     {&i18n_forgot_password}
                             </h3>
-                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <button onclick={on_close_modal.clone()} class="modal-close-btn">
                                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                     <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                                 </svg>
@@ -1051,14 +1047,12 @@ pub fn login() -> Html {
     {&i18n_reset_instructions}
                                 </p>
                                 <div>
-                                    <label for="username" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Username"}</label>
-                                    <input oninput={on_forgot_username_change} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                    <input oninput={on_forgot_username_change} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.username")} required=true />
                                 </div>
                                 <div>
-                                    <label for="email" class="block mb-2 text-sm font-medium">{&i18n.t("common.email")}</label>
-                                    <input oninput={on_forgot_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                    <input oninput={on_forgot_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("common.email")} required=true />
                                 </div>
-                                <button onclick={on_reset_submit} type="submit" class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
+                                <button onclick={on_reset_submit} type="submit" class="modal-button w-full">{&i18n.t("common.submit")}</button>
                             </form>
                         </div>
                     </div>
@@ -1204,7 +1198,7 @@ pub fn login() -> Html {
                             <h3 class="text-xl font-semibold">
     {&i18n_password_reset_title}
                             </h3>
-                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <button onclick={on_close_modal.clone()} class="modal-close-btn">
                                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                     <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                                 </svg>
@@ -1217,18 +1211,15 @@ pub fn login() -> Html {
     {&i18n_reset_code_sent}
                                 </p>
                                 <div>
-                                    <label for="reset_code" class="block mb-2 text-sm font-medium">{&i18n_reset_code_label}</label>
                                     <input oninput={on_reset_code_change} type="text" id="reset_code" name="reset_code" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_password_reset_code")} required=true />
                                 </div>
                                 <div>
-                                    <label for="reset_password" class="block mb-2 text-sm font-medium">{&i18n_new_password_label}</label>
                                     <input oninput={on_reset_password_change} type="password" id="reset_password" name="reset_password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_new_password")} required=true />
                                 </div>
                                 <div>
-                                    <label for="reset_password_confirm" class="block mb-2 text-sm font-medium">{&i18n_confirm_password_label}</label>
                                     <input oninput={on_reset_password_confirm_change} type="password" id="reset_password_confirm" name="reset_password_confirm" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.confirm_new_password")} required=true />
                                 </div>
-                                <button type="submit" onclick={on_reset_code_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{&i18n.t("login.reset_password_button")}</button>
+                                <button type="submit" onclick={on_reset_code_submit} class="modal-button w-full">{&i18n.t("login.reset_password_button")}</button>
                             </form>
                         </div>
                     </div>
@@ -1242,9 +1233,9 @@ pub fn login() -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-center p-8">
                         <div class="text-center">
-                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
-                            <h3 class="text-lg font-semibold mb-2">{"Sending Reset Code..."}</h3>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">{"Please wait while we process your request."}</p>
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-current mx-auto mb-4"></div>
+                            <h3 class="text-lg font-semibold mb-2 item_container-text">{"Sending Reset Code..."}</h3>
+<p class="text-sm item_container-text">{"Please wait while we process your request."}</p>
                         </div>
                     </div>
                 </div>
@@ -1779,13 +1770,13 @@ pub fn login() -> Html {
 
     let mfa_code_modal = html! {
             <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-                <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700" onclick={stop_propagation.clone()}>
-                    <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
-                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                            <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
+                    <div class="modal-container relative rounded-lg shadow">
+                        <div class="modal-inner-header">
+                            <h3 class="text-xl font-semibold item_container-text">
     {&i18n_mfa_login}
                             </h3>
-                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <button onclick={on_close_modal.clone()} class="modal-close-btn">
                                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                     <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                                 </svg>
@@ -1794,11 +1785,11 @@ pub fn login() -> Html {
                         </div>
                         <div class="p-4 md:p-5">
                             <form class="space-y-4" action="#">
-                                <p class="text-m font-semibold text-gray-900 dark:text-white">
+                                <p class="text-m font-semibold item_container-text">
     {&i18n.t("login.mfa_welcome")}
                                 </p>
-                                <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder={i18n.t("auth.enter_mfa_code")} />
-                                <button type="submit" onclick={on_mfa_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{&i18n.t("common.submit")}</button>
+                                <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_mfa_code")} />
+                                <button type="submit" onclick={on_mfa_submit} class="modal-button w-full">{&i18n.t("common.submit")}</button>
                             </form>
                         </div>
                     </div>
@@ -1845,7 +1836,7 @@ pub fn login() -> Html {
             {modal_content}
 
                 <div class="flex justify-center items-start pt-[10vh] h-screen">
-                    <div class="modal-container flex flex-col space-y-4 w-full max-w-xs p-8 border rounded-lg shadow-lg">
+                    <div class="login-card">
                         <div class="flex justify-center items-center">
                             <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
                         </div>
@@ -1893,7 +1884,7 @@ pub fn login() -> Html {
                                         </div>
                                         <button
                                             onclick={on_submit_click}
-                                            class="p-2 download-button rounded"
+                                            class="modal-button w-full"
                                         >
                                             {&i18n_login}
                                         </button>
@@ -2010,7 +2001,7 @@ pub fn login() -> Html {
                     <div class="fixed bottom-4 right-4">
                         <button
                             onclick={on_different_server}
-                            class="p-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                            class="change-server-btn"
                         >
     {&i18n_connect_different_server}
                         </button>
@@ -2841,13 +2832,13 @@ pub fn login() -> Html {
 
     let mfa_code_modal = html! {
             <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-                <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700" onclick={stop_propagation.clone()}>
-                    <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
-                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                            <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
+                    <div class="modal-container relative rounded-lg shadow">
+                        <div class="modal-inner-header">
+                            <h3 class="text-xl font-semibold item_container-text">
     {&i18n_mfa_login}
                             </h3>
-                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                            <button onclick={on_close_modal.clone()} class="modal-close-btn">
                                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                     <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                                 </svg>
@@ -2856,11 +2847,11 @@ pub fn login() -> Html {
                         </div>
                         <div class="p-4 md:p-5">
                             <form class="space-y-4" action="#">
-                                <p class="text-m font-semibold text-gray-900 dark:text-white">
+                                <p class="text-m font-semibold item_container-text">
     {&i18n.t("login.mfa_welcome")}
                                 </p>
-                                <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder={i18n.t("auth.enter_mfa_code")} />
-                                <button type="submit" onclick={on_mfa_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{&i18n.t("common.submit")}</button>
+                                <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_mfa_code")} />
+                                <button type="submit" onclick={on_mfa_submit} class="modal-button w-full">{&i18n.t("common.submit")}</button>
                             </form>
                         </div>
                     </div>
@@ -2879,7 +2870,7 @@ pub fn login() -> Html {
                 }
             }
             <div class="flex justify-center items-center h-screen">
-                <div class="modal-container flex flex-col space-y-4 w-full max-w-xs p-8 border rounded-lg shadow-lg">
+                <div class="login-card">
                     <div class="flex justify-center items-center">
                         <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
                     </div>
@@ -2906,7 +2897,7 @@ pub fn login() -> Html {
                         oninput={on_password_change}
                         onkeypress={handle_key_press.clone()}
                     />
-                    <button onclick={on_submit_click} class="p-2 download-button rounded">
+                    <button onclick={on_submit_click} class="modal-button w-full">
                         {"Login"}
                     </button>
                 </div>
@@ -2914,7 +2905,7 @@ pub fn login() -> Html {
 
                 // Connect to Different Server button at bottom right
                 <div class="fixed bottom-4 right-4">
-                    <button onclick={on_different_server} class="p-2 bg-gray-500 text-white rounded hover:bg-gray-600">
+                    <button onclick={on_different_server} class="change-server-btn">
     {&i18n_connect_local_server}
                     </button>
                 </div>

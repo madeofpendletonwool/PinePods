@@ -2049,6 +2049,8 @@ pub async fn get_playback_speed(
 pub struct GetPlaylistEpisodesQuery {
     pub user_id: i32,
     pub playlist_id: i32,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 // Get playlist episodes - UPDATED to use dynamic playlist system
@@ -2067,10 +2069,15 @@ pub async fn get_playlist_episodes(
         return Err(AppError::forbidden("You can only view your own playlist episodes!"));
     }
 
+    let limit = query.limit.unwrap_or(50).min(200).max(1);
+    let offset = query.offset.unwrap_or(0).max(0);
+
     // Use new dynamic playlist system
     let playlist_response = state.db_pool.get_playlist_episodes_dynamic(
-        query.playlist_id, 
-        query.user_id
+        query.playlist_id,
+        query.user_id,
+        limit,
+        offset,
     ).await?;
     
     // Return in format expected by frontend

@@ -3363,3 +3363,148 @@ pub async fn call_extend_shared_link(
         Err(Error::msg(msg))
     }
 }
+
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
+pub struct CustomTheme {
+    pub themeid: i32,
+    pub name: String,
+    pub background_color: String,
+    pub button_color: String,
+    pub container_button_color: String,
+    pub button_text_color: String,
+    pub text_color: String,
+    pub text_secondary_color: String,
+    pub border_color: String,
+    pub accent_color: String,
+    pub prog_bar_color: String,
+    pub error_color: String,
+    pub bonus_color: String,
+    pub secondary_background: String,
+    pub container_background: String,
+    pub standout_color: String,
+    pub hover_color: String,
+    pub link_color: String,
+    pub thumb_color: String,
+    pub unfilled_color: String,
+    pub check_box_color: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
+pub struct CreateCustomThemeRequest {
+    pub user_id: i32,
+    pub name: String,
+    pub background_color: String,
+    pub button_color: String,
+    pub container_button_color: String,
+    pub button_text_color: String,
+    pub text_color: String,
+    pub text_secondary_color: String,
+    pub border_color: String,
+    pub accent_color: String,
+    pub prog_bar_color: String,
+    pub error_color: String,
+    pub bonus_color: String,
+    pub secondary_background: String,
+    pub container_background: String,
+    pub standout_color: String,
+    pub hover_color: String,
+    pub link_color: String,
+    pub thumb_color: String,
+    pub unfilled_color: String,
+    pub check_box_color: String,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+struct GetCustomThemesResponse {
+    themes: Vec<CustomTheme>,
+}
+
+pub async fn call_get_custom_themes(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<Vec<CustomTheme>, Error> {
+    let url = format!("{}/api/data/user/custom_themes/{}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await?;
+
+    if response.ok() {
+        let body = response.json::<GetCustomThemesResponse>().await?;
+        Ok(body.themes)
+    } else {
+        Err(Error::msg(format!(
+            "Error fetching custom themes: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+struct CreateCustomThemeResponse {
+    theme: CustomTheme,
+}
+
+pub async fn call_create_custom_theme(
+    server_name: &str,
+    api_key: &str,
+    req: &CreateCustomThemeRequest,
+) -> Result<CustomTheme, Error> {
+    let url = format!("{}/api/data/user/custom_themes", server_name);
+    let body = serde_json::to_string(req)?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let body = response.json::<CreateCustomThemeResponse>().await?;
+        Ok(body.theme)
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        let msg = serde_json::from_str::<serde_json::Value>(&error_text)
+            .ok()
+            .and_then(|v| v["message"].as_str().map(|s| s.to_string()))
+            .unwrap_or(error_text);
+        Err(Error::msg(msg))
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
+pub struct DeleteCustomThemeRequest {
+    pub user_id: i32,
+    pub theme_id: i32,
+}
+
+pub async fn call_delete_custom_theme(
+    server_name: &str,
+    api_key: &str,
+    req: &DeleteCustomThemeRequest,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/user/custom_themes", server_name);
+    let body = serde_json::to_string(req)?;
+
+    let response = Request::delete(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        let msg = serde_json::from_str::<serde_json::Value>(&error_text)
+            .ok()
+            .and_then(|v| v["message"].as_str().map(|s| s.to_string()))
+            .unwrap_or(error_text);
+        Err(Error::msg(msg))
+    }
+}

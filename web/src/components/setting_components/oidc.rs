@@ -381,7 +381,6 @@ pub fn oidc_settings() -> Html {
     let i18n_failed_to_update_provider = i18n.t("oidc.failed_to_update_provider").to_string();
     let i18n_add_oidc_provider = i18n.t("oidc.add_oidc_provider").to_string();
     let i18n_edit_oidc_provider = i18n.t("oidc.edit_oidc_provider").to_string();
-    let i18n_close_modal = i18n.t("common.close_modal").to_string();
     let i18n_oidc_redirect_url = i18n.t("oidc.oidc_redirect_url").to_string();
     let i18n_use_this_url_when_configuring =
         i18n.t("oidc.use_this_url_when_configuring").to_string();
@@ -970,244 +969,242 @@ pub fn oidc_settings() -> Html {
     };
 
     let add_provider_modal = html! {
-            <div id="add-provider-modal" tabindex="-1" aria-hidden="true"
-                class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25"
-                onclick={on_background_click.clone()}>
-                <div class="modal-container relative p-4 w-full max-w-2xl max-h-[80vh] rounded-lg shadow overflow-y-auto"
-                    onclick={stop_propagation.clone()}>
-                    <div class="modal-container relative rounded-lg shadow">
-                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                            <h3 class="text-xl font-semibold">
-    {match &*page_state {
-        PageState::AddProvider => &i18n_add_oidc_provider,
-        PageState::EditProvider(_) => &i18n_edit_oidc_provider,
-        PageState::Hidden => &i18n_add_oidc_provider, // fallback
-    }}
-                            </h3>
-                            <button onclick={on_close_modal.clone()}
-                                class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                                </svg>
-                                <span class="sr-only">{&i18n_close_modal}</span>
+        <div id="add-provider-modal" tabindex="-1" aria-hidden="true"
+            class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25"
+            onclick={on_background_click.clone()}>
+            <div class="modal-container relative w-full max-w-2xl rounded-lg shadow"
+                style="max-height:90vh;display:flex;flex-direction:column;"
+                onclick={stop_propagation.clone()}>
+                <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t" style="flex-shrink:0;">
+                    <h3 style="font-size:16px;font-weight:600;color:var(--text-color);">
+                        {match &*page_state {
+                            PageState::AddProvider => &i18n_add_oidc_provider,
+                            PageState::EditProvider(_) => &i18n_edit_oidc_provider,
+                            PageState::Hidden => &i18n_add_oidc_provider,
+                        }}
+                    </h3>
+                    <button onclick={on_close_modal.clone()} class="iconbtn">
+                        <i class="ph ph-x" style="font-size:18px;"></i>
+                    </button>
+                </div>
+                <div class="p-4 md:p-5" style="overflow-y:auto;flex:1;">
+                    <div style="padding:12px;border-radius:8px;background:rgba(128,128,128,0.08);border:1px solid rgba(128,128,128,0.2);margin-bottom:16px;">
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                            <i class="ph ph-info" style="color:var(--accent-color);"></i>
+                            <span style="font-size:13px;font-weight:500;color:var(--text-color);">{&i18n_oidc_redirect_url}</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(0,0,0,0.15);border-radius:4px;">
+                            <code style="font-size:12px;color:var(--text-color);flex:1;word-break:break-all;">
+                                {redirect_url.clone()}
+                            </code>
+                            <button
+                                onclick={onclick_copy.clone()}
+                                class="btn btn-ghost"
+                                style="padding:4px 6px;"
+                                title="Copy to clipboard"
+                            >
+                                <i class="ph ph-copy"></i>
                             </button>
                         </div>
-                        <div class="p-4 md:p-5">
-                            <div style="padding:12px;border-radius:8px;background:rgba(128,128,128,0.08);border:1px solid rgba(128,128,128,0.2);margin-bottom:16px;">
-                                <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-                                    <i class="ph ph-info" style="color:var(--accent-color);"></i>
-                                    <span style="font-size:13px;font-weight:500;color:var(--text-color);">{&i18n_oidc_redirect_url}</span>
-                                </div>
-                                <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(0,0,0,0.15);border-radius:4px;">
-                                    <code style="font-size:12px;color:var(--text-color);flex:1;word-break:break-all;">
-                                        {redirect_url.clone()}
-                                    </code>
-                                    <button
-                                        onclick={onclick_copy.clone()}
-                                        class="btn btn-ghost"
-                                        style="padding:4px 6px;"
-                                        title="Copy to clipboard"
-                                    >
-                                        <i class="ph ph-copy"></i>
-                                    </button>
-                                </div>
-                                <p style="font-size:11px;color:var(--text-secondary-color);margin-top:6px;">
-                                    {&i18n_use_this_url_when_configuring}
-                                </p>
-                            </div>
-                            <form class="space-y-4" action="#" onsubmit={on_submit}>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_provider_name}</label>
-                                        <input
-                                            type="text"
-                                            class="input"
-                                            value={(*provider_name).clone()}
-                                            oninput={on_provider_name_change}
-                                            placeholder="Google"
-                                            required=true
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_client_id}</label>
-                                        <input
-                                            type="text"
-                                            class="input"
-                                            value={(*client_id).clone()}
-                                            oninput={on_client_id_change}
-                                            required=true
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_client_secret}
-                                            {match &*page_state {
-                                                PageState::EditProvider(_) => html! { <span class="text-sm opacity-70">{" (leave empty to keep current)"}</span> },
-                                                _ => html! {}
-                                            }}
-                                        </label>
-                                        <input
-                                            type="password"
-                                            class="input"
-                                            value={(*client_secret).clone()}
-                                            oninput={on_client_secret_change}
-                                            required={match &*page_state {
-                                                PageState::AddProvider => true,
-                                                PageState::EditProvider(_) => false,
-                                                PageState::Hidden => false,
-                                            }}
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_authorization_url}</label>
-                                        <input
-                                            type="url"
-                                            class="input"
-                                            value={(*auth_url).clone()}
-                                            oninput={on_auth_url_change}
-                                            placeholder="https://provider.com/oauth2/auth"
-                                            required=true
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_token_url}</label>
-                                        <input
-                                            type="url"
-                                            class="input"
-                                            value={(*token_url).clone()}
-                                            oninput={on_token_url_change}
-                                            placeholder="https://provider.com/oauth2/token"
-                                            required=true
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_user_info_url}</label>
-                                        <input
-                                            type="url"
-                                            class="input"
-                                            value={(*user_info_url).clone()}
-                                            oninput={on_user_info_url_change}
-                                            placeholder="https://provider.com/oauth2/userinfo"
-                                            required=true
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;grid-column:span 2;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Scopes"}</label>
-                                        <ScopeSelector
-                                            selected_scopes={(*selected_scopes).clone()}
-                                            on_select={scope_on_select}
-                                            auth_url={(*auth_url).clone()}
-                                            token_url={(*token_url).clone()}
-                                            user_info_url={(*user_info_url).clone()}
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Text"}</label>
-                                        <input
-                                            type="text"
-                                            class="input"
-                                            value={(*button_text).clone()}
-                                            oninput={on_button_text_change}
-                                            placeholder="Login with Provider"
-                                            required=true
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Color"}</label>
-                                        <input
-                                            type="color"
-                                            class="input" style="height:38px;padding:4px 8px;"
-                                            value={(*button_color).clone()}
-                                            oninput={on_button_color_change}
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Text Color"}</label>
-                                        <input
-                                            type="color"
-                                            class="input" style="height:38px;padding:4px 8px;"
-                                            value={(*button_text_color).clone()}
-                                            oninput={on_button_text_color_change}
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;grid-column:span 2;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Icon SVG (optional)"}</label>
-                                        <textarea
-                                            class="input" style="min-height:80px;"
-                                            value={(*icon_svg).clone()}
-                                            oninput={on_icon_svg_change}
-                                            placeholder="<svg>...</svg>"
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Name Claim"}</label>
-                                        <input
-                                            type="text"
-                                            class="input"
-                                            value={(*name_claim).clone()}
-                                            oninput={on_name_claim_change}
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Email Claim"}</label>
-                                        <input
-                                            type="text"
-                                            class="input"
-                                            value={(*email_claim).clone()}
-                                            oninput={on_email_claim_change}
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Username Claim"}</label>
-                                        <input
-                                            type="text"
-                                            class="input"
-                                            value={(*username_claim).clone()}
-                                            oninput={on_username_claim_change}
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Roles Claim"}</label>
-                                        <input
-                                            type="text"
-                                            class="input"
-                                            value={(*roles_claim).clone()}
-                                            oninput={on_roles_claim_change}
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"User Role"}</label>
-                                        <input
-                                            type="text"
-                                            class="input"
-                                            value={(*user_role).clone()}
-                                            oninput={on_user_role_change}
-                                        />
-                                    </div>
-                                    <div style="display:flex;flex-direction:column;gap:4px;">
-                                        <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Admin Role"}</label>
-                                        <input
-                                            type="text"
-                                            class="input"
-                                            value={(*admin_role).clone()}
-                                            oninput={on_admin_role_change}
-                                        />
-                                    </div>
-                                </div>
-                                <div style="display:flex;justify-content:flex-end;margin-top:16px;">
-                                    <button type="submit" class="btn btn-primary">
-                                        {match &*page_state {
-                                            PageState::AddProvider => &i18n_add,
-                                            PageState::EditProvider(_) => &i18n_update,
-                                            PageState::Hidden => &i18n_submit,
-                                        }}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
+                        <p style="font-size:11px;color:var(--text-secondary-color);margin-top:6px;">
+                            {&i18n_use_this_url_when_configuring}
+                        </p>
                     </div>
+                    <form class="space-y-4" action="#" onsubmit={on_submit}>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_provider_name}</label>
+                                <input
+                                    type="text"
+                                    class="input"
+                                    value={(*provider_name).clone()}
+                                    oninput={on_provider_name_change}
+                                    placeholder="Google"
+                                    required=true
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_client_id}</label>
+                                <input
+                                    type="text"
+                                    class="input"
+                                    value={(*client_id).clone()}
+                                    oninput={on_client_id_change}
+                                    required=true
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_client_secret}
+                                    {match &*page_state {
+                                        PageState::EditProvider(_) => html! { <span style="font-size:11px;opacity:0.7;">{" (leave empty to keep current)"}</span> },
+                                        _ => html! {}
+                                    }}
+                                </label>
+                                <input
+                                    type="password"
+                                    class="input"
+                                    value={(*client_secret).clone()}
+                                    oninput={on_client_secret_change}
+                                    required={match &*page_state {
+                                        PageState::AddProvider => true,
+                                        PageState::EditProvider(_) => false,
+                                        PageState::Hidden => false,
+                                    }}
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_authorization_url}</label>
+                                <input
+                                    type="url"
+                                    class="input"
+                                    value={(*auth_url).clone()}
+                                    oninput={on_auth_url_change}
+                                    placeholder="https://provider.com/oauth2/auth"
+                                    required=true
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_token_url}</label>
+                                <input
+                                    type="url"
+                                    class="input"
+                                    value={(*token_url).clone()}
+                                    oninput={on_token_url_change}
+                                    placeholder="https://provider.com/oauth2/token"
+                                    required=true
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_user_info_url}</label>
+                                <input
+                                    type="url"
+                                    class="input"
+                                    value={(*user_info_url).clone()}
+                                    oninput={on_user_info_url_change}
+                                    placeholder="https://provider.com/oauth2/userinfo"
+                                    required=true
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;grid-column:span 2;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Scopes"}</label>
+                                <ScopeSelector
+                                    selected_scopes={(*selected_scopes).clone()}
+                                    on_select={scope_on_select}
+                                    auth_url={(*auth_url).clone()}
+                                    token_url={(*token_url).clone()}
+                                    user_info_url={(*user_info_url).clone()}
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Text"}</label>
+                                <input
+                                    type="text"
+                                    class="input"
+                                    value={(*button_text).clone()}
+                                    oninput={on_button_text_change}
+                                    placeholder="Login with Provider"
+                                    required=true
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Color"}</label>
+                                <input
+                                    type="color"
+                                    class="input" style="height:38px;padding:4px 8px;"
+                                    value={(*button_color).clone()}
+                                    oninput={on_button_color_change}
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Text Color"}</label>
+                                <input
+                                    type="color"
+                                    class="input" style="height:38px;padding:4px 8px;"
+                                    value={(*button_text_color).clone()}
+                                    oninput={on_button_text_color_change}
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;grid-column:span 2;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Icon SVG (optional)"}</label>
+                                <textarea
+                                    class="input" style="min-height:80px;"
+                                    value={(*icon_svg).clone()}
+                                    oninput={on_icon_svg_change}
+                                    placeholder="<svg>...</svg>"
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Name Claim"}</label>
+                                <input
+                                    type="text"
+                                    class="input"
+                                    value={(*name_claim).clone()}
+                                    oninput={on_name_claim_change}
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Email Claim"}</label>
+                                <input
+                                    type="text"
+                                    class="input"
+                                    value={(*email_claim).clone()}
+                                    oninput={on_email_claim_change}
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Username Claim"}</label>
+                                <input
+                                    type="text"
+                                    class="input"
+                                    value={(*username_claim).clone()}
+                                    oninput={on_username_claim_change}
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Roles Claim"}</label>
+                                <input
+                                    type="text"
+                                    class="input"
+                                    value={(*roles_claim).clone()}
+                                    oninput={on_roles_claim_change}
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"User Role"}</label>
+                                <input
+                                    type="text"
+                                    class="input"
+                                    value={(*user_role).clone()}
+                                    oninput={on_user_role_change}
+                                />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Admin Role"}</label>
+                                <input
+                                    type="text"
+                                    class="input"
+                                    value={(*admin_role).clone()}
+                                    oninput={on_admin_role_change}
+                                />
+                            </div>
+                        </div>
+                        <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:4px;">
+                            <button type="button" onclick={on_close_modal.clone()} class="btn btn-secondary">
+                                {i18n.t("common.cancel")}
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                {match &*page_state {
+                                    PageState::AddProvider => &i18n_add,
+                                    PageState::EditProvider(_) => &i18n_update,
+                                    PageState::Hidden => &i18n_submit,
+                                }}
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
-        };
+        </div>
+    };
 
     html! {
         <>

@@ -1,4 +1,4 @@
-use crate::components::audio::on_play_click;
+use crate::components::audio::on_play_pause;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_components::FallbackImage;
 use crate::requests::pod_req::{
@@ -8,6 +8,7 @@ use crate::requests::pod_req::{
 use wasm_bindgen::JsCast;
 use web_sys::{DragEvent, MouseEvent};
 use yew::prelude::*;
+use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 
 #[function_component(QueuePanel)]
@@ -58,17 +59,20 @@ pub fn queue_panel() -> Html {
         });
     }
 
-    let mut queued = app_state
+    // Do NOT re-sort here — episodes are sorted by queueposition on fetch, and
+    // drag-reorder maintains the correct Vec order optimistically. Re-sorting
+    // would undo the visual reorder since queueposition fields aren't mutated.
+    let queued = app_state
         .queued_episodes
         .as_ref()
         .map(|r| r.episodes.clone())
         .unwrap_or_default();
-    queued.sort_by_key(|e| e.queueposition.unwrap_or(i32::MAX));
 
     let now_playing = ui_state.currently_playing.clone();
     let now_playing_art = now_playing.as_ref().map(|p| p.artwork_url.clone());
     let now_playing_title = now_playing.as_ref().map(|p| p.title.clone());
     let is_playing = ui_state.audio_playing.unwrap_or(false);
+    let currently_playing_id = ui_state.currently_playing.as_ref().map(|p| p.episode_id);
 
     let total_secs: i32 = queued.iter().map(|e| e.episodeduration).sum();
     let total_h = total_secs / 3600;
@@ -84,7 +88,6 @@ pub fn queue_panel() -> Html {
     let ondragstart = {
         let dragging_id = dragging_id.clone();
         Callback::from(move |e: DragEvent| {
-            // Walk up from the event target to find the queue-item's data-id.
             if let Some(tgt) = e.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) {
                 let mut el = tgt;
                 for _ in 0..8 {
@@ -131,7 +134,6 @@ pub fn queue_panel() -> Html {
                 None => return,
             };
 
-            // Walk up from drop target to find data-id.
             let mut target_id = None::<i32>;
             if let Some(tgt) = e.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) {
                 let mut el = tgt;
@@ -252,39 +254,68 @@ pub fn queue_panel() -> Html {
                         { for queued.iter().enumerate().map(|(i, ep)| {
                             let ep = ep.clone();
                             let ep_for_remove = ep.clone();
-                            let ep_for_play = ep.clone();
+                            let ep_for_art = ep.clone();
                             let auth = app_state.auth_details.clone();
                             let user = app_state.user_details.clone();
-                            let ui_dispatch_play = ui_dispatch.clone();
                             let app_dispatch_remove = app_dispatch.clone();
-                            let ui_dispatch_close = ui_dispatch.clone();
 
-                            let on_play = Callback::from(move |e: MouseEvent| {
-                                if let (Some(auth), Some(user)) = (auth.as_ref(), user.as_ref()) {
-                                    let api_key = auth.api_key.clone().unwrap_or_default();
-                                    let user_id = user.UserID;
-                                    let server_name = auth.server_name.clone();
-                                    let current_state = ui_dispatch_play.get();
-                                    ui_dispatch_close.reduce_mut(|s| s.queue_panel_open = false);
-                                    on_play_click(
-                                        ep_for_play.clone(),
-                                        api_key,
-                                        user_id,
-                                        server_name,
-                                        ui_dispatch_play.clone(),
-                                        current_state,
-                                        false,
-                                        false,
-                                    ).emit(e);
-                                }
-                            });
+                            let ep_id = ep.episodeid;
+                            let is_this_playing = currently_playing_id == Some(ep_id) && is_playing;
+                            let is_this_current = currently_playing_id == Some(ep_id);
+                            let is_dragged = current_dragging == Some(ep_id);
 
-                            let on_remove = {
+                            // Artwork click: play/pause toggle via on_play_pause.
+                            // Only close the panel when starting a new episode.
+                            let on_art_click = {
                                 let auth = app_state.auth_details.clone();
                                 let user = app_state.user_details.clone();
+                                let ui_dispatch_art = ui_dispatch.clone();
+                                let ui_state_art = ui_state.clone();
+                                let app_state_art = app_state.clone();
                                 Callback::from(move |e: MouseEvent| {
                                     e.stop_propagation();
-                                    if let (Some(auth), Some(user)) = (auth.as_ref(), user.as_ref()) {
+                                    if let (Some(auth), Some(user)) =
+                                        (auth.as_ref(), user.as_ref())
+                                    {
+                                        let api_key = auth.api_key.clone().unwrap_or_default();
+                                        let user_id = user.UserID;
+                                        let server_name = auth.server_name.clone();
+                                        if !is_this_current {
+                                            ui_dispatch_art
+                                                .reduce_mut(|s| s.queue_panel_open = false);
+                                        }
+                                        on_play_pause(
+                                            ep_for_art.clone(),
+                                            api_key,
+                                            user_id,
+                                            server_name,
+                                            ui_dispatch_art.clone(),
+                                            ui_state_art.clone(),
+                                            app_state_art.clone(),
+                                        )
+                                        .emit(e);
+                                    }
+                                })
+                            };
+
+                            // Title click: navigate to episode page.
+                            let on_title_click = {
+                                let ui_dispatch_nav = ui_dispatch.clone();
+                                Callback::from(move |e: MouseEvent| {
+                                    e.stop_propagation();
+                                    ui_dispatch_nav
+                                        .reduce_mut(|s| s.queue_panel_open = false);
+                                    BrowserHistory::new()
+                                        .push(format!("/episode?episode_id={}", ep_id));
+                                })
+                            };
+
+                            let on_remove = {
+                                Callback::from(move |e: MouseEvent| {
+                                    e.stop_propagation();
+                                    if let (Some(auth), Some(user)) =
+                                        (auth.as_ref(), user.as_ref())
+                                    {
                                         let server = auth.server_name.clone();
                                         let key = auth.api_key.clone();
                                         let uid = user.UserID;
@@ -299,9 +330,12 @@ pub fn queue_panel() -> Html {
                                             };
                                             let _ = call_remove_queued_episode(
                                                 &server, &key, &req,
-                                            ).await;
-                                            if let Ok(mut eps) =
-                                                call_get_queued_episodes(&server, &key, &uid).await
+                                            )
+                                            .await;
+                                            if let Ok(mut eps) = call_get_queued_episodes(
+                                                &server, &key, &uid,
+                                            )
+                                            .await
                                             {
                                                 eps.sort_by_key(|e| {
                                                     e.queueposition.unwrap_or(i32::MAX)
@@ -321,8 +355,6 @@ pub fn queue_panel() -> Html {
                             let ep_title = ep.episodetitle.clone();
                             let ep_duration =
                                 crate::components::gen_funcs::format_time(ep.episodeduration);
-                            let ep_id = ep.episodeid;
-                            let is_dragged = current_dragging == Some(ep_id);
 
                             html! {
                                 <div
@@ -336,19 +368,38 @@ pub fn queue_panel() -> Html {
                                     ondragover={ondragover.clone()}
                                     ondragend={ondragend.clone()}
                                     ondrop={ondrop.clone()}
-                                    onclick={on_play}
                                     key={i}
                                 >
                                     <div class="queue-drag-handle">
                                         <i class="ph ph-dots-six-vertical"></i>
                                     </div>
-                                    <FallbackImage
-                                        src={ep_art}
-                                        alt="Episode art"
-                                        class="queue-item-art"
-                                    />
+
+                                    // Artwork with play/pause overlay
+                                    <div class="queue-item-art-wrap" onclick={on_art_click}>
+                                        <FallbackImage
+                                            src={ep_art}
+                                            alt="Episode art"
+                                            class="queue-item-art"
+                                        />
+                                        <div class={classes!(
+                                            "queue-item-art-overlay",
+                                            if is_this_playing { "is-playing" } else { "" }
+                                        )}>
+                                            if is_this_playing {
+                                                <i class="ph ph-pause"></i>
+                                            } else {
+                                                <i class="ph ph-play"></i>
+                                            }
+                                        </div>
+                                    </div>
+
                                     <div class="queue-item-body">
-                                        <div class="queue-item-title">{ ep_title }</div>
+                                        <div
+                                            class="queue-item-title queue-item-title-link"
+                                            onclick={on_title_click}
+                                        >
+                                            { ep_title }
+                                        </div>
                                         <div class="queue-item-sub">
                                             <span>{ ep_duration }</span>
                                         </div>

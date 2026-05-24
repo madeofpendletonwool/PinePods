@@ -27,7 +27,7 @@ use gloo_timers::callback::Timeout;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
-use web_sys::{window, Element, HtmlInputElement, MouseEvent};
+use web_sys::{window, Element, HtmlInputElement, MouseEvent, TouchEvent};
 use yew::prelude::*;
 use yew::Callback;
 use yew_router::history::{BrowserHistory, History};
@@ -57,7 +57,10 @@ pub struct ContextButtonProps {
 
 #[function_component(ContextMenuButton)]
 pub fn context_button(props: &ContextButtonProps) -> Html {
-    let dropdown_open = use_state(|| false);
+    // None = closed; Some((right, bottom)) = open at this viewport position.
+    // Single state ensures the dropdown never renders at a stale position.
+    let dropdown_state = use_state(|| Option::<(i32, i32)>::None);
+    let dropdown_open = dropdown_state.is_some();
     let (post_state, post_dispatch) = use_store::<AppState>();
     let (_, _ui_dispatch) = use_store::<UIState>();
     let api_key = post_state
@@ -71,48 +74,44 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         .map(|ud| ud.server_name.clone());
     let dropdown_ref = use_node_ref();
     let button_ref = use_node_ref();
-    // Fixed viewport position for the dropdown, computed on open
-    let dropdown_pos = use_state(|| (0i32, 0i32));
 
-    // Update dropdown_open if show_menu_only prop changes
+    // Update dropdown_state if show_menu_only prop changes
     {
-        let dropdown_open = dropdown_open.clone();
+        let dropdown_state = dropdown_state.clone();
         use_effect_with(props.show_menu_only, move |show_menu_only| {
             if *show_menu_only {
-                dropdown_open.set(true);
+                // Position is supplied via props.position for the long-press path
+                dropdown_state.set(Some((0, 0)));
             }
             || ()
         });
     }
 
     let toggle_dropdown = {
-        let dropdown_open = dropdown_open.clone();
+        let dropdown_state = dropdown_state.clone();
         let button_ref = button_ref.clone();
-        let dropdown_pos = dropdown_pos.clone();
         Callback::from(move |e: MouseEvent| {
             e.stop_propagation();
-            let opening = !*dropdown_open;
-            if opening {
-                if let Some(btn) = button_ref.cast::<web_sys::HtmlElement>() {
-                    let rect = btn.get_bounding_client_rect();
-                    dropdown_pos.set((rect.right() as i32, rect.bottom() as i32));
-                }
+            if dropdown_state.is_some() {
+                dropdown_state.set(None);
+            } else if let Some(btn) = button_ref.cast::<web_sys::HtmlElement>() {
+                let rect = btn.get_bounding_client_rect();
+                dropdown_state.set(Some((rect.right() as i32, rect.bottom() as i32)));
             }
-            dropdown_open.set(opening);
         })
     };
 
     // Close dropdown when clicking outside
     {
-        let dropdown_open = dropdown_open.clone();
+        let dropdown_state = dropdown_state.clone();
         let dropdown_ref = dropdown_ref.clone();
         let button_ref = button_ref.clone();
         let on_close = props.on_close.clone();
         let show_menu_only = props.show_menu_only;
 
-        use_effect_with((*dropdown_open, ()), move |_| {
+        use_effect_with((dropdown_open, ()), move |_| {
             let document = window().unwrap().document().unwrap();
-            let dropdown_open = dropdown_open.clone();
+            let dropdown_state = dropdown_state.clone();
             let dropdown_ref = dropdown_ref.clone();
             let button_ref = button_ref.clone();
             let on_close = on_close.clone();
@@ -120,38 +119,39 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
             // Handle outside clicks/touches to dismiss menu
             let handle_outside_interaction = {
-                let dropdown_open = dropdown_open.clone();
+                let dropdown_state = dropdown_state.clone();
                 let dropdown_ref = dropdown_ref.clone();
                 let button_ref = button_ref.clone();
                 let on_close = on_close.clone();
 
                 move |event: &web_sys::Event| {
-                    if *dropdown_open {
+                    if dropdown_state.is_some() {
+                        web_sys::console::log_1(&"[ctx-menu] outside-click handler fired".into());
                         if let Ok(target) = event.target().unwrap().dyn_into::<HtmlElement>() {
+                            web_sys::console::log_1(&format!("[ctx-menu] target tag: {}", target.tag_name()).into());
                             if let Some(dropdown_element) = dropdown_ref.cast::<HtmlElement>() {
-                                // Check if click is outside dropdown
                                 let outside_dropdown = !dropdown_element.contains(Some(&target));
+                                web_sys::console::log_1(&format!("[ctx-menu] outside_dropdown: {}", outside_dropdown).into());
 
-                                // Check if click is outside button (only if button exists)
                                 let outside_button = if let Some(button_element) =
                                     button_ref.cast::<HtmlElement>()
                                 {
                                     !button_element.contains(Some(&target))
                                 } else {
-                                    // If no button exists (show_menu_only case), consider it as outside
                                     true
                                 };
 
                                 if outside_dropdown && outside_button {
-                                    dropdown_open.set(false);
-                                    // If this is a long press menu (show_menu_only is true),
-                                    // call the on_close callback when clicked outside
+                                    web_sys::console::log_1(&"[ctx-menu] closing via outside-click".into());
+                                    dropdown_state.set(None);
                                     if show_menu_only {
                                         if let Some(on_close) = &on_close {
                                             on_close.emit(());
                                         }
                                     }
                                 }
+                            } else {
+                                web_sys::console::log_1(&"[ctx-menu] dropdown_ref is None!".into());
                             }
                         }
                     }
@@ -833,14 +833,13 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     };
 
     let close_dropdown = {
-        let dropdown_open = dropdown_open.clone();
+        let dropdown_state = dropdown_state.clone();
         let on_close = props.on_close.clone();
         let show_menu_only = props.show_menu_only;
 
         Callback::from(move |_| {
-            dropdown_open.set(false);
+            dropdown_state.set(None);
 
-            // If this is a long press menu, also call the on_close callback
             if show_menu_only {
                 if let Some(on_close) = &on_close {
                     on_close.emit(());
@@ -852,6 +851,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let wrap_action = |action: Callback<MouseEvent>| {
         let close = close_dropdown.clone();
         Callback::from(move |e: MouseEvent| {
+            web_sys::console::error_1(&"[ctx-menu] wrap_action FIRED".into());
+            e.stop_propagation();
             action.emit(e);
             close.emit(());
         })
@@ -985,6 +986,45 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         },
     };
 
+    let block_row_activation = Callback::from(|e: MouseEvent| e.stop_propagation());
+    let block_row_touch = Callback::from(|e: TouchEvent| e.stop_propagation());
+    let debug_container_click = Callback::from(|_: MouseEvent| {
+        web_sys::console::log_1(&"[ctx-menu] click reached .ep-context-menu container".into());
+    });
+
+    let dropdown_html = if props.show_menu_only {
+        if let Some((x, y)) = props.position {
+            html! {
+                <div
+                    ref={dropdown_ref.clone()}
+                    class="ep-context-menu"
+                    style={format!("position: fixed; top: {}px; left: {}px;", y, x)}
+                    onmousedown={block_row_activation.clone()}
+                    ontouchstart={block_row_touch.clone()}
+                >
+                    <ul class="ep-context-menu-list">{ action_buttons }</ul>
+                </div>
+            }
+        } else {
+            html! {}
+        }
+    } else if let Some((right, bottom_of_btn)) = *dropdown_state {
+        html! {
+            <div
+                ref={dropdown_ref.clone()}
+                class="ep-context-menu"
+                style={format!("position: fixed; top: {}px; right: calc(100vw - {}px);", bottom_of_btn + 4, right)}
+                onmousedown={block_row_activation}
+                ontouchstart={block_row_touch}
+                onclick={debug_container_click}
+            >
+                <ul class="ep-context-menu-list">{ action_buttons }</ul>
+            </div>
+        }
+    } else {
+        html! {}
+    };
+
     html! {
         <div class="context-button-wrapper">
             if !props.show_menu_only {
@@ -996,30 +1036,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     <i class="ph ph-dots-three"></i>
                 </button>
             }
-            if *dropdown_open {
-                <div
-                    ref={dropdown_ref.clone()}
-                    class="ep-context-menu"
-                    style={
-                        if props.show_menu_only {
-                            // Long-press: position at touch point
-                            if let Some((x, y)) = props.position {
-                                format!("position: fixed; top: {}px; left: {}px;", y, x)
-                            } else {
-                                String::new()
-                            }
-                        } else {
-                            // Button click: anchor to button's bottom-right via fixed pos
-                            let (right, bottom_of_btn) = *dropdown_pos;
-                            format!("position: fixed; top: {}px; right: calc(100vw - {}px);", bottom_of_btn + 4, right)
-                        }
-                    }
-                >
-                    <ul class="ep-context-menu-list">
-                        { action_buttons }
-                    </ul>
-                </div>
-            }
+            { dropdown_html }
         </div>
     }
 }

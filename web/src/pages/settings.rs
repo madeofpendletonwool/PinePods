@@ -123,6 +123,7 @@ pub fn settings() -> Html {
         .map(|ud| ud.server_name.clone());
 
     let is_admin = use_state(|| false);
+    let custom_themes_trigger = use_state(|| 0u32);
     let audio_admin = _post_dispatch.clone();
 
     // Pre-capture translation string for async block
@@ -219,7 +220,26 @@ pub fn settings() -> Html {
                                     </div>
                                 </div>
                                 <div class="settings-section-body">
-                                    <setting_components::theme_options::ThemeOptions />
+                                    <setting_components::theme_options::ThemeOptions refresh_trigger={*custom_themes_trigger} />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-palette"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{"Custom Themes"}</div>
+                                            <button class="info-btn" title="Create your own themes with custom colors">{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::custom_theme_creator::CustomThemeCreator
+                                        on_created={{
+                                            let trigger = custom_themes_trigger.clone();
+                                            Callback::from(move |_| trigger.set(*trigger + 1))
+                                        }}
+                                    />
                                 </div>
                             </div>
                             <div class="settings-section">

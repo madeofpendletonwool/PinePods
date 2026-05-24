@@ -43,7 +43,6 @@ pub fn app_drawer() -> Html {
     let i18n_home = i18n.t("navigation.home").to_string();
     let i18n_feed = i18n.t("app_drawer.feed").to_string();
     let i18n_search_podcasts = i18n.t("app_drawer.search_podcasts").to_string();
-    let i18n_queue = i18n.t("navigation.queue").to_string();
     let i18n_saved = i18n.t("navigation.saved").to_string();
     let i18n_playlists = i18n.t("navigation.playlists").to_string();
     let i18n_history = i18n.t("navigation.history").to_string();
@@ -264,12 +263,6 @@ pub fn app_drawer() -> Html {
                         <Link<Route> to={Route::Search} classes="sb-item">
                             <i class="ph ph-magnifying-glass"></i>
                             <span>{&i18n_search_podcasts}</span>
-                        </Link<Route>>
-                    </div>
-                    <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Queue} classes="sb-item">
-                            <i class="ph ph-queue"></i>
-                            <span>{&i18n_queue}</span>
                         </Link<Route>>
                     </div>
                     <div onclick={toggle_drawer.clone()}>

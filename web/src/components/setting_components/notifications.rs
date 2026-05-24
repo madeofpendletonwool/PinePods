@@ -616,7 +616,7 @@ pub fn notification_settings() -> Html {
                     }
                 </div>
                 <div class="settings-row-control">
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary" style="padding:6px 12px;">
                         <i class="ph ph-floppy-disk"></i>
                         {&i18n_save_settings}
                     </button>
@@ -625,6 +625,7 @@ pub fn notification_settings() -> Html {
                             type="button"
                             onclick={on_test_notification.clone()}
                             class="btn btn-secondary"
+                            style="padding:6px 12px;"
                         >
                             <i class="ph ph-bell-ringing"></i>
                             {&i18n_send_test_notification}

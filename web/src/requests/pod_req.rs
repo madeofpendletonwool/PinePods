@@ -4041,6 +4041,38 @@ pub struct PlaylistEpisodesResponse {
     pub playlist_info: PlaylistInfo,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlaylistFeedPage {
+    pub episodes: Vec<Episode>,
+    pub playlist_info: PlaylistInfo,
+    pub total: i64,
+}
+
+pub async fn call_get_playlist_episodes_paged(
+    server: &str,
+    api_key: &str,
+    user_id: &i32,
+    playlist_id: i32,
+    limit: i64,
+    offset: i64,
+) -> Result<PlaylistFeedPage, anyhow::Error> {
+    let endpoint = format!(
+        "{}/api/data/get_playlist_episodes?user_id={}&playlist_id={}&limit={}&offset={}",
+        server, user_id, playlist_id, limit, offset
+    );
+    let response = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if !response.ok() {
+        return Err(anyhow::anyhow!("Server returned error: {}", response.status()));
+    }
+    let text = response.text().await?;
+    serde_json::from_str::<PlaylistFeedPage>(&text)
+        .map_err(|e| anyhow::anyhow!("Failed to deserialize playlist page: {}", e))
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct PlaylistInfo {
     pub name: String,

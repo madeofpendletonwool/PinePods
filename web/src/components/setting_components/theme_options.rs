@@ -1,6 +1,9 @@
 use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
-use crate::requests::setting_reqs::{call_get_theme, call_set_theme, SetThemeRequest};
+use crate::requests::setting_reqs::{
+    call_get_theme, call_set_theme, call_get_custom_themes, call_delete_custom_theme,
+    CustomTheme, DeleteCustomThemeRequest, SetThemeRequest,
+};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
@@ -44,12 +47,19 @@ const THEMES: &[ThemeData] = &[
     ThemeData { name: "Hot Dog Stand - MY EYES", bg: "#670B0A", text: "#121215", swatch1: "#EEB911", swatch2: "#121215" },
 ];
 
+#[derive(Properties, PartialEq)]
+pub struct ThemeOptionsProps {
+    #[prop_or_default]
+    pub refresh_trigger: u32,
+}
+
 #[function_component(ThemeOptions)]
-pub fn theme() -> Html {
+pub fn theme(props: &ThemeOptionsProps) -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let selected_theme = use_state(|| "".to_string());
     let loading = use_state(|| true);
     let expanded = use_state(|| false);
+    let custom_themes = use_state(|| Vec::<CustomTheme>::new());
 
     // Shuffled theme order — computed once on mount so the "show more" section
     // doesn't reshuffle every time the user picks a theme.
@@ -63,6 +73,7 @@ pub fn theme() -> Html {
         indices
     });
 
+    // Fetch current selected theme on mount
     {
         let selected_theme = selected_theme.clone();
         let loading = loading.clone();
@@ -85,6 +96,33 @@ pub fn theme() -> Html {
                                 &format!("Error fetching theme: {:?}", e).into(),
                             );
                             loading.set(false);
+                        }
+                    }
+                });
+            }
+            || ()
+        });
+    }
+
+    // Fetch custom themes on mount and whenever refresh_trigger changes
+    {
+        let custom_themes = custom_themes.clone();
+        let state = state.clone();
+        let refresh_trigger = props.refresh_trigger;
+
+        use_effect_with(refresh_trigger, move |_| {
+            if let (Some(api_key), Some(user_id), Some(server_name)) = (
+                state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
+                state.user_details.as_ref().map(|d| d.UserID),
+                state.auth_details.as_ref().map(|d| d.server_name.clone()),
+            ) {
+                spawn_local(async move {
+                    match call_get_custom_themes(&server_name, &api_key, user_id).await {
+                        Ok(themes) => custom_themes.set(themes),
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error fetching custom themes: {:?}", e).into(),
+                            );
                         }
                     }
                 });
@@ -132,6 +170,114 @@ pub fn theme() -> Html {
         })
     };
 
+    let on_select_custom = {
+        let selected_theme = selected_theme.clone();
+        let state = state.clone();
+        let dispatch = dispatch.clone();
+        let custom_themes = custom_themes.clone();
+
+        Callback::from(move |(theme_name, theme_id): (String, i32)| {
+            let dispatch = dispatch.clone();
+
+            // Find the custom theme data and apply its colors directly
+            if let Some(ct) = (*custom_themes).iter().find(|t| t.themeid == theme_id) {
+                applyCustomTheme(
+                    &ct.background_color,
+                    &ct.button_color,
+                    &ct.container_button_color,
+                    &ct.button_text_color,
+                    &ct.text_color,
+                    &ct.text_secondary_color,
+                    &ct.border_color,
+                    &ct.accent_color,
+                    &ct.prog_bar_color,
+                    &ct.error_color,
+                    &ct.bonus_color,
+                    &ct.secondary_background,
+                    &ct.container_background,
+                    &ct.standout_color,
+                    &ct.hover_color,
+                    &ct.link_color,
+                    &ct.thumb_color,
+                    &ct.unfilled_color,
+                    &ct.check_box_color,
+                );
+            }
+
+            if let Some(window) = web_sys::window() {
+                if let Ok(Some(storage)) = window.local_storage() {
+                    let _ = storage.set_item("selected_theme", &theme_name);
+                }
+            }
+
+            selected_theme.set(theme_name.clone());
+
+            if let (Some(api_key), Some(user_id), Some(server_name)) = (
+                state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
+                state.user_details.as_ref().map(|d| d.UserID),
+                state.auth_details.as_ref().map(|d| d.server_name.clone()),
+            ) {
+                let request = SetThemeRequest { user_id, new_theme: theme_name };
+                spawn_local(async move {
+                    if let Err(e) =
+                        call_set_theme(&Some(server_name), &Some(api_key), &request).await
+                    {
+                        let formatted = format_error_message(&e.to_string());
+                        dispatch.reduce_mut(|s| {
+                            s.error_message =
+                                Some(format!("Failed to update theme: {}", formatted));
+                        });
+                    }
+                });
+            }
+        })
+    };
+
+    let on_delete_custom = {
+        let custom_themes = custom_themes.clone();
+        let selected_theme = selected_theme.clone();
+        let state = state.clone();
+        let dispatch = dispatch.clone();
+
+        Callback::from(move |(theme_id, theme_name): (i32, String)| {
+            let custom_themes = custom_themes.clone();
+            let selected_theme = selected_theme.clone();
+            let dispatch = dispatch.clone();
+
+            // Optimistically remove from list
+            let prev = (*custom_themes).clone();
+            custom_themes.set(prev.iter().filter(|t| t.themeid != theme_id).cloned().collect());
+
+            // If this was the active theme, switch to Nordic
+            if *selected_theme == theme_name {
+                changeTheme("Nordic");
+                if let Some(window) = web_sys::window() {
+                    if let Ok(Some(storage)) = window.local_storage() {
+                        let _ = storage.set_item("selected_theme", "Nordic");
+                    }
+                }
+                selected_theme.set("Nordic".to_string());
+            }
+
+            if let (Some(api_key), Some(user_id), Some(server_name)) = (
+                state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
+                state.user_details.as_ref().map(|d| d.UserID),
+                state.auth_details.as_ref().map(|d| d.server_name.clone()),
+            ) {
+                let req = DeleteCustomThemeRequest { user_id, theme_id };
+                spawn_local(async move {
+                    if let Err(e) = call_delete_custom_theme(&server_name, &api_key, &req).await {
+                        let formatted = format_error_message(&e.to_string());
+                        dispatch.reduce_mut(|s| {
+                            s.error_message =
+                                Some(format!("Failed to delete theme: {}", formatted));
+                        });
+                    }
+                });
+            }
+        })
+    };
+
     let on_toggle_expand = {
         let expanded = expanded.clone();
         Callback::from(move |_: MouseEvent| expanded.set(!*expanded))
@@ -153,8 +299,6 @@ pub fn theme() -> Html {
     let hidden: Vec<usize> = ordered.iter().skip(3).copied().collect();
     let hidden_count = hidden.len();
 
-    // Build card html for a slice of indices. Duplicating the closure avoids
-    // fighting the borrow checker while keeping the template concise.
     let visible_cards: Html = {
         let current = current.clone();
         let on_select = on_select.clone();
@@ -173,6 +317,18 @@ pub fn theme() -> Html {
             .collect()
     } else {
         Html::default()
+    };
+
+    let custom_cards: Html = {
+        let current = current.clone();
+        let on_select_custom = on_select_custom.clone();
+        let on_delete_custom = on_delete_custom.clone();
+        (*custom_themes)
+            .iter()
+            .map(move |ct| {
+                custom_theme_card(ct, &current, on_select_custom.clone(), on_delete_custom.clone())
+            })
+            .collect()
     };
 
     html! {
@@ -203,6 +359,17 @@ pub fn theme() -> Html {
                         <div class="theme-expanded-grid">
                             { hidden_cards }
                         </div>
+                    }
+
+                    if !(*custom_themes).is_empty() {
+                        <>
+                            <div class="custom-themes-divider">
+                                <span>{"My Themes"}</span>
+                            </div>
+                            <div class="theme-card-grid">
+                                { custom_cards }
+                            </div>
+                        </>
                     }
                 </>
             }
@@ -246,6 +413,70 @@ fn theme_card(t: ThemeData, current: &str, on_select: Callback<String>) -> Html 
             <div style="display:flex;gap:4px;">
                 <span style={format!("display:inline-block;width:18px;height:18px;border-radius:4px;background-color:{};", t.swatch1)}></span>
                 <span style={format!("display:inline-block;width:18px;height:18px;border-radius:4px;background-color:{};opacity:0.6;", t.swatch2)}></span>
+            </div>
+        </div>
+    }
+}
+
+fn custom_theme_card(
+    ct: &CustomTheme,
+    current: &str,
+    on_select: Callback<(String, i32)>,
+    on_delete: Callback<(i32, String)>,
+) -> Html {
+    let is_selected = ct.name == current;
+    let name = ct.name.clone();
+    let name_for_delete = ct.name.clone();
+    let theme_id = ct.themeid;
+    let bg = ct.background_color.clone();
+    let text = ct.text_color.clone();
+    let swatch1 = ct.prog_bar_color.clone();
+    let swatch2 = ct.standout_color.clone();
+
+    let shadow = if is_selected {
+        format!("0 0 0 2px {}, 0 1px 4px rgba(0,0,0,.25)", swatch1)
+    } else {
+        "0 1px 2px rgba(0,0,0,.2)".to_string()
+    };
+
+    let card_style = format!(
+        "background-color:{};border-radius:10px;padding:12px;min-height:74px;\
+         position:relative;cursor:pointer;box-shadow:{};",
+        bg, shadow
+    );
+
+    html! {
+        <div
+            style={card_style}
+            class="theme-card-item"
+            onclick={Callback::from(move |_: MouseEvent| on_select.emit((name.clone(), theme_id)))}
+            role="button"
+            tabindex="0"
+        >
+            // Delete button in top-left
+            <button
+                class="custom-theme-delete-btn"
+                title="Delete theme"
+                onclick={Callback::from(move |e: MouseEvent| {
+                    e.stop_propagation();
+                    on_delete.emit((theme_id, name_for_delete.clone()));
+                })}
+            >
+                <i class="ph ph-trash"></i>
+            </button>
+
+            if is_selected {
+                <i
+                    class="ph ph-check-circle"
+                    style={format!("position:absolute;top:8px;right:8px;color:{};font-size:16px;", swatch1)}
+                ></i>
+            }
+            <div style={format!("color:{};font-size:13px;font-weight:600;line-height:1.2;margin-bottom:6px;padding-left:20px;", text)}>
+                {ct.name.clone()}
+            </div>
+            <div style="display:flex;gap:4px;padding-left:20px;">
+                <span style={format!("display:inline-block;width:18px;height:18px;border-radius:4px;background-color:{};", swatch1)}></span>
+                <span style={format!("display:inline-block;width:18px;height:18px;border-radius:4px;background-color:{};opacity:0.6;", swatch2)}></span>
             </div>
         </div>
     }
@@ -794,6 +1025,56 @@ fn theme_card(t: ThemeData, current: &str, on_select: Callback<String>) -> Html 
 ")]
 extern "C" {
     pub fn changeTheme(theme: &str);
+}
+
+#[wasm_bindgen(inline_js = "
+    export function applyCustomTheme(bg, btn, containerBtn, btnText, text, textSec,
+        border, accent, progBar, error, bonus, secBg, containerBg,
+        standout, hover, link, thumb, unfilled, checkbox) {
+        const root = document.documentElement;
+        root.style.setProperty('--background-color', bg);
+        root.style.setProperty('--button-color', btn);
+        root.style.setProperty('--container-button-color', containerBtn);
+        root.style.setProperty('--button-text-color', btnText);
+        root.style.setProperty('--text-color', text);
+        root.style.setProperty('--text-secondary-color', textSec);
+        root.style.setProperty('--border-color', border);
+        root.style.setProperty('--accent-color', accent);
+        root.style.setProperty('--prog-bar-color', progBar);
+        root.style.setProperty('--error-color', error);
+        root.style.setProperty('--bonus-color', bonus);
+        root.style.setProperty('--secondary-background', secBg);
+        root.style.setProperty('--container-background', containerBg);
+        root.style.setProperty('--standout-color', standout);
+        root.style.setProperty('--hover-color', hover);
+        root.style.setProperty('--link-color', link);
+        root.style.setProperty('--thumb-color', thumb);
+        root.style.setProperty('--unfilled-color', unfilled);
+        root.style.setProperty('--check-box-color', checkbox);
+    }
+")]
+extern "C" {
+    pub fn applyCustomTheme(
+        bg: &str,
+        btn: &str,
+        container_btn: &str,
+        btn_text: &str,
+        text: &str,
+        text_sec: &str,
+        border: &str,
+        accent: &str,
+        prog_bar: &str,
+        error: &str,
+        bonus: &str,
+        sec_bg: &str,
+        container_bg: &str,
+        standout: &str,
+        hover: &str,
+        link: &str,
+        thumb: &str,
+        unfilled: &str,
+        checkbox: &str,
+    );
 }
 
 pub fn initialize_default_theme() {

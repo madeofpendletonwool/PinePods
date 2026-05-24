@@ -399,7 +399,7 @@ pub fn playback_settings() -> Html {
                 <span style="font-size:12px;color:var(--text-secondary-color);">{"x"}</span>
                 <button
                     class="btn btn-primary"
-                    style="padding:6px 10px;"
+                    style="padding:6px 12px;"
                     onclick={on_save_playback_speed}
                     disabled={*is_loading}
                 >
@@ -428,7 +428,7 @@ pub fn playback_settings() -> Html {
                 <span style="font-size:12px;color:var(--text-secondary-color);">{&i18n_seconds}</span>
                 <button
                     class="btn btn-primary"
-                    style="padding:6px 10px;"
+                    style="padding:6px 12px;"
                     onclick={on_save_auto_complete}
                     disabled={*auto_complete_loading}
                 >

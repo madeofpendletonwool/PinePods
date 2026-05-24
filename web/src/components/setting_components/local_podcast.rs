@@ -294,6 +294,7 @@ pub fn local_podcast() -> Html {
                     <button
                         onclick={add_local_podcast_cb}
                         class="btn btn-primary"
+                        style="padding:6px 12px;"
                         disabled={*is_loading}
                     >
                         <i class="ph ph-plus"></i>
@@ -314,6 +315,7 @@ pub fn local_podcast() -> Html {
                             <button
                                 onclick={refresh_podcast_cb}
                                 class="btn btn-secondary"
+                                style="padding:6px 12px;"
                                 disabled={*is_refreshing}
                             >
                                 <i class="ph ph-arrow-clockwise"></i>
