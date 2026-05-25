@@ -403,6 +403,7 @@ pub struct UIState {
     pub podcast_podroll: Option<Vec<PodrollItem>>,
     pub podcast_value4value: Option<Vec<Value>>,
     pub is_mobile: Option<bool>,
+    pub loading_episode_id: Option<i32>,
     pub queue_panel_open: bool,
 }
 
@@ -489,6 +490,7 @@ impl UIState {
                     Closure::wrap(Box::new(move || {
                         play_dispatch.reduce_mut(|state| {
                             state.audio_playing = Some(true);
+                            state.loading_episode_id = None;
                         });
                     }) as Box<dyn Fn()>)
                 };

@@ -61,16 +61,17 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         state.downloaded_episodes.is_local_download(episode_id)
     });
 
-    // Selector returns (is_current, is_active_and_playing) for THIS episode only.
+    // Selector returns (is_current, is_active_and_playing, is_loading) for THIS episode only.
     // Only this episode re-renders when its own play state changes; other episodes are unaffected.
     let play_state = use_selector(move |state: &UIState| {
         let is_current = state
             .currently_playing
             .as_ref()
             .map_or(false, |cp| cp.episode_id == episode_id);
-        (is_current, is_current && state.audio_playing.unwrap_or(false))
+        let is_loading = state.loading_episode_id == Some(episode_id);
+        (is_current, is_current && state.audio_playing.unwrap_or(false), is_loading)
     });
-    let (is_current_episode, is_active_and_playing) = *play_state;
+    let (is_current_episode, is_active_and_playing, is_loading) = *play_state;
 
     /*
     Item Shape
@@ -192,6 +193,10 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     }
                 });
             } else {
+                let episode_id = episode.episodeid;
+                audio_dispatch.reduce_mut(move |state| {
+                    state.loading_episode_id = Some(episode_id);
+                });
                 on_play_click(
                     episode.clone(),
                     api_key.clone(),
@@ -446,7 +451,9 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                             title="Play / Pause"
                         >
                             {
-                                if is_active_and_playing {
+                                if is_loading {
+                                    html! { <i class="ph ph-spinner" style="animation: spin 1s linear infinite;"></i> }
+                                } else if is_active_and_playing {
                                     html! { <i class="ph ph-pause"></i> }
                                 } else {
                                     html! { <i class="ph ph-play"></i> }

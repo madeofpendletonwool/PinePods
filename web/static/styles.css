@@ -7288,31 +7288,8 @@ input[type="file"] { color: var(--text-color); font-size: 13px; }
 }
 
 .player-fs-scrub-area {
-    display: flex; flex-direction: column; gap: 8px;
+    display: flex; flex-direction: row; align-items: center; gap: 8px;
     padding: 0 6px; width: 100%;
-}
-.player-track {
-    position: relative; flex: 1; height: 4px;
-    background: var(--unfilled-color); border-radius: 2px; cursor: pointer;
-}
-.player-track-big { height: 6px; border-radius: 3px; }
-.player-fill {
-    position: absolute; left: 0; top: 0; bottom: 0;
-    background: var(--prog-bar-color); border-radius: 2px;
-    transition: width 80ms linear;
-}
-.player-thumb {
-    position: absolute; top: 50%;
-    transform: translate(-50%, -50%);
-    width: 12px; height: 12px; border-radius: 50%;
-    background: var(--prog-bar-color);
-    transition: left 80ms linear;
-}
-.player-thumb-big { width: 16px; height: 16px; }
-.player-fs-times {
-    display: flex; justify-content: space-between;
-    font-family: var(--font-mono); font-size: 12px;
-    color: var(--text-secondary-color);
 }
 
 .player-fs-controls {
@@ -7339,6 +7316,12 @@ input[type="file"] { color: var(--text-color); font-size: 13px; }
 .player-fs-ctrl-big i { font-size: 72px; }
 .player-fs-ctrl-big:hover { background: transparent; transform: scale(1.04); }
 .player-fs-ctrl-big:active { transform: scale(.98); }
+
+.player-fs-side-btns {
+    display: flex; align-items: center; gap: 8px;
+    min-width: 120px; /* matches 2×56px + 8px gap on right side */
+}
+.player-fs-side-btns--left { justify-content: flex-end; }
 
 .player-fs-footer {
     display: flex; align-items: center; justify-content: center; gap: 14px;

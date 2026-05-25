@@ -82,9 +82,9 @@ pub fn playback_control(props: &PlaybackControlProps) -> Html {
         <div class="speed-control-container">
             <button
                 onclick={toggle_open}
-                class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center"
+                class="player-btn"
             >
-                <i class="ph ph-speedometer text-2xl"></i>
+                <i class="ph ph-speedometer"></i>
             </button>
             <div class={classes!("speed-slider-container", "item_container-bg", (*is_open).then(|| "visible"))}>
                 <div class="speed-control-content item_container-bg">
@@ -137,9 +137,9 @@ pub fn volume_control(props: &VolumeControlProps) -> Html {
         <div class="volume-control-container">
             <button
                 onclick={toggle_open}
-                class="skip-button audio-top-button selector-button font-bold py-2 px-4 mt-3 rounded-full w-10 h-10 flex items-center justify-center"
+                class="player-btn"
             >
-                <i class="ph ph-speaker-high text-2xl"></i>
+                <i class="ph ph-speaker-high"></i>
             </button>
 
             <div class={classes!("volume-slider-container", (*is_open).then(|| "visible"))}>
@@ -1589,31 +1589,23 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                         // Scrub bar
                         <div class="player-fs-scrub-area">
-                            <div class="player-track player-track-big" style="cursor:pointer;">
-                                <div class="player-fill" style={format!("width: {}%;",
-                                    (audio_state.current_time_seconds / audio_props.duration_sec * 100.0).clamp(0.0, 100.0)
-                                )} />
-                                <div class="player-thumb player-thumb-big" style={format!("left: {}%;",
-                                    (audio_state.current_time_seconds / audio_props.duration_sec * 100.0).clamp(0.0, 100.0)
-                                )} />
-                                <input type="range"
-                                    style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;"
-                                    min="0.0"
-                                    max={audio_props.duration_sec.to_string()}
-                                    value={(*current_time_local).to_string()}
-                                    oninput={update_time.clone()} />
-                            </div>
-                            <div class="player-fs-times">
-                                <span>{(*current_time_formatted_local).clone()}</span>
-                                <span>{"−"}{formatted_duration.clone()}</span>
-                            </div>
+                            <span class="player-time">{(*current_time_formatted_local).clone()}</span>
+                            <input type="range"
+                                class="player-range"
+                                min="0.0"
+                                max={audio_props.duration_sec.to_string()}
+                                value={(*current_time_local).to_string()}
+                                oninput={update_time.clone()} />
+                            <span class="player-time">{formatted_duration.clone()}</span>
                         </div>
 
                         // Transport controls
                         <div class="player-fs-controls">
-                            <button onclick={skip_backward.clone()} class="player-fs-ctrl" title="Back 15s">
-                                <i class="ph ph-rewind"></i>
-                            </button>
+                            <div class="player-fs-side-btns player-fs-side-btns--left">
+                                <button onclick={skip_backward.clone()} class="player-fs-ctrl" title="Back 15s">
+                                    <i class="ph ph-rewind"></i>
+                                </button>
+                            </div>
                             <button onclick={toggle_playback.clone()} class="player-fs-ctrl player-fs-ctrl-big" title="Play / Pause">
                                 { if audio_state.audio_playing.unwrap_or(false) {
                                     html! { <i class="ph ph-pause-circle"></i> }
@@ -1621,12 +1613,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     html! { <i class="ph ph-play-circle"></i> }
                                 }}
                             </button>
-                            <button onclick={skip_forward.clone()} class="player-fs-ctrl" title="Forward 30s">
-                                <i class="ph ph-fast-forward"></i>
-                            </button>
-                            <button onclick={skip_episode.clone()} class="player-fs-ctrl" title="Next episode">
-                                <i class="ph ph-skip-forward"></i>
-                            </button>
+                            <div class="player-fs-side-btns">
+                                <button onclick={skip_forward.clone()} class="player-fs-ctrl" title="Forward 30s">
+                                    <i class="ph ph-fast-forward"></i>
+                                </button>
+                                <button onclick={skip_episode.clone()} class="player-fs-ctrl" title="Next episode">
+                                    <i class="ph ph-skip-forward"></i>
+                                </button>
+                            </div>
                         </div>
 
                         // Footer: speed, volume, shownotes
@@ -2239,11 +2233,17 @@ pub fn on_play_click(
                                 web_sys::console::log_1(
                                     &format!("Error getting episode detail: {}", e).into(),
                                 );
+                                audio_dispatch_for_duration.reduce_mut(|state| {
+                                    state.loading_episode_id = None;
+                                });
                             }
                         }
                     }
                     Err(e) => {
                         web_sys::console::log_1(&format!("Error getting podcast ID: {}", e).into());
+                        audio_dispatch_for_duration.reduce_mut(|state| {
+                            state.loading_episode_id = None;
+                        });
                     }
                 };
             } else {
