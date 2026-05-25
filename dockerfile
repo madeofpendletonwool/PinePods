@@ -115,7 +115,7 @@ RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases
     chmod +x /usr/local/bin/yt-dlp
 
 # Download and install Horust (x86_64)
-RUN wget -O /tmp/horust.tar.gz "https://github.com/FedericoPonzi/Horust/releases/download/v0.1.11/horust-x86_64-unknown-linux-musl.tar.gz" && \
+RUN wget -O /tmp/horust.tar.gz "https://github.com/FedericoPonzi/Horust/releases/download/v0.1.13/horust-x86_64-unknown-linux-musl.tar.gz" && \
     cd /tmp && tar -xzf horust.tar.gz && \
     mv horust /usr/local/bin/ && \
     chmod +x /usr/local/bin/horust && \

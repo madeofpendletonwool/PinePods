@@ -111,7 +111,6 @@ pub fn notification_center() -> Html {
     let i18n_youtube_video = i18n.t("notification_center.item_youtube_video").to_string();
     let i18n_item = i18n.t("notification_center.item_generic").to_string();
 
-    let (app_state, _) = use_store::<AppState>();
     let (state, dispatch) = use_store::<NotificationState>();
     let dropdown_open = use_state(|| false);
     let notification_count = use_state(|| 0);
@@ -120,12 +119,12 @@ pub fn notification_center() -> Html {
 
     // Initialize WebSocket connection on component mount
     {
-        let app_state = app_state.clone();
         let dispatch = dispatch.clone();
         let ws_initialized = ws_initialized.clone();
 
         use_effect_with((), move |_| {
             if !*ws_initialized {
+                let app_state = Dispatch::<AppState>::global().get();
                 init_task_monitoring(&app_state, dispatch);
                 ws_initialized.set(true);
             }

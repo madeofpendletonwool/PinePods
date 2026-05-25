@@ -21,12 +21,29 @@ const PAGE_SIZE: i64 = 50;
 #[function_component(Feed)]
 pub fn feed() -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
     let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
     let i18n_no_recent_episodes_found = i18n.t("feed.no_recent_episodes_found").to_string();
     let i18n_no_recent_episodes_description =
         i18n.t("feed.no_recent_episodes_description").to_string();
+
+    // Selective subscriptions — feed page only re-renders when auth or podcast list changes,
+    // NOT when individual episode saved/downloaded/queued state changes.
+    let api_key_sel = use_selector(|state: &AppState| {
+        state.auth_details.as_ref().map(|ud| ud.api_key.clone())
+    });
+    let user_id_sel = use_selector(|state: &AppState| {
+        state.user_details.as_ref().map(|ud| ud.UserID.clone())
+    });
+    let server_name_sel = use_selector(|state: &AppState| {
+        state.auth_details.as_ref().map(|ud| ud.server_name.clone())
+    });
+    let podcast_feed_extra = use_selector(|state: &AppState| {
+        state.podcast_feed_return_extra.clone()
+    });
+    let api_key = (*api_key_sel).clone();
+    let user_id = (*user_id_sel).clone();
+    let server_name = (*server_name_sel).clone();
 
     let episodes = use_state(|| Vec::<Episode>::new());
     let total = use_state(|| 0i64);
@@ -36,13 +53,6 @@ pub fn feed() -> Html {
     let error = use_state(|| None::<String>);
     let sentinel_ref = use_node_ref();
 
-    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let server_name = state
-        .auth_details
-        .as_ref()
-        .map(|ud| ud.server_name.clone());
-
     // Initial page fetch
     {
         let episodes = episodes.clone();
@@ -50,7 +60,6 @@ pub fn feed() -> Html {
         let offset = offset.clone();
         let loading = loading.clone();
         let error = error.clone();
-        let dispatch = dispatch.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
@@ -63,7 +72,6 @@ pub fn feed() -> Html {
                 {
                     // Fetch podcast extras in parallel
                     {
-                        let dispatch_pods = dispatch.clone();
                         let server_name_pods = server_name.clone();
                         let api_key_pods = api_key.clone();
                         let user_id_pods = user_id.clone();
@@ -75,7 +83,7 @@ pub fn feed() -> Html {
                             )
                             .await
                             {
-                                dispatch_pods.reduce_mut(move |state| {
+                                Dispatch::<AppState>::global().reduce_mut(move |state| {
                                     state.podcast_feed_return_extra = Some(PodcastResponseExtra {
                                         pods: Some(fetched_pods),
                                     });
@@ -89,7 +97,6 @@ pub fn feed() -> Html {
                     let offset = offset.clone();
                     let loading = loading.clone();
                     let error = error.clone();
-                    let dispatch = dispatch.clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_recent_eps_paged(
@@ -120,7 +127,7 @@ pub fn feed() -> Html {
                                     .filter(|ep| ep.queued)
                                     .map(|ep| ep.episodeid)
                                     .collect();
-                                dispatch.reduce_mut(move |state| {
+                                Dispatch::<AppState>::global().reduce_mut(move |state| {
                                     state.completed_episodes = Some(completed_episode_ids);
                                     state.saved_episodes = saved_episodes;
                                     state.queued_episode_ids = Some(queued_episode_ids);
@@ -128,13 +135,12 @@ pub fn feed() -> Html {
 
                                 #[cfg(not(feature = "server_build"))]
                                 {
-                                    let dispatch_local = dispatch.clone();
                                     wasm_bindgen_futures::spawn_local(async move {
                                         if let Ok(mut local_episodes) =
                                             crate::pages::downloads_tauri::fetch_local_episodes()
                                                 .await
                                         {
-                                            dispatch_local.reduce_mut(move |state| {
+                                            Dispatch::<AppState>::global().reduce_mut(move |state| {
                                                 state.downloaded_episodes.clear_local();
                                                 for ep in local_episodes.drain(..) {
                                                     state.downloaded_episodes.push_local(ep);
@@ -253,8 +259,7 @@ pub fn feed() -> Html {
         );
     }
 
-    let favorite_podcast_ids: std::collections::HashSet<i32> = state
-        .podcast_feed_return_extra
+    let favorite_podcast_ids: std::collections::HashSet<i32> = (*podcast_feed_extra)
         .as_ref()
         .and_then(|pr| pr.pods.as_ref())
         .map(|pods| {

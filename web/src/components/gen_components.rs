@@ -52,7 +52,10 @@ pub struct FallbackImageProps {
 pub fn fallback_image(props: &FallbackImageProps) -> Html {
     let image_ref = use_node_ref();
     let has_error = use_state(|| false);
-    let (state, _dispatch) = use_store::<AppState>();
+    let server_name_sel = use_selector(|state: &AppState| {
+        state.auth_details.as_ref().map(|ud| ud.server_name.clone()).unwrap_or_default()
+    });
+    let server_name = (*server_name_sel).clone();
 
     // Just use the original src without timestamps
     let image_src = use_state(|| props.src.clone());
@@ -70,7 +73,6 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     // Create a proxied URL from the original source
     let proxied_url = {
         let original_url = props.src.clone();
-        let server_name = state.auth_details.as_ref().unwrap().server_name.clone();
         format!(
             "{}/api/proxy/image?url={}",
             server_name,
@@ -141,7 +143,6 @@ pub fn use_scroll_to_top() -> Html {
 pub fn error_message(props: &ErrorMessageProps) -> Html {
     // Your existing logic here...
     let error_message = use_state(|| None::<String>);
-    let (_state, _dispatch) = use_store::<AppState>();
 
     {
         let error_message = error_message.clone();
@@ -188,10 +189,12 @@ pub fn error_message(props: &ErrorMessageProps) -> Html {
 #[function_component(Search_nav)]
 pub fn search_bar() -> Html {
     let history = BrowserHistory::new();
-    let (state, _dispatch) = use_store::<AppState>();
+    // Selective subscription — only re-render when server_details changes (login/logout),
+    // not on every episode save/download/queue action.
+    let server_details_sel = use_selector(|state: &AppState| state.server_details.clone());
+    let server_details = (*server_details_sel).clone();
     let podcast_value = use_state(|| "".to_string());
     let search_index = use_state(|| "podcast_index".to_string()); // Default to "podcast_index"
-    let (_app_state, dispatch) = use_store::<AppState>();
     let is_submitting = use_state(|| false);
 
     let history_clone = history.clone();
@@ -204,26 +207,24 @@ pub fn search_bar() -> Html {
 
     let handle_submit = {
         let is_submitting = is_submitting.clone();
-        let state = state.clone();
+        let server_details = server_details.clone();
         let history = history_clone.clone();
         let podcast_value = podcast_value_clone.clone();
         let search_index = search_index_clone.clone();
-        let dispatch = dispatch.clone();
 
         move || {
             if *is_submitting {
                 return;
             }
             is_submitting.set(true);
-            let api_url = state.server_details.as_ref().map(|ud| ud.api_url.clone());
+            let api_url = server_details.as_ref().map(|ud| ud.api_url.clone());
             let history = history.clone();
             let search_value = podcast_value.clone();
             let search_index = search_index.clone();
-            let dispatch = dispatch.clone();
             let is_submitting_clone = is_submitting.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
-                dispatch.reduce_mut(|state| state.is_loading = Some(true));
+                Dispatch::<AppState>::global().reduce_mut(|state| state.is_loading = Some(true));
                 if *search_index == "youtube" {
                     match call_youtube_search(&search_value, &api_url.unwrap()).await {
                         Ok(yt_results) => {
@@ -232,7 +233,7 @@ pub fn search_bar() -> Html {
                                 videos: Vec::new(),
                             };
 
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<AppState>::global().reduce_mut(|state| {
                                 state.youtube_search_results = Some(search_results);
                                 state.is_loading = Some(false);
                             });
@@ -241,7 +242,7 @@ pub fn search_bar() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<AppState>::global().reduce_mut(|state| {
                                 state.is_loading = Some(false);
                             });
                             Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -255,15 +256,15 @@ pub fn search_bar() -> Html {
                         .await
                     {
                         Ok(search_results) => {
-                            dispatch.reduce_mut(move |state| {
+                            Dispatch::<AppState>::global().reduce_mut(move |state| {
                                 state.search_results = Some(search_results);
                                 state.podcast_added = Some(false);
                             });
-                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<AppState>::global().reduce_mut(|state| state.is_loading = Some(false));
                             history.push("/pod_layout");
                         }
                         Err(_) => {
-                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<AppState>::global().reduce_mut(|state| state.is_loading = Some(false));
                         }
                     }
                 }
@@ -382,11 +383,10 @@ pub fn search_bar() -> Html {
     };
 
     let (_, ui_dispatch) = use_store::<UIState>();
-    let (app_state_for_queue, _) = use_store::<AppState>();
-    let queue_count = app_state_for_queue.queued_episodes
-        .as_ref()
-        .map(|q| q.episodes.len())
-        .unwrap_or(0);
+    let queue_count_sel = use_selector(|state: &AppState| {
+        state.queued_episodes.as_ref().map(|q| q.episodes.len()).unwrap_or(0)
+    });
+    let queue_count = *queue_count_sel;
 
     let toggle_queue = {
         let ui_dispatch = ui_dispatch.clone();

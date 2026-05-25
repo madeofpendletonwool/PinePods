@@ -38,7 +38,12 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   bool _showHistory = false;
   String? _errorMessage;
   String _currentQuery = '';
-  
+
+  // Pagination state
+  int _searchTotal = 0;
+  int _searchOffset = 0;
+  bool _isLoadingMore = false;
+
   // Use global audio service instead of creating local instance
   int? _contextMenuEpisodeIndex;
 
@@ -409,10 +414,12 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
         throw Exception('Not logged in');
       }
 
-      final results = await _pinepodsService.searchEpisodes(userId, query);
+      final page = await _pinepodsService.searchEpisodes(userId, query, limit: 50, offset: 0);
 
       setState(() {
-        _searchResults = results;
+        _searchResults = page.results;
+        _searchTotal = page.total;
+        _searchOffset = page.results.length;
         _isLoading = false;
         _hasSearched = true;
       });
@@ -425,7 +432,33 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
         _isLoading = false;
         _hasSearched = true;
         _searchResults = [];
+        _searchTotal = 0;
+        _searchOffset = 0;
       });
+    }
+  }
+
+  Future<void> _loadMoreResults() async {
+    if (_isLoadingMore || _searchOffset >= _searchTotal) return;
+
+    final userId = Provider.of<SettingsBloc>(context, listen: false)
+        .currentSettings.pinepodsUserId;
+    if (userId == null) return;
+
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final page = await _pinepodsService.searchEpisodes(
+        userId, _currentQuery, limit: 50, offset: _searchOffset,
+      );
+      setState(() {
+        _searchResults.addAll(page.results);
+        _searchTotal = page.total;
+        _searchOffset += page.results.length;
+        _isLoadingMore = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingMore = false);
     }
   }
 
@@ -436,6 +469,8 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
       _errorMessage = null;
       _currentQuery = '';
       _showHistory = _searchHistory.isNotEmpty;
+      _searchTotal = 0;
+      _searchOffset = 0;
     });
     _fadeAnimationController.reset();
     _slideAnimationController.reverse();
@@ -625,35 +660,49 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   }
 
   Widget _buildResults() {
-    // Convert search results to PinepodsEpisode objects
     final episodes = _searchResults.map((result) => result.toPinepodsEpisode()).toList();
-    
+    final hasMore = _searchOffset < _searchTotal;
+
     return FadeTransition(
       opacity: _fadeAnimation,
-      child: PaginatedEpisodeList(
-        episodes: episodes,
-        isServerEpisodes: true,
-        pageSize: 20, // Show 20 episodes at a time for good performance
-        onEpisodeTap: (episode) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PinepodsEpisodeDetails(
-                initialEpisode: episode,
-              ),
+      child: Column(
+        children: [
+          PaginatedEpisodeList(
+            episodes: episodes,
+            isServerEpisodes: true,
+            pageSize: 20,
+            onEpisodeTap: (episode) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PinepodsEpisodeDetails(
+                    initialEpisode: episode,
+                  ),
+                ),
+              );
+            },
+            onEpisodeLongPress: (episode, globalIndex) {
+              final originalIndex = _searchResults.indexWhere(
+                (result) => result.episodeId == episode.episodeId,
+              );
+              if (originalIndex != -1) {
+                _showContextMenu(originalIndex);
+              }
+            },
+            onPlayPressed: (episode) => _playEpisode(episode),
+          ),
+          if (hasMore || _isLoadingMore)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12.0),
+              child: _isLoadingMore
+                  ? const CircularProgressIndicator()
+                  : OutlinedButton.icon(
+                      onPressed: _loadMoreResults,
+                      icon: const Icon(Icons.expand_more),
+                      label: Text('Load more (${_searchTotal - _searchOffset} remaining)'),
+                    ),
             ),
-          );
-        },
-        onEpisodeLongPress: (episode, globalIndex) {
-          // Find the original index in _searchResults for context menu
-          final originalIndex = _searchResults.indexWhere(
-            (result) => result.episodeId == episode.episodeId
-          );
-          if (originalIndex != -1) {
-            _showContextMenu(originalIndex);
-          }
-        },
-        onPlayPressed: (episode) => _playEpisode(episode),
+        ],
       ),
     );
   }

@@ -943,11 +943,10 @@ class NativeAudioPlayerService extends AudioPlayerService {
       pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
       log.info('Calling PinePods API: getRecentEpisodes for Feed tab');
 
-      final episodes = await pinepodsService.getRecentEpisodes(settingsService.pinepodsUserId!);
+      final page = await pinepodsService.getRecentEpisodes(settingsService.pinepodsUserId!);
 
-      log.info('PinePods API returned ${episodes.length} recent episodes for Feed');
-      // Return first 50 episodes
-      return episodes.take(50).map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
+      log.info('PinePods API returned ${page.episodes.length} recent episodes for Feed (total: ${page.total})');
+      return page.episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
     } catch (e) {
       log.severe('Error getting feed for car: $e');
       return [];
