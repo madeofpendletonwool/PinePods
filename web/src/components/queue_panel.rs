@@ -5,6 +5,7 @@ use crate::requests::pod_req::{
     call_clear_queue, call_get_queued_episodes, call_remove_queued_episode, call_reorder_queue,
     QueuePodcastRequest, QueuedEpisodesResponse,
 };
+use i18nrs::yew::use_translation;
 use wasm_bindgen::JsCast;
 use web_sys::{DragEvent, MouseEvent};
 use yew::prelude::*;
@@ -13,6 +14,11 @@ use yewdux::prelude::*;
 
 #[function_component(QueuePanel)]
 pub fn queue_panel() -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_up_next = i18n.t("queue_panel.up_next").to_string();
+    let i18n_now_playing = i18n.t("queue_panel.now_playing").to_string();
+    let i18n_queue_is_empty = i18n.t("queue_panel.queue_is_empty").to_string();
+    let i18n_add_episodes_hint = i18n.t("queue_panel.add_episodes_hint").to_string();
     let (ui_state, ui_dispatch) = use_store::<UIState>();
     let (app_state, app_dispatch) = use_store::<AppState>();
     let (ep_status, ep_dispatch) = use_store::<EpisodeStatusState>();
@@ -238,7 +244,7 @@ pub fn queue_panel() -> Html {
             <aside class={classes!("queue-panel", if is_open { "is-open" } else { "" })} aria-label="Queue">
                 <div class="queue-head">
                     <div>
-                        <div class="queue-title">{"Up next"}</div>
+                        <div class="queue-title">{ &i18n_up_next }</div>
                         <div class="queue-sub">
                             { format!("{} episode{} \u{00B7} {}", queued.len(),
                                 if queued.len() == 1 { "" } else { "s" }, total_label) }
@@ -262,7 +268,7 @@ pub fn queue_panel() -> Html {
                             class="queue-nowplaying-art"
                         />
                         <div style="min-width: 0; flex: 1;">
-                            <div class="queue-now-eyebrow">{"Now playing"}</div>
+                            <div class="queue-now-eyebrow">{ &i18n_now_playing }</div>
                             <div class="queue-now-title">{ title }</div>
                         </div>
                         if is_playing {
@@ -277,8 +283,8 @@ pub fn queue_panel() -> Html {
                     if queued.is_empty() {
                         <div class="queue-empty">
                             <i class="ph ph-queue"></i>
-                            <div class="queue-empty-title">{"Queue is empty"}</div>
-                            <div class="queue-empty-sub">{"Add episodes from your feed to listen in order."}</div>
+                            <div class="queue-empty-title">{ &i18n_queue_is_empty }</div>
+                            <div class="queue-empty-sub">{ &i18n_add_episodes_hint }</div>
                         </div>
                     } else {
                         { for queued.iter().enumerate().map(|(i, ep)| {

@@ -230,10 +230,10 @@ pub fn startpage() -> Html {
                 </div>
             </div>
 
-            <div class="settings-subsection-title">{"Podcast Cover Display"}</div>
+            <div class="settings-subsection-title">{i18n.t("start_page_options.podcast_cover_display")}</div>
 
             <div class="settings-row">
-                <div><div class="settings-row-label">{"Always use podcast covers instead of episode covers"}</div></div>
+                <div><div class="settings-row-label">{i18n.t("start_page_options.always_use_podcast_covers")}</div></div>
                 <div class="settings-row-control">
                     if *covers_loading {
                         <i class="ph ph-spinner"></i>

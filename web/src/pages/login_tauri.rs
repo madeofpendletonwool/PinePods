@@ -126,6 +126,15 @@ pub fn login() -> Html {
     let i18n_login = i18n.t("auth.login").to_string();
     let i18n_pinepods = i18n.t("common.pinepods").to_string();
     let i18n_password_reset_successfully = i18n.t("login.password_reset_successfully").to_string();
+    let i18n_date_format_mdy = i18n.t("login.date_format_mdy").to_string();
+    let i18n_date_format_dmy = i18n.t("login.date_format_dmy").to_string();
+    let i18n_date_format_ymd = i18n.t("login.date_format_ymd").to_string();
+    let i18n_date_format_julian = i18n.t("login.date_format_julian").to_string();
+    let i18n_date_format_iso8601 = i18n.t("login.date_format_iso8601").to_string();
+    let i18n_date_format_usa = i18n.t("login.date_format_usa").to_string();
+    let i18n_date_format_eur = i18n.t("login.date_format_eur").to_string();
+    let i18n_date_format_jis = i18n.t("login.date_format_jis").to_string();
+    let i18n_not_used_client = i18n.t("login.not_used_client").to_string();
 
     let history = BrowserHistory::new();
     let username = use_state(|| "".to_string());
@@ -779,14 +788,14 @@ pub fn login() -> Html {
                             <div>
                             <label for="date_format" style="margin-right: 10px;">{&i18n.t("login.date_format")}{":"}</label>
                             <select id="date_format" name="date_format" class="email-select border p-2 rounded" oninput={on_df_change}>
-                                <option value="MDY">{"MDY (MM-DD-YYYY)"}</option>
-                                <option value="DMY">{"DMY (DD-MM-YYYY)"}</option>
-                                <option value="YMD">{"YMD (YYYY-MM-DD)"}</option>
-                                <option value="JUL">{"JUL (YY/DDD)"}</option>
-                                <option value="ISO">{"ISO (YYYY-MM-DD)"}</option>
-                                <option value="USA">{"USA (MM/DD/YYYY)"}</option>
-                                <option value="EUR">{"EUR (DD.MM.YYYY)"}</option>
-                                <option value="JIS">{"JIS (YYYY-MM-DD)"}</option>
+                                <option value="MDY">{ &i18n_date_format_mdy }</option>
+                                <option value="DMY">{ &i18n_date_format_dmy }</option>
+                                <option value="YMD">{ &i18n_date_format_ymd }</option>
+                                <option value="JUL">{ &i18n_date_format_julian }</option>
+                                <option value="ISO">{ &i18n_date_format_iso8601 }</option>
+                                <option value="USA">{ &i18n_date_format_usa }</option>
+                                <option value="EUR">{ &i18n_date_format_eur }</option>
+                                <option value="JIS">{ &i18n_date_format_jis }</option>
                             </select>
                         </div>
                             <button type="submit" onclick={on_time_zone_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{&i18n.t("common.submit")}</button>
@@ -1000,8 +1009,10 @@ pub fn login() -> Html {
 
 #[function_component(ChangeServer)]
 pub fn login() -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_not_used_client = i18n.t("login.not_used_client").to_string();
     html! {
-        <p>{"This route isn't used on the client version"}</p>
+        <p>{ &i18n_not_used_client }</p>
     }
 }
 

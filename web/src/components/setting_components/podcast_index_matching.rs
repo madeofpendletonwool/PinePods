@@ -26,6 +26,27 @@ pub fn podcast_index_matching() -> Html {
     let _i18n_podcast_index_matching = i18n
         .t("podcast_index_matching.podcast_index_matching")
         .to_string();
+    let i18n_loading_podcasts = i18n.t("podcast_index_matching.loading_podcasts").to_string();
+    let i18n_all_podcasts_matched = i18n.t("podcast_index_matching.all_podcasts_matched").to_string();
+    let i18n_no_podcasts_need_matching = i18n.t("podcast_index_matching.no_podcasts_need_matching").to_string();
+    let i18n_click_to_search = i18n.t("podcast_index_matching.click_to_search").to_string();
+    let i18n_ignore = i18n.t("podcast_index_matching.ignore").to_string();
+    let i18n_manual_search_options = i18n.t("podcast_index_matching.manual_search_options").to_string();
+    let i18n_search_by_custom_terms = i18n.t("podcast_index_matching.search_by_custom_terms").to_string();
+    let i18n_search = i18n.t("podcast_index_matching.search").to_string();
+    let i18n_enter_podcast_id = i18n.t("podcast_index_matching.enter_podcast_id").to_string();
+    let i18n_match = i18n.t("podcast_index_matching.match_btn").to_string();
+    let i18n_searching = i18n.t("podcast_index_matching.searching").to_string();
+    let i18n_no_matches_found = i18n.t("podcast_index_matching.no_matches_found").to_string();
+    let i18n_try_manual_search = i18n.t("podcast_index_matching.try_manual_search").to_string();
+    let i18n_search_results = i18n.t("podcast_index_matching.search_results").to_string();
+    let i18n_ignored_podcasts = i18n.t("podcast_index_matching.ignored_podcasts").to_string();
+    let i18n_showing_ignored = i18n.t("podcast_index_matching.showing_ignored").to_string();
+    let i18n_podcasts_ignored = i18n.t("podcast_index_matching.podcasts_ignored").to_string();
+    let i18n_hide = i18n.t("podcast_index_matching.hide").to_string();
+    let i18n_show = i18n.t("podcast_index_matching.show").to_string();
+    let i18n_no_ignored = i18n.t("podcast_index_matching.no_ignored").to_string();
+    let i18n_restore = i18n.t("podcast_index_matching.restore").to_string();
 
     let unmatched_podcasts: UseStateHandle<Vec<UnmatchedPodcast>> = use_state(|| Vec::new());
     let ignored_podcasts: UseStateHandle<Vec<UnmatchedPodcast>> = use_state(|| Vec::new());
@@ -443,7 +464,7 @@ pub fn podcast_index_matching() -> Html {
         <div class="settings_container" ref={dropdown_ref}>
             if *loading {
                 <div class="settings-row">
-                    <div><div class="settings-row-label">{"Loading podcasts..."}</div></div>
+                    <div><div class="settings-row-label">{ &i18n_loading_podcasts }</div></div>
                     <div class="settings-row-control">
                         <i class="ph ph-spinner animate-spin" style="font-size:18px;color:var(--text-color);"></i>
                     </div>
@@ -451,8 +472,8 @@ pub fn podcast_index_matching() -> Html {
             } else if unmatched_podcasts.is_empty() {
                 <div class="settings-row">
                     <div>
-                        <div class="settings-row-label">{"All podcasts are matched!"}</div>
-                        <div class="settings-row-desc">{"No podcasts need Podcast Index matching."}</div>
+                        <div class="settings-row-label">{ &i18n_all_podcasts_matched }</div>
+                        <div class="settings-row-desc">{ &i18n_no_podcasts_need_matching }</div>
                     </div>
                 </div>
             } else {
@@ -486,7 +507,7 @@ pub fn podcast_index_matching() -> Html {
                                                 }
                                             }
                                             <div style="font-size:11px;color:var(--text-secondary-color);">
-                                                {"Click to search Podcast Index for matches"}
+                                                { &i18n_click_to_search }
                                             </div>
                                         </div>
                                         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
@@ -502,7 +523,7 @@ pub fn podcast_index_matching() -> Html {
                                                     })
                                                 }}
                                             >
-                                                {"Ignore"}
+                                                { &i18n_ignore }
                                             </button>
                                             <i class="ph ph-magnifying-glass" style="font-size:22px;color:var(--text-secondary-color);"></i>
                                         </div>
@@ -511,10 +532,10 @@ pub fn podcast_index_matching() -> Html {
                                     if is_selected {
                                         <div style="margin-top:12px;border-radius:8px;overflow:hidden;" class="modal-container border">
                                             <div style="padding:16px;border-bottom:1px solid rgba(128,128,128,0.15);">
-                                                <div style="font-size:13px;font-weight:500;color:var(--text-color);margin-bottom:12px;">{"Manual Search Options"}</div>
+                                                <div style="font-size:13px;font-weight:500;color:var(--text-color);margin-bottom:12px;">{ &i18n_manual_search_options }</div>
 
                                                 <div style="margin-bottom:10px;">
-                                                    <div style="font-size:11px;color:var(--text-secondary-color);margin-bottom:6px;">{"Search by custom terms:"}</div>
+                                                    <div style="font-size:11px;color:var(--text-secondary-color);margin-bottom:6px;">{ &i18n_search_by_custom_terms }</div>
                                                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                                                         <input
                                                             type="text"
@@ -531,13 +552,13 @@ pub fn podcast_index_matching() -> Html {
                                                             style="padding:6px 12px;"
                                                         >
                                                             <i class="ph ph-magnifying-glass"></i>
-                                                            {"Search"}
+                                                            { &i18n_search }
                                                         </button>
                                                     </div>
                                                 </div>
 
                                                 <div>
-                                                    <div style="font-size:11px;color:var(--text-secondary-color);margin-bottom:6px;">{"Or enter Podcast Index ID directly:"}</div>
+                                                    <div style="font-size:11px;color:var(--text-secondary-color);margin-bottom:6px;">{ &i18n_enter_podcast_id }</div>
                                                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                                                         <input
                                                             type="text"
@@ -555,7 +576,7 @@ pub fn podcast_index_matching() -> Html {
                                                             style="padding:6px 12px;"
                                                         >
                                                             <i class="ph ph-check"></i>
-                                                            {"Match"}
+                                                            { &i18n_match }
                                                         </button>
                                                     </div>
                                                 </div>
@@ -564,17 +585,17 @@ pub fn podcast_index_matching() -> Html {
                                             if *is_searching {
                                                 <div style="display:flex;align-items:center;gap:8px;padding:16px;color:var(--text-color);">
                                                     <i class="ph ph-spinner animate-spin" style="font-size:18px;"></i>
-                                                    <span style="font-size:13px;">{"Searching Podcast Index..."}</span>
+                                                    <span style="font-size:13px;">{ &i18n_searching }</span>
                                                 </div>
                                             } else if search_results.is_empty() {
                                                 <div style="text-align:center;padding:16px;">
-                                                    <div style="font-size:13px;color:var(--text-secondary-color);">{"No matches found in Podcast Index"}</div>
-                                                    <div style="font-size:11px;color:var(--text-secondary-color);margin-top:4px;">{"Try using the manual search options above"}</div>
+                                                    <div style="font-size:13px;color:var(--text-secondary-color);">{ &i18n_no_matches_found }</div>
+                                                    <div style="font-size:11px;color:var(--text-secondary-color);margin-top:4px;">{ &i18n_try_manual_search }</div>
                                                 </div>
                                             } else {
                                                 <div>
                                                     <div style="padding:10px 12px;border-bottom:1px solid rgba(128,128,128,0.15);">
-                                                        <span style="font-size:13px;font-weight:500;color:var(--text-color);">{"Search Results:"}</span>
+                                                        <span style="font-size:13px;font-weight:500;color:var(--text-color);">{ &i18n_search_results }</span>
                                                     </div>
                                                     <div style="max-height:300px;overflow-y:auto;padding:8px;">
                                                         {
@@ -625,9 +646,9 @@ pub fn podcast_index_matching() -> Html {
                 </div>
             }
 
-            <div class="settings-subsection-title" style="margin-top:20px;">{"Ignored Podcasts"}</div>
+            <div class="settings-subsection-title" style="margin-top:20px;">{ &i18n_ignored_podcasts }</div>
             <div class="settings-row">
-                <div><div class="settings-row-label">{if *show_ignored { "Showing ignored podcasts" } else { "Podcasts ignored from index matching" }}</div></div>
+                <div><div class="settings-row-label">{ if *show_ignored { &i18n_showing_ignored } else { &i18n_podcasts_ignored } }</div></div>
                 <div class="settings-row-control">
                     <button
                         class="btn btn-ghost"
@@ -635,7 +656,7 @@ pub fn podcast_index_matching() -> Html {
                         onclick={toggle_ignored_view}
                     >
                         <i class={if *show_ignored { "ph ph-chevron-up" } else { "ph ph-chevron-down" }}></i>
-                        <span>{if *show_ignored { "Hide" } else { "Show" }}</span>
+                        <span>{ if *show_ignored { &i18n_hide } else { &i18n_show } }</span>
                     </button>
                 </div>
             </div>
@@ -643,7 +664,7 @@ pub fn podcast_index_matching() -> Html {
             if *show_ignored {
                 if ignored_podcasts.is_empty() {
                     <div class="settings-row">
-                        <div><div class="settings-row-desc">{"No podcasts are ignored from index matching."}</div></div>
+                        <div><div class="settings-row-desc">{ &i18n_no_ignored }</div></div>
                     </div>
                 } else {
                     <div style="padding:0 8px;">
@@ -682,7 +703,7 @@ pub fn podcast_index_matching() -> Html {
                                             }}
                                         >
                                             <i class="ph ph-arrow-counter-clockwise"></i>
-                                            {"Restore"}
+                                            { &i18n_restore }
                                         </button>
                                     </div>
                                 }

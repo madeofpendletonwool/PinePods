@@ -305,7 +305,7 @@ pub fn local_podcast() -> Html {
 
             if added_podcast_id.is_some() {
                 <>
-                    <div class="settings-subsection-title">{"Refresh"}</div>
+                    <div class="settings-subsection-title">{i18n.t("local_podcast.refresh")}</div>
                     <div class="settings-row">
                         <div>
                             <div class="settings-row-label">{i18n.t("local_podcast.refresh_button")}</div>

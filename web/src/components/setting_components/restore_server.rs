@@ -19,6 +19,24 @@ pub fn restore_server() -> Html {
         .t("restore_server.failed_to_load_backup_files")
         .to_string();
     let i18n_file_size_too_large = i18n.t("restore_server.file_size_too_large").to_string();
+    let i18n_warning = i18n.t("restore_server.warning").to_string();
+    let i18n_restore_method = i18n.t("restore_server.restore_method").to_string();
+    let i18n_upload_backup_file = i18n.t("restore_server.upload_backup_file").to_string();
+    let i18n_select_from_server_backups = i18n.t("restore_server.select_from_server_backups").to_string();
+    let i18n_backup_file_sql = i18n.t("restore_server.backup_file_sql").to_string();
+    let i18n_upload_backup_hint = i18n.t("restore_server.upload_backup_hint").to_string();
+    let i18n_choose_file = i18n.t("restore_server.choose_file").to_string();
+    let i18n_file_selected = i18n.t("restore_server.file_selected").to_string();
+    let i18n_database_password = i18n.t("restore_server.database_password").to_string();
+    let i18n_restore_server = i18n.t("restore_server.restore_server").to_string();
+    let i18n_server_backup_files = i18n.t("restore_server.server_backup_files").to_string();
+    let i18n_server_backups_hint = i18n.t("restore_server.server_backups_hint").to_string();
+    let i18n_loading_backup_files = i18n.t("restore_server.loading_backup_files").to_string();
+    let i18n_no_backup_files = i18n.t("restore_server.no_backup_files").to_string();
+    let i18n_selected_file_warning = i18n.t("restore_server.selected_file_warning").to_string();
+    let i18n_restore_from_selected = i18n.t("restore_server.restore_from_selected").to_string();
+    let i18n_restoring_database = i18n.t("restore_server.restoring_database").to_string();
+    let i18n_dont_close_window = i18n.t("restore_server.dont_close_window").to_string();
     let database_password = use_state(|| "".to_string());
     let selected_file = use_state(|| None::<File>);
     let is_loading = use_state(|| false);
@@ -232,14 +250,14 @@ pub fn restore_server() -> Html {
             <div class="settings-row">
                 <div class="settings-row-label">
                     <div style="color:var(--error-color,#ef4444);font-weight:600;font-size:13px;">
-                        {"WARNING: This will delete everything on your server and restore to the point that the backup contains."}
+                        { &i18n_warning }
                     </div>
                 </div>
             </div>
 
             <div class="settings-row">
                 <div class="settings-row-label">
-                    <div>{"Restore Method"}</div>
+                    <div>{ &i18n_restore_method }</div>
                 </div>
                 <div class="settings-row-control">
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--text-color);">
@@ -253,7 +271,7 @@ pub fn restore_server() -> Html {
                                 move |_| restore_mode.set("upload".to_string())
                             })}
                         />
-                        {"Upload Backup File"}
+                        { &i18n_upload_backup_file }
                     </label>
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--text-color);">
                         <input
@@ -266,7 +284,7 @@ pub fn restore_server() -> Html {
                                 move |_| restore_mode.set("select".to_string())
                             })}
                         />
-                        {"Select from Server Backups"}
+                        { &i18n_select_from_server_backups }
                     </label>
                 </div>
             </div>
@@ -277,13 +295,13 @@ pub fn restore_server() -> Html {
                         <>
                             <div class="settings-row">
                                 <div class="settings-row-label">
-                                    <div>{"Backup File (.sql)"}</div>
-                                    <div class="settings-row-desc">{"Upload a backup file and provide your database password to restore your server."}</div>
+                                    <div>{ &i18n_backup_file_sql }</div>
+                                    <div class="settings-row-desc">{ &i18n_upload_backup_hint }</div>
                                 </div>
                                 <div class="settings-row-control">
                                     <label class="btn btn-secondary" style="padding:6px 12px;cursor:pointer;">
                                         <i class="ph ph-upload-simple"></i>
-                                        <span>{"Choose File"}</span>
+                                        <span>{ &i18n_choose_file }</span>
                                         <input
                                             type="file"
                                             id="backup_file"
@@ -294,14 +312,14 @@ pub fn restore_server() -> Html {
                                         />
                                     </label>
                                     if selected_file.is_some() {
-                                        <span class="settings-row-desc">{"File selected"}</span>
+                                        <span class="settings-row-desc">{ &i18n_file_selected }</span>
                                     }
                                 </div>
                             </div>
 
                             <div class="settings-row">
                                 <div class="settings-row-label">
-                                    <div>{"Database Password"}</div>
+                                    <div>{ &i18n_database_password }</div>
                                 </div>
                                 <div class="settings-row-control">
                                     <input
@@ -327,7 +345,7 @@ pub fn restore_server() -> Html {
                                             <span>{"Restoring..."}</span>
                                         } else {
                                             <i class="ph ph-arrow-counter-clockwise"></i>
-                                            <span>{"Restore Server"}</span>
+                                            <span>{ &i18n_restore_server }</span>
                                         }
                                     </button>
                                 </div>
@@ -339,8 +357,8 @@ pub fn restore_server() -> Html {
                         <>
                             <div class="settings-row">
                                 <div class="settings-row-label">
-                                    <div>{"Server Backup Files"}</div>
-                                    <div class="settings-row-desc">{"Choose from existing backup files in the mounted backup directory."}</div>
+                                    <div>{ &i18n_server_backup_files }</div>
+                                    <div class="settings-row-desc">{ &i18n_server_backups_hint }</div>
                                 </div>
                             </div>
 
@@ -351,7 +369,7 @@ pub fn restore_server() -> Html {
                                             <div class="settings-row-label">
                                                 <div class="settings-row-desc" style="display:flex;align-items:center;gap:8px;">
                                                     <i class="ph ph-spinner animate-spin"></i>
-                                                    <span>{"Loading backup files..."}</span>
+                                                    <span>{ &i18n_loading_backup_files }</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -362,7 +380,7 @@ pub fn restore_server() -> Html {
                                             <div class="settings-row-label">
                                                 <div class="settings-row-desc">
                                                     <i class="ph ph-folder-open" style="margin-right:4px;"></i>
-                                                    {"No backup files found in the backup directory."}
+                                                    { &i18n_no_backup_files }
                                                 </div>
                                             </div>
                                         </div>
@@ -423,7 +441,7 @@ pub fn restore_server() -> Html {
                             if selected_backup_file.is_some() {
                                 <div class="settings-row">
                                     <div class="settings-row-label">
-                                        <div class="settings-row-desc">{"Selected file will be restored. This action cannot be undone."}</div>
+                                        <div class="settings-row-desc">{ &i18n_selected_file_warning }</div>
                                     </div>
                                     <div class="settings-row-control">
                                         <button
@@ -437,7 +455,7 @@ pub fn restore_server() -> Html {
                                                 <span>{"Restoring..."}</span>
                                             } else {
                                                 <i class="ph ph-arrow-counter-clockwise"></i>
-                                                <span>{"Restore from Selected File"}</span>
+                                                <span>{ &i18n_restore_from_selected }</span>
                                             }
                                         </button>
                                     </div>
@@ -453,9 +471,9 @@ pub fn restore_server() -> Html {
                     <div class="settings-row-label">
                         <div class="settings-row-desc" style="display:flex;align-items:center;gap:8px;">
                             <i class="ph ph-spinner animate-spin"></i>
-                            <span>{"Restoring database..."}</span>
+                            <span>{ &i18n_restoring_database }</span>
                         </div>
-                        <div class="settings-row-desc">{"This may take several minutes. Please don't close this window."}</div>
+                        <div class="settings-row-desc">{ &i18n_dont_close_window }</div>
                     </div>
                 </div>
             }

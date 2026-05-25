@@ -43,6 +43,27 @@ pub fn gpodder_advanced_options() -> Html {
         .t("nextcloud_options.select_device_for_operations")
         .to_string();
     let i18n_select_a_device = i18n.t("nextcloud_options.select_a_device").to_string();
+    let i18n_no_default_device_set = i18n.t("nextcloud_options.no_default_device_set").to_string();
+    let i18n_name = i18n.t("nextcloud_options.name").to_string();
+    let i18n_type = i18n.t("nextcloud_options.type").to_string();
+    let i18n_last_sync = i18n.t("nextcloud_options.last_sync").to_string();
+    let i18n_status = i18n.t("nextcloud_options.status").to_string();
+    let i18n_never = i18n.t("nextcloud_options.never").to_string();
+    let i18n_default = i18n.t("nextcloud_options.default").to_string();
+    let i18n_add_new_device = i18n.t("nextcloud_options.add_new_device").to_string();
+    let i18n_device_name = i18n.t("nextcloud_options.device_name").to_string();
+    let i18n_device_type = i18n.t("nextcloud_options.device_type").to_string();
+    let i18n_caption_optional = i18n.t("nextcloud_options.caption_optional").to_string();
+    let i18n_add_device = i18n.t("nextcloud_options.add_device").to_string();
+    let i18n_creating = i18n.t("nextcloud_options.creating").to_string();
+    let i18n_sync_gpodder = i18n.t("nextcloud_options.sync_gpodder").to_string();
+    let i18n_syncing = i18n.t("nextcloud_options.syncing").to_string();
+    let i18n_initial_syncing = i18n.t("nextcloud_options.initial_syncing").to_string();
+    let i18n_initial_sync = i18n.t("nextcloud_options.initial_sync").to_string();
+    let i18n_setting_default = i18n.t("nextcloud_options.setting_default").to_string();
+    let i18n_current_default = i18n.t("nextcloud_options.current_default").to_string();
+    let i18n_set_as_default = i18n.t("nextcloud_options.set_as_default").to_string();
+    let i18n_loading_default_device = i18n.t("nextcloud_options.loading_default_device").to_string();
 
     // State for the devices list
     let devices = use_state(|| Vec::<GpodderDevice>::new());
@@ -647,7 +668,7 @@ pub fn gpodder_advanced_options() -> Html {
                                         class="btn btn-secondary"
                                     >
                                         <i class="ph ph-arrows-clockwise"></i>
-                                        {if *is_syncing { "Syncing..." } else { "Sync GPodder" }}
+                                        { if *is_syncing { &i18n_syncing } else { &i18n_sync_gpodder } }
                                     </button>
 
                                     <button
@@ -656,7 +677,7 @@ pub fn gpodder_advanced_options() -> Html {
                                         class="btn btn-secondary"
                                     >
                                         <i class="ph ph-arrow-clockwise"></i>
-                                        {if *is_pushing { "Initial Syncing..." } else { "Initial Sync" }}
+                                        { if *is_pushing { &i18n_initial_syncing } else { &i18n_initial_sync } }
                                     </button>
 
                                     <button
@@ -666,11 +687,11 @@ pub fn gpodder_advanced_options() -> Html {
                                     >
                                         {
                                             if *is_setting_default {
-                                                html! { <><i class="ph ph-spinner"></i>{"Setting default..."}</> }
+                                                html! { <><i class="ph ph-spinner"></i>{ &i18n_setting_default }</> }
                                             } else if is_selected_device_default {
-                                                html! { <><i class="ph ph-check-circle"></i>{"Current default"}</> }
+                                                html! { <><i class="ph ph-check-circle"></i>{ &i18n_current_default }</> }
                                             } else {
-                                                html! { <><i class="ph ph-star"></i>{"Set as default"}</> }
+                                                html! { <><i class="ph ph-star"></i>{ &i18n_set_as_default }</> }
                                             }
                                         }
                                     </button>
@@ -699,14 +720,14 @@ pub fn gpodder_advanced_options() -> Html {
                                             html! {
                                                 <div class="flex items-center">
                                                     <i class="ph ph-spinner animate-spin mr-2"></i>
-                                                    <span>{"Loading default device..."}</span>
+                                                    <span>{ &i18n_loading_default_device }</span>
                                                 </div>
                                             }
                                         } else {
                                             html! {
                                                 <div class="flex items-center py-2 px-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
                                                     <i class="ph ph-info text-yellow-500 mr-2"></i>
-                                                    <span>{"No default device set. Select a device and click 'Set as default'."}</span>
+                                                    <span>{ &i18n_no_default_device_set }</span>
                                                 </div>
                                             }
                                         }
@@ -716,10 +737,10 @@ pub fn gpodder_advanced_options() -> Html {
                                 <table class="w-full text-sm text-left">
                                     <thead class="text-xs uppercase">
                                         <tr>
-                                            <th class="py-3 px-6">{"Name"}</th>
-                                            <th class="py-3 px-6">{"Type"}</th>
-                                            <th class="py-3 px-6">{"Last Sync"}</th>
-                                            <th class="py-3 px-6">{"Status"}</th>
+                                            <th class="py-3 px-6">{ &i18n_name }</th>
+                                            <th class="py-3 px-6">{ &i18n_type }</th>
+                                            <th class="py-3 px-6">{ &i18n_last_sync }</th>
+                                            <th class="py-3 px-6">{ &i18n_status }</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -749,7 +770,7 @@ pub fn gpodder_advanced_options() -> Html {
                                                                 if let Some(last_sync) = &device.last_sync {
                                                                     html! { {last_sync} }
                                                                 } else {
-                                                                    html! { {"Never"} }
+                                                                    html! { { &i18n_never } }
                                                                 }
                                                             }
                                                         </td>
@@ -759,7 +780,7 @@ pub fn gpodder_advanced_options() -> Html {
                                                                     html! {
                                                                         <span class="flex items-center text-green-500">
                                                                             <i class="ph ph-star-fill mr-1"></i>
-                                                                            {"Default"}
+                                                                            { &i18n_default }
                                                                         </span>
                                                                     }
                                                                 } else {
@@ -778,10 +799,10 @@ pub fn gpodder_advanced_options() -> Html {
                     }
                 }
 
-            <div class="settings-subsection-title">{"Add New Device"}</div>
+            <div class="settings-subsection-title">{ &i18n_add_new_device }</div>
 
             <div class="settings-row">
-                <div><div class="settings-row-label">{"Device Name"}</div></div>
+                <div><div class="settings-row-label">{ &i18n_device_name }</div></div>
                 <div class="settings-row-control">
                     <input
                         type="text"
@@ -795,7 +816,7 @@ pub fn gpodder_advanced_options() -> Html {
             </div>
 
             <div class="settings-row">
-                <div><div class="settings-row-label">{"Device Type"}</div></div>
+                <div><div class="settings-row-label">{ &i18n_device_type }</div></div>
                 <div class="settings-row-control">
                     <select
                         id="device-type"
@@ -812,7 +833,7 @@ pub fn gpodder_advanced_options() -> Html {
             </div>
 
             <div class="settings-row">
-                <div><div class="settings-row-label">{"Caption (optional)"}</div></div>
+                <div><div class="settings-row-label">{ &i18n_caption_optional }</div></div>
                 <div class="settings-row-control">
                     <input
                         type="text"
@@ -834,7 +855,7 @@ pub fn gpodder_advanced_options() -> Html {
                         class="btn btn-primary"
                     >
                         <i class="ph ph-plus"></i>
-                        {if *is_creating_device { "Creating..." } else { "Add Device" }}
+                        { if *is_creating_device { &i18n_creating } else { &i18n_add_device } }
                     </button>
                 </div>
             </div>
@@ -863,6 +884,29 @@ async fn open_nextcloud_login(url: &str) -> Result<(), JsValue> {
 
 #[function_component(SyncOptions)]
 pub fn sync_options() -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_current_sync_server = i18n.t("nextcloud_options.current_sync_server").to_string();
+    let i18n_remove_sync = i18n.t("nextcloud_options.remove_sync").to_string();
+    let i18n_internal_gpodder_api = i18n.t("nextcloud_options.internal_gpodder_api").to_string();
+    let i18n_internal_gpodder_desc = i18n.t("nextcloud_options.internal_gpodder_desc").to_string();
+    let i18n_nextcloud_server_url = i18n.t("nextcloud_options.nextcloud_server_url").to_string();
+    let i18n_authenticate = i18n.t("nextcloud_options.authenticate").to_string();
+    let i18n_gpodder_server_url = i18n.t("nextcloud_options.gpodder_server_url").to_string();
+    let i18n_username = i18n.t("nextcloud_options.username").to_string();
+    let i18n_password = i18n.t("nextcloud_options.password").to_string();
+    let i18n_test_connection = i18n.t("nextcloud_options.test_connection").to_string();
+    let i18n_testing = i18n.t("nextcloud_options.testing").to_string();
+    let i18n_nextcloud_sync_active = i18n.t("nextcloud_options.nextcloud_sync_active").to_string();
+    let i18n_nextcloud_limited_impl = i18n.t("nextcloud_options.nextcloud_limited_impl").to_string();
+    let i18n_nextcloud_antennapod = i18n.t("nextcloud_options.nextcloud_antennapod").to_string();
+    let i18n_nextcloud_advanced_hint = i18n.t("nextcloud_options.nextcloud_advanced_hint").to_string();
+    let i18n_external_gpodder_active = i18n.t("nextcloud_options.external_gpodder_active").to_string();
+    let i18n_gpodder_full_sync = i18n.t("nextcloud_options.gpodder_full_sync").to_string();
+    let i18n_gpodder_compatible = i18n.t("nextcloud_options.gpodder_compatible").to_string();
+    let i18n_gpodder_device_mgmt = i18n.t("nextcloud_options.gpodder_device_mgmt").to_string();
+    let i18n_no_sync_configured = i18n.t("nextcloud_options.no_sync_configured").to_string();
+    let i18n_hide_extra_options = i18n.t("nextcloud_options.hide_extra_options").to_string();
+    let i18n_show_extra_options = i18n.t("nextcloud_options.show_extra_options").to_string();
     let (state, dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -1575,7 +1619,7 @@ pub fn sync_options() -> Html {
         <>
             <div class="settings-row">
                 <div>
-                    <div class="settings-row-label">{"Current Sync Server"}</div>
+                    <div class="settings-row-label">{ &i18n_current_sync_server }</div>
                     <div class="settings-row-desc">
                     {
                         if *is_internal_gpodder_enabled {
@@ -1605,7 +1649,7 @@ pub fn sync_options() -> Html {
                                 if *is_loading {
                                     html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Removing..."}</span> }
                                 } else {
-                                    html! { "Remove Sync" }
+                                    html! { { &i18n_remove_sync } }
                                 }
                             }
                             </button>
@@ -1623,8 +1667,8 @@ pub fn sync_options() -> Html {
                     html! {
                         <div class="settings-row">
                             <div>
-                                <div class="settings-row-label">{"Internal Gpodder API"}</div>
-                                <div class="settings-row-desc">{"Enable to sync with gpodder-compatible clients. Disables external sync options while active."}</div>
+                                <div class="settings-row-label">{ &i18n_internal_gpodder_api }</div>
+                                <div class="settings-row-desc">{ &i18n_internal_gpodder_desc }</div>
                             </div>
                             <div class="settings-row-control">
                                 <label class="toggle">
@@ -1652,7 +1696,7 @@ pub fn sync_options() -> Html {
                 if !should_hide_sync_options {
                     html! {
                         <div class="settings-row">
-                            <div><div class="settings-row-label">{"Nextcloud Server URL"}</div></div>
+                            <div><div class="settings-row-label">{ &i18n_nextcloud_server_url }</div></div>
                             <div class="settings-row-control">
                                 <input
                                     type="text"
@@ -1665,7 +1709,7 @@ pub fn sync_options() -> Html {
                                     onclick={on_authenticate_click}
                                     class="btn btn-secondary"
                                 >
-                                    {"Authenticate"}
+                                    { &i18n_authenticate }
                                 </button>
                             </div>
                         </div>
@@ -1684,7 +1728,7 @@ pub fn sync_options() -> Html {
                                 html! {
                                     <>
                                         <div class="settings-row">
-                                            <div><div class="settings-row-label">{"GPodder Server URL"}</div></div>
+                                            <div><div class="settings-row-label">{ &i18n_gpodder_server_url }</div></div>
                                             <div class="settings-row-control">
                                                 <input
                                                     type="text"
@@ -1696,7 +1740,7 @@ pub fn sync_options() -> Html {
                                             </div>
                                         </div>
                                         <div class="settings-row">
-                                            <div><div class="settings-row-label">{"Username"}</div></div>
+                                            <div><div class="settings-row-label">{ &i18n_username }</div></div>
                                             <div class="settings-row-control">
                                                 <input
                                                     type="text"
@@ -1708,7 +1752,7 @@ pub fn sync_options() -> Html {
                                             </div>
                                         </div>
                                         <div class="settings-row">
-                                            <div><div class="settings-row-label">{"Password"}</div></div>
+                                            <div><div class="settings-row-label">{ &i18n_password }</div></div>
                                             <div class="settings-row-control">
                                                 <input
                                                     type="password"
@@ -1728,13 +1772,13 @@ pub fn sync_options() -> Html {
                                                     class="btn btn-secondary"
                                                 >
                                                     <i class="ph ph-check-circle"></i>
-                                                    {if *is_testing_connection { "Testing..." } else { "Test Connection" }}
+                                                    { if *is_testing_connection { &i18n_testing } else { &i18n_test_connection } }
                                                 </button>
                                                 <button
                                                     onclick={on_authenticate_server_click}
                                                     class="btn btn-primary"
                                                 >
-                                                    {"Authenticate"}
+                                                    { &i18n_authenticate }
                                                 </button>
                                             </div>
                                         </div>
@@ -1799,35 +1843,35 @@ pub fn sync_options() -> Html {
                                         "nextcloud" => html! {
                                             <>
                                                 <p class="text-sm mb-2">
-                                                    {"Nextcloud sync is currently active. After enabling, it can take up to 20 minutes to fully synchronize all your podcasts."}
+                                                    { &i18n_nextcloud_sync_active }
                                                 </p>
                                                 <p class="text-sm mb-2">
-                                                    {"Please note that Nextcloud sync is a more limited gpodder implementation compared to internal sync or a dedicated gpodder server. It lacks device management capabilities available in more advanced sync options."}
+                                                    { &i18n_nextcloud_limited_impl }
                                                 </p>
                                                 <p class="text-sm mb-2">
-                                                    {"Nextcloud sync works well with AntennaPod on Android and other gpodder-compatible clients but has fewer configuration options."}
+                                                    { &i18n_nextcloud_antennapod }
                                                 </p>
                                                 <p class="text-sm italic">
-                                                    {"If you need more advanced sync features (like device management), consider using the internal gpodder API or a dedicated gpodder server instead."}
+                                                    { &i18n_nextcloud_advanced_hint }
                                                 </p>
                                             </>
                                         },
                                         "external_gpodder" => html! {
                                             <>
                                                 <p class="text-sm mb-2">
-                                                    {"External GPodder sync is currently active with "}<span class="font-medium">{(*nextcloud_url).clone()}</span>{"."}
+                                                    { &i18n_external_gpodder_active }<span class="font-medium">{(*nextcloud_url).clone()}</span>{"."}
                                                 </p>
                                                 <p class="text-sm mb-2">
-                                                    {"GPodder sync provides full podcast synchronization capabilities including managing multiple devices, subscription synchronization, and episode status tracking."}
+                                                    { &i18n_gpodder_full_sync }
                                                 </p>
                                                 <p class="text-sm mb-2">
-                                                    {"You can use this sync method with any gpodder-compatible clients like AntennaPod, and others."}
+                                                    { &i18n_gpodder_compatible }
                                                 </p>
                                                 {
                                                     if *is_sync_configured && *sync_type == "gpodder" {
                                                         html! {
                                                             <p class="text-sm mt-3">
-                                                                {"You can access advanced device management options by clicking the 'Show Extra Options' button below."}
+                                                                { &i18n_gpodder_device_mgmt }
                                                             </p>
                                                         }
                                                     } else {
@@ -1838,7 +1882,7 @@ pub fn sync_options() -> Html {
                                         },
                                         _ => html! {
                                             <p class="text-sm">
-                                                {"No sync method is currently configured. You can choose from internal gpodder API, Nextcloud, or an external GPodder server."}
+                                                { &i18n_no_sync_configured }
                                             </p>
                                         }
                                     }
@@ -1874,9 +1918,9 @@ pub fn sync_options() -> Html {
                                     >
                                         {
                                             if *show_advanced_options {
-                                                html! { <><i class="ph ph-caret-up"></i>{"Hide Extra Options"}</> }
+                                                html! { <><i class="ph ph-caret-up"></i>{ &i18n_hide_extra_options }</> }
                                             } else {
-                                                html! { <><i class="ph ph-caret-down"></i>{"Show Extra Options"}</> }
+                                                html! { <><i class="ph ph-caret-down"></i>{ &i18n_show_extra_options }</> }
                                             }
                                         }
                                     </button>
@@ -1902,6 +1946,20 @@ pub fn sync_options() -> Html {
 // GPodder Statistics Dropdown Component
 #[function_component(GpodderStatisticsDropdown)]
 pub fn gpodder_statistics_dropdown() -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_gpodder_sync_statistics = i18n.t("nextcloud_options.gpodder_sync_statistics").to_string();
+    let i18n_loading_server_statistics = i18n.t("nextcloud_options.loading_server_statistics").to_string();
+    let i18n_connection = i18n.t("nextcloud_options.connection").to_string();
+    let i18n_devices = i18n.t("nextcloud_options.devices").to_string();
+    let i18n_subscriptions = i18n.t("nextcloud_options.subscriptions").to_string();
+    let i18n_server_information = i18n.t("nextcloud_options.server_information").to_string();
+    let i18n_server_url_colon = i18n.t("nextcloud_options.server_url_colon").to_string();
+    let i18n_sync_type_colon = i18n.t("nextcloud_options.sync_type_colon").to_string();
+    let i18n_last_sync_colon = i18n.t("nextcloud_options.last_sync_colon").to_string();
+    let i18n_api_endpoint_status = i18n.t("nextcloud_options.api_endpoint_status").to_string();
+    let i18n_recent_episode_actions = i18n.t("nextcloud_options.recent_episode_actions").to_string();
+    let i18n_no_statistics_available = i18n.t("nextcloud_options.no_statistics_available").to_string();
+    let i18n_click_refresh = i18n.t("nextcloud_options.click_refresh").to_string();
     let (state, dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -1985,7 +2043,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
             <div class="flex items-center justify-between">
                 <div class="flex items-center">
                     <i class="ph ph-chart-bar text-blue-600 dark:text-blue-400 text-lg mr-2"></i>
-                    <h4 class="font-semibold text-gray-800 dark:text-gray-200">{"GPodder Sync Statistics"}</h4>
+                    <h4 class="font-semibold text-gray-800 dark:text-gray-200">{ &i18n_gpodder_sync_statistics }</h4>
                 </div>
                 <div class="flex items-center space-x-2">
                     {
@@ -2035,7 +2093,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                         <div class="flex items-center justify-center py-8">
                                             <div class="flex items-center space-x-3">
                                                 <i class="ph ph-spinner animate-spin text-2xl text-blue-600"></i>
-                                                <span class="text-gray-600 dark:text-gray-300">{"Loading server statistics..."}</span>
+                                                <span class="text-gray-600 dark:text-gray-300">{ &i18n_loading_server_statistics }</span>
                                             </div>
                                         </div>
                                     }
@@ -2048,7 +2106,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                                     <div class="flex items-center">
                                                         <i class="ph ph-globe text-green-500 text-xl mr-3"></i>
                                                         <div>
-                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{"Connection"}</p>
+                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_connection }</p>
                                                             <p class={format!("font-semibold {}",
                                                                 if stats.connection_status == "All endpoints working" {
                                                                     "text-green-600 dark:text-green-400"
@@ -2066,7 +2124,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                                     <div class="flex items-center">
                                                         <i class="ph ph-devices text-blue-500 text-xl mr-3"></i>
                                                         <div>
-                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{"Devices"}</p>
+                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_devices }</p>
                                                             <p class="font-semibold text-gray-800 dark:text-gray-200">{stats.total_devices}</p>
                                                         </div>
                                                     </div>
@@ -2076,7 +2134,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                                     <div class="flex items-center">
                                                         <i class="ph ph-podcast text-purple-500 text-xl mr-3"></i>
                                                         <div>
-                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{"Subscriptions"}</p>
+                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_subscriptions }</p>
                                                             <p class="font-semibold text-gray-800 dark:text-gray-200">{stats.total_subscriptions}</p>
                                                         </div>
                                                     </div>
@@ -2086,22 +2144,22 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                             // Server Info
                                             <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
                                                 <h5 class="font-medium text-gray-800 dark:text-gray-200 mb-2 flex items-center">
-                                                    <i class="ph ph-server mr-2"></i>{"Server Information"}
+                                                    <i class="ph ph-server mr-2"></i>{ &i18n_server_information }
                                                 </h5>
                                                 <div class="space-y-2">
                                                     <div class="flex justify-between">
-                                                        <span class="text-sm text-gray-600 dark:text-gray-400">{"Server URL:"}</span>
+                                                        <span class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_server_url_colon }</span>
                                                         <span class="text-sm font-mono text-gray-800 dark:text-gray-200">{&stats.server_url}</span>
                                                     </div>
                                                     <div class="flex justify-between">
-                                                        <span class="text-sm text-gray-600 dark:text-gray-400">{"Sync Type:"}</span>
+                                                        <span class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_sync_type_colon }</span>
                                                         <span class="text-sm font-semibold text-blue-600 dark:text-blue-400">{&stats.sync_type}</span>
                                                     </div>
                                                     {
                                                         if let Some(last_sync) = &stats.last_sync_timestamp {
                                                             html! {
                                                                 <div class="flex justify-between">
-                                                                    <span class="text-sm text-gray-600 dark:text-gray-400">{"Last Sync:"}</span>
+                                                                    <span class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_last_sync_colon }</span>
                                                                     <span class="text-sm text-gray-800 dark:text-gray-200">{last_sync}</span>
                                                                 </div>
                                                             }
@@ -2118,7 +2176,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                                     html! {
                                                         <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
                                                             <h5 class="font-medium text-gray-800 dark:text-gray-200 mb-3 flex items-center">
-                                                                <i class="ph ph-plug mr-2"></i>{"API Endpoint Status"}
+                                                                <i class="ph ph-plug mr-2"></i>{ &i18n_api_endpoint_status }
                                                             </h5>
                                                             <div class="space-y-2">
                                                                 {
@@ -2170,7 +2228,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                                     html! {
                                                         <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
                                                             <h5 class="font-medium text-gray-800 dark:text-gray-200 mb-3 flex items-center">
-                                                                <i class="ph ph-play mr-2"></i>{"Recent Episode Actions"}
+                                                                <i class="ph ph-play mr-2"></i>{ &i18n_recent_episode_actions }
                                                             </h5>
                                                             <div class="space-y-2 max-h-40 overflow-y-auto">
                                                                 {
@@ -2207,8 +2265,8 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                     html! {
                                         <div class="text-center py-6">
                                             <i class="ph ph-warning text-yellow-500 text-2xl mb-2"></i>
-                                            <p class="text-gray-600 dark:text-gray-300">{"No statistics available"}</p>
-                                            <p class="text-sm text-gray-500 dark:text-gray-400">{"Click refresh to load server statistics"}</p>
+                                            <p class="text-gray-600 dark:text-gray-300">{ &i18n_no_statistics_available }</p>
+                                            <p class="text-sm text-gray-500 dark:text-gray-400">{ &i18n_click_refresh }</p>
                                         </div>
                                     }
                                 }

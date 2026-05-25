@@ -10,6 +10,7 @@ use crate::components::gen_funcs::{format_time, strip_images_from_html};
 use crate::components::safehtml::SafeHtml;
 use crate::components::virtual_list::DragCallbacks;
 use crate::requests::episode::Episode;
+use i18nrs::yew::use_translation;
 use yew_router::history::{BrowserHistory, History};
 use wasm_bindgen::prelude::*;
 use web_sys::MouseEvent;
@@ -35,6 +36,8 @@ pub struct EpisodeListItemProps {
 
 #[function_component(EpisodeListItem)]
 pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_completed = i18n.t("episode_list_item.completed").to_string();
     // Use selective subscriptions to only re-render when relevant state changes
     let episode_id = props.episode.episodeid;
 
@@ -423,9 +426,9 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                         {
                             if *is_completed {
                                 if is_narrow_viewport {
-                                    html! { <span>{"Completed"}</span> }
+                                    html! { <span>{ &i18n_completed }</span> }
                                 } else {
-                                    html! { <span>{ format!("{} \u{2014} Completed", episode_duration_str) }</span> }
+                                    html! { <span>{ format!("{} \u{2014} {}", episode_duration_str, &i18n_completed) }</span> }
                                 }
                             } else if props.episode.listenduration > 0 {
                                 html! {

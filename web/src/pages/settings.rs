@@ -228,7 +228,7 @@ pub fn settings() -> Html {
                                     <i class="ph ph-palette"></i>
                                     <div>
                                         <div class="settings-section-title-row">
-                                            <div class="settings-section-title">{"Custom Themes"}</div>
+                                            <div class="settings-section-title">{ &i18n.t("settings.custom_themes") }</div>
                                             <button class="info-btn" title="Create your own themes with custom colors">{"?"}</button>
                                         </div>
                                     </div>

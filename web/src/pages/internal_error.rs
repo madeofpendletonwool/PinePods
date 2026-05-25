@@ -1,3 +1,4 @@
+use i18nrs::yew::use_translation;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 
@@ -9,6 +10,10 @@ pub struct InternalErrorProps {
 
 #[function_component(InternalError)]
 pub fn internal_error(props: &InternalErrorProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_you_broke_pinepods = i18n.t("internal_error.you_broke_pinepods").to_string();
+    let i18n_clever_quip = i18n.t("internal_error.clever_quip").to_string();
+    let i18n_head_back_home = i18n.t("internal_error.head_back_home").to_string();
     let on_home_click = Callback::from(|e: MouseEvent| {
         e.prevent_default();
         let history = BrowserHistory::new();
@@ -23,11 +28,11 @@ pub fn internal_error(props: &InternalErrorProps) -> Html {
                 </div>
 
                 <h1 class="text-3xl font-bold item_container-text">
-                    {"You broke PinePods"}
+                    { &i18n_you_broke_pinepods }
                 </h1>
 
                 <p class="text-lg item_container-text opacity-80">
-                    {"There's supposed to be a clever quip here, but you probably broke that, too."}
+                    { &i18n_clever_quip }
                 </p>
 
                 {
@@ -49,7 +54,7 @@ pub fn internal_error(props: &InternalErrorProps) -> Html {
                         active:scale-95 text-lg font-medium"
                 >
                     <i class="ph ph-house-line text-xl" />
-                    {"Head back home"}
+                    { &i18n_head_back_home }
                 </button>
 
                 <img

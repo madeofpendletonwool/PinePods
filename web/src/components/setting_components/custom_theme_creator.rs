@@ -1,6 +1,7 @@
 use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_create_custom_theme, CreateCustomThemeRequest};
+use i18nrs::yew::use_translation;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
@@ -66,6 +67,11 @@ pub struct CustomThemeCreatorProps {
 
 #[function_component(CustomThemeCreator)]
 pub fn custom_theme_creator(props: &CustomThemeCreatorProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_preview = i18n.t("custom_theme_creator.preview").to_string();
+    let i18n_my_theme = i18n.t("custom_theme_creator.my_theme").to_string();
+    let i18n_theme_name = i18n.t("custom_theme_creator.theme_name").to_string();
+    let i18n_create_theme = i18n.t("custom_theme_creator.create_theme").to_string();
     let (state, dispatch) = use_store::<AppState>();
 
     let theme_name = use_state(|| "".to_string());
@@ -374,13 +380,13 @@ pub fn custom_theme_creator(props: &CustomThemeCreatorProps) -> Html {
         <div class="custom-theme-creator p-6 space-y-6">
             // Live preview card
             <div class="custom-theme-preview-wrap">
-                <span class="custom-theme-preview-label">{"Preview"}</span>
+                <span class="custom-theme-preview-label">{ &i18n_preview }</span>
                 <div class="custom-theme-preview-card" style={format!(
                     "background-color:{};border-radius:10px;padding:12px;min-height:74px;box-shadow:0 1px 4px rgba(0,0,0,.25);display:inline-block;min-width:160px;",
                     preview_bg
                 )}>
                     <div style={format!("color:{};font-size:13px;font-weight:600;line-height:1.2;margin-bottom:6px;", preview_text)}>
-                        if name_val.is_empty() { {"My Theme"} } else { {name_val.clone()} }
+                        if name_val.is_empty() { { &i18n_my_theme } } else { {name_val.clone()} }
                     </div>
                     <div style="display:flex;gap:4px;">
                         <span style={format!("display:inline-block;width:18px;height:18px;border-radius:4px;background-color:{};", preview_swatch1)}></span>
@@ -392,7 +398,7 @@ pub fn custom_theme_creator(props: &CustomThemeCreatorProps) -> Html {
             <form onsubmit={on_submit} class="space-y-4">
                 // Theme name input
                 <div class="custom-theme-name-row">
-                    <label class="custom-theme-name-label">{"Theme Name"}</label>
+                    <label class="custom-theme-name-label">{ &i18n_theme_name }</label>
                     <input
                         type="text"
                         placeholder="My Custom Theme"
@@ -418,7 +424,7 @@ pub fn custom_theme_creator(props: &CustomThemeCreatorProps) -> Html {
                         {"Saving..."}
                     } else {
                         <i class="ph ph-plus-circle mr-1"></i>
-                        {"Create Theme"}
+                        { &i18n_create_theme }
                     }
                 </button>
             </form>

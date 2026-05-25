@@ -2,9 +2,6 @@ mod components;
 mod pages;
 mod requests;
 
-#[cfg(test)]
-mod tests;
-
 use crate::components::navigation::NavigationHandler;
 use crate::components::oauth_callback::OAuthCallback;
 use crate::pages::downloads::Downloads;
@@ -86,7 +83,7 @@ fn switch(route: Route) -> Html {
         Route::LocalDownloads => html! { <LocalDownloads /> },
         #[cfg(feature = "server_build")]
         Route::LocalDownloads => {
-            html! { <div>{"Local downloads not available on the web version"}</div> }
+            html! { <div>{"Local downloads not available on the web version"}</div> } // i18n-ignore
         }
     }
 }

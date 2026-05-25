@@ -3,6 +3,7 @@ use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_get_rss_key, call_rss_feed_status, call_toggle_rss_feeds,
 };
+use i18nrs::yew::use_translation;
 use std::borrow::Borrow;
 use web_sys::console;
 use yew::platform::spawn_local;
@@ -11,6 +12,10 @@ use yewdux::prelude::*;
 
 #[function_component(RSSFeedSettings)]
 pub fn rss_feed_settings() -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_enable_rss_feeds = i18n.t("rss_feeds.enable_rss_feeds").to_string();
+    let i18n_url_includes_api_key = i18n.t("rss_feeds.url_includes_api_key").to_string();
+    let i18n_your_rss_feed_url = i18n.t("rss_feeds.your_rss_feed_url").to_string();
     let (state, _dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -100,8 +105,8 @@ pub fn rss_feed_settings() -> Html {
         <>
         <div class="settings-row">
             <div>
-                <div class="settings-row-label">{"Enable RSS feeds"}</div>
-                <div class="settings-row-desc">{"The URL includes your API key — keep it private."}</div>
+                <div class="settings-row-label">{ &i18n_enable_rss_feeds }</div>
+                <div class="settings-row-desc">{ &i18n_url_includes_api_key }</div>
             </div>
             <div class="settings-row-control">
                 <label class="toggle">
@@ -143,7 +148,7 @@ pub fn rss_feed_settings() -> Html {
         if *rss_feed_status {
             <div class="settings-row">
                 <div>
-                    <div class="settings-row-label">{"Your RSS feed URL"}</div>
+                    <div class="settings-row-label">{ &i18n_your_rss_feed_url }</div>
                 </div>
                 <div class="settings-row-control" style="display:flex;align-items:center;gap:8px;max-width:320px;width:100%;">
                     <input

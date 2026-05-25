@@ -86,6 +86,13 @@ pub fn login() -> Html {
     let i18n_login = i18n.t("auth.login").to_string();
     let i18n_pinepods = i18n.t("common.pinepods").to_string();
     let i18n_password_reset_successfully = i18n.t("login.password_reset_successfully").to_string();
+    let i18n_sending_reset_code = i18n.t("login.sending_reset_code").to_string();
+    let i18n_please_wait_processing = i18n.t("login.please_wait_processing").to_string();
+    let i18n_date_format_julian = i18n.t("login.date_format_julian").to_string();
+    let i18n_date_format_iso8601 = i18n.t("login.date_format_iso8601").to_string();
+    let i18n_tagline = i18n.t("login.tagline").to_string();
+    let i18n_forgot_password_link = i18n.t("login.forgot_password_link").to_string();
+    let i18n_login_button = i18n.t("login.login_button").to_string();
 
     let history = BrowserHistory::new();
     let username = use_state(|| "".to_string());
@@ -1234,8 +1241,8 @@ pub fn login() -> Html {
                     <div class="flex items-center justify-center p-8">
                         <div class="text-center">
                             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-current mx-auto mb-4"></div>
-                            <h3 class="text-lg font-semibold mb-2 item_container-text">{"Sending Reset Code..."}</h3>
-<p class="text-sm item_container-text">{"Please wait while we process your request."}</p>
+                            <h3 class="text-lg font-semibold mb-2 item_container-text">{ &i18n_sending_reset_code }</h3>
+<p class="text-sm item_container-text">{ &i18n_please_wait_processing }</p>
                         </div>
                     </div>
                 </div>
@@ -1534,8 +1541,8 @@ pub fn login() -> Html {
                                     <option value="MDY">{"MM-DD-YYYY"}</option>
                                     <option value="DMY">{"DD-MM-YYYY"}</option>
                                     <option value="YMD">{"YYYY-MM-DD"}</option>
-                                    <option value="JUL">{"YY/DDD (Julian)"}</option>
-                                    <option value="ISO">{"ISO 8601"}</option>
+                                    <option value="JUL">{ &i18n_date_format_julian }</option>
+                                    <option value="ISO">{ &i18n_date_format_iso8601 }</option>
                                     <option value="USA">{"MM/DD/YYYY"}</option>
                                     <option value="EUR">{"DD.MM.YYYY"}</option>
                                     <option value="JIS">{"YYYY-MM-DD"}</option>
@@ -1841,7 +1848,7 @@ pub fn login() -> Html {
                             <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
                         </div>
                         <h1 class="item_container-text text-xl font-bold mb-2 text-center">{&i18n_pinepods}</h1>
-                        <p class="item_container-text text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
+                        <p class="item_container-text text-center">{ &i18n_tagline }</p>
                         {
                             if !*disable_standard_login {
                                 html! {
@@ -1865,7 +1872,7 @@ pub fn login() -> Html {
                                                 onclick={on_forgot_password}
                                                 class="login-link text-sm"
                                             >
-                                                {"Forgot Password?"}
+                                                { &i18n_forgot_password_link }
                                             </button>
                                             {
                                                 if *self_service_enabled {
@@ -2036,6 +2043,11 @@ pub fn login() -> Html {
     let i18n_language_updated = i18n.t("login.language_updated").to_string();
     let i18n_error_validating_mfa = i18n.t("login.error_validating_mfa").to_string();
     let i18n_language = i18n.t("common.language").to_string();
+    let i18n_pinepods = i18n.t("common.pinepods").to_string();
+    let i18n_tagline = i18n.t("login.tagline").to_string();
+    let i18n_login_button = i18n.t("login.login_button").to_string();
+    let i18n_date_format_julian = i18n.t("login.date_format_julian").to_string();
+    let i18n_date_format_iso8601 = i18n.t("login.date_format_iso8601").to_string();
 
     let (_app_state, _app_dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
@@ -2660,8 +2672,8 @@ pub fn login() -> Html {
                                     <option value="MDY">{"MM-DD-YYYY"}</option>
                                     <option value="DMY">{"DD-MM-YYYY"}</option>
                                     <option value="YMD">{"YYYY-MM-DD"}</option>
-                                    <option value="JUL">{"YY/DDD (Julian)"}</option>
-                                    <option value="ISO">{"ISO 8601"}</option>
+                                    <option value="JUL">{ &i18n_date_format_julian }</option>
+                                    <option value="ISO">{ &i18n_date_format_iso8601 }</option>
                                     <option value="USA">{"MM/DD/YYYY"}</option>
                                     <option value="EUR">{"DD.MM.YYYY"}</option>
                                     <option value="JIS">{"YYYY-MM-DD"}</option>
@@ -2874,8 +2886,8 @@ pub fn login() -> Html {
                     <div class="flex justify-center items-center">
                         <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
                     </div>
-                    <h1 class="item_container-text text-xl font-bold mb-2 text-center">{"Pinepods"}</h1>
-                    <p class="item_container-text text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
+                    <h1 class="item_container-text text-xl font-bold mb-2 text-center">{ &i18n_pinepods }</h1>
+                    <p class="item_container-text text-center">{ &i18n_tagline }</p>
                     <input
                         type="text"
                         placeholder={i18n.t("auth.server_name")}
@@ -2898,7 +2910,7 @@ pub fn login() -> Html {
                         onkeypress={handle_key_press.clone()}
                     />
                     <button onclick={on_submit_click} class="modal-button w-full">
-                        {"Login"}
+                        { &i18n_login_button }
                     </button>
                 </div>
                 <ToastNotification />

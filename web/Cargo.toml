@@ -96,6 +96,9 @@ serde_with = "3.18.0"
 htmlentity = "1.3.2"
 i18nrs = { git = "https://github.com/madeofpendletonwool/i18n-rs", features = ["yew"] }
 
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
 [features]
 default = []
 server_build = []

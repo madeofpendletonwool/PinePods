@@ -34,6 +34,10 @@ pub fn notification_settings() -> Html {
     let i18n_gotify_app_token = i18n.t("notifications.gotify_app_token").to_string();
     let i18n_save_settings = i18n.t("notifications.save_settings").to_string();
     let i18n_send_test_notification = i18n.t("notifications.send_test_notification").to_string();
+    let i18n_gotify = i18n.t("notifications.gotify").to_string();
+    let i18n_http_endpoint_url = i18n.t("notifications.http_endpoint_url").to_string();
+    let i18n_token_authentication = i18n.t("notifications.token_authentication").to_string();
+    let i18n_http_method = i18n.t("notifications.http_method").to_string();
 
     // Form states
     let platform = use_state(|| "ntfy".to_string());
@@ -372,7 +376,7 @@ pub fn notification_settings() -> Html {
                                     }
                                 })
                             }
-                        >{"Gotify"}</button>
+                        >{ &i18n_gotify }</button>
                         <button
                             type="button"
                             class={if *platform == "http" { "notification-platform-tab active" } else { "notification-platform-tab" }}
@@ -556,7 +560,7 @@ pub fn notification_settings() -> Html {
                     html! {
                         <>
                             <div class="settings-row">
-                                <div><div class="settings-row-label">{"HTTP Endpoint URL"}</div></div>
+                                <div><div class="settings-row-label">{ &i18n_http_endpoint_url }</div></div>
                                 <div class="settings-row-control">
                                     <input
                                         type="text"
@@ -571,7 +575,7 @@ pub fn notification_settings() -> Html {
                                 </div>
                             </div>
                             <div class="settings-row">
-                                <div><div class="settings-row-label">{"Token / Authentication"}</div></div>
+                                <div><div class="settings-row-label">{ &i18n_token_authentication }</div></div>
                                 <div class="settings-row-control">
                                     <input
                                         type="text"
@@ -586,7 +590,7 @@ pub fn notification_settings() -> Html {
                                 </div>
                             </div>
                             <div class="settings-row">
-                                <div><div class="settings-row-label">{"HTTP Method"}</div></div>
+                                <div><div class="settings-row-label">{ &i18n_http_method }</div></div>
                                 <div class="settings-row-control">
                                     <div class="notification-platform-tabs">
                                         <button

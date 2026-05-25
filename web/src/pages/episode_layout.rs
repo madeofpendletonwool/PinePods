@@ -211,7 +211,9 @@ pub struct PodcastMergeSelectorProps {
 
 #[function_component(PodcastMergeSelector)]
 pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
-    let (_i18n, _) = use_translation();
+    let (i18n, _) = use_translation();
+    let i18n_loading_podcasts = i18n.t("episodes_layout.loading_podcasts").to_string();
+    let i18n_select_podcasts_to_merge_hint = i18n.t("episodes_layout.select_podcasts_to_merge").to_string();
     let is_open = use_state(|| false);
     let dropdown_ref = use_node_ref();
 
@@ -286,9 +288,9 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
             >
                 <div class="flex items-center flex-grow">
                     if props.loading {
-                        <span class="flex-grow text-left">{"Loading podcasts..."}</span>
+                        <span class="flex-grow text-left">{ &i18n_loading_podcasts }</span>
                     } else if props.selected_podcasts.is_empty() {
-                        <span class="flex-grow text-left">{"Select podcasts to merge"}</span>
+                        <span class="flex-grow text-left">{ &i18n_select_podcasts_to_merge_hint }</span>
                     } else {
                         <span class="flex-grow text-left">
                             {format!("{} {} selected",
@@ -484,6 +486,16 @@ pub fn episode_layout() -> Html {
     let i18n_error_resetting_playback_speed = i18n
         .t("episodes_layout.error_resetting_playback_speed")
         .to_string();
+    let i18n_auto_play_next_episode = i18n.t("episodes_layout.auto_play_next_episode").to_string();
+    let i18n_favorite_podcast = i18n.t("episodes_layout.favorite_podcast").to_string();
+    let i18n_use_podcast_covers = i18n.t("episodes_layout.use_podcast_covers").to_string();
+    let i18n_podcast_cover_hint = i18n.t("episodes_layout.podcast_cover_hint").to_string();
+    let i18n_merge_podcasts = i18n.t("episodes_layout.merge_podcasts").to_string();
+    let i18n_merge_description = i18n.t("episodes_layout.merge_description").to_string();
+    let i18n_currently_merged_podcasts = i18n.t("episodes_layout.currently_merged_podcasts").to_string();
+    let i18n_unmerge = i18n.t("episodes_layout.unmerge").to_string();
+    let i18n_select_podcasts_to_merge = i18n.t("episodes_layout.select_podcasts_to_merge").to_string();
+    let i18n_hosts = i18n.t("episodes_layout.hosts").to_string();
     let loading = use_state(|| true);
     let page_state = use_state(|| PageState::Hidden);
     let episode_search_term = use_state(|| String::new());
@@ -2291,7 +2303,7 @@ pub fn episode_layout() -> Html {
                                 </label>
                             </div>
                             <div>
-                                <label for="auto_play_next" class="block mb-2 text-sm font-medium">{"Auto-play next episode"}</label>
+                                <label for="auto_play_next" class="block mb-2 text-sm font-medium">{ &i18n_auto_play_next_episode }</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input type="checkbox" checked={*auto_play_next_status} class="sr-only peer" onclick={toggle_auto_play_next} />
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
@@ -2310,7 +2322,7 @@ pub fn episode_layout() -> Html {
                                 </label>
                             </div>
                             <div>
-                                <label for="favorite_settings" class="block mb-2 text-sm font-medium">{"Favorite Podcast"}</label>
+                                <label for="favorite_settings" class="block mb-2 text-sm font-medium">{ &i18n_favorite_podcast }</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input
                                         type="checkbox"
@@ -2353,7 +2365,7 @@ pub fn episode_layout() -> Html {
                             </div>
 
                             <div class="mt-4">
-                                <label class="block mb-2 text-sm font-medium">{"Use Podcast Covers"}</label>
+                                <label class="block mb-2 text-sm font-medium">{ &i18n_use_podcast_covers }</label>
                                 <div class="flex items-center space-x-2">
                                     <label class="relative inline-flex items-center cursor-pointer">
                                         <input
@@ -2365,7 +2377,7 @@ pub fn episode_layout() -> Html {
                                         <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                     </label>
                                 </div>
-                                <p class="text-xs text-gray-500 mt-1">{"Show podcast cover instead of episode artwork for this podcast's episodes"}</p>
+                                <p class="text-xs text-gray-500 mt-1">{ &i18n_podcast_cover_hint }</p>
                             </div>
 
                             <div class="mt-4">
@@ -2804,16 +2816,16 @@ pub fn episode_layout() -> Html {
 
                                 // Merge Podcasts Section
                                 <div class="mb-4 p-4 border rounded-lg">
-                                    <h4 class="text-lg font-semibold mb-3">{"Merge Podcasts"}</h4>
+                                    <h4 class="text-lg font-semibold mb-3">{ &i18n_merge_podcasts }</h4>
                                     <p class="text-sm text-gray-600 mb-3">
-                                        {"Merge other podcasts into this one. Episodes from merged podcasts will appear under this podcast."}
+                                        { &i18n_merge_description }
                                     </p>
 
                                     // Show currently merged podcasts
                                     if !(*current_merged_podcasts).is_empty() {
                                         <div class="mb-4">
                                             <label class="block mb-2 text-sm font-medium">
-                                                {"Currently Merged Podcasts"}
+                                                { &i18n_currently_merged_podcasts }
                                             </label>
                                             <div>
                                                 {
@@ -2889,7 +2901,7 @@ pub fn episode_layout() -> Html {
                                                                         });
                                                                     })}
                                                                 >
-                                                                    {"Unmerge"}
+                                                                    { &i18n_unmerge }
                                                                 </button>
                                                             </div>
                                                         }
@@ -2902,7 +2914,7 @@ pub fn episode_layout() -> Html {
                                     // Podcast selector for merging
                                     <div class="mb-3">
                                         <label class="block mb-2 text-sm font-medium">
-                                            {"Select Podcasts to Merge"}
+                                            { &i18n_select_podcasts_to_merge }
                                         </label>
                                         <PodcastMergeSelector
                                             selected_podcasts={(*selected_podcasts_to_merge).clone()}
@@ -3661,7 +3673,7 @@ pub fn episode_layout() -> Html {
                                                                     let host_url = format!("{}/podcast/{}", people_url, podcast_info.podcastindexid);
                                                                     html! {
                                                                         <div class="ep-mobile-hosts">
-                                                                            <p class="ep-mobile-section-label">{"Hosts"}</p>
+                                                                            <p class="ep-mobile-section-label">{ &i18n_hosts }</p>
                                                                             <p class="ep-mobile-no-hosts-msg">
                                                                                 { i18n.t("host_component.no_hosts_found") }
                                                                                 <a href={host_url} target="_blank" class="ep-mobile-no-hosts-link">
@@ -3674,7 +3686,7 @@ pub fn episode_layout() -> Html {
                                                                     let server = server_for_proxy.clone();
                                                                     html! {
                                                                         <div class="ep-mobile-hosts">
-                                                                            <p class="ep-mobile-section-label">{"Hosts"}</p>
+                                                                            <p class="ep-mobile-section-label">{ &i18n_hosts }</p>
                                                                             <div class="ep-mobile-hosts-scroll">
                                                                             { for people.iter().map(|person| {
                                                                                 let name = person.name.clone();

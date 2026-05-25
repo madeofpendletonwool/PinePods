@@ -27,6 +27,7 @@ use gloo_timers::callback::Timeout;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
+use i18nrs::yew::use_translation;
 use web_sys::{window, Element, HtmlInputElement, MouseEvent, TouchEvent};
 use yew::prelude::*;
 use yew::Callback;
@@ -57,6 +58,17 @@ pub struct ContextButtonProps {
 
 #[function_component(ContextMenuButton)]
 pub fn context_button(props: &ContextButtonProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_remove_downloaded_episode = i18n.t("context_menu_button.remove_downloaded_episode").to_string();
+    let i18n_download_episode = i18n.t("context_menu_button.download_episode").to_string();
+    let i18n_delete_local_download = i18n.t("context_menu_button.delete_local_download").to_string();
+    let i18n_local_download = i18n.t("context_menu_button.local_download").to_string();
+    let i18n_remove_from_queue = i18n.t("context_menu_button.remove_from_queue").to_string();
+    let i18n_queue_episode = i18n.t("context_menu_button.queue_episode").to_string();
+    let i18n_remove_from_saved_episodes = i18n.t("context_menu_button.remove_from_saved_episodes").to_string();
+    let i18n_save_episode = i18n.t("context_menu_button.save_episode").to_string();
+    let i18n_mark_episode_incomplete = i18n.t("context_menu_button.mark_episode_incomplete").to_string();
+    let i18n_mark_episode_complete = i18n.t("context_menu_button.mark_episode_complete").to_string();
     // None = closed; Some((right, bottom)) = open at this viewport position.
     // Single state ensures the dropdown never renders at a stale position.
     let dropdown_state = use_state(|| Option::<(i32, i32)>::None);
@@ -834,7 +846,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     #[cfg(feature = "server_build")]
     let download_button = html! {
         <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
-            { if is_downloaded { "Remove Downloaded Episode" } else { "Download Episode" } }
+            { if is_downloaded { &i18n_remove_downloaded_episode } else { &i18n_download_episode } }
         </li>
     };
 
@@ -842,19 +854,19 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let download_button = html! {
         <>
             <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
-                { if is_downloaded { "Remove Downloaded Episode" } else { "Download Episode" } }
+                { if is_downloaded { &i18n_remove_downloaded_episode } else { &i18n_download_episode } }
             </li>
             {
                 if is_locally_downloaded {
                     html! {
                         <li class="dropdown-option" onclick={wrap_action(on_remove_locally_downloaded_episode.clone())}>
-                            { "Delete Local Download" }
+                            { &i18n_delete_local_download }
                         </li>
                     }
                 } else {
                     html! {
                         <li class="dropdown-option" onclick={wrap_action(on_local_episode_download.clone())}>
-                            { "Local Download" }
+                            { &i18n_local_download }
                         </li>
                     }
                 }
@@ -866,30 +878,30 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let local_download_options = html! {
         <>
             <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
-                { if is_queued { "Remove from Queue" } else { "Queue Episode" } }
+                { if is_queued { &i18n_remove_from_queue } else { &i18n_queue_episode } }
             </li>
             <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
-                { if is_saved { "Remove from Saved Episodes" } else { "Save Episode" } }
+                { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
             </li>
             <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
-                { if is_downloaded { "Remove Downloaded Episode" } else { "Download Episode" } }
+                { if is_downloaded { &i18n_remove_downloaded_episode } else { &i18n_download_episode } }
             </li>
             {
                 if is_locally_downloaded {
                     html! {
                         <li class="dropdown-option" onclick={wrap_action(on_remove_locally_downloaded_episode.clone())}>
-                            { "Delete Local Download" }
+                            { &i18n_delete_local_download }
                         </li>
                     }
                 } else {
                     html! {
                         <li class="dropdown-option" onclick={wrap_action(on_local_episode_download.clone())}>
-                            { "Local Download" }
+                            { &i18n_local_download }
                         </li>
                     }
                 }
             }
-            <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+            <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }</li>
         </>
     };
 
@@ -899,45 +911,45 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         PageType::Saved => html! {
             <>
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
-                    { if is_queued { "Remove from Queue" } else { "Queue Episode" } }
+                    { if is_queued { &i18n_remove_from_queue } else { &i18n_queue_episode } }
                 </li>
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
-                    { "Remove from Saved Episodes" }
+                    { &i18n_remove_from_saved_episodes }
                 </li>
                 {
                     download_button.clone()
                 }
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>
-                    { if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
+                    { if is_completed { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }
                 </li>
             </>
         },
         PageType::Queue => html! {
             <>
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
-                    { if is_saved { "Remove from Saved Episodes" } else { "Save Episode" } }
+                    { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
                 </li>
                 <li class="dropdown-option" onclick={wrap_action(on_remove_queued_episode.clone())}>
-                    { "Remove from Queue" }
+                    { &i18n_remove_from_queue }
                 </li>
                 {
                     download_button.clone()
                 }
-                <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }</li>
             </>
         },
         PageType::Downloads => html! {
             <>
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
-                    { if is_queued { "Remove from Queue" } else { "Queue Episode" } }
+                    { if is_queued { &i18n_remove_from_queue } else { &i18n_queue_episode } }
                 </li>
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
-                    { if is_saved { "Remove from Saved Episodes" } else { "Save Episode" } }
+                    { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
                 </li>
                 {
                     download_button.clone()
                 }
-                <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }</li>
             </>
         },
         PageType::LocalDownloads => html! {
@@ -946,15 +958,15 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         PageType::Default => html! {
             <>
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
-                    { if is_queued { "Remove from Queue" } else { "Queue Episode" } }
+                    { if is_queued { &i18n_remove_from_queue } else { &i18n_queue_episode } }
                 </li>
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
-                    { if is_saved { "Remove from Saved Episodes" } else { "Save Episode" } }
+                    { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
                 </li>
                 {
                     download_button.clone()
                 }
-                <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }</li>
             </>
         },
     };

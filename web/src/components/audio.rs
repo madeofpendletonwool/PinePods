@@ -182,6 +182,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let i18n_no_chapters_available = i18n.t("audio.no_chapters_available").to_string();
     let i18n_shownotes = i18n.t("audio.shownotes").to_string();
     let i18n_shownotes_unavailable = i18n.t("audio.shownotes_unavailable").to_string();
+    let i18n_now_playing = i18n.t("audio.now_playing").to_string();
     let on_modal_close = {
         let show_modal = show_modal.clone();
         Callback::from(move |_: MouseEvent| show_modal.set(false))
@@ -1551,7 +1552,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         <button onclick={title_click.clone()} class="player-btn" title="Collapse">
                             <i class="ph ph-caret-down" style="font-size:24px;"></i>
                         </button>
-                        <span class="player-fs-eyebrow">{"Now playing"}</span>
+                        <span class="player-fs-eyebrow">{ &i18n_now_playing }</span>
                         <button onclick={Callback::from({
                             let audio_dispatch = _audio_dispatch.clone();
                             move |_: MouseEvent| {

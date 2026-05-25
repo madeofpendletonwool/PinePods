@@ -3,6 +3,7 @@ use crate::components::context::{AppState, EpisodeStatusState, NotificationState
 use crate::pages::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
 };
+use i18nrs::yew::use_translation;
 use crate::requests::episode::Episode;
 
 use crate::components::gen_funcs::format_error_message;
@@ -188,6 +189,8 @@ pub fn error_message(props: &ErrorMessageProps) -> Html {
 #[allow(non_camel_case_types)]
 #[function_component(Search_nav)]
 pub fn search_bar() -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_podcast_index = i18n.t("gen_components.podcast_index").to_string();
     let history = BrowserHistory::new();
     // Selective subscription — only re-render when server_details changes (login/logout),
     // not on every episode save/download/queue action.
@@ -447,7 +450,7 @@ pub fn search_bar() -> Html {
                         if *src_dropdown_open {
                             <div class="src-dropdown">
                                 <button type="button" class={classes!("src-dropdown-item", (*search_index == "podcast_index").then_some("is-active"))} onclick={select_podcast_index}>
-                                    {"Podcast Index"}
+                                    { &i18n_podcast_index }
                                 </button>
                                 <button type="button" class={classes!("src-dropdown-item", (*search_index == "itunes").then_some("is-active"))} onclick={select_itunes}>
                                     {"iTunes"}
@@ -496,6 +499,14 @@ pub struct AdminSetupData {
 
 #[function_component(FirstAdminModal)]
 pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_welcome_to_pinepods = i18n.t("gen_components.welcome_to_pinepods").to_string();
+    let i18n_setup_admin_hint = i18n.t("gen_components.setup_admin_hint").to_string();
+    let i18n_full_name = i18n.t("gen_components.full_name").to_string();
+    let i18n_username = i18n.t("gen_components.username").to_string();
+    let i18n_email = i18n.t("gen_components.email").to_string();
+    let i18n_password = i18n.t("gen_components.password").to_string();
+    let i18n_create_admin_account = i18n.t("gen_components.create_admin_account").to_string();
     let username = use_state(|| String::new());
     let password = use_state(|| String::new());
     let email = use_state(|| String::new());
@@ -545,13 +556,13 @@ pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
     html! {
         <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
             <div class="bg-container-background rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
-                <h2 class="text-2xl font-bold mb-6 text-text-color">{"Welcome to Pinepods!"}</h2>
-                <p class="mb-6 text-text-color">{"Let's set up your administrator account to get started."}</p>
+                <h2 class="text-2xl font-bold mb-6 text-text-color">{ &i18n_welcome_to_pinepods }</h2>
+                <p class="mb-6 text-text-color">{ &i18n_setup_admin_hint }</p>
 
                 <form onsubmit={onsubmit} class="space-y-4">
                     <div>
                         <label for="fullname" class="block text-sm font-medium text-text-color mb-1">
-                            {"Full Name"}
+                            { &i18n_full_name }
                         </label>
                         <input
                             type="text"
@@ -569,7 +580,7 @@ pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
 
                     <div>
                         <label for="username" class="block text-sm font-medium text-text-color mb-1">
-                            {"Username"}
+                            { &i18n_username }
                         </label>
                         <input
                             type="text"
@@ -587,7 +598,7 @@ pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
 
                     <div>
                         <label for="email" class="block text-sm font-medium text-text-color mb-1">
-                            {"Email"}
+                            { &i18n_email }
                         </label>
                         <input
                             type="email"
@@ -605,7 +616,7 @@ pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
 
                     <div>
                         <label for="password" class="block text-sm font-medium text-text-color mb-1">
-                            {"Password"}
+                            { &i18n_password }
                         </label>
                         <input
                             type="password"
@@ -632,7 +643,7 @@ pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
                             type="submit"
                             class="px-4 py-2 bg-button-color text-button-text-color rounded-md hover:bg-hover-color focus:outline-none focus:ring transition-colors"
                         >
-                            {"Create Admin Account"}
+                            { &i18n_create_admin_account }
                         </button>
                     </div>
                 </form>
@@ -722,6 +733,8 @@ pub struct EpisodeModalProps {
 
 #[function_component(EpisodeModal)]
 pub fn episode_modal(props: &EpisodeModalProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_go_to_episode_page = i18n.t("gen_components.go_to_episode_page").to_string();
     let onclick_outside = {
         let on_close = props.on_close.clone();
         Callback::from(move |e: MouseEvent| {
@@ -788,7 +801,7 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                     </div>
                     <button onclick={props.on_show_notes.clone()}
                             class="bg-custom-primary hover:opacity-75 text-white px-4 py-2 rounded-lg">
-                        {"Go to Episode Page"}
+                        { &i18n_go_to_episode_page }
                     </button>
                 </div>
             </div>
@@ -935,6 +948,8 @@ pub struct LoadingModalProps {
 
 #[function_component(LoadingModal)]
 pub fn loading_modal(props: &LoadingModalProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_this_may_take_a_moment = i18n.t("gen_components.this_may_take_a_moment").to_string();
     if !props.is_visible {
         return html! {};
     }
@@ -944,7 +959,7 @@ pub fn loading_modal(props: &LoadingModalProps) -> Html {
             <div class="modal-content text-center">
                 <div class="spinner mx-auto mb-4"></div>
                 <p class="modal-title">{ format!("Searching everywhere for {}...", props.name) }</p>
-                <p class="modal-subtitle mt-2">{"This may take a moment"}</p>
+                <p class="modal-subtitle mt-2">{ &i18n_this_may_take_a_moment }</p>
             </div>
         </div>
     }

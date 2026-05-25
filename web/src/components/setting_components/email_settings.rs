@@ -64,6 +64,11 @@ pub fn email_settings() -> Html {
     let i18n_testing = i18n.t("email_settings.testing").to_string();
     let i18n_save_settings = i18n.t("email_settings.save_settings").to_string();
     let i18n_saving = i18n.t("email_settings.saving").to_string();
+    let i18n_common_smtp_settings = i18n.t("email_settings.common_smtp_settings").to_string();
+    let i18n_gmail_hint = i18n.t("email_settings.gmail_hint").to_string();
+    let i18n_outlook_hint = i18n.t("email_settings.outlook_hint").to_string();
+    let i18n_yahoo_hint = i18n.t("email_settings.yahoo_hint").to_string();
+    let i18n_gmail_app_password_note = i18n.t("email_settings.gmail_app_password_note").to_string();
 
     // Load current settings on component mount
     {
@@ -497,11 +502,11 @@ pub fn email_settings() -> Html {
 
             <div class="settings-row">
                 <div>
-                    <div class="settings-row-label">{"Common SMTP Settings"}</div>
-                    <div class="settings-row-desc">{"Gmail: smtp.gmail.com:587 (StartTLS) or :465 (SSL/TLS)"}</div>
-                    <div class="settings-row-desc">{"Outlook: smtp-mail.outlook.com:587 (StartTLS)"}</div>
-                    <div class="settings-row-desc">{"Yahoo: smtp.mail.yahoo.com:587 (StartTLS)"}</div>
-                    <div class="settings-row-desc">{"Note: Gmail requires an App Password instead of your regular password."}</div>
+                    <div class="settings-row-label">{ &i18n_common_smtp_settings }</div>
+                    <div class="settings-row-desc">{ &i18n_gmail_hint }</div>
+                    <div class="settings-row-desc">{ &i18n_outlook_hint }</div>
+                    <div class="settings-row-desc">{ &i18n_yahoo_hint }</div>
+                    <div class="settings-row-desc">{ &i18n_gmail_app_password_note }</div>
                 </div>
             </div>
         </>

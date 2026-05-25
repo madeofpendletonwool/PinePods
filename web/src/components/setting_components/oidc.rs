@@ -125,6 +125,12 @@ pub struct ScopeSelectorProps {
 
 #[function_component(ScopeSelector)]
 pub fn scope_selector(props: &ScopeSelectorProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_github_provider_detected = i18n.t("oidc.github_provider_detected").to_string();
+    let i18n_github_no_standard_scopes = i18n.t("oidc.github_no_standard_scopes").to_string();
+    let i18n_standard_oidc_scopes = i18n.t("oidc.standard_oidc_scopes").to_string();
+    let i18n_github_scopes = i18n.t("oidc.github_scopes").to_string();
+    let i18n_google_scopes = i18n.t("oidc.google_scopes").to_string();
     let is_open = use_state(|| false);
     let dropdown_ref = use_node_ref();
 
@@ -251,31 +257,31 @@ pub fn scope_selector(props: &ScopeSelectorProps) -> Html {
                                     <div style="padding:8px;border-radius:6px;background:rgba(128,128,128,0.1);margin-bottom:8px;">
                                         <div style="display:flex;align-items:center;gap:6px;">
                                             <i class="ph ph-info" style="color:var(--accent-color);"></i>
-                                            <span style="font-size:12px;font-weight:500;color:var(--text-color);">{"GitHub Provider Detected"}</span>
+                                            <span style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_github_provider_detected }</span>
                                         </div>
                                         <p style="font-size:11px;color:var(--text-secondary-color);margin-top:4px;">
-                                            {"GitHub doesn't use standard OIDC scopes. We recommend using their specific scopes for best compatibility."}
+                                            { &i18n_github_no_standard_scopes }
                                         </p>
                                     </div>
                                 }
 
                                 if !standard_group.is_empty() {
                                     <div style="margin-bottom:8px;">
-                                        <div style="font-size:11px;font-weight:500;color:var(--text-secondary-color);margin-bottom:4px;padding:0 8px;">{"Standard OIDC Scopes"}</div>
+                                        <div style="font-size:11px;font-weight:500;color:var(--text-secondary-color);margin-bottom:4px;padding:0 8px;">{ &i18n_standard_oidc_scopes }</div>
                                         { render_scope_group(standard_group, &props.selected_scopes, &toggle_scope_selection) }
                                     </div>
                                 }
 
                                 if !github_group.is_empty() {
                                     <div style="margin-bottom:8px;">
-                                        <div style="font-size:11px;font-weight:500;color:var(--text-secondary-color);margin-bottom:4px;padding:0 8px;">{"GitHub Scopes"}</div>
+                                        <div style="font-size:11px;font-weight:500;color:var(--text-secondary-color);margin-bottom:4px;padding:0 8px;">{ &i18n_github_scopes }</div>
                                         { render_scope_group(github_group, &props.selected_scopes, &toggle_scope_selection) }
                                     </div>
                                 }
 
                                 if !google_group.is_empty() {
                                     <div style="margin-bottom:8px;">
-                                        <div style="font-size:11px;font-weight:500;color:var(--text-secondary-color);margin-bottom:4px;padding:0 8px;">{"Google Scopes"}</div>
+                                        <div style="font-size:11px;font-weight:500;color:var(--text-secondary-color);margin-bottom:4px;padding:0 8px;">{ &i18n_google_scopes }</div>
                                         { render_scope_group(google_group, &props.selected_scopes, &toggle_scope_selection) }
                                     </div>
                                 }
@@ -397,6 +403,19 @@ pub fn oidc_settings() -> Html {
     let i18n_add_provider = i18n.t("oidc.add_provider").to_string();
     let i18n_no_oidc_providers_configured = i18n.t("oidc.no_oidc_providers_configured").to_string();
     let i18n_remove = i18n.t("common.remove").to_string();
+    let i18n_scopes = i18n.t("oidc.scopes").to_string();
+    let i18n_button_text = i18n.t("oidc.button_text").to_string();
+    let i18n_button_color = i18n.t("oidc.button_color").to_string();
+    let i18n_button_text_color = i18n.t("oidc.button_text_color").to_string();
+    let i18n_icon_svg_optional = i18n.t("oidc.icon_svg_optional").to_string();
+    let i18n_name_claim = i18n.t("oidc.name_claim").to_string();
+    let i18n_email_claim = i18n.t("oidc.email_claim").to_string();
+    let i18n_username_claim = i18n.t("oidc.username_claim").to_string();
+    let i18n_roles_claim = i18n.t("oidc.roles_claim").to_string();
+    let i18n_user_role = i18n.t("oidc.user_role").to_string();
+    let i18n_admin_role = i18n.t("oidc.admin_role").to_string();
+    let i18n_environment = i18n.t("oidc.environment").to_string();
+    let i18n_edit = i18n.t("common.edit").to_string();
 
     // Form states for the add/edit provider modal
     let provider_name = use_state(|| String::new());
@@ -1086,7 +1105,7 @@ pub fn oidc_settings() -> Html {
                                 />
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;grid-column:span 2;">
-                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Scopes"}</label>
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_scopes }</label>
                                 <ScopeSelector
                                     selected_scopes={(*selected_scopes).clone()}
                                     on_select={scope_on_select}
@@ -1096,7 +1115,7 @@ pub fn oidc_settings() -> Html {
                                 />
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;">
-                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Text"}</label>
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_button_text }</label>
                                 <input
                                     type="text"
                                     class="input"
@@ -1107,7 +1126,7 @@ pub fn oidc_settings() -> Html {
                                 />
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;">
-                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Color"}</label>
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_button_color }</label>
                                 <input
                                     type="color"
                                     class="input" style="height:38px;padding:4px 8px;"
@@ -1116,7 +1135,7 @@ pub fn oidc_settings() -> Html {
                                 />
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;">
-                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Button Text Color"}</label>
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_button_text_color }</label>
                                 <input
                                     type="color"
                                     class="input" style="height:38px;padding:4px 8px;"
@@ -1125,7 +1144,7 @@ pub fn oidc_settings() -> Html {
                                 />
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;grid-column:span 2;">
-                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Icon SVG (optional)"}</label>
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_icon_svg_optional }</label>
                                 <textarea
                                     class="input" style="min-height:80px;"
                                     value={(*icon_svg).clone()}
@@ -1134,7 +1153,7 @@ pub fn oidc_settings() -> Html {
                                 />
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;">
-                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Name Claim"}</label>
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_name_claim }</label>
                                 <input
                                     type="text"
                                     class="input"
@@ -1143,7 +1162,7 @@ pub fn oidc_settings() -> Html {
                                 />
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;">
-                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Email Claim"}</label>
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_email_claim }</label>
                                 <input
                                     type="text"
                                     class="input"
@@ -1152,7 +1171,7 @@ pub fn oidc_settings() -> Html {
                                 />
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;">
-                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Username Claim"}</label>
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_username_claim }</label>
                                 <input
                                     type="text"
                                     class="input"
@@ -1161,7 +1180,7 @@ pub fn oidc_settings() -> Html {
                                 />
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;">
-                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Roles Claim"}</label>
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_roles_claim }</label>
                                 <input
                                     type="text"
                                     class="input"
@@ -1170,7 +1189,7 @@ pub fn oidc_settings() -> Html {
                                 />
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;">
-                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"User Role"}</label>
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_user_role }</label>
                                 <input
                                     type="text"
                                     class="input"
@@ -1179,7 +1198,7 @@ pub fn oidc_settings() -> Html {
                                 />
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;">
-                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{"Admin Role"}</label>
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{ &i18n_admin_role }</label>
                                 <input
                                     type="text"
                                     class="input"
@@ -1265,7 +1284,7 @@ pub fn oidc_settings() -> Html {
                                                 <span style="font-size:14px;font-weight:600;color:var(--text-color);">{&provider.provider_name}</span>
                                                 if provider.initialized_from_env {
                                                     <span style="font-size:11px;padding:2px 6px;border-radius:10px;background:rgba(99,102,241,0.15);color:var(--accent-color);border:1px solid rgba(99,102,241,0.3);">
-                                                        {"Environment"}
+                                                        { &i18n_environment }
                                                     </span>
                                                 }
                                             </div>
@@ -1288,7 +1307,7 @@ pub fn oidc_settings() -> Html {
                                         <div style="display:flex;gap:8px;flex-shrink:0;">
                                             <button onclick={on_edit} class="btn btn-secondary" style="padding:4px 10px;font-size:12px;">
                                                 <i class="ph ph-pencil"></i>
-                                                {"Edit"}
+                                                { &i18n_edit }
                                             </button>
                                             if !provider.initialized_from_env {
                                                 <button onclick={on_remove} class="btn btn-danger" style="padding:4px 10px;font-size:12px;">

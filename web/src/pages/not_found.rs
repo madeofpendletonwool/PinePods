@@ -1,8 +1,14 @@
+use i18nrs::yew::use_translation;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 
 #[function_component(NotFound)]
 pub fn not_found() -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_page_not_found = i18n.t("not_found.page_not_found").to_string();
+    let i18n_uncharted_territory = i18n.t("not_found.uncharted_territory").to_string();
+    let i18n_grab_coffee = i18n.t("not_found.grab_coffee").to_string();
+    let i18n_head_back_home = i18n.t("not_found.head_back_home").to_string();
     let on_home_click = Callback::from(|e: MouseEvent| {
         e.prevent_default();
         let history = BrowserHistory::new();
@@ -17,16 +23,16 @@ pub fn not_found() -> Html {
                 </div>
 
                 <h1 class="text-3xl font-bold item_container-text">
-                    {"Page Not Found"}
+                    { &i18n_page_not_found }
                 </h1>
 
                 <p class="text-lg item_container-text opacity-80">
-                    {"Looks like we've wandered into uncharted territory!"}
+                    { &i18n_uncharted_territory }
                 </p>
 
                 <div class="flex items-center gap-2 text-lg item_container-text opacity-70">
                     <i class="ph ph-coffee-bean text-2xl" />
-                    <span>{"Grab some coffee and try again"}</span>
+                    <span>{ &i18n_grab_coffee }</span>
                     <i class="ph ph-coffee text-2xl" />
                 </div>
 
@@ -37,7 +43,7 @@ pub fn not_found() -> Html {
                         active:scale-95 text-lg font-medium"
                 >
                     <i class="ph ph-house-line text-xl" />
-                    {"Head back home"}
+                    { &i18n_head_back_home }
                 </button>
 
                 <img

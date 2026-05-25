@@ -4,6 +4,7 @@ use crate::requests::setting_reqs::{
     call_get_theme, call_set_theme, call_get_custom_themes, call_delete_custom_theme,
     CustomTheme, DeleteCustomThemeRequest, SetThemeRequest,
 };
+use i18nrs::yew::use_translation;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
@@ -55,6 +56,9 @@ pub struct ThemeOptionsProps {
 
 #[function_component(ThemeOptions)]
 pub fn theme(props: &ThemeOptionsProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_show_fewer = i18n.t("theme_options.show_fewer").to_string();
+    let i18n_my_themes = i18n.t("theme_options.my_themes").to_string();
     let (state, dispatch) = use_store::<AppState>();
     let selected_theme = use_state(|| "".to_string());
     let loading = use_state(|| true);
@@ -347,7 +351,7 @@ pub fn theme(props: &ThemeOptionsProps) -> Html {
                         <button class="theme-show-more-btn" onclick={on_toggle_expand}>
                             if *expanded {
                                 <i class="ph ph-caret-up"></i>
-                                {" Show fewer"}
+                                { &i18n_show_fewer }
                             } else {
                                 <i class="ph ph-caret-down"></i>
                                 {format!(" Show {} more", hidden_count)}
@@ -364,7 +368,7 @@ pub fn theme(props: &ThemeOptionsProps) -> Html {
                     if !(*custom_themes).is_empty() {
                         <>
                             <div class="custom-themes-divider">
-                                <span>{"My Themes"}</span>
+                                <span>{ &i18n_my_themes }</span>
                             </div>
                             <div class="theme-card-grid">
                                 { custom_cards }
