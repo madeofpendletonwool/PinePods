@@ -102,12 +102,7 @@ pub struct AppState {
     pub podcast_feed_results: Option<PodcastFeedResult>,
     pub people_feed_results: Option<PeopleFeedResult>,
     pub server_feed_results: Option<RecentEps>,
-    pub queued_episodes: Option<QueuedEpisodesResponse>,
-    #[serde(default)]
-    pub saved_episodes: Vec<Episode>,
     pub episode_history: Option<HistoryDataResponse>,
-    #[serde(default)]
-    pub downloaded_episodes: DownloadedEpisodeRecords,
     pub search_episodes: Option<SearchResponse>,
     pub clicked_podcast_info: Option<ClickedFeedURL>,
     pub pods: Option<Podcast>,
@@ -139,8 +134,6 @@ pub struct AppState {
     pub hour_preference: Option<i16>,
     pub date_format: Option<String>,
     pub podcast_added: Option<bool>,
-    pub completed_episodes: Option<Vec<i32>>,
-    pub queued_episode_ids: Option<Vec<i32>>,
     pub podcast_layout: Option<PodcastLayout>,
     pub youtube_search_results: Option<YouTubeSearchResults>,
     pub selected_youtube_channel: Option<YouTubeChannel>,
@@ -154,12 +147,6 @@ pub struct AppState {
 }
 
 
-impl AppState {
-    pub fn saved_episode_ids(&self) -> impl Iterator<Item = i32> + '_ {
-        self.saved_episodes.iter().map(|e| e.episodeid)
-    }
-}
-
 /// Notification-only state, kept separate from AppState so that episode list pages
 /// do not re-render when a toast fires.
 #[derive(Default, Clone, PartialEq, Store, Debug)]
@@ -168,6 +155,26 @@ pub struct NotificationState {
     pub error_message: Option<String>,
     pub active_tasks: Option<Vec<TaskProgress>>,
     pub refresh_progress: Option<RefreshProgress>,
+}
+
+/// Episode-specific status state kept separate from AppState so that the
+/// ~50+ components subscribing to AppState do NOT re-render on every
+/// save/download/queue/complete action.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct EpisodeStatusState {
+    #[serde(default)]
+    pub saved_episodes: Vec<Episode>,
+    #[serde(default)]
+    pub downloaded_episodes: DownloadedEpisodeRecords,
+    pub queued_episodes: Option<QueuedEpisodesResponse>,
+    pub queued_episode_ids: Option<Vec<i32>>,
+    pub completed_episodes: Option<Vec<i32>>,
+}
+
+impl EpisodeStatusState {
+    pub fn saved_episode_ids(&self) -> impl Iterator<Item = i32> + '_ {
+        self.saved_episodes.iter().map(|e| e.episodeid)
+    }
 }
 
 /// A collection of records for episodes downloaded either locally or on the server.

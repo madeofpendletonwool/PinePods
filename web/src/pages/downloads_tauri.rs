@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, ExpandedDescriptions, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, ExpandedDescriptions, NotificationState, UIState};
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -315,6 +315,7 @@ struct FileEntry {
 pub fn downloads() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (ep_status, _) = use_store::<EpisodeStatusState>();
     let (ui_state, ui_dispatch) = use_store::<UIState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let effect_dispatch = dispatch.clone();
@@ -424,7 +425,7 @@ pub fn downloads() -> Html {
                         .filter(|ep| ep.listenduration > 0)
                         .map(|ep| ep.episodeid)
                         .collect();
-                    dispatch.reduce_mut(move |state| {
+                    Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                         state.downloaded_episodes.clear();
                         for ep in fetched_episodes.drain(..) {
                             state.downloaded_episodes.push_local(ep);
@@ -501,7 +502,7 @@ pub fn downloads() -> Html {
                     .await
                     {
                         Ok(_) => {
-                            dispatch_for_future.reduce_mut(|state| {
+                            Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                                 for ep_id in selected_episodes.iter() {
                                     state.downloaded_episodes.remove_local(*ep_id);
                                 }
@@ -604,14 +605,14 @@ pub fn downloads() -> Html {
     web_sys::console::log_1(
         &format!(
             "Downloaded episodes count: {:?}",
-            state.downloaded_episodes.len()
+            ep_status.downloaded_episodes.len()
         )
         .into(),
     );
 
-    if state.downloaded_episodes.len() > 0 {
+    if ep_status.downloaded_episodes.len() > 0 {
         let grouped = group_episodes_by_podcast(
-            state
+            ep_status
                 .downloaded_episodes
                 .episodes()
                 .map(|e| e.clone())
@@ -791,11 +792,11 @@ pub fn downloads() -> Html {
                     }
 
                     {
-                    if state.downloaded_episodes.len() > 0 {
+                    if ep_status.downloaded_episodes.len() > 0 {
                         let render_state = post_state.clone();
                         let dispatch_cloned = dispatch.clone();
 
-                        let grouped_episodes = group_episodes_by_podcast(state.downloaded_episodes.episodes().map(|e| e.clone()).collect());
+                        let grouped_episodes = group_episodes_by_podcast(ep_status.downloaded_episodes.episodes().map(|e| e.clone()).collect());
 
                         // Create filtered episodes
                         let filtered_grouped_episodes = {

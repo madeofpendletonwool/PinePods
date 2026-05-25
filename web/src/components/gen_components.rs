@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::pages::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
@@ -383,7 +383,7 @@ pub fn search_bar() -> Html {
     };
 
     let (_, ui_dispatch) = use_store::<UIState>();
-    let queue_count_sel = use_selector(|state: &AppState| {
+    let queue_count_sel = use_selector(|state: &EpisodeStatusState| {
         state.queued_episodes.as_ref().map(|q| q.episodes.len()).unwrap_or(0)
     });
     let queue_count = *queue_count_sel;

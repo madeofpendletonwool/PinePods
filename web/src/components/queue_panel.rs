@@ -1,5 +1,5 @@
 use crate::components::audio::on_play_pause;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, UIState};
 use crate::components::gen_components::FallbackImage;
 use crate::requests::pod_req::{
     call_clear_queue, call_get_queued_episodes, call_remove_queued_episode, call_reorder_queue,
@@ -15,6 +15,7 @@ use yewdux::prelude::*;
 pub fn queue_panel() -> Html {
     let (ui_state, ui_dispatch) = use_store::<UIState>();
     let (app_state, app_dispatch) = use_store::<AppState>();
+    let (ep_status, ep_dispatch) = use_store::<EpisodeStatusState>();
 
     let is_open = ui_state.queue_panel_open;
     let dragging_id = use_state(|| None::<i32>);
@@ -27,7 +28,7 @@ pub fn queue_panel() -> Html {
     };
 
     let on_clear_queue = {
-        let app_dispatch = app_dispatch.clone();
+        let ep_dispatch = ep_dispatch.clone();
         let app_state = app_state.clone();
         Callback::from(move |_: MouseEvent| {
             if let (Some(auth), Some(user)) = (
@@ -37,7 +38,7 @@ pub fn queue_panel() -> Html {
                 let server = auth.server_name.clone();
                 let key = auth.api_key.clone();
                 let uid = user.UserID;
-                let dispatch = app_dispatch.clone();
+                let dispatch = ep_dispatch.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     if call_clear_queue(&server, &key, &uid).await.is_ok() {
                         dispatch.reduce_mut(|s| {
@@ -55,7 +56,7 @@ pub fn queue_panel() -> Html {
 
     // Fetch and sort queue whenever the panel opens.
     {
-        let app_dispatch = app_dispatch.clone();
+        let ep_dispatch = ep_dispatch.clone();
         let app_state = app_state.clone();
         use_effect_with(is_open, move |&open| {
             if open {
@@ -66,7 +67,7 @@ pub fn queue_panel() -> Html {
                     let server = auth.server_name.clone();
                     let key = auth.api_key.clone();
                     let uid = user.UserID;
-                    let dispatch = app_dispatch.clone();
+                    let dispatch = ep_dispatch.clone();
                     wasm_bindgen_futures::spawn_local(async move {
                         if let Ok(mut eps) =
                             call_get_queued_episodes(&server, &key, &uid).await
@@ -87,7 +88,7 @@ pub fn queue_panel() -> Html {
     // Do NOT re-sort here — episodes are sorted by queueposition on fetch, and
     // drag-reorder maintains the correct Vec order optimistically. Re-sorting
     // would undo the visual reorder since queueposition fields aren't mutated.
-    let queued = app_state
+    let queued = ep_status
         .queued_episodes
         .as_ref()
         .map(|r| r.episodes.clone())
@@ -150,7 +151,8 @@ pub fn queue_panel() -> Html {
 
     let ondrop = {
         let dragging_id = dragging_id.clone();
-        let app_dispatch = app_dispatch.clone();
+        let ep_dispatch = ep_dispatch.clone();
+        let ep_status = ep_status.clone();
         let app_state = app_state.clone();
         Callback::from(move |e: DragEvent| {
             e.prevent_default();
@@ -177,7 +179,7 @@ pub fn queue_panel() -> Html {
 
             if let Some(tid) = target_id {
                 if tid != dragged {
-                    if let Some(queued) = app_state.queued_episodes.as_ref() {
+                    if let Some(queued) = ep_status.queued_episodes.as_ref() {
                         let mut episodes = queued.episodes.clone();
                         if let (Some(from), Some(to)) = (
                             episodes.iter().position(|ep| ep.episodeid == dragged),
@@ -189,7 +191,7 @@ pub fn queue_panel() -> Html {
                             let episode_ids: Vec<i32> =
                                 episodes.iter().map(|ep| ep.episodeid).collect();
 
-                            app_dispatch.reduce_mut(|s| {
+                            ep_dispatch.reduce_mut(|s| {
                                 s.queued_episodes =
                                     Some(QueuedEpisodesResponse { episodes: episodes });
                             });
@@ -285,7 +287,7 @@ pub fn queue_panel() -> Html {
                             let ep_for_art = ep.clone();
                             let auth = app_state.auth_details.clone();
                             let user = app_state.user_details.clone();
-                            let app_dispatch_remove = app_dispatch.clone();
+                            let app_dispatch_remove = ep_dispatch.clone();
 
                             let ep_id = ep.episodeid;
                             let is_this_playing = currently_playing_id == Some(ep_id) && is_playing;

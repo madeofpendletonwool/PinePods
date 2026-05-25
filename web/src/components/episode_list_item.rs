@@ -1,5 +1,5 @@
 use crate::components::audio::on_play_click;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, UIState};
 use crate::components::gen_components::{on_shownotes_click, EpisodeModal, FallbackImage};
 
 use crate::components::context_menu_button::{ContextMenuButton, PageType};
@@ -39,7 +39,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     let episode_id = props.episode.episodeid;
 
     // Only subscribe to the specific fields we need for RENDERING
-    let is_completed = use_selector(move |state: &AppState| {
+    let is_completed = use_selector(move |state: &EpisodeStatusState| {
         state.completed_episodes
             .as_ref()
             .unwrap_or(&vec![])
@@ -54,10 +54,10 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         state.selected_episodes_for_deletion.contains(&episode_id)
     });
     let podcast_added = use_selector(|state: &AppState| state.podcast_added);
-    let is_downloaded_server = use_selector(move |state: &AppState| {
+    let is_downloaded_server = use_selector(move |state: &EpisodeStatusState| {
         state.downloaded_episodes.is_server_download(episode_id)
     });
-    let is_downloaded_local = use_selector(move |state: &AppState| {
+    let is_downloaded_local = use_selector(move |state: &EpisodeStatusState| {
         state.downloaded_episodes.is_local_download(episode_id)
     });
 

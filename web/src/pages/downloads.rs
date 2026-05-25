@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, ExpandedDescriptions, FilterState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, ExpandedDescriptions, FilterState, NotificationState, UIState};
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -36,6 +36,7 @@ fn group_episodes_by_podcast(episodes: Vec<Episode>) -> HashMap<i32, Vec<Episode
 pub fn downloads() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (ep_status, _) = use_store::<EpisodeStatusState>();
     let (filter_state, _filter_dispatch) = use_store::<FilterState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
 
@@ -132,7 +133,7 @@ pub fn downloads() -> Html {
                                     .filter(|ep| ep.completed)
                                     .map(|ep| ep.episodeid)
                                     .collect();
-                                dispatch.reduce_mut(move |state| {
+                                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                     state.downloaded_episodes.clear();
                                     for ep in fetched_episodes.drain(..) {
                                         state.downloaded_episodes.push_server(ep);
@@ -143,13 +144,12 @@ pub fn downloads() -> Html {
                                 // Fetch local episode IDs for Tauri mode
                                 #[cfg(not(feature = "server_build"))]
                                 {
-                                    let dispatch_local = dispatch.clone();
                                     wasm_bindgen_futures::spawn_local(async move {
                                         if let Ok(mut local_episodes) =
                                             crate::pages::downloads_tauri::fetch_local_episodes()
                                                 .await
                                         {
-                                            dispatch_local.reduce_mut(move |state| {
+                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                                 for ep in local_episodes.drain(..) {
                                                     state.downloaded_episodes.push_local(ep);
                                                 }
@@ -252,7 +252,7 @@ pub fn downloads() -> Html {
                         .await
                         {
                             Ok(success_message) => {
-                                dispatch_for_future.reduce_mut(|state| {
+                                Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                                     for id in selected_episode_ids {
                                         state.downloaded_episodes.remove_server(id);
                                     }
@@ -426,11 +426,11 @@ pub fn downloads() -> Html {
                     }
 
                     {
-                        if state.downloaded_episodes.len() > 0 {
+                        if ep_status.downloaded_episodes.len() > 0 {
                             let render_state = post_state.clone();
                             let dispatch_cloned = dispatch.clone();
 
-                            let grouped_episodes = group_episodes_by_podcast(state.downloaded_episodes.episodes().map(|e| e.clone()).collect());
+                            let grouped_episodes = group_episodes_by_podcast(ep_status.downloaded_episodes.episodes().map(|e| e.clone()).collect());
 
                             // Create filtered episodes
                             let filtered_grouped_episodes = {

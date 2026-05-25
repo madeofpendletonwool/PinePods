@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::pages::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
@@ -76,20 +76,20 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let user_id = (*user_id_sel).clone();
     let server_name = (*server_name_sel).clone();
     // Per-episode boolean selectors — only THIS card re-renders when ITS state changes
-    let is_queued_sel = use_selector(move |state: &AppState| {
+    let is_queued_sel = use_selector(move |state: &EpisodeStatusState| {
         state.queued_episode_ids.as_ref().map_or(false, |ids| ids.contains(&check_episode_id))
     });
-    let is_saved_sel = use_selector(move |state: &AppState| {
+    let is_saved_sel = use_selector(move |state: &EpisodeStatusState| {
         state.saved_episodes.iter().any(|e| e.episodeid == check_episode_id)
     });
-    let is_downloaded_sel = use_selector(move |state: &AppState| {
+    let is_downloaded_sel = use_selector(move |state: &EpisodeStatusState| {
         state.downloaded_episodes.is_server_download(check_episode_id)
     });
     #[cfg(not(feature = "server_build"))]
-    let is_locally_downloaded_sel = use_selector(move |state: &AppState| {
+    let is_locally_downloaded_sel = use_selector(move |state: &EpisodeStatusState| {
         state.downloaded_episodes.is_local_download(check_episode_id)
     });
-    let is_completed_sel = use_selector(move |state: &AppState| {
+    let is_completed_sel = use_selector(move |state: &EpisodeStatusState| {
         state.completed_episodes.as_ref().map_or(false, |eps| eps.contains(&check_episode_id))
     });
     let dropdown_ref = use_node_ref();
@@ -217,7 +217,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 match call_queue_episode(&server_name.unwrap(), &api_key.flatten(), &request).await
                 {
                     Ok(success_message) => {
-                        Dispatch::<AppState>::global().reduce_mut(|state| {
+                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                             if let Some(ref mut queued_episodes) = state.queued_episode_ids {
                                 queued_episodes.push(episode_clone.episodeid);
                             }
@@ -266,7 +266,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     Ok(success_message) => {
                         let formatted_info = format_error_message(&success_message.to_string());
 
-                        Dispatch::<AppState>::global().reduce_mut(|state| {
+                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                             if let Some(ref mut queued_episodes) = state.queued_episodes {
                                 queued_episodes
                                     .episodes
@@ -328,7 +328,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 match call_save_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
                     Ok(success_message) => {
                         let formatted_info = format_error_message(&success_message.to_string());
-                        Dispatch::<AppState>::global().reduce_mut(|state| {
+                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                             if !state.saved_episode_ids().any(|id| id == episode.episodeid) {
                                 state.saved_episodes.push(ep);
                             }
@@ -372,7 +372,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     Ok(success_message) => {
                         let formatted_info = format_error_message(&success_message.to_string());
 
-                        Dispatch::<AppState>::global().reduce_mut(|state| {
+                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                             state
                                 .saved_episodes
                                 .retain(|e| e.episodeid != episode.episodeid);
@@ -428,7 +428,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     .await
                 {
                     Ok(success_message) => {
-                        Dispatch::<AppState>::global().reduce_mut(|state| {
+                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                             state.downloaded_episodes.push_server(episode);
                         });
                         Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -476,7 +476,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     Ok(success_message) => {
                         let formatted_info = format_error_message(&success_message.to_string());
 
-                        Dispatch::<AppState>::global().reduce_mut(|state| {
+                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                             state.downloaded_episodes.remove_local(episode.episodeid);
                         });
                         Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -541,7 +541,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         let podcast_id = episode_info.podcastid.clone();
                         let filename = format!("episode_{}.mp3", episode_id);
                         let artwork_filename = format!("artwork_{}.jpg", episode_id);
-                        Dispatch::<AppState>::global().reduce_mut(|state| {
+                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                             state.downloaded_episodes.push_local(episode);
                         });
                         Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -646,7 +646,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
                 match remove_episode_from_local_db(episode_id).await {
                     Ok(_) => {
-                        Dispatch::<AppState>::global().reduce_mut(|state| {
+                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                             state.downloaded_episodes.remove_local(episode_id);
                         });
                         Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -705,7 +705,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 .await
                 {
                     Ok(success_message) => {
-                        Dispatch::<AppState>::global().reduce_mut(|state| {
+                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                             if let Some(completed_episodes) = state.completed_episodes.as_mut() {
                                 if let Some(pos) =
                                     completed_episodes.iter().position(|&id| id == episode_id)
@@ -760,7 +760,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 .await
                 {
                     Ok(success_message) => {
-                        Dispatch::<AppState>::global().reduce_mut(|state| {
+                        Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                             if let Some(completed_episodes) = state.completed_episodes.as_mut() {
                                 if let Some(pos) =
                                     completed_episodes.iter().position(|&id| id == episode_id)

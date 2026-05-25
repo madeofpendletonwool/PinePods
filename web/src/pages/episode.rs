@@ -2,7 +2,7 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState, UIState};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{
@@ -1189,7 +1189,7 @@ pub fn epsiode() -> Html {
                                     {
                                         Ok(_success_message) => {
                                             completion_status.set(true);
-                                            post_dispatch.reduce_mut(|state| {
+                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                                                 if let Some(completed_episodes) = state.completed_episodes.as_mut() {
                                                     if let Some(pos) =
                                                         completed_episodes.iter().position(|&id| id == episode_id)
@@ -1248,7 +1248,7 @@ pub fn epsiode() -> Html {
                                     {
                                         Ok(_message) => {
                                             completion_status.set(false);
-                                            post_dispatch.reduce_mut(|state| {
+                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                                                 if let Some(completed_episodes) = state.completed_episodes.as_mut() {
                                                     if let Some(pos) =
                                                         completed_episodes.iter().position(|&id| id == episode_id)

@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
-use crate::components::context::{AppState, FilterState};
+use crate::components::context::{AppState, EpisodeStatusState, FilterState};
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -127,7 +127,7 @@ pub fn feed() -> Html {
                                     .filter(|ep| ep.queued)
                                     .map(|ep| ep.episodeid)
                                     .collect();
-                                Dispatch::<AppState>::global().reduce_mut(move |state| {
+                                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                     state.completed_episodes = Some(completed_episode_ids);
                                     state.saved_episodes = saved_episodes;
                                     state.queued_episode_ids = Some(queued_episode_ids);
@@ -140,7 +140,7 @@ pub fn feed() -> Html {
                                             crate::pages::downloads_tauri::fetch_local_episodes()
                                                 .await
                                         {
-                                            Dispatch::<AppState>::global().reduce_mut(move |state| {
+                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                                 state.downloaded_episodes.clear_local();
                                                 for ep in local_episodes.drain(..) {
                                                     state.downloaded_episodes.push_local(ep);

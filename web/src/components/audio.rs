@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState, UIState};
 use crate::components::gen_components::{EpisodeModal, FallbackImage};
 use crate::components::gen_funcs::format_time_rm_hour;
 #[cfg(not(feature = "server_build"))]
@@ -1828,14 +1828,15 @@ pub fn on_play_pause(
     audio_state: Rc<UIState>,
     app_state: Rc<AppState>,
 ) -> Callback<MouseEvent> {
+    let ep_status = Dispatch::<EpisodeStatusState>::global().get();
     let is_local = if app_state.podcast_added.unwrap_or(false) && episode.episodeid != 0 {
-        app_state
+        ep_status
             .downloaded_episodes
             .is_server_download(episode.episodeid)
             || {
                 #[cfg(not(feature = "server_build"))]
                 {
-                    app_state
+                    ep_status
                         .downloaded_episodes
                         .is_local_download(episode.episodeid)
                 }

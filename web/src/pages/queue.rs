@@ -6,7 +6,7 @@ use crate::components::gen_components::{
 use crate::components::loading::Loading;
 
 use crate::components::audio_player_bar::AudioPlayerBar;
-use crate::components::context::{AppState, FilterState};
+use crate::components::context::{AppState, EpisodeStatusState, FilterState};
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
@@ -85,6 +85,7 @@ fn stop_auto_scroll(interval_id: i32) {
 pub fn queue() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (ep_status, _ep_dispatch) = use_store::<EpisodeStatusState>();
     let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
     let error = use_state(|| None);
@@ -148,7 +149,7 @@ pub fn queue() -> Html {
                                     .map(|ep| ep.episodeid)
                                     .collect();
 
-                                dispatch.reduce_mut(move |state| {
+                                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                     state.queued_episodes = Some(QueuedEpisodesResponse {
                                         episodes: fetched_episodes,
                                     });
@@ -158,13 +159,12 @@ pub fn queue() -> Html {
                                 // Fetch local episode IDs for Tauri mode
                                 #[cfg(not(feature = "server_build"))]
                                 {
-                                    let dispatch_local = dispatch.clone();
                                     wasm_bindgen_futures::spawn_local(async move {
                                         if let Ok(mut local_episodes) =
                                             crate::pages::downloads_tauri::fetch_local_episodes()
                                                 .await
                                         {
-                                            dispatch_local.reduce_mut(move |state| {
+                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                                 state.downloaded_episodes.clear_local();
                                                 for ep in local_episodes.drain(..) {
                                                     state.downloaded_episodes.push_local(ep);
@@ -213,7 +213,7 @@ pub fn queue() -> Html {
                     }
 
                     {
-                        if let Some(queued_eps) = state.queued_episodes.clone() {
+                        if let Some(queued_eps) = ep_status.queued_episodes.clone() {
                             let favorite_podcast_ids: std::collections::HashSet<i32> = state
                                 .podcast_feed_return_extra
                                 .as_ref()
@@ -272,7 +272,8 @@ pub struct VirtualQueueListProps {
 
 #[function_component(VirtualQueueList)]
 pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<AppState>();
+    let (_ep_status, ep_dispatch) = use_store::<EpisodeStatusState>();
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let server_name = post_state
         .auth_details
@@ -345,7 +346,7 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
 
     let ondrop = {
         let dragging = dragging_state.clone();
-        let dispatch = dispatch.clone();
+        let dispatch = ep_dispatch.clone();
         let all_episodes = props.episodes.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();

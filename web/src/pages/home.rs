@@ -2,7 +2,7 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, UIState};
 use crate::components::context_menu_button::ContextMenuButton;
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::on_shownotes_click;
@@ -151,8 +151,8 @@ pub fn home() -> Html {
 
                                 effect_dispatch.reduce_mut(move |state| {
                                     state.home_overview = Some(home_data);
-
-                                    // Update state collections with merged data
+                                });
+                                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                     state.completed_episodes = Some(completed_episode_ids);
                                     state.saved_episodes = saved_episodes;
                                     state.queued_episode_ids = Some(queued_episode_ids);
