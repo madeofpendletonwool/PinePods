@@ -76,7 +76,7 @@ gloo-utils = "0.3.0"
 gloo-events = "0.3.0"
 md5 = "0.8.0"
 ammonia = "4.1.1"
-pulldown-cmark = "0.13.3"
+pulldown-cmark = "0.13.4"
 async-std = "1.13.2"
 argon2 = { version = "0.5.3", features = ["std", "password-hash"] }
 getrandom = { version = "0.4.2", features = ["wasm_js"] }
