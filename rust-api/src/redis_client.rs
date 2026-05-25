@@ -1,9 +1,9 @@
-use redis::{aio::MultiplexedConnection, AsyncCommands, Client};
+use redis::{aio::ConnectionManager, AsyncCommands, Client};
 use crate::{config::Config, error::AppResult};
 
 #[derive(Clone)]
 pub struct RedisClient {
-    connection: MultiplexedConnection,
+    connection: ConnectionManager,
 }
 
 impl RedisClient {
@@ -11,12 +11,8 @@ impl RedisClient {
         let redis_url = config.redis_url();
         
         let client = Client::open(redis_url)?;
-        let connection = client.get_multiplexed_async_connection().await?;
+        let connection = ConnectionManager::new(client).await?;
 
-        // Test the connection
-        let mut conn = connection.clone();
-        let _: String = redis::cmd("PING").query_async(&mut conn).await?;
-        
         tracing::info!("Successfully connected to Redis/Valkey");
         
         Ok(RedisClient {
@@ -163,7 +159,7 @@ impl RedisClient {
     }
 
     // Get a connection for direct Redis operations
-    pub async fn get_connection(&self) -> AppResult<MultiplexedConnection> {
+    pub async fn get_connection(&self) -> AppResult<ConnectionManager> {
         Ok(self.connection.clone())
     }
 }
