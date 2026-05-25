@@ -2,7 +2,7 @@ use crate::components::loading::Loading;
 use crate::components::app_drawer::App_drawer;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{self, CreatePlaylistRequest, Playlist, Podcast};
 use gloo_events::EventListener;
@@ -825,14 +825,14 @@ pub fn playlists() -> Html {
                                     state.playlists = Some(playlists.playlists);
                                 });
                             }
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(delete_success_msg);
                             });
                             modal_state.set(ModalState::Hidden);
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("{}: {}", delete_failed_msg, formatted_error));
                             });
@@ -916,7 +916,7 @@ pub fn playlists() -> Html {
 
                     // Show result message
                     if error_count == 0 {
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(format!(
                                 "{} {} {}",
                                 success_count,
@@ -929,11 +929,11 @@ pub fn playlists() -> Html {
                             ));
                         });
                     } else if success_count == 0 {
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(bulk_delete_failed_msg);
                         });
                     } else {
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(format!(
                                 "{} {} {}, {} {}",
                                 success_count,
@@ -947,6 +947,7 @@ pub fn playlists() -> Html {
                                 failed_msg
                             ));
                         });
+
                     }
 
                     modal_state.set(ModalState::Hidden);
@@ -1044,14 +1045,14 @@ pub fn playlists() -> Html {
                                     state.playlists = Some(playlists.playlists);
                                 });
                             }
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(create_success_msg);
                             });
                             modal_state.set(ModalState::Hidden);
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("{}: {}", create_failed_msg, formatted_error));
                             });

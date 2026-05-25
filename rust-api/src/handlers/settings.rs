@@ -4222,3 +4222,60 @@ pub async fn extend_shared_link(
     }
 }
 
+pub async fn get_custom_themes(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<i32>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own custom themes!"));
+    }
+
+    let themes = state.db_pool.get_custom_themes(user_id).await?;
+    Ok(Json(serde_json::json!({ "themes": themes })))
+}
+
+pub async fn create_custom_theme(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<crate::models::CreateCustomThemeRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only create themes for yourself!"));
+    }
+
+    let theme = state.db_pool.create_custom_theme(request.user_id, &request).await?;
+    Ok(Json(serde_json::json!({ "theme": theme })))
+}
+
+pub async fn delete_custom_theme(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<crate::models::DeleteCustomThemeRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only delete your own custom themes!"));
+    }
+
+    state.db_pool.delete_custom_theme(request.theme_id, request.user_id).await?;
+    Ok(Json(serde_json::json!({ "message": "Custom theme deleted successfully" })))
+}
+

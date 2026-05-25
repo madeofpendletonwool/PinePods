@@ -1,8 +1,9 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::pages::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
 };
+use i18nrs::yew::use_translation;
 use crate::requests::episode::Episode;
 
 use crate::components::gen_funcs::format_error_message;
@@ -52,7 +53,10 @@ pub struct FallbackImageProps {
 pub fn fallback_image(props: &FallbackImageProps) -> Html {
     let image_ref = use_node_ref();
     let has_error = use_state(|| false);
-    let (state, _dispatch) = use_store::<AppState>();
+    let server_name_sel = use_selector(|state: &AppState| {
+        state.auth_details.as_ref().map(|ud| ud.server_name.clone()).unwrap_or_default()
+    });
+    let server_name = (*server_name_sel).clone();
 
     // Just use the original src without timestamps
     let image_src = use_state(|| props.src.clone());
@@ -70,7 +74,6 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     // Create a proxied URL from the original source
     let proxied_url = {
         let original_url = props.src.clone();
-        let server_name = state.auth_details.as_ref().unwrap().server_name.clone();
         format!(
             "{}/api/proxy/image?url={}",
             server_name,
@@ -141,7 +144,6 @@ pub fn use_scroll_to_top() -> Html {
 pub fn error_message(props: &ErrorMessageProps) -> Html {
     // Your existing logic here...
     let error_message = use_state(|| None::<String>);
-    let (_state, _dispatch) = use_store::<AppState>();
 
     {
         let error_message = error_message.clone();
@@ -187,11 +189,15 @@ pub fn error_message(props: &ErrorMessageProps) -> Html {
 #[allow(non_camel_case_types)]
 #[function_component(Search_nav)]
 pub fn search_bar() -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_podcast_index = i18n.t("gen_components.podcast_index").to_string();
     let history = BrowserHistory::new();
-    let (state, _dispatch) = use_store::<AppState>();
+    // Selective subscription — only re-render when server_details changes (login/logout),
+    // not on every episode save/download/queue action.
+    let server_details_sel = use_selector(|state: &AppState| state.server_details.clone());
+    let server_details = (*server_details_sel).clone();
     let podcast_value = use_state(|| "".to_string());
     let search_index = use_state(|| "podcast_index".to_string()); // Default to "podcast_index"
-    let (_app_state, dispatch) = use_store::<AppState>();
     let is_submitting = use_state(|| false);
 
     let history_clone = history.clone();
@@ -204,26 +210,24 @@ pub fn search_bar() -> Html {
 
     let handle_submit = {
         let is_submitting = is_submitting.clone();
-        let state = state.clone();
+        let server_details = server_details.clone();
         let history = history_clone.clone();
         let podcast_value = podcast_value_clone.clone();
         let search_index = search_index_clone.clone();
-        let dispatch = dispatch.clone();
 
         move || {
             if *is_submitting {
                 return;
             }
             is_submitting.set(true);
-            let api_url = state.server_details.as_ref().map(|ud| ud.api_url.clone());
+            let api_url = server_details.as_ref().map(|ud| ud.api_url.clone());
             let history = history.clone();
             let search_value = podcast_value.clone();
             let search_index = search_index.clone();
-            let dispatch = dispatch.clone();
             let is_submitting_clone = is_submitting.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
-                dispatch.reduce_mut(|state| state.is_loading = Some(true));
+                Dispatch::<AppState>::global().reduce_mut(|state| state.is_loading = Some(true));
                 if *search_index == "youtube" {
                     match call_youtube_search(&search_value, &api_url.unwrap()).await {
                         Ok(yt_results) => {
@@ -232,7 +236,7 @@ pub fn search_bar() -> Html {
                                 videos: Vec::new(),
                             };
 
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<AppState>::global().reduce_mut(|state| {
                                 state.youtube_search_results = Some(search_results);
                                 state.is_loading = Some(false);
                             });
@@ -241,10 +245,12 @@ pub fn search_bar() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<AppState>::global().reduce_mut(|state| {
+                                state.is_loading = Some(false);
+                            });
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("YouTube search error: {}", formatted_error));
-                                state.is_loading = Some(false);
                             });
                         }
                     }
@@ -253,15 +259,15 @@ pub fn search_bar() -> Html {
                         .await
                     {
                         Ok(search_results) => {
-                            dispatch.reduce_mut(move |state| {
+                            Dispatch::<AppState>::global().reduce_mut(move |state| {
                                 state.search_results = Some(search_results);
                                 state.podcast_added = Some(false);
                             });
-                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<AppState>::global().reduce_mut(|state| state.is_loading = Some(false));
                             history.push("/pod_layout");
                         }
                         Err(_) => {
-                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<AppState>::global().reduce_mut(|state| state.is_loading = Some(false));
                         }
                     }
                 }
@@ -359,17 +365,17 @@ pub fn search_bar() -> Html {
 
     let on_dropdown_select_itunes = {
         let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_| on_dropdown_select("itunes"))
+        Callback::from(move |_: MouseEvent| on_dropdown_select("itunes"))
     };
 
     let on_dropdown_select_podcast_index = {
         let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_| on_dropdown_select("podcast_index"))
+        Callback::from(move |_: MouseEvent| on_dropdown_select("podcast_index"))
     };
 
     let on_dropdown_select_youtube = {
         let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_| on_dropdown_select("youtube"))
+        Callback::from(move |_: MouseEvent| on_dropdown_select("youtube"))
     };
 
     let search_index_display = match search_index.as_str() {
@@ -379,134 +385,100 @@ pub fn search_bar() -> Html {
         _ => "Unknown",
     };
 
+    let (_, ui_dispatch) = use_store::<UIState>();
+    let queue_count_sel = use_selector(|state: &EpisodeStatusState| {
+        state.queued_episodes.as_ref().map(|q| q.episodes.len()).unwrap_or(0)
+    });
+    let queue_count = *queue_count_sel;
+
+    let toggle_queue = {
+        let ui_dispatch = ui_dispatch.clone();
+        Callback::from(move |_: MouseEvent| {
+            ui_dispatch.reduce_mut(|s| s.queue_panel_open = !s.queue_panel_open);
+        })
+    };
+
+    let src_dropdown_open = use_state(|| false);
+
+    let toggle_src_dropdown = {
+        let src_dropdown_open = src_dropdown_open.clone();
+        Callback::from(move |_: MouseEvent| {
+            src_dropdown_open.set(!*src_dropdown_open);
+        })
+    };
+
+    let select_src = {
+        let search_index = search_index.clone();
+        let src_dropdown_open = src_dropdown_open.clone();
+        move |val: &'static str| {
+            search_index.set(val.to_string());
+            src_dropdown_open.set(false);
+        }
+    };
+
+    let select_podcast_index = { let s = select_src.clone(); Callback::from(move |_: MouseEvent| s("podcast_index")) };
+    let select_itunes = { let s = select_src.clone(); Callback::from(move |_: MouseEvent| s("itunes")) };
+    let select_youtube = { let s = select_src.clone(); Callback::from(move |_: MouseEvent| s("youtube")) };
+
     html! {
-        <div class="episodes-container w-full search-background">
-            <form class="search-bar-container flex justify-end w-full mx-auto border-solid border-b-2 border-color" onsubmit={on_submit}>
-                <div class="relative inline-flex">
-                    <button
-                        id="dropdown-button"
-                        onclick={toggle_dropdown}
-                        class="dropdown-button hidden md:flex md:block flex-shrink-0 z-10 inline-flex items-center py-2.5 px-4 text-sm font-medium text-center border border-r-0 border-gray-300 dark:border-gray-700 rounded-l-lg focus:ring-4 focus:outline-none"
-                        type="button"
-                    >
-                        {format!("{} ", search_index_display)}
-                        <svg class="w-2.5 h-2.5 ms-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
-                        </svg>
-                    </button>
-                    {
-                        if *dropdown_open {
-                            html! {
-                                <div class="search-dropdown-content-class absolute z-10 divide-y rounded-lg shadow">
-                                    <ul class="dropdown-container py-2 text-sm">
-                                        <li class="dropdown-option" onclick={on_dropdown_select_itunes.clone()}>{ "iTunes" }</li>
-                                        <li class="dropdown-option" onclick={on_dropdown_select_podcast_index.clone()}>{ "Podcast Index" }</li>
-                                        <li class="dropdown-option" onclick={on_dropdown_select_youtube.clone()}>{ "YouTube" }</li>
-                                    </ul>
-                                </div>
-                            }
-                        } else {
-                            html! {}
-                        }
-                    }
-
-                    <input
-                        type="search"
-                        id="search-dropdown"
-                        class="search-input search-input-custom-border block p-2.5 w-full z-20 text-sm rounded-r-lg border hidden md:inline-flex"
-                        placeholder="Search"
-                        required=true
-                        oninput={on_input_change.clone()}
-                    />
+        <div class="episodes-container w-full">
+            <div class="topbar">
+                <div class="topbar-left">
+                    // Left spacer — drawer-icon buttons float above this area at z-49
                 </div>
-                <button
-                    type="submit"
-                    class="search-btn p-2.5 text-sm font-medium rounded-lg border focus:ring-4 focus:outline-none"
-                    onclick={on_search_click.clone()}
-                >
-                    <svg class="w-4 h-4" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
-                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
-                    </svg>
-                </button>
-                {
-                    if *mobile_dropdown_open {
-                        html! {
-                            <div class={if *mobile_dropdown_animating { "search-drop-solid dropdown-visible" } else { "search-drop-solid dropdown-hiding" }}>
-                                <div class="flex justify-between mb-4" role="group">
-                                    <button
-                                        type="button"
-                                        class={format!("p-2 rounded-lg search-drop-button flex items-center justify-center w-10 h-10 hover:bg-opacity-20 {}",
-                                            if *search_index == "podcast_index" { "active" } else { "" })}
-                                        onclick={on_dropdown_select_podcast_index}
-                                    >
-                                        <img
-                                            src="/static/assets/logos/podcastindex.svg"
-                                            alt="Podcast Index"
-                                            class="w-6 h-6"
-                                        />
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        class={format!("p-2 rounded-lg search-drop-button flex items-center justify-center w-10 h-10 hover:bg-opacity-20 {}",
-                                            if *search_index == "itunes" { "active" } else { "" })}
-                                        onclick={on_dropdown_select_itunes}
-                                    >
-                                        <img
-                                            src="/static/assets/logos/itunes.png"
-                                            alt="iTunes"
-                                            class="w-6 h-6"
-                                        />
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        class={format!("p-2 rounded-lg search-drop-button flex items-center justify-center w-10 h-10 hover:bg-opacity-20 {}",
-                                            if *search_index == "youtube" { "active" } else { "" })}
-                                        onclick={on_dropdown_select_youtube}
-                                    >
-                                        <img
-                                            src="/static/assets/logos/youtube.png"
-                                            alt="YouTube"
-                                            class="w-6 h-6"
-                                        />
-                                    </button>
-                                </div>
-
-                                <input
-                                    type="text"
-                                    class="search-input search-input-dropdown-border block p-2 w-full text-sm rounded-lg mb-4"
-                                    placeholder="Search"
-                                    value={(*podcast_value).clone()}
-                                    oninput={on_input_change.clone()}
-                                    onkeydown={
-                                        let handle_submit = handle_submit.clone();
-                                        Callback::from(move |e: KeyboardEvent| {
-                                            if e.key() == "Enter" {
-                                                e.prevent_default();
-                                                handle_submit();
-                                            }
-                                        })
-                                    }
-                                />
-
-                                <button
-                                    class="search-btn w-full font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                                    onclick={on_submit_click.clone()}
-                                >
-                                    {"Search"}
+                <form class="topbar-right" onsubmit={on_submit.clone()}>
+                    <button
+                        type="button"
+                        class="iconbtn"
+                        onclick={toggle_queue}
+                        title="Queue"
+                    >
+                        <i class="ph ph-queue"></i>
+                        if queue_count > 0 {
+                            <span class="topbar-queue-badge">{ queue_count }</span>
+                        }
+                    </button>
+                    <div style="position: relative;">
+                        <button
+                            type="button"
+                            class="src-source"
+                            onclick={toggle_src_dropdown}
+                        >
+                            <span>{ search_index_display }</span>
+                            <i class="ph ph-caret-down"></i>
+                        </button>
+                        if *src_dropdown_open {
+                            <div class="src-dropdown">
+                                <button type="button" class={classes!("src-dropdown-item", (*search_index == "podcast_index").then_some("is-active"))} onclick={select_podcast_index}>
+                                    { &i18n_podcast_index }
+                                </button>
+                                <button type="button" class={classes!("src-dropdown-item", (*search_index == "itunes").then_some("is-active"))} onclick={select_itunes}>
+                                    {"iTunes"}
+                                </button>
+                                <button type="button" class={classes!("src-dropdown-item", (*search_index == "youtube").then_some("is-active"))} onclick={select_youtube}>
+                                    {"YouTube"}
                                 </button>
                             </div>
                         }
-                    } else {
-                        html! {}
-                    }
-                }
-                // Add the NotificationCenter component here
-                <div class="ml-2">
+                    </div>
+                    <div class="src-input">
+                        <input
+                            type="search"
+                            placeholder="Search\u{2026}"
+                            oninput={on_input_change.clone()}
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        class="iconbtn"
+                        onclick={on_search_click.clone()}
+                        title="Search"
+                    >
+                        <i class="ph ph-magnifying-glass"></i>
+                    </button>
                     <NotificationCenter />
-                </div>
-            </form>
+                </form>
+            </div>
             <ToastNotification />
         </div>
     }
@@ -527,6 +499,14 @@ pub struct AdminSetupData {
 
 #[function_component(FirstAdminModal)]
 pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_welcome_to_pinepods = i18n.t("gen_components.welcome_to_pinepods").to_string();
+    let i18n_setup_admin_hint = i18n.t("gen_components.setup_admin_hint").to_string();
+    let i18n_full_name = i18n.t("gen_components.full_name").to_string();
+    let i18n_username = i18n.t("gen_components.username").to_string();
+    let i18n_email = i18n.t("gen_components.email").to_string();
+    let i18n_password = i18n.t("gen_components.password").to_string();
+    let i18n_create_admin_account = i18n.t("gen_components.create_admin_account").to_string();
     let username = use_state(|| String::new());
     let password = use_state(|| String::new());
     let email = use_state(|| String::new());
@@ -576,13 +556,13 @@ pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
     html! {
         <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
             <div class="bg-container-background rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
-                <h2 class="text-2xl font-bold mb-6 text-text-color">{"Welcome to Pinepods!"}</h2>
-                <p class="mb-6 text-text-color">{"Let's set up your administrator account to get started."}</p>
+                <h2 class="text-2xl font-bold mb-6 text-text-color">{ &i18n_welcome_to_pinepods }</h2>
+                <p class="mb-6 text-text-color">{ &i18n_setup_admin_hint }</p>
 
                 <form onsubmit={onsubmit} class="space-y-4">
                     <div>
                         <label for="fullname" class="block text-sm font-medium text-text-color mb-1">
-                            {"Full Name"}
+                            { &i18n_full_name }
                         </label>
                         <input
                             type="text"
@@ -600,7 +580,7 @@ pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
 
                     <div>
                         <label for="username" class="block text-sm font-medium text-text-color mb-1">
-                            {"Username"}
+                            { &i18n_username }
                         </label>
                         <input
                             type="text"
@@ -618,7 +598,7 @@ pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
 
                     <div>
                         <label for="email" class="block text-sm font-medium text-text-color mb-1">
-                            {"Email"}
+                            { &i18n_email }
                         </label>
                         <input
                             type="email"
@@ -636,7 +616,7 @@ pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
 
                     <div>
                         <label for="password" class="block text-sm font-medium text-text-color mb-1">
-                            {"Password"}
+                            { &i18n_password }
                         </label>
                         <input
                             type="password"
@@ -663,7 +643,7 @@ pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
                             type="submit"
                             class="px-4 py-2 bg-button-color text-button-text-color rounded-md hover:bg-hover-color focus:outline-none focus:ring transition-colors"
                         >
-                            {"Create Admin Account"}
+                            { &i18n_create_admin_account }
                         </button>
                     </div>
                 </form>
@@ -753,6 +733,8 @@ pub struct EpisodeModalProps {
 
 #[function_component(EpisodeModal)]
 pub fn episode_modal(props: &EpisodeModalProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_go_to_episode_page = i18n.t("gen_components.go_to_episode_page").to_string();
     let onclick_outside = {
         let on_close = props.on_close.clone();
         Callback::from(move |e: MouseEvent| {
@@ -819,7 +801,7 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                     </div>
                     <button onclick={props.on_show_notes.clone()}
                             class="bg-custom-primary hover:opacity-75 text-white px-4 py-2 rounded-lg">
-                        {"Go to Episode Page"}
+                        { &i18n_go_to_episode_page }
                     </button>
                 </div>
             </div>
@@ -966,6 +948,8 @@ pub struct LoadingModalProps {
 
 #[function_component(LoadingModal)]
 pub fn loading_modal(props: &LoadingModalProps) -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_this_may_take_a_moment = i18n.t("gen_components.this_may_take_a_moment").to_string();
     if !props.is_visible {
         return html! {};
     }
@@ -975,7 +959,7 @@ pub fn loading_modal(props: &LoadingModalProps) -> Html {
             <div class="modal-content text-center">
                 <div class="spinner mx-auto mb-4"></div>
                 <p class="modal-title">{ format!("Searching everywhere for {}...", props.name) }</p>
-                <p class="modal-subtitle mt-2">{"This may take a moment"}</p>
+                <p class="modal-subtitle mt-2">{ &i18n_this_may_take_a_moment }</p>
             </div>
         </div>
     }

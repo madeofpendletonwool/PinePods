@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_add_local_podcast, call_add_local_podcast_artwork, call_refresh_local_podcast,
@@ -110,7 +110,7 @@ pub fn local_podcast() -> Html {
             let error_prefix = error_prefix.clone();
 
             if podcast_name.is_empty() || directory_path.is_empty() {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Some("Podcast name and directory path are required.".to_string());
                 });
                 return;
@@ -150,13 +150,13 @@ pub fn local_podcast() -> Html {
                             }
                         }
 
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg.clone());
                         });
                     }
                     Err(e) => {
                         let formatted = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!("{}{}", error_prefix, formatted));
                         });
                     }
@@ -197,13 +197,13 @@ pub fn local_podcast() -> Html {
                 {
                     Ok(result) => {
                         let count = result["new_episodes"].as_i64().unwrap_or(0);
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(format!("Refresh complete: {} new episode(s) added", count));
                         });
                     }
                     Err(e) => {
                         let formatted = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!("Failed to refresh: {}", formatted));
                         });
                     }
@@ -214,94 +214,117 @@ pub fn local_podcast() -> Html {
     };
 
     html! {
-        <div class="p-4">
-            <p class="item_container-text text-lg font-bold mb-4">{i18n.t("local_podcast.title")}</p>
-            <p class="item_container-text text-sm mb-4">{i18n.t("local_podcast.description")}</p>
-
-            <div class="mt-2">
-                <input
-                    id="local_podcast_name"
-                    oninput={update_podcast_name}
-                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                    placeholder={i18n.t("local_podcast.podcast_name_placeholder")}
-                />
+        <>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("local_podcast.podcast_name_placeholder")}</div></div>
+                <div class="settings-row-control">
+                    <input
+                        id="local_podcast_name"
+                        oninput={update_podcast_name}
+                        class="input"
+                        placeholder={i18n.t("local_podcast.podcast_name_placeholder")}
+                    />
+                </div>
             </div>
-            <div class="mt-2">
-                <input
-                    id="local_podcast_dir"
-                    oninput={update_directory_path}
-                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                    placeholder={i18n.t("local_podcast.directory_path_placeholder")}
-                />
-                <p class="item_container-text text-xs mt-1 opacity-70">{i18n.t("local_podcast.directory_path_help")}</p>
+            <div class="settings-row">
+                <div>
+                    <div class="settings-row-label">{i18n.t("local_podcast.directory_path_placeholder")}</div>
+                    <div class="settings-row-desc">{i18n.t("local_podcast.directory_path_help")}</div>
+                </div>
+                <div class="settings-row-control">
+                    <input
+                        id="local_podcast_dir"
+                        oninput={update_directory_path}
+                        class="input"
+                        placeholder={i18n.t("local_podcast.directory_path_placeholder")}
+                    />
+                </div>
             </div>
-            <div class="mt-2">
-                <input
-                    id="local_podcast_author"
-                    oninput={update_author}
-                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                    placeholder={i18n.t("local_podcast.author_placeholder")}
-                />
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("local_podcast.author_placeholder")}</div></div>
+                <div class="settings-row-control">
+                    <input
+                        id="local_podcast_author"
+                        oninput={update_author}
+                        class="input"
+                        placeholder={i18n.t("local_podcast.author_placeholder")}
+                    />
+                </div>
             </div>
-            <div class="mt-2">
-                <textarea
-                    id="local_podcast_description"
-                    oninput={update_description}
-                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                    placeholder={i18n.t("local_podcast.description_placeholder")}
-                    rows="3"
-                />
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("local_podcast.description_placeholder")}</div></div>
+                <div class="settings-row-control">
+                    <textarea
+                        id="local_podcast_description"
+                        oninput={update_description}
+                        class="input"
+                        placeholder={i18n.t("local_podcast.description_placeholder")}
+                        rows="3"
+                    />
+                </div>
             </div>
-            <div class="mt-2 flex items-center gap-2">
-                <input
-                    id="local_podcast_explicit"
-                    type="checkbox"
-                    onclick={toggle_explicit}
-                    checked={*explicit}
-                    class="w-4 h-4"
-                />
-                <label for="local_podcast_explicit" class="item_container-text text-sm">
-                    {i18n.t("local_podcast.explicit_label")}
-                </label>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("local_podcast.explicit_label")}</div></div>
+                <div class="settings-row-control">
+                    <label class="toggle">
+                        <input
+                            id="local_podcast_explicit"
+                            type="checkbox"
+                            onclick={toggle_explicit}
+                            checked={*explicit}
+                        />
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    </label>
+                </div>
             </div>
-            <div class="mt-2">
-                <p class="item_container-text text-sm mb-1">{i18n.t("local_podcast.artwork_label")}</p>
-                <input
-                    id="local_podcast_artwork"
-                    type="file"
-                    accept="image/*"
-                    onchange={on_artwork_change}
-                    class="text-sm"
-                />
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("local_podcast.artwork_label")}</div></div>
+                <div class="settings-row-control">
+                    <input
+                        id="local_podcast_artwork"
+                        type="file"
+                        accept="image/*"
+                        onchange={on_artwork_change}
+                    />
+                </div>
             </div>
-
-            <button
-                onclick={add_local_podcast_cb}
-                class="mt-4 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                disabled={*is_loading}
-            >
-                {i18n.t("local_podcast.add_button")}
-                if *is_loading {
-                    <span class="ml-2 spinner-border animate-spin inline-block w-4 h-4 border-2 rounded-full"></span>
-                }
-            </button>
+            <div class="settings-row">
+                <div></div>
+                <div class="settings-row-control">
+                    <button
+                        onclick={add_local_podcast_cb}
+                        class="btn btn-primary"
+                        style="padding:6px 12px;"
+                        disabled={*is_loading}
+                    >
+                        <i class="ph ph-plus"></i>
+                        {i18n.t("local_podcast.add_button")}
+                    </button>
+                </div>
+            </div>
 
             if added_podcast_id.is_some() {
                 <>
-                    <hr class="my-4 border-t"/>
-                    <p class="item_container-text text-sm mb-2">{i18n.t("local_podcast.refresh_description")}</p>
-                    <button
-                        onclick={refresh_podcast_cb}
-                        class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                        disabled={*is_refreshing}
-                    >
-                        {i18n.t("local_podcast.refresh_button")}
-                        if *is_refreshing {
-                            <span class="ml-2 spinner-border animate-spin inline-block w-4 h-4 border-2 rounded-full"></span>
-                        }
-                    </button>
+                    <div class="settings-subsection-title">{i18n.t("local_podcast.refresh")}</div>
+                    <div class="settings-row">
+                        <div>
+                            <div class="settings-row-label">{i18n.t("local_podcast.refresh_button")}</div>
+                            <div class="settings-row-desc">{i18n.t("local_podcast.refresh_description")}</div>
+                        </div>
+                        <div class="settings-row-control">
+                            <button
+                                onclick={refresh_podcast_cb}
+                                class="btn btn-secondary"
+                                style="padding:6px 12px;"
+                                disabled={*is_refreshing}
+                            >
+                                <i class="ph ph-arrow-clockwise"></i>
+                                {i18n.t("local_podcast.refresh_button")}
+                            </button>
+                        </div>
+                    </div>
                 </>
             }
-        </div>
+        </>
     }
 }

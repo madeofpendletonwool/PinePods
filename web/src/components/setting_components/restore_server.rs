@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_list_backup_files, call_restore_backup_file, call_restore_server,
@@ -19,6 +19,24 @@ pub fn restore_server() -> Html {
         .t("restore_server.failed_to_load_backup_files")
         .to_string();
     let i18n_file_size_too_large = i18n.t("restore_server.file_size_too_large").to_string();
+    let i18n_warning = i18n.t("restore_server.warning").to_string();
+    let i18n_restore_method = i18n.t("restore_server.restore_method").to_string();
+    let i18n_upload_backup_file = i18n.t("restore_server.upload_backup_file").to_string();
+    let i18n_select_from_server_backups = i18n.t("restore_server.select_from_server_backups").to_string();
+    let i18n_backup_file_sql = i18n.t("restore_server.backup_file_sql").to_string();
+    let i18n_upload_backup_hint = i18n.t("restore_server.upload_backup_hint").to_string();
+    let i18n_choose_file = i18n.t("restore_server.choose_file").to_string();
+    let i18n_file_selected = i18n.t("restore_server.file_selected").to_string();
+    let i18n_database_password = i18n.t("restore_server.database_password").to_string();
+    let i18n_restore_server = i18n.t("restore_server.restore_server").to_string();
+    let i18n_server_backup_files = i18n.t("restore_server.server_backup_files").to_string();
+    let i18n_server_backups_hint = i18n.t("restore_server.server_backups_hint").to_string();
+    let i18n_loading_backup_files = i18n.t("restore_server.loading_backup_files").to_string();
+    let i18n_no_backup_files = i18n.t("restore_server.no_backup_files").to_string();
+    let i18n_selected_file_warning = i18n.t("restore_server.selected_file_warning").to_string();
+    let i18n_restore_from_selected = i18n.t("restore_server.restore_from_selected").to_string();
+    let i18n_restoring_database = i18n.t("restore_server.restoring_database").to_string();
+    let i18n_dont_close_window = i18n.t("restore_server.dont_close_window").to_string();
     let database_password = use_state(|| "".to_string());
     let selected_file = use_state(|| None::<File>);
     let is_loading = use_state(|| false);
@@ -68,7 +86,7 @@ pub fn restore_server() -> Html {
                                     }
                                 }
                                 Err(e) => {
-                                    dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Some(format!(
                                             "{}{}",
                                             i18n_failed_to_load_backup_files.clone(),
@@ -95,7 +113,7 @@ pub fn restore_server() -> Html {
                 if let Some(file) = files.get(0) {
                     // Check file size (e.g., limit to 100MB)
                     if file.size() > 100.0 * 1024.0 * 1024.0 {
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(i18n_file_size_too_large.clone());
                         });
                         return;
@@ -121,14 +139,14 @@ pub fn restore_server() -> Html {
 
             // Validate inputs
             if selected_file.is_none() {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Some("Please select a backup file".to_string());
                 });
                 return;
             }
 
             if database_password.trim().is_empty() {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Some("Database password is required".to_string());
                 });
                 return;
@@ -152,7 +170,7 @@ pub fn restore_server() -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 match call_restore_server(&server_name, form_data, &api_key.unwrap()).await {
                     Ok(message) => {
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message =
                                 Some(format!("Server restore started successfully: {}", message));
                         });
@@ -160,7 +178,7 @@ pub fn restore_server() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("Failed to restore server: {}", formatted_error));
                         });
@@ -201,7 +219,7 @@ pub fn restore_server() -> Html {
                     .await
                     {
                         Ok(_) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(
                                     "Restore from backup file started successfully".to_string(),
                                 );
@@ -209,7 +227,7 @@ pub fn restore_server() -> Html {
                             history.push("/sign_out");
                         }
                         Err(e) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "Failed to restore from backup file: {}",
                                     format_error_message(&e.to_string())
@@ -220,7 +238,7 @@ pub fn restore_server() -> Html {
                     }
                 });
             } else {
-                dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Some("Please select a backup file".to_string());
                 });
             }
@@ -228,17 +246,21 @@ pub fn restore_server() -> Html {
     };
 
     html! {
-        <div class="p-4">
-            <p class="item_container-text text-lg font-bold mb-4">{"Restore Server:"}</p>
-            <p class="item_container-text text-md mb-4 text-red-600 font-bold">
-                {"WARNING: This will delete everything on your server and restore to the point that the backup contains."}
-            </p>
+        <>
+            <div class="settings-row">
+                <div class="settings-row-label">
+                    <div style="color:var(--error-color,#ef4444);font-weight:600;font-size:13px;">
+                        { &i18n_warning }
+                    </div>
+                </div>
+            </div>
 
-            // Mode Selection
-            <div class="mb-6">
-                <label class="block text-sm font-medium item_container-text mb-3">{"Restore Method"}</label>
-                <div class="flex space-x-4">
-                    <label class="flex items-center">
+            <div class="settings-row">
+                <div class="settings-row-label">
+                    <div>{ &i18n_restore_method }</div>
+                </div>
+                <div class="settings-row-control">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--text-color);">
                         <input
                             type="radio"
                             name="restore_mode"
@@ -248,11 +270,10 @@ pub fn restore_server() -> Html {
                                 let restore_mode = restore_mode.clone();
                                 move |_| restore_mode.set("upload".to_string())
                             })}
-                            class="mr-2"
                         />
-                        <span class="item_container-text">{"Upload Backup File"}</span>
+                        { &i18n_upload_backup_file }
                     </label>
-                    <label class="flex items-center">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--text-color);">
                         <input
                             type="radio"
                             name="restore_mode"
@@ -262,9 +283,8 @@ pub fn restore_server() -> Html {
                                 let restore_mode = restore_mode.clone();
                                 move |_| restore_mode.set("select".to_string())
                             })}
-                            class="mr-2"
                         />
-                        <span class="item_container-text">{"Select from Server Backups"}</span>
+                        { &i18n_select_from_server_backups }
                     </label>
                 </div>
             </div>
@@ -272,25 +292,36 @@ pub fn restore_server() -> Html {
             {
                 if *restore_mode == "upload" {
                     html! {
-                        <div class="space-y-4">
-                            <p class="item_container-text text-md mb-4">
-                                {"Upload a backup file (.sql) and provide your database password to restore your server."}
-                            </p>
-                            <div class="flex flex-col space-y-2">
-                                <label for="backup_file" class="item_container-text">{"Backup File (.sql)"}</label>
-                                <input
-                                    type="file"
-                                    id="backup_file"
-                                    accept=".sql"
-                                    disabled={*is_loading}
-                                    onchange={on_file_change}
-                                    class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:settings-button hover:file:bg-blue-600"
-                                />
+                        <>
+                            <div class="settings-row">
+                                <div class="settings-row-label">
+                                    <div>{ &i18n_backup_file_sql }</div>
+                                    <div class="settings-row-desc">{ &i18n_upload_backup_hint }</div>
+                                </div>
+                                <div class="settings-row-control">
+                                    <label class="btn btn-secondary" style="padding:6px 12px;cursor:pointer;">
+                                        <i class="ph ph-upload-simple"></i>
+                                        <span>{ &i18n_choose_file }</span>
+                                        <input
+                                            type="file"
+                                            id="backup_file"
+                                            accept=".sql"
+                                            disabled={*is_loading}
+                                            onchange={on_file_change}
+                                            style="display:none;"
+                                        />
+                                    </label>
+                                    if selected_file.is_some() {
+                                        <span class="settings-row-desc">{ &i18n_file_selected }</span>
+                                    }
+                                </div>
                             </div>
 
-                            <div class="flex flex-col space-y-2">
-                                <label for="db_pw" class="item_container-text">{"Database Password"}</label>
-                                <div class="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4">
+                            <div class="settings-row">
+                                <div class="settings-row-label">
+                                    <div>{ &i18n_database_password }</div>
+                                </div>
+                                <div class="settings-row-control">
                                     <input
                                         type="password"
                                         id="db_pw"
@@ -299,71 +330,64 @@ pub fn restore_server() -> Html {
                                             let input: HtmlInputElement = e.target_unchecked_into();
                                             database_password.set(input.value());
                                         })}
-                                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
+                                        class="input"
                                         placeholder="Database password"
+                                        style="width:180px;"
                                     />
                                     <button
                                         onclick={onclick_restore}
                                         disabled={*is_loading}
-                                        class={classes!(
-                                            "settings-button",
-                                            "font-bold",
-                                            "py-2",
-                                            "px-6",
-                                            "rounded",
-                                            "focus:outline-none",
-                                            "focus:shadow-outline",
-                                            "inline-flex",
-                                            "items-center",
-                                            "justify-center",
-                                            "min-w-[140px]",
-                                            "whitespace-nowrap",
-                                            if *is_loading { "opacity-50 cursor-not-allowed" } else { "" }
-                                        )}
+                                        class="btn btn-danger"
+                                        style="padding:6px 12px;"
                                     >
                                         if *is_loading {
-                                            <div class="inline-flex items-center">
-                                                <svg class="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                </svg>
-                                                {"Restoring..."}
-                                            </div>
+                                            <i class="ph ph-spinner animate-spin"></i>
+                                            <span>{"Restoring..."}</span>
                                         } else {
-                                            {"Restore Server"}
+                                            <i class="ph ph-arrow-counter-clockwise"></i>
+                                            <span>{ &i18n_restore_server }</span>
                                         }
                                     </button>
                                 </div>
                             </div>
-                        </div>
+                        </>
                     }
                 } else {
                     html! {
-                        <div class="space-y-4">
-                            <p class="item_container-text text-md mb-4">
-                                {"Choose from existing backup files in the mounted backup directory."}
-                            </p>
+                        <>
+                            <div class="settings-row">
+                                <div class="settings-row-label">
+                                    <div>{ &i18n_server_backup_files }</div>
+                                    <div class="settings-row-desc">{ &i18n_server_backups_hint }</div>
+                                </div>
+                            </div>
 
                             {
                                 if *files_loading {
                                     html! {
-                                        <div class="loading-state p-4 text-center">
-                                            <i class="ph ph-spinner animate-spin text-2xl mb-2"></i>
-                                            <p class="text-sm item_container-text">{"Loading backup files..."}</p>
+                                        <div class="settings-row">
+                                            <div class="settings-row-label">
+                                                <div class="settings-row-desc" style="display:flex;align-items:center;gap:8px;">
+                                                    <i class="ph ph-spinner animate-spin"></i>
+                                                    <span>{ &i18n_loading_backup_files }</span>
+                                                </div>
+                                            </div>
                                         </div>
                                     }
                                 } else if backup_files.is_empty() {
                                     html! {
-                                        <div class="empty-state p-4 text-center bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                                            <i class="ph ph-folder-open text-3xl text-yellow-600 mb-2"></i>
-                                            <p class="text-sm text-yellow-800 dark:text-yellow-200">
-                                                {"No backup files found in the backup directory."}
-                                            </p>
+                                        <div class="settings-row">
+                                            <div class="settings-row-label">
+                                                <div class="settings-row-desc">
+                                                    <i class="ph ph-folder-open" style="margin-right:4px;"></i>
+                                                    { &i18n_no_backup_files }
+                                                </div>
+                                            </div>
                                         </div>
                                     }
                                 } else {
                                     html! {
-                                        <div class="backup-files-list space-y-2 max-h-60 overflow-y-auto">
+                                        <div style="display:flex;flex-direction:column;gap:4px;max-height:240px;overflow-y:auto;padding:0 16px 8px;">
                                             {for backup_files.iter().map(|file| {
                                                 let filename = file.get("filename").and_then(|f| f.as_str()).unwrap_or("Unknown");
                                                 let size = file.get("size").and_then(|s| s.as_u64()).unwrap_or(0);
@@ -373,53 +397,39 @@ pub fn restore_server() -> Html {
                                                 let filename_clone = filename.to_string();
                                                 let selected_backup_file_clone = selected_backup_file.clone();
 
+                                                let item_style = if is_selected {
+                                                    "display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:6px;cursor:pointer;border:1px solid var(--accent-color);background:rgba(128,128,128,0.08);"
+                                                } else {
+                                                    "display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(128,128,128,0.2);"
+                                                };
+
                                                 html! {
                                                     <div
-                                                        class={if is_selected {
-                                                            "backup-file-item p-3 border rounded-lg cursor-pointer transition-colors border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                                                        } else {
-                                                            "backup-file-item p-3 border rounded-lg cursor-pointer transition-colors border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
-                                                        }}
+                                                        style={item_style}
                                                         onclick={Callback::from(move |_: MouseEvent| {
                                                             selected_backup_file_clone.set(Some(filename_clone.clone()));
                                                         })}
                                                     >
-                                                        <div class="flex items-center justify-between">
-                                                            <div class="flex items-center gap-3">
-                                                                <i class={if is_selected {
-                                                                    "ph ph-file-sql text-lg text-blue-600"
-                                                                } else {
-                                                                    "ph ph-file-sql text-lg text-gray-500"
-                                                                }}></i>
-                                                                <div>
-                                                                    <p class={if is_selected {
-                                                                        "text-sm font-medium text-blue-900 dark:text-blue-100"
+                                                        <div style="display:flex;align-items:center;gap:10px;">
+                                                            <i class="ph ph-file-sql" style={if is_selected { "color:var(--accent-color);font-size:18px;" } else { "color:var(--text-secondary-color);font-size:18px;" }}></i>
+                                                            <div>
+                                                                <div style="font-size:13px;color:var(--text-color);font-weight:500;">{filename}</div>
+                                                                <div style="font-size:11px;color:var(--text-secondary-color);">
+                                                                    {format!("{:.1} MB", size as f64 / 1024.0 / 1024.0)}
+                                                                    {" • "}
+                                                                    {if modified > 0 {
+                                                                        let timestamp_ms = (modified as f64) * 1000.0;
+                                                                        let date = js_sys::Date::new(&JsValue::from(timestamp_ms));
+                                                                        date.to_locale_string("en-US", &JsValue::UNDEFINED).as_string().unwrap_or_default()
                                                                     } else {
-                                                                        "text-sm font-medium item_container-text"
-                                                                    }}>
-                                                                        {filename}
-                                                                    </p>
-                                                                    <p class="text-xs text-gray-500">
-                                                                        {format!("{:.1} MB", size as f64 / 1024.0 / 1024.0)}
-                                                                        {" • "}
-                                                                        {if modified > 0 {
-                                                                            let timestamp_ms = (modified as f64) * 1000.0;
-                                                                            let date = js_sys::Date::new(&JsValue::from(timestamp_ms));
-                                                                            date.to_locale_string("en-US", &JsValue::UNDEFINED).as_string().unwrap_or_default()
-                                                                        } else {
-                                                                            "Unknown date".to_string()
-                                                                        }}
-                                                                    </p>
+                                                                        "Unknown date".to_string()
+                                                                    }}
                                                                 </div>
                                                             </div>
-                                                            {
-                                                                if is_selected {
-                                                                    html! { <i class="ph ph-check-circle text-blue-600"></i> }
-                                                                } else {
-                                                                    html! { }
-                                                                }
-                                                            }
                                                         </div>
+                                                        if is_selected {
+                                                            <i class="ph ph-check-circle" style="color:var(--accent-color);"></i>
+                                                        }
                                                     </div>
                                                 }
                                             })}
@@ -428,66 +438,45 @@ pub fn restore_server() -> Html {
                                 }
                             }
 
-                            {
-                                if selected_backup_file.is_some() {
-                                    html! {
-                                        <div class="mt-4">
-                                            <button
-                                                onclick={onclick_restore_from_file}
-                                                disabled={*is_loading}
-                                                class={if *is_loading {
-                                                    "settings-button font-bold py-3 px-6 rounded focus:outline-none focus:shadow-outline inline-flex items-center justify-center min-w-[160px] bg-red-600 hover:bg-red-700 text-white opacity-50 cursor-not-allowed"
-                                                } else {
-                                                    "settings-button font-bold py-3 px-6 rounded focus:outline-none focus:shadow-outline inline-flex items-center justify-center min-w-[160px] bg-red-600 hover:bg-red-700 text-white"
-                                                }}
-                                            >
-                                                {
-                                                    if *is_loading {
-                                                        html! {
-                                                            <div class="inline-flex items-center">
-                                                                <svg class="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                                </svg>
-                                                                {"Restoring..."}
-                                                            </div>
-                                                        }
-                                                    } else {
-                                                        html! { {"Restore from Selected File"} }
-                                                    }
-                                                }
-                                            </button>
-                                        </div>
-                                    }
-                                } else {
-                                    html! { }
-                                }
+                            if selected_backup_file.is_some() {
+                                <div class="settings-row">
+                                    <div class="settings-row-label">
+                                        <div class="settings-row-desc">{ &i18n_selected_file_warning }</div>
+                                    </div>
+                                    <div class="settings-row-control">
+                                        <button
+                                            onclick={onclick_restore_from_file}
+                                            disabled={*is_loading}
+                                            class="btn btn-danger"
+                                            style="padding:6px 12px;"
+                                        >
+                                            if *is_loading {
+                                                <i class="ph ph-spinner animate-spin"></i>
+                                                <span>{"Restoring..."}</span>
+                                            } else {
+                                                <i class="ph ph-arrow-counter-clockwise"></i>
+                                                <span>{ &i18n_restore_from_selected }</span>
+                                            }
+                                        </button>
+                                    </div>
+                                </div>
                             }
-                        </div>
+                        </>
                     }
                 }
             }
 
             if *is_loading {
-                <div class="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                    <div class="flex items-center space-x-3">
-                        <div class="flex-shrink-0">
-                            <svg class="animate-spin h-5 w-5 text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
+                <div class="settings-row">
+                    <div class="settings-row-label">
+                        <div class="settings-row-desc" style="display:flex;align-items:center;gap:8px;">
+                            <i class="ph ph-spinner animate-spin"></i>
+                            <span>{ &i18n_restoring_database }</span>
                         </div>
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium text-blue-900 dark:text-blue-100">
-                                {"Restoring database..."}
-                            </p>
-                            <p class="text-sm text-blue-700 dark:text-blue-300">
-                                {"This may take several minutes. Please don't close this window."}
-                            </p>
-                        </div>
+                        <div class="settings-row-desc">{ &i18n_dont_close_window }</div>
                     </div>
                 </div>
             }
-        </div>
+        </>
     }
 }

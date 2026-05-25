@@ -19,7 +19,7 @@ use crate::requests::search_pods::{
     YouTubeSearchResults,
 };
 use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
-use crate::requests::stat_reqs::UserStats;
+use crate::requests::stat_reqs::{UserStats, ExtendedUserStats};
 use serde::Deserialize;
 use serde_json::{from_str, json};
 use std::collections::HashSet;
@@ -98,18 +98,11 @@ pub struct AppState {
     pub user_details: Option<GetUserDetails>,
     pub auth_details: Option<LoginServerRequest>,
     pub server_details: Option<GetApiDetails>,
-    pub error_message: Option<String>,
-    pub info_message: Option<String>,
     pub search_results: Option<PodcastSearchResult>,
     pub podcast_feed_results: Option<PodcastFeedResult>,
     pub people_feed_results: Option<PeopleFeedResult>,
     pub server_feed_results: Option<RecentEps>,
-    pub queued_episodes: Option<QueuedEpisodesResponse>,
-    #[serde(default)]
-    pub saved_episodes: Vec<Episode>,
     pub episode_history: Option<HistoryDataResponse>,
-    #[serde(default)]
-    pub downloaded_episodes: DownloadedEpisodeRecords,
     pub search_episodes: Option<SearchResponse>,
     pub clicked_podcast_info: Option<ClickedFeedURL>,
     pub pods: Option<Podcast>,
@@ -141,10 +134,7 @@ pub struct AppState {
     pub hour_preference: Option<i16>,
     pub date_format: Option<String>,
     pub podcast_added: Option<bool>,
-    pub completed_episodes: Option<Vec<i32>>,
-    pub queued_episode_ids: Option<Vec<i32>>,
     pub podcast_layout: Option<PodcastLayout>,
-    pub refresh_progress: Option<RefreshProgress>,
     pub youtube_search_results: Option<YouTubeSearchResults>,
     pub selected_youtube_channel: Option<YouTubeChannel>,
     pub is_youtube_loading: Option<bool>,
@@ -154,10 +144,34 @@ pub struct AppState {
     pub playlists: Option<Vec<Playlist>>,
     pub current_playlist_info: Option<PlaylistInfo>,
     pub current_playlist_episodes: Option<Vec<Episode>>,
-    pub active_tasks: Option<Vec<TaskProgress>>,
 }
 
-impl AppState {
+
+/// Notification-only state, kept separate from AppState so that episode list pages
+/// do not re-render when a toast fires.
+#[derive(Default, Clone, PartialEq, Store, Debug)]
+pub struct NotificationState {
+    pub info_message: Option<String>,
+    pub error_message: Option<String>,
+    pub active_tasks: Option<Vec<TaskProgress>>,
+    pub refresh_progress: Option<RefreshProgress>,
+}
+
+/// Episode-specific status state kept separate from AppState so that the
+/// ~50+ components subscribing to AppState do NOT re-render on every
+/// save/download/queue/complete action.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct EpisodeStatusState {
+    #[serde(default)]
+    pub saved_episodes: Vec<Episode>,
+    #[serde(default)]
+    pub downloaded_episodes: DownloadedEpisodeRecords,
+    pub queued_episodes: Option<QueuedEpisodesResponse>,
+    pub queued_episode_ids: Option<Vec<i32>>,
+    pub completed_episodes: Option<Vec<i32>>,
+}
+
+impl EpisodeStatusState {
     pub fn saved_episode_ids(&self) -> impl Iterator<Item = i32> + '_ {
         self.saved_episodes.iter().map(|e| e.episodeid)
     }
@@ -283,6 +297,7 @@ impl DownloadedEpisodeRecords {
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
 pub struct UserStatsStore {
     pub stats: Option<UserStats>,
+    pub extended_stats: Option<ExtendedUserStats>,
     pub pinepods_version: Option<String>,
 }
 
@@ -388,6 +403,8 @@ pub struct UIState {
     pub podcast_podroll: Option<Vec<PodrollItem>>,
     pub podcast_value4value: Option<Vec<Value>>,
     pub is_mobile: Option<bool>,
+    pub loading_episode_id: Option<i32>,
+    pub queue_panel_open: bool,
 }
 
 impl UIState {
@@ -473,6 +490,7 @@ impl UIState {
                     Closure::wrap(Box::new(move || {
                         play_dispatch.reduce_mut(|state| {
                             state.audio_playing = Some(true);
+                            state.loading_episode_id = None;
                         });
                     }) as Box<dyn Fn()>)
                 };

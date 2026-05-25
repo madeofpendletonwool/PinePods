@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_delete_shared_link, call_extend_shared_link, call_get_user_shared_links, SharedLink,
@@ -54,7 +54,7 @@ pub fn shared_links() -> Html {
                             Ok(resp) => links.set(resp.shared_links),
                             Err(e) => {
                                 let msg = format_error_message(&e.to_string());
-                                dispatch_err.reduce_mut(|s| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
                                     s.error_message = Some(format!("Error loading shared links: {}", msg))
                                 });
                             }
@@ -106,14 +106,14 @@ pub fn shared_links() -> Html {
                     if let Some(api_key) = api_key {
                         match call_delete_shared_link(&server_name, &code, &api_key).await {
                             Ok(_) => {
-                                dispatch.reduce_mut(|s| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
                                     s.info_message = Some("Shared link deleted.".to_string())
                                 });
                                 refresh_trigger.set(*refresh_trigger + 1);
                             }
                             Err(e) => {
                                 let msg = format_error_message(&e.to_string());
-                                dispatch.reduce_mut(|s| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
                                     s.error_message =
                                         Some(format!("Error deleting link: {}", msg))
                                 });
@@ -150,7 +150,7 @@ pub fn shared_links() -> Html {
                     if let Some(api_key) = api_key {
                         match call_extend_shared_link(&server_name, &code, days, &api_key).await {
                             Ok(_) => {
-                                dispatch.reduce_mut(|s| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
                                     s.info_message = Some(format!(
                                         "Shared link extended by {} days.",
                                         days
@@ -160,7 +160,7 @@ pub fn shared_links() -> Html {
                             }
                             Err(e) => {
                                 let msg = format_error_message(&e.to_string());
-                                dispatch.reduce_mut(|s| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
                                     s.error_message =
                                         Some(format!("Error extending link: {}", msg))
                                 });
@@ -255,10 +255,6 @@ pub fn shared_links() -> Html {
                 ModalState::Hidden => html! {},
             }
         }
-        <div class="p-4">
-            <p class="item_container-text text-lg font-bold mb-4">{i18n.t("shared_links.title")}</p>
-            <p class="item_container-text text-md mb-4">{i18n.t("shared_links.description")}</p>
-        </div>
         <div class="relative overflow-x-auto">
             <table class="w-full text-sm text-left rtl:text-right">
                 <thead class="text-xs uppercase table-header">

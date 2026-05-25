@@ -63,6 +63,8 @@ pub fn oauth_callback() -> Html {
     let i18n_no_auth_info = i18n
         .t("oauth_callback.no_authentication_information")
         .to_string();
+    let i18n_date_format_julian = i18n.t("oauth_callback.date_format_julian").to_string();
+    let i18n_date_format_iso8601 = i18n.t("oauth_callback.date_format_iso8601").to_string();
 
     let history = BrowserHistory::new();
     let (_, dispatch) = use_store::<AppState>();
@@ -481,8 +483,8 @@ pub fn oauth_callback() -> Html {
                                     <option value="MDY">{"MM-DD-YYYY"}</option>
                                     <option value="DMY">{"DD-MM-YYYY"}</option>
                                     <option value="YMD">{"YYYY-MM-DD"}</option>
-                                    <option value="JUL">{"YY/DDD (Julian)"}</option>
-                                    <option value="ISO">{"ISO 8601"}</option>
+                                    <option value="JUL">{ &i18n_date_format_julian }</option>
+                                    <option value="ISO">{ &i18n_date_format_iso8601 }</option>
                                     <option value="USA">{"MM/DD/YYYY"}</option>
                                     <option value="EUR">{"DD.MM.YYYY"}</option>
                                     <option value="JIS">{"YYYY-MM-DD"}</option>

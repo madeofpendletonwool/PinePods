@@ -1,7 +1,7 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::{
     format_error_message, get_default_sort_direction, get_filter_preference, set_filter_preference,
@@ -211,7 +211,9 @@ pub struct PodcastMergeSelectorProps {
 
 #[function_component(PodcastMergeSelector)]
 pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
-    let (_i18n, _) = use_translation();
+    let (i18n, _) = use_translation();
+    let i18n_loading_podcasts = i18n.t("episodes_layout.loading_podcasts").to_string();
+    let i18n_select_podcasts_to_merge_hint = i18n.t("episodes_layout.select_podcasts_to_merge").to_string();
     let is_open = use_state(|| false);
     let dropdown_ref = use_node_ref();
 
@@ -286,9 +288,9 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
             >
                 <div class="flex items-center flex-grow">
                     if props.loading {
-                        <span class="flex-grow text-left">{"Loading podcasts..."}</span>
+                        <span class="flex-grow text-left">{ &i18n_loading_podcasts }</span>
                     } else if props.selected_podcasts.is_empty() {
-                        <span class="flex-grow text-left">{"Select podcasts to merge"}</span>
+                        <span class="flex-grow text-left">{ &i18n_select_podcasts_to_merge_hint }</span>
                     } else {
                         <span class="flex-grow text-left">
                             {format!("{} {} selected",
@@ -484,6 +486,16 @@ pub fn episode_layout() -> Html {
     let i18n_error_resetting_playback_speed = i18n
         .t("episodes_layout.error_resetting_playback_speed")
         .to_string();
+    let i18n_auto_play_next_episode = i18n.t("episodes_layout.auto_play_next_episode").to_string();
+    let i18n_favorite_podcast = i18n.t("episodes_layout.favorite_podcast").to_string();
+    let i18n_use_podcast_covers = i18n.t("episodes_layout.use_podcast_covers").to_string();
+    let i18n_podcast_cover_hint = i18n.t("episodes_layout.podcast_cover_hint").to_string();
+    let i18n_merge_podcasts = i18n.t("episodes_layout.merge_podcasts").to_string();
+    let i18n_merge_description = i18n.t("episodes_layout.merge_description").to_string();
+    let i18n_currently_merged_podcasts = i18n.t("episodes_layout.currently_merged_podcasts").to_string();
+    let i18n_unmerge = i18n.t("episodes_layout.unmerge").to_string();
+    let i18n_select_podcasts_to_merge = i18n.t("episodes_layout.select_podcasts_to_merge").to_string();
+    let i18n_hosts = i18n.t("episodes_layout.hosts").to_string();
     let loading = use_state(|| true);
     let page_state = use_state(|| PageState::Hidden);
     let episode_search_term = use_state(|| String::new());
@@ -1097,15 +1109,21 @@ pub fn episode_layout() -> Html {
                                                 );
                                             }
                                         }
-                                        // Add notification status check here
-                                        match call_get_podcast_notifications_status(
-                                            server_name.clone(),
-                                            api_key.clone().unwrap(),
-                                            user_id,
-                                            id,
-                                        )
-                                        .await
-                                        {
+                                        let (notif_result, fav_result) = futures::join!(
+                                            call_get_podcast_notifications_status(
+                                                server_name.clone(),
+                                                api_key.clone().unwrap(),
+                                                user_id,
+                                                id,
+                                            ),
+                                            call_get_podcast_favorite_status(
+                                                server_name.clone(),
+                                                api_key.clone().unwrap(),
+                                                user_id,
+                                                id,
+                                            ),
+                                        );
+                                        match notif_result {
                                             Ok(status) => {
                                                 notification_effect.set(status);
                                             }
@@ -1119,15 +1137,7 @@ pub fn episode_layout() -> Html {
                                                 );
                                             }
                                         }
-                                        // Fetch favorite status
-                                        match call_get_podcast_favorite_status(
-                                            server_name.clone(),
-                                            api_key.clone().unwrap(),
-                                            user_id,
-                                            id,
-                                        )
-                                        .await
-                                        {
+                                        match fav_result {
                                             Ok(status) => {
                                                 favorite_effect.set(status);
                                             }
@@ -1380,7 +1390,7 @@ pub fn episode_layout() -> Html {
                 match result {
                     Ok(success) => {
                         if success {
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(
                                     if pod_feed_url_check.starts_with("https://www.youtube.com") {
                                         i18n_youtube_channel_successfully_removed
@@ -1399,7 +1409,7 @@ pub fn episode_layout() -> Html {
                                 hist.push("/podcasts");
                             }
                         } else {
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(if is_youtube {
                                     i18n_failed_to_remove_youtube_channel
                                 } else {
@@ -1412,7 +1422,7 @@ pub fn episode_layout() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch_wasm.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("Error removing content: {:?}", formatted_error))
                         });
@@ -1492,14 +1502,14 @@ pub fn episode_layout() -> Html {
                         .await
                         {
                             Ok(success_message) => {
-                                call_down_dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Option::from(format!("{}", success_message))
                                 });
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                call_down_dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Option::from(format!("{}", formatted_error))
                                 });
@@ -1507,8 +1517,8 @@ pub fn episode_layout() -> Html {
                         }
                     }
                     Err(e) => {
-                        call_down_dispatch.reduce_mut(|state| {
-                            let formatted_error = format_error_message(&e.to_string());
+                        let formatted_error = format_error_message(&e.to_string());
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!(
                                 "Failed to get podcast ID: {}",
                                 formatted_error
@@ -1710,7 +1720,7 @@ pub fn episode_layout() -> Html {
 
                     match call_set_playback_speed(&server_name, &api_key, &request).await {
                         Ok(_) => {
-                            call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Option::from(i18n_playback_speed_updated)
                             });
                         }
@@ -1718,7 +1728,7 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error updating playback speed: {}", e).into(),
                             );
-                            call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_updating_playback_speed)
                             });
@@ -1754,7 +1764,7 @@ pub fn episode_layout() -> Html {
                     };
                     match call_clear_playback_speed(&server_name, &api_key, &request).await {
                         Ok(_) => {
-                            call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Option::from(i18n_playback_speed_reset_default)
                             });
                         }
@@ -1762,7 +1772,7 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error resetting playback speed: {}", e).into(),
                             );
-                            call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_resetting_playback_speed)
                             });
@@ -1825,7 +1835,7 @@ pub fn episode_layout() -> Html {
                     {
                         Ok(_) => {
                             feed_cutoff_days.set(days);
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message =
                                     Option::from(i18n_youtube_episode_limit_updated)
                             });
@@ -1836,7 +1846,7 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error updating feed cutoff days: {}", err).into(),
                             );
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(format!(
                                     "Error updating feed cutoff days: {:?}",
                                     err
@@ -1959,7 +1969,7 @@ pub fn episode_layout() -> Html {
                     {
                         Ok(_) => {
                             use_podcast_covers.set(new_setting);
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(format!(
                                     "Podcast cover preference {} for this podcast",
                                     if new_setting { "enabled" } else { "disabled" }
@@ -1967,7 +1977,7 @@ pub fn episode_layout() -> Html {
                             });
                         }
                         Err(e) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("Error updating podcast cover preference: {}", e));
                             });
@@ -2018,7 +2028,7 @@ pub fn episode_layout() -> Html {
 
                     match call_adjust_skip_times(&server_name, &api_key, &request).await {
                         Ok(_) => {
-                            skip_call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Option::from(i18n_skip_times_adjusted)
                             });
                         }
@@ -2026,7 +2036,7 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error updating skip times: {}", e).into(),
                             );
-                            skip_call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(i18n_error_adjusting_skip_times)
                             });
                         }
@@ -2293,7 +2303,7 @@ pub fn episode_layout() -> Html {
                                 </label>
                             </div>
                             <div>
-                                <label for="auto_play_next" class="block mb-2 text-sm font-medium">{"Auto-play next episode"}</label>
+                                <label for="auto_play_next" class="block mb-2 text-sm font-medium">{ &i18n_auto_play_next_episode }</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input type="checkbox" checked={*auto_play_next_status} class="sr-only peer" onclick={toggle_auto_play_next} />
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
@@ -2312,7 +2322,7 @@ pub fn episode_layout() -> Html {
                                 </label>
                             </div>
                             <div>
-                                <label for="favorite_settings" class="block mb-2 text-sm font-medium">{"Favorite Podcast"}</label>
+                                <label for="favorite_settings" class="block mb-2 text-sm font-medium">{ &i18n_favorite_podcast }</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input
                                         type="checkbox"
@@ -2355,7 +2365,7 @@ pub fn episode_layout() -> Html {
                             </div>
 
                             <div class="mt-4">
-                                <label class="block mb-2 text-sm font-medium">{"Use Podcast Covers"}</label>
+                                <label class="block mb-2 text-sm font-medium">{ &i18n_use_podcast_covers }</label>
                                 <div class="flex items-center space-x-2">
                                     <label class="relative inline-flex items-center cursor-pointer">
                                         <input
@@ -2367,7 +2377,7 @@ pub fn episode_layout() -> Html {
                                         <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                     </label>
                                 </div>
-                                <p class="text-xs text-gray-500 mt-1">{"Show podcast cover instead of episode artwork for this podcast's episodes"}</p>
+                                <p class="text-xs text-gray-500 mt-1">{ &i18n_podcast_cover_hint }</p>
                             </div>
 
                             <div class="mt-4">
@@ -2806,16 +2816,16 @@ pub fn episode_layout() -> Html {
 
                                 // Merge Podcasts Section
                                 <div class="mb-4 p-4 border rounded-lg">
-                                    <h4 class="text-lg font-semibold mb-3">{"Merge Podcasts"}</h4>
+                                    <h4 class="text-lg font-semibold mb-3">{ &i18n_merge_podcasts }</h4>
                                     <p class="text-sm text-gray-600 mb-3">
-                                        {"Merge other podcasts into this one. Episodes from merged podcasts will appear under this podcast."}
+                                        { &i18n_merge_description }
                                     </p>
 
                                     // Show currently merged podcasts
                                     if !(*current_merged_podcasts).is_empty() {
                                         <div class="mb-4">
                                             <label class="block mb-2 text-sm font-medium">
-                                                {"Currently Merged Podcasts"}
+                                                { &i18n_currently_merged_podcasts }
                                             </label>
                                             <div>
                                                 {
@@ -2853,7 +2863,7 @@ pub fn episode_layout() -> Html {
                                                                             if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key.as_ref(), server_name.as_ref(), user_id.as_ref()) {
                                                                                 match call_unmerge_podcast(server_name, &api_key, primary_id, merged_id).await {
                                                                                     Ok(_) => {
-                                                                                        dispatch.reduce_mut(|state| {
+                                                                                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                             state.info_message = Some("Podcast unmerged successfully".to_string())
                                                                                         });
 
@@ -2882,7 +2892,7 @@ pub fn episode_layout() -> Html {
                                                                                         }
                                                                                     },
                                                                                     Err(e) => {
-                                                                                        dispatch.reduce_mut(|state| {
+                                                                                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                             state.error_message = Some(format!("Failed to unmerge podcast: {}", e))
                                                                                         });
                                                                                     }
@@ -2891,7 +2901,7 @@ pub fn episode_layout() -> Html {
                                                                         });
                                                                     })}
                                                                 >
-                                                                    {"Unmerge"}
+                                                                    { &i18n_unmerge }
                                                                 </button>
                                                             </div>
                                                         }
@@ -2904,7 +2914,7 @@ pub fn episode_layout() -> Html {
                                     // Podcast selector for merging
                                     <div class="mb-3">
                                         <label class="block mb-2 text-sm font-medium">
-                                            {"Select Podcasts to Merge"}
+                                            { &i18n_select_podcasts_to_merge }
                                         </label>
                                         <PodcastMergeSelector
                                             selected_podcasts={(*selected_podcasts_to_merge).clone()}
@@ -2956,7 +2966,7 @@ pub fn episode_layout() -> Html {
                                                                     selected_podcasts_to_merge.set(Vec::new());
 
                                                                     // Show success message
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.info_message = Some(format!("Successfully merged {} podcast(s)", podcast_ids.len()))
                                                                     });
 
@@ -2985,7 +2995,7 @@ pub fn episode_layout() -> Html {
                                                                     }
                                                                 },
                                                                 Err(e) => {
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.error_message = Some(format!("Failed to merge podcasts: {}", e))
                                                                     });
                                                                 }
@@ -3052,7 +3062,7 @@ pub fn episode_layout() -> Html {
                                                     spawn_local(async move {
                                                         // Check if podcast is loaded
                                                         if current_podcast_id == 0 {
-                                                            dispatch.reduce_mut(|state| {
+                                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                 state.error_message = Some("Please wait for podcast to load before editing".to_string())
                                                             });
                                                             return;
@@ -3117,7 +3127,7 @@ pub fn episode_layout() -> Html {
                                                         if feed_url.is_none() && username.is_none() && password.is_none() &&
                                                            podcast_name.is_none() && description.is_none() && author.is_none() &&
                                                            artwork_url.is_none() && website_url.is_none() && podcast_index_id.is_none() {
-                                                            dispatch.reduce_mut(|state| {
+                                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                 state.info_message = Some("No changes to save".to_string())
                                                             });
                                                             return;
@@ -3140,18 +3150,18 @@ pub fn episode_layout() -> Html {
                                                         ).await {
                                                             Ok(response) => {
                                                                 if response.success {
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.info_message = Some("Podcast updated successfully".to_string())
                                                                     });
                                                                     page_state.set(PageState::Hidden);
                                                                 } else {
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.error_message = Some(format!("Update failed: {}", response.message))
                                                                     });
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                dispatch.reduce_mut(|state| {
+                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                     state.error_message = Some(format!("Error updating podcast: {}", e))
                                                                 });
                                                             }
@@ -3283,7 +3293,7 @@ pub fn episode_layout() -> Html {
 
                             // First issue: response_body.podcast_id is now i32, not Option<i32>
                             if response_body.success {
-                                dispatch_wasm.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Option::from(i18n_podcast_successfully_added)
                                 });
@@ -3329,7 +3339,7 @@ pub fn episode_layout() -> Html {
                                     state.podcast_added = Some(podcast_added);
                                 });
                             } else {
-                                dispatch_wasm.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Option::from(i18n_failed_to_add_podcast)
                                 });
                                 app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
@@ -3337,7 +3347,7 @@ pub fn episode_layout() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(format!(
                                     "Error adding podcast: {:?}",
                                     formatted_error
@@ -3535,115 +3545,111 @@ pub fn episode_layout() -> Html {
                                         };
                                         let sanitized_description = sanitize_html(&podcast_info.description);
                                         let layout = if state.is_mobile.unwrap_or(false) {
+                                            let server_for_proxy = server_name.clone().unwrap_or_default();
                                             html! {
-                                                <div class="mobile-layout">
-                                                    <div class="button-container">
+                                                <div class="mobile-layout ep-mobile-pod-header">
+
+                                                    // ── Compact header: artwork + title + actions ──
+                                                    <div class="ep-mobile-header">
+                                                        <FallbackImage
+                                                            src={podcast_info.artworkurl.clone()}
+                                                            alt={format!("Cover for {}", &podcast_info.podcastname)}
+                                                            class="ep-mobile-art rounded-corners"
+                                                        />
+                                                        <div class="ep-mobile-meta">
+                                                            <h2 class="ep-mobile-title">{ &podcast_info.podcastname }</h2>
+                                                            <p class="ep-mobile-podcast-name">{ &podcast_info.author }</p>
+                                                            <p class="ep-mobile-subinfo">
+                                                                { format!("{}{} · {}{}",
+                                                                    i18n_episode_count,
+                                                                    &podcast_info.episodecount,
+                                                                    i18n_explicit,
+                                                                    if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    // ── Icon action bar ──
+                                                    <div class="ep-mobile-actions">
+                                                        // Subscribe / unsubscribe — always shown
+                                                        <button onclick={toggle_podcast} title="Add or remove podcast" class="ep-mobile-action-btn ep-mobile-action-play">
+                                                            { button_content }
+                                                        </button>
+                                                        // Website link — always shown
                                                         <button
                                                             onclick={
                                                                 let pod_link = pod_link.clone();
                                                                 Callback::from(move |_| web_link.emit(pod_link.clone()))
                                                             }
-                                                            title="Visit external podcast website" class="item-container-button font-bold rounded-full self-center mr-4">
+                                                            title="Visit podcast website"
+                                                            class="ep-mobile-action-btn"
+                                                        >
                                                             { website_icon }
                                                         </button>
-                                                        {
-                                                            if let Some(funding_list) = &state.podcast_funding {
-                                                                if !funding_list.is_empty() {
-                                                                    let funding_list_clone = funding_list.clone();
-                                                                    html! {
-                                                                        <>
-                                                                        { for funding_list_clone.iter().map(|funding| {
-                                                                            let open_in_new_tab = open_in_new_tab.clone();
-                                                                            let payment_icon = payment_icon.clone();
-                                                                            let url = funding.url.clone();
-                                                                            html! {
-                                                                                <button
-                                                                                    onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
-                                                                                    title={funding.description.clone()}
-                                                                                    class="item-container-button font-bold rounded-full self-center mr-4"
-                                                                                >
-                                                                                    { payment_icon } // Replace with your payment_icon component
-                                                                                </button>
-                                                                            }
-                                                                        })}
-                                                                        </>
+                                                        // Subscribed-only actions
+                                                        { if search_state.podcast_added.unwrap() {
+                                                            html! {
+                                                                <>
+                                                                <button onclick={toggle_download} title="Download all episodes" class="ep-mobile-action-btn">
+                                                                    { download_all }
+                                                                </button>
+                                                                <button
+                                                                    onclick={
+                                                                        let page_state = page_state.clone();
+                                                                        Callback::from(move |_| page_state.set(PageState::RSSFeed))
                                                                     }
-                                                                } else {
-                                                                    html! {}
-                                                                }
-                                                            } else {
-                                                                html! {}
+                                                                    title="Get RSS Feed URL"
+                                                                    class="ep-mobile-action-btn"
+                                                                >
+                                                                    { rss_icon }
+                                                                </button>
+                                                                <button onclick={toggle_settings} title="Podcast settings" class="ep-mobile-action-btn">
+                                                                    { setting_content }
+                                                                </button>
+                                                                </>
                                                             }
-                                                        }
-                                                        {
-                                                            if search_state.podcast_added.unwrap() {
+                                                        } else { html! {} }}
+                                                        // Funding buttons (if any)
+                                                        { if let Some(funding_list) = &state.podcast_funding {
+                                                            if !funding_list.is_empty() {
+                                                                let funding_list_clone = funding_list.clone();
                                                                 html! {
-                                                                    <button
-                                                                        onclick={
-                                                                            let page_state = page_state.clone();
-                                                                            Callback::from(move |_| {
-                                                                                page_state.set(PageState::RSSFeed);
-                                                                            })
+                                                                    <>
+                                                                    { for funding_list_clone.iter().map(|funding| {
+                                                                        let open_in_new_tab = open_in_new_tab.clone();
+                                                                        let payment_icon = payment_icon.clone();
+                                                                        let url = funding.url.clone();
+                                                                        html! {
+                                                                            <button
+                                                                                onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
+                                                                                title={funding.description.clone()}
+                                                                                class="ep-mobile-action-btn"
+                                                                            >
+                                                                                { payment_icon }
+                                                                            </button>
                                                                         }
-                                                                        title="Get RSS Feed URL"
-                                                                        class="item-container-button font-bold rounded-full self-center mr-4"
-                                                                        style="width: 30px; height: 30px;"
-                                                                    >
-                                                                        { rss_icon }
-                                                                    </button>
+                                                                    })}
+                                                                    </>
                                                                 }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        {
-                                                            if search_state.podcast_added.unwrap() {
-                                                                html! {
-                                                                    <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                        { download_all }
-                                                                    </button>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                            { button_content }
-                                                        </button>
-                                                        {
-                                                            if search_state.podcast_added.unwrap() {
-                                                                html! {
-                                                                    <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                        { setting_content }
-                                                                    </button>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                    </div>
-                                                    <div class="item-header-mobile-cover-container">
-                                                        <FallbackImage
-                                                            src={podcast_info.artworkurl.clone()}
-                                                            // onclick={on_title_click.clone()}
-                                                            alt={format!("Cover for {}", &podcast_info.podcastname)}
-                                                            class={"item-header-mobile-cover"}
-                                                        />
+                                                            } else { html! {} }
+                                                        } else { html! {} }}
                                                     </div>
 
-                                                    <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
-                                                    <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
-                                                        { sanitized_description }
-                                                        <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
+                                                    // ── Description (collapsed) ──
+                                                    <div class="ep-mobile-desc-section">
+                                                        <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
+                                                            { sanitized_description }
+                                                            <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
+                                                        </div>
                                                     </div>
-                                                    <p class="header-info">{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</p>
-                                                    <p class="header-info">{ format!("{}{}", i18n_authors, &podcast_info.author) }</p>
-                                                    <p class="header-info">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</p>
-                                                    {
-                                                        if !podcast_info.is_youtube.unwrap_or(false) {  // Only show if not a YouTube channel
-                                                            if podcast_info.podcastindexid == 0 {
-                                                                html! {
-                                                                    <div class="import-box mt-2">
+
+                                                    // ── Host strip or unmatched warning ──
+                                                    { if !podcast_info.is_youtube.unwrap_or(false) {
+                                                        if podcast_info.podcastindexid == 0 {
+                                                            html! {
+                                                                <div class="ep-mobile-hosts">
+                                                                    <div class="import-box">
                                                                         <p class="item_container-text text-sm">
                                                                             {"⚠️ This podcast isn't matched to Podcast Index. "}
                                                                             <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
@@ -3652,50 +3658,82 @@ pub fn episode_layout() -> Html {
                                                                             {" to enable host and guest information."}
                                                                         </p>
                                                                     </div>
-                                                                }
-                                                            } else if let Some(people) = &state.podcast_people {
-                                                                if !people.is_empty() {
+                                                                </div>
+                                                            }
+                                                        } else if let Some(people) = &state.podcast_people {
+                                                            if !people.is_empty() {
+                                                                let has_unknown_host = people.len() == 1
+                                                                    && people[0].name == "Unknown Host"
+                                                                    && people[0].role == Some("Host".to_string());
+                                                                if has_unknown_host {
+                                                                    let people_url = search_state.server_details.as_ref()
+                                                                        .and_then(|sd| sd.people_url.as_ref())
+                                                                        .cloned()
+                                                                        .unwrap_or_default();
+                                                                    let host_url = format!("{}/podcast/{}", people_url, podcast_info.podcastindexid);
                                                                     html! {
-                                                                        <div class="header-info relative">
-                                                                            <div class="max-w-full overflow-x-auto">
-                                                                                <HostDropdown
-                                                                                    title="Hosts"
-                                                                                    hosts={people.clone()}
-                                                                                    podcast_feed_url={podcast_info.feedurl}
-                                                                                    podcast_id={*podcast_id}
-                                                                                    podcast_index_id={podcast_info.podcastindexid}
-                                                                                />
-                                                                            </div>
+                                                                        <div class="ep-mobile-hosts">
+                                                                            <p class="ep-mobile-section-label">{ &i18n_hosts }</p>
+                                                                            <p class="ep-mobile-no-hosts-msg">
+                                                                                { i18n.t("host_component.no_hosts_found") }
+                                                                                <a href={host_url} target="_blank" class="ep-mobile-no-hosts-link">
+                                                                                    { i18n.t("host_component.add_hosts_here") }
+                                                                                </a>
+                                                                            </p>
                                                                         </div>
                                                                     }
                                                                 } else {
-                                                                    html! {}
+                                                                    let server = server_for_proxy.clone();
+                                                                    html! {
+                                                                        <div class="ep-mobile-hosts">
+                                                                            <p class="ep-mobile-section-label">{ &i18n_hosts }</p>
+                                                                            <div class="ep-mobile-hosts-scroll">
+                                                                            { for people.iter().map(|person| {
+                                                                                let name = person.name.clone();
+                                                                                let role = person.role.clone();
+                                                                                let img_url = person.img.as_ref().map(|url| {
+                                                                                    format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
+                                                                                });
+                                                                                let hist = history.clone();
+                                                                                let nav_name = name.clone();
+                                                                                let on_chip_click = Callback::from(move |_: MouseEvent| {
+                                                                                    hist.push(format!("/person/{}", nav_name));
+                                                                                });
+                                                                                html! {
+                                                                                    <div class="ep-mobile-host-chip" onclick={on_chip_click}>
+                                                                                        { if let Some(src) = img_url {
+                                                                                            html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
+                                                                                        } else {
+                                                                                            html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
+                                                                                        }}
+                                                                                        <span class="ep-mobile-host-name">{ &person.name }</span>
+                                                                                        { if let Some(r) = &role {
+                                                                                            html! { <span class="ep-mobile-host-role">{ r }</span> }
+                                                                                        } else { html! {} }}
+                                                                                    </div>
+                                                                                }
+                                                                            })}
+                                                                            </div>
+                                                                        </div>
+                                                                    }
                                                                 }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    <div>
-                                                    <div class="categories-container">
-                                                    {
-                                                        if let Some(categories) = &podcast_info.categories {
-                                                            html! {
-                                                                <>
-                                                                { for categories.iter().map(|(_, category_name)| {
-                                                                    html! { <span class="category-box">{ category_name }</span> }
-                                                                }) }
-                                                                </>
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    </div>
+                                                            } else { html! {} }
+                                                        } else { html! {} }
+                                                    } else { html! {} }}
 
-                                                    </div>
+                                                    // ── Categories ──
+                                                    { if let Some(categories) = &podcast_info.categories {
+                                                        if !categories.is_empty() {
+                                                            html! {
+                                                                <div class="ep-mobile-categories">
+                                                                    { for categories.iter().map(|(_, category_name)| {
+                                                                        html! { <span class="category-box">{ category_name }</span> }
+                                                                    })}
+                                                                </div>
+                                                            }
+                                                        } else { html! {} }
+                                                    } else { html! {} }}
+
                                                 </div>
                                             }
                                         } else {
@@ -4176,13 +4214,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }
@@ -4221,13 +4259,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }
@@ -4266,13 +4304,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }
@@ -4311,13 +4349,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }

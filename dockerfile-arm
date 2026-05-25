@@ -8,7 +8,7 @@ RUN ARCH=$(uname -m) && \
     curl -sSL "https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-${ARCH}-unknown-linux-musl.tar.gz" \
     | tar -xz -C /usr/local/bin && \
     rustup target add wasm32-unknown-unknown && \
-    cargo install horust --locked
+    cargo install horust --version 0.1.13 --locked
 # Copy Cargo.lock early so we can read the wasm-bindgen version before the full build
 COPY ./web/Cargo.lock /app/Cargo.lock
 # Pre-populate trunk's wasm-bindgen cache with the musl binary matching Cargo.lock.

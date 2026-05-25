@@ -4260,3 +4260,99 @@ def migration_040_add_is_favorite_to_podcasts(conn, db_type: str):
         logger.error(f"Error adding isfavorite column to Podcasts: {e}")
         conn.rollback()
         raise
+
+
+@register_migration("041", "create_custom_themes_table", "Create CustomThemes table for user-defined themes", requires=["001"])
+def migration_041_create_custom_themes_table(conn, db_type: str):
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration to create CustomThemes table...")
+
+        if db_type == "postgresql":
+            cursor.execute("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_name = 'CustomThemes'
+            """)
+            if cursor.fetchone():
+                logger.info("CustomThemes table already exists (PostgreSQL)")
+                return
+            logger.info("Creating CustomThemes table (PostgreSQL)...")
+            cursor.execute("""
+                CREATE TABLE "CustomThemes" (
+                    themeid SERIAL PRIMARY KEY,
+                    userid INT NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    background_color VARCHAR(7) NOT NULL DEFAULT '#3C4252',
+                    button_color VARCHAR(7) NOT NULL DEFAULT '#3e4555',
+                    container_button_color VARCHAR(7) NOT NULL DEFAULT 'transparent',
+                    button_text_color VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    text_color VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    text_secondary_color VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    border_color VARCHAR(7) NOT NULL DEFAULT '#000000',
+                    accent_color VARCHAR(7) NOT NULL DEFAULT '#6d747f',
+                    prog_bar_color VARCHAR(7) NOT NULL DEFAULT '#3550af',
+                    error_color VARCHAR(7) NOT NULL DEFAULT '#ff0000',
+                    bonus_color VARCHAR(7) NOT NULL DEFAULT '#000000',
+                    secondary_background VARCHAR(7) NOT NULL DEFAULT '#2e3440',
+                    container_background VARCHAR(7) NOT NULL DEFAULT '#2b2f3a',
+                    standout_color VARCHAR(7) NOT NULL DEFAULT '#6e8e92',
+                    hover_color VARCHAR(7) NOT NULL DEFAULT '#5d80aa',
+                    link_color VARCHAR(7) NOT NULL DEFAULT '#5d80aa',
+                    thumb_color VARCHAR(7) NOT NULL DEFAULT '#3550af',
+                    unfilled_color VARCHAR(7) NOT NULL DEFAULT '#d4d6d7',
+                    check_box_color VARCHAR(7) NOT NULL DEFAULT '#ffffff',
+                    FOREIGN KEY (userid) REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    UNIQUE(userid, name)
+                )
+            """)
+            conn.commit()
+            logger.info("Successfully created CustomThemes table (PostgreSQL)")
+
+        else:  # MySQL/MariaDB
+            cursor.execute("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = DATABASE()
+                AND table_name = 'CustomThemes'
+            """)
+            if cursor.fetchone():
+                logger.info("CustomThemes table already exists (MySQL)")
+                return
+            logger.info("Creating CustomThemes table (MySQL)...")
+            cursor.execute("""
+                CREATE TABLE CustomThemes (
+                    ThemeID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    BackgroundColor VARCHAR(7) NOT NULL DEFAULT '#3C4252',
+                    ButtonColor VARCHAR(7) NOT NULL DEFAULT '#3e4555',
+                    ContainerButtonColor VARCHAR(7) NOT NULL DEFAULT '#3C4252',
+                    ButtonTextColor VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    TextColor VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    TextSecondaryColor VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    BorderColor VARCHAR(7) NOT NULL DEFAULT '#000000',
+                    AccentColor VARCHAR(7) NOT NULL DEFAULT '#6d747f',
+                    ProgBarColor VARCHAR(7) NOT NULL DEFAULT '#3550af',
+                    ErrorColor VARCHAR(7) NOT NULL DEFAULT '#ff0000',
+                    BonusColor VARCHAR(7) NOT NULL DEFAULT '#000000',
+                    SecondaryBackground VARCHAR(7) NOT NULL DEFAULT '#2e3440',
+                    ContainerBackground VARCHAR(7) NOT NULL DEFAULT '#2b2f3a',
+                    StandoutColor VARCHAR(7) NOT NULL DEFAULT '#6e8e92',
+                    HoverColor VARCHAR(7) NOT NULL DEFAULT '#5d80aa',
+                    LinkColor VARCHAR(7) NOT NULL DEFAULT '#5d80aa',
+                    ThumbColor VARCHAR(7) NOT NULL DEFAULT '#3550af',
+                    UnfilledColor VARCHAR(7) NOT NULL DEFAULT '#d4d6d7',
+                    CheckBoxColor VARCHAR(7) NOT NULL DEFAULT '#ffffff',
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE KEY unique_user_theme (UserID, Name)
+                )
+            """)
+            conn.commit()
+            logger.info("Successfully created CustomThemes table (MySQL)")
+
+    except Exception as e:
+        logger.error(f"Error creating CustomThemes table: {e}")
+        conn.rollback()
+        raise

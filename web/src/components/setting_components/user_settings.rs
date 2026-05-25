@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::validate_user_input;
 use crate::components::gen_funcs::{
     encode_password, validate_email, validate_username, ValidationError,
@@ -31,8 +31,6 @@ pub fn user_settings() -> Html {
     let fullname = use_state(|| "".to_string());
     let admin_status = use_state(|| false);
     let selected_user_id = use_state(|| None);
-    let _error_message = state.error_message.clone();
-    let _info_message = state.info_message.clone();
     let error_message_container = use_state(|| "".to_string());
     let admin_edit_status = use_state(|| 0);
     let update_trigger = use_state(|| false);
@@ -62,7 +60,7 @@ pub fn user_settings() -> Html {
                             Err(e) => {
                                 console::log_1(&format!("Error getting user info: {}", e).into());
 
-                                // user_dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error getting user info: {}", e).to_string()))
+                                // Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Option::from(format!("Error getting user info: {}", e).to_string()))
                             }
                         }
                     }
@@ -317,58 +315,59 @@ pub fn user_settings() -> Html {
     // Define the modal components
     let create_user_modal = html! {
         <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                        <h3 class="text-xl font-semibold">
-                            {i18n.t("settings.create_new_user")}
-                        </h3>
-                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                            </svg>
-                            <span class="sr-only">{i18n.t("settings.close_modal")}</span>
-                        </button>
-                    </div>
-                    <div class="p-4 md:p-5">
-                        <form class="space-y-4" action="#">
-                            <div>
-                                <label for="username" class="block mb-2 text-sm font-medium">{i18n.t("settings.username")}</label>
-                                <input oninput={on_username_change.clone()} placeholder="pinepods_user1" type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                                {
-                                    match *username_error {
-                                        username_error_notice::Hidden => html! {},
-                                        username_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{i18n.t("settings.username_min_length")}</p>},
-                                    }
+            <div class="modal-container relative w-full max-w-md rounded-lg shadow" onclick={stop_propagation.clone()}>
+                <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                    <h3 style="font-size:16px;font-weight:600;color:var(--text-color);">
+                        {i18n.t("settings.create_new_user")}
+                    </h3>
+                    <button onclick={on_close_modal.clone()} class="iconbtn">
+                        <i class="ph ph-x" style="font-size:18px;"></i>
+                    </button>
+                </div>
+                <div class="p-4 md:p-5">
+                    <form class="space-y-4" action="#">
+                        <div>
+                            <label for="username" style="display:block;font-size:13px;font-weight:500;color:var(--text-color);margin-bottom:6px;">{i18n.t("settings.username")}</label>
+                            <input oninput={on_username_change.clone()} placeholder="pinepods_user1" type="text" id="username" name="username" class="input" required=true />
+                            {
+                                match *username_error {
+                                    username_error_notice::Hidden => html! {},
+                                    username_error_notice::Shown => html! {<p style="color:var(--error-color,#f87171);font-size:11px;">{i18n.t("settings.username_min_length")}</p>},
                                 }
-                            </div>
-                            <div>
-                                <label for="fullname" class="block mb-2 text-sm font-medium">{i18n.t("settings.full_name")}</label>
-                                <input oninput={on_fullname_change.clone()} placeholder="Pinepods User" type="text" id="fullname" name="fullname" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                            </div>
-                            <div>
-                                <label for="email" class="block mb-2 text-sm font-medium">{i18n.t("settings.email")}</label>
-                                <input oninput={on_email_change.clone()} placeholder="user@pinepods.online" type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                                {
-                                    match *email_error {
-                                        email_error_notice::Hidden => html! {},
-                                        email_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{i18n.t("settings.invalid_email_address")}</p>},
-                                    }
+                            }
+                        </div>
+                        <div>
+                            <label for="fullname" style="display:block;font-size:13px;font-weight:500;color:var(--text-color);margin-bottom:6px;">{i18n.t("settings.full_name")}</label>
+                            <input oninput={on_fullname_change.clone()} placeholder="Pinepods User" type="text" id="fullname" name="fullname" class="input" required=true />
+                        </div>
+                        <div>
+                            <label for="email" style="display:block;font-size:13px;font-weight:500;color:var(--text-color);margin-bottom:6px;">{i18n.t("settings.email")}</label>
+                            <input oninput={on_email_change.clone()} placeholder="user@pinepods.online" type="email" id="email" name="email" class="input" required=true />
+                            {
+                                match *email_error {
+                                    email_error_notice::Hidden => html! {},
+                                    email_error_notice::Shown => html! {<p style="color:var(--error-color,#f87171);font-size:11px;">{i18n.t("settings.invalid_email_address")}</p>},
                                 }
-                            </div>
-                            <div>
-                                <label for="password" class="block mb-2 text-sm font-medium">{i18n.t("settings.password")}</label>
-                                <input oninput={on_password_change.clone()} placeholder="my_S3creT_P@$$" type="password" id="password" name="password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                                {
-                                    match *password_error {
-                                        password_error_notice::Hidden => html! {},
-                                        password_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{i18n.t("settings.password_min_length")}</p>},
-                                    }
+                            }
+                        </div>
+                        <div>
+                            <label for="password" style="display:block;font-size:13px;font-weight:500;color:var(--text-color);margin-bottom:6px;">{i18n.t("settings.password")}</label>
+                            <input oninput={on_password_change.clone()} placeholder="my_S3creT_P@$$" type="password" id="password" name="password" class="input" required=true />
+                            {
+                                match *password_error {
+                                    password_error_notice::Hidden => html! {},
+                                    password_error_notice::Shown => html! {<p style="color:var(--error-color,#f87171);font-size:11px;">{i18n.t("settings.password_min_length")}</p>},
                                 }
-                            </div>
-                            <button type="submit" onclick={on_create_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{i18n.t("settings.submit")}</button>
-                        </form>
-                    </div>
+                            }
+                        </div>
+                        <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:4px;">
+                            <button type="button" onclick={on_close_modal.clone()} class="btn btn-secondary">{i18n.t("common.cancel")}</button>
+                            <button type="submit" onclick={on_create_submit} class="btn btn-primary">
+                                <i class="ph ph-user-plus"></i>
+                                {i18n.t("settings.submit")}
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -383,7 +382,7 @@ pub fn user_settings() -> Html {
             // admin_edit_status.set(is_admin);
             Callback::from(move |_| {
                 if select_user_id == 1 {
-                    user_dispatch.reduce_mut(|state| {
+                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                         state.error_message =
                             Option::from("You cannot edit the background_tasks user.".to_string())
                     });
@@ -418,7 +417,7 @@ pub fn user_settings() -> Html {
                         .await
                     {
                         Ok(_response) => {
-                            user_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some("User deleted successfully".to_string())
                             });
                             page_state.set(PageState::Hidden); // Navigate back to the list page state
@@ -427,14 +426,14 @@ pub fn user_settings() -> Html {
                             web_sys::console::log_1(
                                 &format!("Failed to delete user: {}", e).into(),
                             );
-                            user_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some("Failed to delete user".to_string())
                             });
                         }
                     }
                 });
             } else {
-                user_dispatch
+                Dispatch::<NotificationState>::global()
                     .reduce_mut(|state| state.error_message = Some("No user selected".to_string()));
             }
         })
@@ -532,21 +531,21 @@ pub fn user_settings() -> Html {
                                         }
                                     }
                                 } else {
-                                    fullname_dispatch.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Option::from(
                                             "User ID not available for name update.".to_string(),
                                         )
                                     });
                                 }
                             } else {
-                                fullname_dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Option::from(
                                         "API key not available for name update.".to_string(),
                                     )
                                 });
                             }
                         } else {
-                            fullname_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(
                                     "Server name not available for name update.".to_string(),
                                 )
@@ -605,7 +604,7 @@ pub fn user_settings() -> Html {
                                         }
                                     }
                                 } else {
-                                    dispatch_wasm.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Option::from(
                                             "API key not available for username update."
                                                 .to_string(),
@@ -613,14 +612,14 @@ pub fn user_settings() -> Html {
                                     });
                                 }
                             } else {
-                                dispatch_wasm.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Option::from(
                                         "API key not available for username update.".to_string(),
                                     )
                                 });
                             }
                         } else {
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(
                                     "Server name not available for username update.".to_string(),
                                 )
@@ -931,94 +930,94 @@ pub fn user_settings() -> Html {
 
     // Define the modal components
     let edit_user_modal = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow z-50" onclick={stop_propagation.clone()}>
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                        <h3 class="text-xl font-semibold">
-                            {i18n.t("settings.edit_existing_user")}
-                        </h3>
-                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                            </svg>
-                            <span class="sr-only">{i18n.t("settings.close_modal")}</span>
-                        </button>
-                    </div>
-                    <p class="text-m font-semibold">
+        <div id="edit-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+            <div class="modal-container relative w-full max-w-md rounded-lg shadow z-50" onclick={stop_propagation.clone()}>
+                <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                    <h3 style="font-size:16px;font-weight:600;color:var(--text-color);">
+                        {i18n.t("settings.edit_existing_user")}
+                    </h3>
+                    <button onclick={on_close_modal.clone()} class="iconbtn">
+                        <i class="ph ph-x" style="font-size:18px;"></i>
+                    </button>
+                </div>
+                <p style="font-size:12px;color:var(--text-secondary-color);padding:10px 16px 0;">
                     {i18n.t("settings.change_user_fields_instructions")}
-                    </p>
-                    <div class="p-4 md:p-5">
-                        <form class="space-y-4" action="#">
-                            <div>
-                                <label for="username" class="block mb-2 text-sm font-medium">{i18n.t("settings.username")}</label>
-                                <input oninput={on_username_change.clone()} value={new_username.to_string()} placeholder="pinepods_user1" type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                                {
-                                    match *username_error {
-                                        username_error_notice::Hidden => html! {},
-                                        username_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{i18n.t("settings.username_min_length")}</p>},
-                                    }
+                </p>
+                <div class="p-4 md:p-5">
+                    <form class="space-y-4" action="#">
+                        <div>
+                            <label for="username" style="display:block;font-size:13px;font-weight:500;color:var(--text-color);margin-bottom:6px;">{i18n.t("settings.username")}</label>
+                            <input oninput={on_username_change.clone()} value={new_username.to_string()} placeholder="pinepods_user1" type="text" id="username" name="username" class="input" required=true />
+                            {
+                                match *username_error {
+                                    username_error_notice::Hidden => html! {},
+                                    username_error_notice::Shown => html! {<p style="color:var(--error-color,#f87171);font-size:11px;">{i18n.t("settings.username_min_length")}</p>},
                                 }
-                            </div>
-                            <div>
-                                <label for="fullname" class="block mb-2 text-sm font-medium">{i18n.t("settings.full_name")}</label>
-                                    <input oninput={on_fullname_change} value={fullname.to_string()} placeholder="Pinepods User" type="text" id="fullname" name="fullname" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                            </div>
-                            <div>
-                                <label for="email" class="block mb-2 text-sm font-medium">{i18n.t("settings.email")}</label>
-                                <input oninput={on_email_change} value={email.to_string()} placeholder="user@pinepods.online" type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                                {
-                                    match *email_error {
-                                        email_error_notice::Hidden => html! {},
-                                        email_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{i18n.t("settings.invalid_email_address")}</p>},
-                                    }
+                            }
+                        </div>
+                        <div>
+                            <label for="fullname" style="display:block;font-size:13px;font-weight:500;color:var(--text-color);margin-bottom:6px;">{i18n.t("settings.full_name")}</label>
+                            <input oninput={on_fullname_change} value={fullname.to_string()} placeholder="Pinepods User" type="text" id="fullname" name="fullname" class="input" required=true />
+                        </div>
+                        <div>
+                            <label for="email" style="display:block;font-size:13px;font-weight:500;color:var(--text-color);margin-bottom:6px;">{i18n.t("settings.email")}</label>
+                            <input oninput={on_email_change} value={email.to_string()} placeholder="user@pinepods.online" type="email" id="email" name="email" class="input" required=true />
+                            {
+                                match *email_error {
+                                    email_error_notice::Hidden => html! {},
+                                    email_error_notice::Shown => html! {<p style="color:var(--error-color,#f87171);font-size:11px;">{i18n.t("settings.invalid_email_address")}</p>},
                                 }
-                            </div>
-                            <div>
-                                <label for="password" class="block mb-2 text-sm font-medium">{i18n.t("settings.password")}</label>
+                            }
+                        </div>
+                        <div>
+                            <label for="password" style="display:block;font-size:13px;font-weight:500;color:var(--text-color);margin-bottom:6px;">{i18n.t("settings.password")}</label>
+                            <input
+                                oninput={on_password_change.clone()}
+                                value={new_password.to_string()}
+                                placeholder="my_S3creT_P@$$"
+                                type="password"
+                                id="password"
+                                name="password"
+                                class="input"
+                                required=true
+                            />
+                            {
+                                match *password_error {
+                                    password_error_notice::Hidden => html! {},
+                                    password_error_notice::Shown => html! {<p style="color:var(--error-color,#f87171);font-size:11px;">{i18n.t("settings.password_min_length")}</p>},
+                                }
+                            }
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <label class="toggle" style="gap:8px;flex:1;">
                                 <input
-                                    oninput={on_password_change.clone()}
-                                    value={new_password.to_string()}  // Use state instead of static value
-                                    placeholder="my_S3creT_P@$$"
-                                    type="password"
-                                    id="password"
-                                    name="password"
-                                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                                    required=true
+                                    onchange={on_admin_change}
+                                    checked={*admin_status}
+                                    type="checkbox"
+                                    id="admin"
+                                    name="admin"
                                 />
-                                {
-                                    match *password_error {
-                                        password_error_notice::Hidden => html! {},
-                                        password_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{i18n.t("settings.password_min_length")}</p>},
-                                    }
-                                }
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <div class="flex items-center">
-                                    <label for="admin" class="mr-2 text-sm font-medium">{i18n.t("settings.admin_user_question")}</label>
-                                    <input
-                                        onchange={on_admin_change} // Changed from oninput to onchange
-                                        checked={*admin_status}    // Use the state value instead of computing from users
-                                        type="checkbox"
-                                        id="admin"
-                                        name="admin"
-                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white"
-                                        required=true
-                                    />
-                                </div>
-                                <button
-                                    type="button"
-                                    onclick={on_delete_click}
-                                    class="delete-button bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
-                                >
-                                    {i18n.t("settings.delete_user")}
-
-                                </button>
-                            </div>
-                            <button type="submit" onclick={on_edit_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{i18n.t("settings.submit")}</button>
-
-                        </form>
-                    </div>
+                                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                                <span style="font-size:13px;color:var(--text-color);">{i18n.t("settings.admin_user_question")}</span>
+                            </label>
+                            <button
+                                type="button"
+                                onclick={on_delete_click}
+                                class="btn btn-danger"
+                                style="padding:6px 10px;font-size:12px;"
+                            >
+                                <i class="ph ph-trash"></i>
+                                {i18n.t("settings.delete_user")}
+                            </button>
+                        </div>
+                        <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:4px;">
+                            <button type="button" onclick={on_close_modal.clone()} class="btn btn-secondary">{i18n.t("common.cancel")}</button>
+                            <button type="submit" onclick={on_edit_submit} class="btn btn-primary">
+                                <i class="ph ph-floppy-disk"></i>
+                                {i18n.t("settings.submit")}
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -1033,18 +1032,20 @@ pub fn user_settings() -> Html {
             _ => html! {},
             }
         }
-            <div class="p-4">
-                <p class="item_container-text text-lg font-bold mb-4">{i18n.t("settings.user_management")}</p>
-                <p class="item_container-text text-md mb-4">{i18n.t("settings.user_management_description")}</p>
-                <button onclick={on_create_new_user} class="mt-4 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                    {i18n.t("settings.create_new_user")}
-                </button>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("settings.create_new_user")}</div></div>
+                <div class="settings-row-control">
+                    <button onclick={on_create_new_user} class="btn btn-secondary" style="padding:6px 12px;">
+                        <i class="ph ph-plus"></i>
+                        <span>{i18n.t("settings.create_new_user")}</span>
+                    </button>
+                </div>
             </div>
             <div class="relative overflow-x-auto">
                 {
                     match *error_container {
                         error_container_state::Hidden => html! {},
-                        error_container_state::Shown => html! {<p class="text-red-500 text-xs italic">{&*error_message_container}</p>},
+                        error_container_state::Shown => html! {<p style="color:var(--error-color,#f87171);font-size:11px;">{&*error_message_container}</p>},
                     }
                 }
                 <table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">

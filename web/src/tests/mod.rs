@@ -1,27 +1,26 @@
-// src/tests/mod.rs
+use wasm_bindgen_test::*;
 use crate::components::context::AppState;
 use crate::pages::routes::Route;
-use crate::switch;
 
-#[test]
+wasm_bindgen_test_configure!(run_in_node_experimental);
+
+#[wasm_bindgen_test]
 fn test_app_compiles() {
     assert!(true);
 }
 
-#[test]
+#[wasm_bindgen_test]
 fn test_basic_state() {
     let state = AppState::default();
     assert!(state.is_loading.is_none());
 }
 
-#[test]
+#[wasm_bindgen_test]
 fn test_with_output() {
-    println!("Running test with output");
     assert_eq!(2 + 2, 4);
 }
 
-// Test that route enum variants exist
-#[test]
+#[wasm_bindgen_test]
 fn test_route_variants_exist() {
     let routes = vec![
         Route::Home,
@@ -34,10 +33,8 @@ fn test_route_variants_exist() {
     assert!(!routes.is_empty());
 }
 
-// Test route variants
-#[test]
+#[wasm_bindgen_test]
 fn test_route_variants() {
-    // Test route with parameter
     let person_route = Route::Person {
         name: "test_user".to_string(),
     };
@@ -45,7 +42,6 @@ fn test_route_variants() {
         url_key: "test_key".to_string(),
     };
 
-    // Verify parameter values
     match person_route {
         Route::Person { name } => assert_eq!(name, "test_user"),
         _ => panic!("Wrong route type"),

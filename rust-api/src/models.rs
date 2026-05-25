@@ -323,6 +323,11 @@ pub struct QueuePodcastRequest {
     pub is_youtube: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ClearQueueRequest {
+    pub user_id: i32,
+}
+
 // Saved episodes models
 #[derive(Debug, Deserialize)]
 pub struct SavePodcastRequest {
@@ -369,6 +374,7 @@ pub struct PlaylistInfo {
 pub struct PlaylistEpisodesResponse {
     pub episodes: Vec<SavedEpisode>,
     pub playlist_info: PlaylistInfo,
+    pub total: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -529,4 +535,60 @@ impl<T> PaginatedResponse<T> {
             total_pages,
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CustomTheme {
+    pub themeid: i32,
+    pub name: String,
+    pub background_color: String,
+    pub button_color: String,
+    pub container_button_color: String,
+    pub button_text_color: String,
+    pub text_color: String,
+    pub text_secondary_color: String,
+    pub border_color: String,
+    pub accent_color: String,
+    pub prog_bar_color: String,
+    pub error_color: String,
+    pub bonus_color: String,
+    pub secondary_background: String,
+    pub container_background: String,
+    pub standout_color: String,
+    pub hover_color: String,
+    pub link_color: String,
+    pub thumb_color: String,
+    pub unfilled_color: String,
+    pub check_box_color: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateCustomThemeRequest {
+    pub user_id: i32,
+    pub name: String,
+    pub background_color: String,
+    pub button_color: String,
+    pub container_button_color: String,
+    pub button_text_color: String,
+    pub text_color: String,
+    pub text_secondary_color: String,
+    pub border_color: String,
+    pub accent_color: String,
+    pub prog_bar_color: String,
+    pub error_color: String,
+    pub bonus_color: String,
+    pub secondary_background: String,
+    pub container_background: String,
+    pub standout_color: String,
+    pub hover_color: String,
+    pub link_color: String,
+    pub thumb_color: String,
+    pub unfilled_color: String,
+    pub check_box_color: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteCustomThemeRequest {
+    pub user_id: i32,
+    pub theme_id: i32,
 }

@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_get_startpage, call_set_startpage, call_set_global_podcast_cover_preference, call_get_podcast_cover_preference};
 use wasm_bindgen_futures::spawn_local;
@@ -134,13 +134,13 @@ pub fn startpage() -> Html {
                         .await
                     {
                         Ok(_) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(success_msg.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!("{}{}", error_prefix.clone(), formatted_error));
                             });
                         }
@@ -152,50 +152,38 @@ pub fn startpage() -> Html {
 
     let on_covers_change = {
         let use_podcast_covers = use_podcast_covers.clone();
-        Callback::from(move |e: Event| {
-            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
-                use_podcast_covers.set(input.checked());
-            }
-        })
-    };
-
-    let on_covers_submit = {
-        let use_podcast_covers = use_podcast_covers.clone();
         let state = state.clone();
         let dispatch = _dispatch.clone();
-
-        // Capture translated messages before move
         let success_msg = "Podcast cover preference updated successfully".to_string();
         let error_prefix = "Failed to update podcast cover preference: ".to_string();
-        Callback::from(move |_| {
-            let success_msg = success_msg.clone();
-            let error_prefix = error_prefix.clone();
-            let dispatch = dispatch.clone();
-            let covers_preference = *use_podcast_covers;
-
-            // Update server
-            if let (Some(api_key), Some(user_id), Some(server_name)) = (
-                state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
-                state.user_details.as_ref().map(|d| d.UserID),
-                state.auth_details.as_ref().map(|d| d.server_name.clone()),
-            ) {
-                spawn_local(async move {
-                    match call_set_global_podcast_cover_preference(&server_name, &api_key, user_id, covers_preference, None)
-                        .await
-                    {
-                        Ok(_) => {
-                            dispatch.reduce_mut(|state| {
-                                state.info_message = Some(success_msg.clone());
-                            });
+        Callback::from(move |e: Event| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                let new_value = input.checked();
+                use_podcast_covers.set(new_value);
+                let success_msg = success_msg.clone();
+                let error_prefix = error_prefix.clone();
+                let dispatch = dispatch.clone();
+                if let (Some(api_key), Some(user_id), Some(server_name)) = (
+                    state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
+                    state.user_details.as_ref().map(|d| d.UserID),
+                    state.auth_details.as_ref().map(|d| d.server_name.clone()),
+                ) {
+                    spawn_local(async move {
+                        match call_set_global_podcast_cover_preference(&server_name, &api_key, user_id, new_value, None).await {
+                            Ok(_) => {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                    state.info_message = Some(success_msg.clone());
+                                });
+                            }
+                            Err(e) => {
+                                let formatted_error = format_error_message(&e.to_string());
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                    state.error_message = Some(format!("{}{}", error_prefix.clone(), formatted_error));
+                                });
+                            }
                         }
-                        Err(e) => {
-                            let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!("{}{}", error_prefix.clone(), formatted_error));
-                            });
-                        }
-                    }
-                });
+                    });
+                }
             }
         })
     };
@@ -212,36 +200,17 @@ pub fn startpage() -> Html {
     ];
 
     html! {
-        <div class="p-6 space-y-6">
-            <div class="flex items-center gap-3 mb-6">
-                <i class="ph ph-monitor text-2xl"></i>
-                <h2 class="text-xl font-semibold item_container-text">{"Display Settings"}</h2>
-            </div>
-
-            // Start Page Settings Section
-            <div class="border-b border-gray-200 pb-6">
-                <div class="flex items-center gap-3 mb-4">
-                    <i class="ph ph-house text-lg"></i>
-                    <h3 class="text-lg font-medium item_container-text">{i18n.t("start_page_options.start_page_settings")}</h3>
-                </div>
-
-                <div class="mb-4">
-                    <p class="item_container-text mb-2 text-sm">
-                        {i18n.t("start_page_options.start_page_description")}
-                    </p>
-                </div>
-
-                if *loading {
-                    <div class="flex justify-center">
-                        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-500"></div>
-                    </div>
-                } else {
-                    <div class="flex flex-col gap-3">
-                        <div class="theme-select-container relative">
+        <>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("start_page_options.select_start_page")}</div></div>
+                <div class="settings-row-control">
+                    if *loading {
+                        <i class="ph ph-spinner"></i>
+                    } else {
+                        <>
                             <select
                                 onchange={on_change}
-                                class="theme-select-dropdown w-full p-3 pr-10 rounded-lg border appearance-none cursor-pointer"
-                                value={(*selected_startpage).clone()}
+                                class="select"
                             >
                                 <option value="" disabled=true>{i18n.t("start_page_options.select_start_page")}</option>
                                 {startpage_options.into_iter().map(|(display_name, route)| {
@@ -253,64 +222,33 @@ pub fn startpage() -> Html {
                                     }
                                 }).collect::<Html>()}
                             </select>
-                            <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
-                                <i class="ph ph-caret-down text-xl"></i>
-                            </div>
-                        </div>
-
-                        <button
-                            onclick={on_submit}
-                            class="theme-submit-button w-full p-3 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
-                        >
-                            <i class="ph ph-thumbs-up text-xl"></i>
-                            {i18n.t("start_page_options.apply_start_page")}
-                        </button>
-                    </div>
-                }
+                            <button onclick={on_submit} class="btn btn-primary">
+                                {i18n.t("start_page_options.apply_start_page")}
+                            </button>
+                        </>
+                    }
+                </div>
             </div>
 
-            // Podcast Cover Settings Section
-            <div>
-                <div class="flex items-center gap-3 mb-4">
-                    <i class="ph ph-image text-lg"></i>
-                    <h3 class="text-lg font-medium item_container-text">{"Podcast Cover Display"}</h3>
-                </div>
+            <div class="settings-subsection-title">{i18n.t("start_page_options.podcast_cover_display")}</div>
 
-                <div class="mb-4">
-                    <p class="item_container-text mb-2 text-sm">
-                        {"When enabled, episodes will always show the podcast cover instead of the episode-specific artwork. This can help make episodes easier to identify by podcast."}
-                    </p>
-                </div>
-
-                if *covers_loading {
-                    <div class="flex justify-center">
-                        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-500"></div>
-                    </div>
-                } else {
-                    <div class="flex flex-col gap-3">
-                        <div class="flex items-center gap-3">
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("start_page_options.always_use_podcast_covers")}</div></div>
+                <div class="settings-row-control">
+                    if *covers_loading {
+                        <i class="ph ph-spinner"></i>
+                    } else {
+                        <label class="toggle">
                             <input
                                 type="checkbox"
-                                id="use-podcast-covers"
                                 checked={*use_podcast_covers}
                                 onchange={on_covers_change}
-                                class="podcast-dropdown-checkbox h-5 w-5 rounded border-2 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer appearance-none checked:bg-primary checked:border-primary"
                             />
-                            <label for="use-podcast-covers" class="item_container-text text-sm">
-                                {"Always use podcast covers instead of episode covers"}
-                            </label>
-                        </div>
-
-                        <button
-                            onclick={on_covers_submit}
-                            class="theme-submit-button w-full p-3 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
-                        >
-                            <i class="ph ph-thumbs-up text-xl"></i>
-                            {"Apply Cover Settings"}
-                        </button>
-                    </div>
-                }
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        </label>
+                    }
+                </div>
             </div>
-        </div>
+        </>
     }
 }

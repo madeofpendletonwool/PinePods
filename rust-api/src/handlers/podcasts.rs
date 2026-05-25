@@ -601,6 +601,25 @@ pub async fn remove_queued_episode(
     }))
 }
 
+pub async fn clear_all_queue(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<crate::models::ClearQueueRequest>,
+) -> Result<Json<crate::models::QueueResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+    if !check_user_access(&state, &api_key, request.user_id).await? {
+        return Err(AppError::forbidden("You can only clear your own queue!"));
+    }
+    state.db_pool.clear_queue(request.user_id).await?;
+    Ok(Json(crate::models::QueueResponse {
+        data: "Queue cleared successfully".to_string(),
+    }))
+}
+
 // Get queued episodes - matches call_get_queued_episodes from frontend
 pub async fn get_queued_episodes(
     Query(query): Query<TimeInfoQuery>, // Reuse TimeInfoQuery since it just needs user_id
@@ -1718,6 +1737,36 @@ pub async fn get_stats(
     }
 }
 
+// Query parameters for get_extended_stats
+#[derive(Deserialize)]
+pub struct GetExtendedStatsQuery {
+    pub user_id: i32,
+}
+
+// Get extended user stats with rich listening insights
+pub async fn get_extended_stats(
+    Query(query): Query<GetExtendedStatsQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == query.user_id || is_web_key {
+        let stats = state.db_pool.get_extended_stats(query.user_id).await?;
+        Ok(Json(stats))
+    } else {
+        Err(AppError::forbidden("You can only get stats for your own account."))
+    }
+}
+
 // Get PinePods version - matches Python get_pinepods_version endpoint exactly
 pub async fn get_pinepods_version(
     headers: HeaderMap,
@@ -2049,6 +2098,8 @@ pub async fn get_playback_speed(
 pub struct GetPlaylistEpisodesQuery {
     pub user_id: i32,
     pub playlist_id: i32,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 // Get playlist episodes - UPDATED to use dynamic playlist system
@@ -2067,10 +2118,15 @@ pub async fn get_playlist_episodes(
         return Err(AppError::forbidden("You can only view your own playlist episodes!"));
     }
 
+    let limit = query.limit.unwrap_or(50).min(200).max(1);
+    let offset = query.offset.unwrap_or(0).max(0);
+
     // Use new dynamic playlist system
     let playlist_response = state.db_pool.get_playlist_episodes_dynamic(
-        query.playlist_id, 
-        query.user_id
+        query.playlist_id,
+        query.user_id,
+        limit,
+        offset,
     ).await?;
     
     // Return in format expected by frontend

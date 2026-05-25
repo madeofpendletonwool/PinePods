@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{
@@ -255,13 +255,13 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
                     {
                         Ok(_) => {
                             is_subscribed.set(true);
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(successfully_subscribed_msg.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}: {}",
                                     failed_to_subscribe_msg,
@@ -290,13 +290,13 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
                     {
                         Ok(_) => {
                             is_subscribed.set(false);
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(successfully_unsubscribed_msg.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}: {}",
                                     failed_to_unsubscribe_msg,

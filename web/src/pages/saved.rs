@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
-use crate::components::context::{AppState, ExpandedDescriptions, FilterState};
+use crate::components::context::{AppState, EpisodeStatusState, ExpandedDescriptions, FilterState};
 use crate::components::context_menu_button::PageType;
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{
@@ -40,6 +40,7 @@ pub enum SavedSortDirection {
 pub fn saved() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (ep_status, _) = use_store::<EpisodeStatusState>();
     let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
     let error = use_state(|| None);
@@ -110,7 +111,7 @@ pub fn saved() -> Html {
                                     .map(|ep| ep.episodeid)
                                     .collect();
 
-                                dispatch.reduce_mut(move |state| {
+                                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                     state.saved_episodes = fetched_episodes;
                                     state.completed_episodes = Some(completed_episode_ids);
                                 });
@@ -118,13 +119,12 @@ pub fn saved() -> Html {
                                 // Fetch local episode IDs for Tauri mode
                                 #[cfg(not(feature = "server_build"))]
                                 {
-                                    let dispatch_local = dispatch.clone();
                                     wasm_bindgen_futures::spawn_local(async move {
                                         if let Ok(mut local_episodes) =
                                             crate::pages::downloads_tauri::fetch_local_episodes()
                                                 .await
                                         {
-                                            dispatch_local.reduce_mut(move |state| {
+                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                                 state.downloaded_episodes.clear_local();
                                                 for ep in local_episodes.drain(..) {
                                                     state.downloaded_episodes.push_local(ep);
@@ -150,7 +150,7 @@ pub fn saved() -> Html {
 
     let filtered_episodes = use_memo(
         (
-            state.saved_episodes.clone(),
+            ep_status.saved_episodes.clone(),
             episode_search_term.clone(),
             episode_sort_direction.clone(),
             show_completed.clone(),
@@ -348,7 +348,7 @@ pub fn saved() -> Html {
                             </div>
 
                             {
-                                if state.saved_episodes.len() > 0 {
+                                if ep_status.saved_episodes.len() > 0 {
                                     let favorite_podcast_ids: std::collections::HashSet<i32> = state
                                         .podcast_feed_return_extra
                                         .as_ref()

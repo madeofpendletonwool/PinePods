@@ -2189,6 +2189,25 @@ impl DatabasePool {
         }
     }
 
+    pub async fn clear_queue(&self, user_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"DELETE FROM "EpisodeQueue" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(())
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("DELETE FROM EpisodeQueue WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(())
+            }
+        }
+    }
+
     // Get queued episodes - matches Python get_queued_episodes function
     pub async fn get_queued_episodes(&self, user_id: i32) -> AppResult<Vec<crate::models::QueuedEpisode>> {
         match self {
@@ -3070,6 +3089,354 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
+            }
+        }
+    }
+
+    // Get extended user stats with rich listening insights
+    pub async fn get_extended_stats(&self, user_id: i32) -> AppResult<serde_json::Value> {
+        fn compute_streak(days: &[chrono::NaiveDate]) -> i32 {
+            if days.is_empty() {
+                return 0;
+            }
+            let today = chrono::Utc::now().date_naive();
+            let yesterday = today.pred_opt().unwrap_or(today);
+            let start = days[0];
+            if start != today && start != yesterday {
+                return 0;
+            }
+            let mut streak = 0i32;
+            let mut expected = start;
+            for day in days {
+                if *day == expected {
+                    streak += 1;
+                    match expected.pred_opt() {
+                        Some(prev) => expected = prev,
+                        None => break,
+                    }
+                } else if *day < expected {
+                    break;
+                }
+            }
+            streak
+        }
+
+        fn format_bytes(bytes: i64) -> String {
+            if bytes >= 1_073_741_824 {
+                format!("{:.2} GB", bytes as f64 / 1_073_741_824.0)
+            } else if bytes >= 1_048_576 {
+                format!("{:.1} MB", bytes as f64 / 1_048_576.0)
+            } else if bytes >= 1024 {
+                format!("{} KB", bytes / 1024)
+            } else {
+                format!("{} B", bytes)
+            }
+        }
+
+        fn badge_from_avg_hour(avg_hour: Option<f64>) -> &'static str {
+            match avg_hour {
+                None => "no_data",
+                Some(h) if h < 6.0 || h >= 22.0 => "night_owl",
+                Some(h) if h >= 18.0 => "evening_listener",
+                Some(h) if h >= 12.0 => "afternoon_listener",
+                _ => "morning_listener",
+            }
+        }
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Top 5 podcasts by listen time
+                let podcast_rows = sqlx::query(r#"
+                    SELECT p.podcastid, p.podcastname, COALESCE(p.artworkurl, '') as artworkurl,
+                           SUM(ueh.listenduration) AS total_seconds
+                    FROM "UserEpisodeHistory" ueh
+                    INNER JOIN "Episodes" e ON ueh.episodeid = e.episodeid
+                    INNER JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    WHERE ueh.userid = $1
+                    GROUP BY p.podcastid, p.podcastname, p.artworkurl
+                    ORDER BY total_seconds DESC LIMIT 5
+                "#).bind(user_id).fetch_all(pool).await?;
+
+                let top_podcasts: Vec<serde_json::Value> = podcast_rows.iter().map(|row| {
+                    serde_json::json!({
+                        "podcastid": row.try_get::<i32, _>("podcastid").unwrap_or(0),
+                        "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default(),
+                        "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_default(),
+                        "total_seconds": row.try_get::<i64, _>("total_seconds").unwrap_or(0)
+                    })
+                }).collect();
+
+                // Categories with listen time (parse in Rust since format varies)
+                let cat_rows = sqlx::query(r#"
+                    SELECT p.categories, SUM(ueh.listenduration) AS total_seconds
+                    FROM "UserEpisodeHistory" ueh
+                    INNER JOIN "Episodes" e ON ueh.episodeid = e.episodeid
+                    INNER JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    WHERE ueh.userid = $1 AND p.categories IS NOT NULL AND p.categories != ''
+                    GROUP BY p.podcastid, p.categories
+                "#).bind(user_id).fetch_all(pool).await?;
+
+                let mut category_map: HashMap<String, i64> = HashMap::new();
+                for row in &cat_rows {
+                    let cats_str: String = row.try_get("categories").unwrap_or_default();
+                    let secs: i64 = row.try_get("total_seconds").unwrap_or(0);
+                    if let Some(parsed) = self.parse_categories_json(&cats_str) {
+                        for (_, cat_name) in parsed {
+                            if !cat_name.is_empty() {
+                                *category_map.entry(cat_name).or_insert(0) += secs;
+                            }
+                        }
+                    }
+                }
+                let mut cats_sorted: Vec<(String, i64)> = category_map.into_iter().collect();
+                cats_sorted.sort_by(|a, b| b.1.cmp(&a.1));
+                cats_sorted.truncate(5);
+                let favorite_categories: Vec<serde_json::Value> = cats_sorted.into_iter()
+                    .map(|(name, secs)| serde_json::json!({"name": name, "total_seconds": secs}))
+                    .collect();
+
+                // Episode completion rate
+                let comp_row = sqlx::query(r#"
+                    SELECT COUNT(*) AS total,
+                           COUNT(CASE WHEN ueh.listenduration >= e.episodeduration * 0.9
+                                       AND e.episodeduration > 0 THEN 1 END) AS completed
+                    FROM "UserEpisodeHistory" ueh
+                    INNER JOIN "Episodes" e ON ueh.episodeid = e.episodeid
+                    WHERE ueh.userid = $1
+                "#).bind(user_id).fetch_one(pool).await?;
+
+                let total: i64 = comp_row.try_get("total").unwrap_or(0);
+                let completed: i64 = comp_row.try_get("completed").unwrap_or(0);
+                let completion_rate = if total > 0 {
+                    ((completed as f64 / total as f64) * 100.0).round() as i32
+                } else { 0 };
+
+                // Longest episode listened
+                let longest_row = sqlx::query(r#"
+                    SELECT e.episodeid, e.episodetitle, e.episodeduration, p.podcastname
+                    FROM "UserEpisodeHistory" ueh
+                    INNER JOIN "Episodes" e ON ueh.episodeid = e.episodeid
+                    INNER JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    WHERE ueh.userid = $1 AND e.episodeduration IS NOT NULL AND e.episodeduration > 0
+                    ORDER BY e.episodeduration DESC LIMIT 1
+                "#).bind(user_id).fetch_optional(pool).await?;
+
+                let longest_episode = longest_row.as_ref().map(|row| serde_json::json!({
+                    "episodeid": row.try_get::<i32, _>("episodeid").unwrap_or(0),
+                    "episodetitle": row.try_get::<String, _>("episodetitle").unwrap_or_default(),
+                    "episodeduration": row.try_get::<i32, _>("episodeduration").unwrap_or(0),
+                    "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default()
+                }));
+
+                // Listening personality badge (avg hour of day)
+                let personality_row = sqlx::query(r#"
+                    SELECT AVG(EXTRACT(HOUR FROM listendate)) AS avg_hour
+                    FROM "UserEpisodeHistory"
+                    WHERE userid = $1 AND listendate IS NOT NULL
+                "#).bind(user_id).fetch_one(pool).await?;
+
+                let avg_hour: Option<f64> = personality_row.try_get("avg_hour").unwrap_or(None);
+                let listening_badge = badge_from_avg_hour(avg_hour);
+
+                // Total data downloaded
+                let dl_row = sqlx::query(r#"
+                    SELECT COALESCE(SUM(downloadedsize), 0) AS total_bytes
+                    FROM "DownloadedEpisodes" WHERE userid = $1
+                "#).bind(user_id).fetch_one(pool).await?;
+
+                let total_bytes: i64 = dl_row.try_get("total_bytes").unwrap_or(0);
+
+                // Current streak (distinct calendar days, sorted DESC)
+                let day_rows = sqlx::query(r#"
+                    SELECT DISTINCT DATE(listendate) AS listen_day
+                    FROM "UserEpisodeHistory"
+                    WHERE userid = $1 AND listendate IS NOT NULL
+                    ORDER BY listen_day DESC
+                "#).bind(user_id).fetch_all(pool).await?;
+
+                let days: Vec<chrono::NaiveDate> = day_rows.iter()
+                    .filter_map(|row| row.try_get::<chrono::NaiveDate, _>("listen_day").ok())
+                    .collect();
+                let current_streak = compute_streak(&days);
+
+                // Listening by day of week
+                let dow_rows = sqlx::query(r#"
+                    SELECT EXTRACT(DOW FROM listendate) AS dow,
+                           SUM(listenduration) AS total_seconds
+                    FROM "UserEpisodeHistory"
+                    WHERE userid = $1 AND listendate IS NOT NULL
+                    GROUP BY dow ORDER BY dow
+                "#).bind(user_id).fetch_all(pool).await?;
+
+                let mut dow_data = [0i64; 7];
+                for row in &dow_rows {
+                    let dow: f64 = row.try_get("dow").unwrap_or(0.0);
+                    let secs: i64 = row.try_get("total_seconds").unwrap_or(0);
+                    let idx = dow as usize;
+                    if idx < 7 { dow_data[idx] = secs; }
+                }
+
+                Ok(serde_json::json!({
+                    "top_podcasts": top_podcasts,
+                    "favorite_categories": favorite_categories,
+                    "completion_rate": completion_rate,
+                    "longest_episode": longest_episode,
+                    "listening_badge": listening_badge,
+                    "total_downloaded_bytes": total_bytes,
+                    "total_downloaded_formatted": format_bytes(total_bytes),
+                    "current_streak": current_streak,
+                    "listening_by_dow": dow_data
+                }))
+            }
+            DatabasePool::MySQL(pool) => {
+                // Top 5 podcasts by listen time
+                let podcast_rows = sqlx::query(
+                    "SELECT p.PodcastID as podcastid, p.PodcastName as podcastname,
+                            COALESCE(p.ArtworkURL, '') as artworkurl,
+                            SUM(ueh.ListenDuration) AS total_seconds
+                     FROM UserEpisodeHistory ueh
+                     INNER JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
+                     INNER JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                     WHERE ueh.UserID = ?
+                     GROUP BY p.PodcastID, p.PodcastName, p.ArtworkURL
+                     ORDER BY total_seconds DESC LIMIT 5"
+                ).bind(user_id).fetch_all(pool).await?;
+
+                let top_podcasts: Vec<serde_json::Value> = podcast_rows.iter().map(|row| {
+                    serde_json::json!({
+                        "podcastid": row.try_get::<i32, _>("podcastid").unwrap_or(0),
+                        "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default(),
+                        "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_default(),
+                        "total_seconds": row.try_get::<i64, _>("total_seconds").unwrap_or(0)
+                    })
+                }).collect();
+
+                // Categories
+                let cat_rows = sqlx::query(
+                    "SELECT p.Categories as categories, SUM(ueh.ListenDuration) AS total_seconds
+                     FROM UserEpisodeHistory ueh
+                     INNER JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
+                     INNER JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                     WHERE ueh.UserID = ? AND p.Categories IS NOT NULL AND p.Categories != ''
+                     GROUP BY p.PodcastID, p.Categories"
+                ).bind(user_id).fetch_all(pool).await?;
+
+                let mut category_map: HashMap<String, i64> = HashMap::new();
+                for row in &cat_rows {
+                    let cats_str: String = row.try_get("categories").unwrap_or_default();
+                    let secs: i64 = row.try_get("total_seconds").unwrap_or(0);
+                    if let Some(parsed) = self.parse_categories_json(&cats_str) {
+                        for (_, cat_name) in parsed {
+                            if !cat_name.is_empty() {
+                                *category_map.entry(cat_name).or_insert(0) += secs;
+                            }
+                        }
+                    }
+                }
+                let mut cats_sorted: Vec<(String, i64)> = category_map.into_iter().collect();
+                cats_sorted.sort_by(|a, b| b.1.cmp(&a.1));
+                cats_sorted.truncate(5);
+                let favorite_categories: Vec<serde_json::Value> = cats_sorted.into_iter()
+                    .map(|(name, secs)| serde_json::json!({"name": name, "total_seconds": secs}))
+                    .collect();
+
+                // Completion rate
+                let comp_row = sqlx::query(
+                    "SELECT COUNT(*) AS total,
+                            COUNT(CASE WHEN ueh.ListenDuration >= e.EpisodeDuration * 0.9
+                                        AND e.EpisodeDuration > 0 THEN 1 END) AS completed
+                     FROM UserEpisodeHistory ueh
+                     INNER JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
+                     WHERE ueh.UserID = ?"
+                ).bind(user_id).fetch_one(pool).await?;
+
+                let total: i64 = comp_row.try_get("total").unwrap_or(0);
+                let completed: i64 = comp_row.try_get("completed").unwrap_or(0);
+                let completion_rate = if total > 0 {
+                    ((completed as f64 / total as f64) * 100.0).round() as i32
+                } else { 0 };
+
+                // Longest episode
+                let longest_row = sqlx::query(
+                    "SELECT e.EpisodeID as episodeid, e.EpisodeTitle as episodetitle,
+                            e.EpisodeDuration as episodeduration, p.PodcastName as podcastname
+                     FROM UserEpisodeHistory ueh
+                     INNER JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
+                     INNER JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                     WHERE ueh.UserID = ? AND e.EpisodeDuration IS NOT NULL AND e.EpisodeDuration > 0
+                     ORDER BY e.EpisodeDuration DESC LIMIT 1"
+                ).bind(user_id).fetch_optional(pool).await?;
+
+                let longest_episode = longest_row.as_ref().map(|row| serde_json::json!({
+                    "episodeid": row.try_get::<i32, _>("episodeid").unwrap_or(0),
+                    "episodetitle": row.try_get::<String, _>("episodetitle").unwrap_or_default(),
+                    "episodeduration": row.try_get::<i32, _>("episodeduration").unwrap_or(0),
+                    "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default()
+                }));
+
+                // Listening personality badge via SUM/COUNT to avoid DECIMAL type
+                let personality_row = sqlx::query(
+                    "SELECT COALESCE(SUM(HOUR(ListenDate)), 0) AS hour_sum, COUNT(*) AS row_count
+                     FROM UserEpisodeHistory
+                     WHERE UserID = ? AND ListenDate IS NOT NULL"
+                ).bind(user_id).fetch_one(pool).await?;
+
+                let hour_sum: i64 = personality_row.try_get("hour_sum").unwrap_or(0);
+                let row_count: i64 = personality_row.try_get("row_count").unwrap_or(0);
+                let avg_hour_f64: Option<f64> = if row_count > 0 {
+                    Some(hour_sum as f64 / row_count as f64)
+                } else { None };
+                let listening_badge = badge_from_avg_hour(avg_hour_f64);
+
+                // Total downloaded
+                let dl_row = sqlx::query(
+                    "SELECT COALESCE(SUM(DownloadedSize), 0) AS total_bytes
+                     FROM DownloadedEpisodes WHERE UserID = ?"
+                ).bind(user_id).fetch_one(pool).await?;
+
+                let total_bytes: i64 = dl_row.try_get("total_bytes").unwrap_or(0);
+
+                // Streak
+                let day_rows = sqlx::query(
+                    "SELECT DISTINCT DATE(ListenDate) AS listen_day
+                     FROM UserEpisodeHistory
+                     WHERE UserID = ? AND ListenDate IS NOT NULL
+                     ORDER BY listen_day DESC"
+                ).bind(user_id).fetch_all(pool).await?;
+
+                let days: Vec<chrono::NaiveDate> = day_rows.iter()
+                    .filter_map(|row| row.try_get::<chrono::NaiveDate, _>("listen_day").ok())
+                    .collect();
+                let current_streak = compute_streak(&days);
+
+                // DOW: MySQL DAYOFWEEK returns 1=Sun..7=Sat, subtract 1 for 0-indexed
+                let dow_rows = sqlx::query(
+                    "SELECT DAYOFWEEK(ListenDate) - 1 AS dow,
+                            SUM(ListenDuration) AS total_seconds
+                     FROM UserEpisodeHistory
+                     WHERE UserID = ? AND ListenDate IS NOT NULL
+                     GROUP BY DAYOFWEEK(ListenDate) ORDER BY dow"
+                ).bind(user_id).fetch_all(pool).await?;
+
+                let mut dow_data = [0i64; 7];
+                for row in &dow_rows {
+                    let dow: i32 = row.try_get("dow").unwrap_or(0);
+                    let secs: i64 = row.try_get("total_seconds").unwrap_or(0);
+                    let idx = dow as usize;
+                    if idx < 7 { dow_data[idx] = secs; }
+                }
+
+                Ok(serde_json::json!({
+                    "top_podcasts": top_podcasts,
+                    "favorite_categories": favorite_categories,
+                    "completion_rate": completion_rate,
+                    "longest_episode": longest_episode,
+                    "listening_badge": listening_badge,
+                    "total_downloaded_bytes": total_bytes,
+                    "total_downloaded_formatted": format_bytes(total_bytes),
+                    "current_streak": current_streak,
+                    "listening_by_dow": dow_data
+                }))
             }
         }
     }
@@ -9550,6 +9917,258 @@ impl DatabasePool {
             DatabasePool::MySQL(pool) => {
                 sqlx::query("UPDATE UserSettings SET Theme = ? WHERE UserID = ?")
                     .bind(theme)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn get_custom_themes(&self, user_id: i32) -> AppResult<Vec<crate::models::CustomTheme>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    r#"SELECT themeid, name, background_color, button_color, container_button_color,
+                       button_text_color, text_color, text_secondary_color, border_color, accent_color,
+                       prog_bar_color, error_color, bonus_color, secondary_background, container_background,
+                       standout_color, hover_color, link_color, thumb_color, unfilled_color, check_box_color
+                       FROM "CustomThemes" WHERE userid = $1 ORDER BY name"#
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut themes = Vec::new();
+                for row in rows {
+                    themes.push(crate::models::CustomTheme {
+                        themeid: row.try_get("themeid")?,
+                        name: row.try_get("name")?,
+                        background_color: row.try_get("background_color")?,
+                        button_color: row.try_get("button_color")?,
+                        container_button_color: row.try_get("container_button_color")?,
+                        button_text_color: row.try_get("button_text_color")?,
+                        text_color: row.try_get("text_color")?,
+                        text_secondary_color: row.try_get("text_secondary_color")?,
+                        border_color: row.try_get("border_color")?,
+                        accent_color: row.try_get("accent_color")?,
+                        prog_bar_color: row.try_get("prog_bar_color")?,
+                        error_color: row.try_get("error_color")?,
+                        bonus_color: row.try_get("bonus_color")?,
+                        secondary_background: row.try_get("secondary_background")?,
+                        container_background: row.try_get("container_background")?,
+                        standout_color: row.try_get("standout_color")?,
+                        hover_color: row.try_get("hover_color")?,
+                        link_color: row.try_get("link_color")?,
+                        thumb_color: row.try_get("thumb_color")?,
+                        unfilled_color: row.try_get("unfilled_color")?,
+                        check_box_color: row.try_get("check_box_color")?,
+                    });
+                }
+                Ok(themes)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    r#"SELECT ThemeID as themeid, Name as name, BackgroundColor as background_color,
+                       ButtonColor as button_color, ContainerButtonColor as container_button_color,
+                       ButtonTextColor as button_text_color, TextColor as text_color,
+                       TextSecondaryColor as text_secondary_color, BorderColor as border_color,
+                       AccentColor as accent_color, ProgBarColor as prog_bar_color,
+                       ErrorColor as error_color, BonusColor as bonus_color,
+                       SecondaryBackground as secondary_background, ContainerBackground as container_background,
+                       StandoutColor as standout_color, HoverColor as hover_color,
+                       LinkColor as link_color, ThumbColor as thumb_color,
+                       UnfilledColor as unfilled_color, CheckBoxColor as check_box_color
+                       FROM CustomThemes WHERE UserID = ? ORDER BY Name"#
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut themes = Vec::new();
+                for row in rows {
+                    themes.push(crate::models::CustomTheme {
+                        themeid: row.try_get("themeid")?,
+                        name: row.try_get("name")?,
+                        background_color: row.try_get("background_color")?,
+                        button_color: row.try_get("button_color")?,
+                        container_button_color: row.try_get("container_button_color")?,
+                        button_text_color: row.try_get("button_text_color")?,
+                        text_color: row.try_get("text_color")?,
+                        text_secondary_color: row.try_get("text_secondary_color")?,
+                        border_color: row.try_get("border_color")?,
+                        accent_color: row.try_get("accent_color")?,
+                        prog_bar_color: row.try_get("prog_bar_color")?,
+                        error_color: row.try_get("error_color")?,
+                        bonus_color: row.try_get("bonus_color")?,
+                        secondary_background: row.try_get("secondary_background")?,
+                        container_background: row.try_get("container_background")?,
+                        standout_color: row.try_get("standout_color")?,
+                        hover_color: row.try_get("hover_color")?,
+                        link_color: row.try_get("link_color")?,
+                        thumb_color: row.try_get("thumb_color")?,
+                        unfilled_color: row.try_get("unfilled_color")?,
+                        check_box_color: row.try_get("check_box_color")?,
+                    });
+                }
+                Ok(themes)
+            }
+        }
+    }
+
+    pub async fn create_custom_theme(&self, user_id: i32, req: &crate::models::CreateCustomThemeRequest) -> AppResult<crate::models::CustomTheme> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(
+                    r#"INSERT INTO "CustomThemes"
+                       (userid, name, background_color, button_color, container_button_color,
+                        button_text_color, text_color, text_secondary_color, border_color, accent_color,
+                        prog_bar_color, error_color, bonus_color, secondary_background, container_background,
+                        standout_color, hover_color, link_color, thumb_color, unfilled_color, check_box_color)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                       RETURNING themeid, name, background_color, button_color, container_button_color,
+                       button_text_color, text_color, text_secondary_color, border_color, accent_color,
+                       prog_bar_color, error_color, bonus_color, secondary_background, container_background,
+                       standout_color, hover_color, link_color, thumb_color, unfilled_color, check_box_color"#
+                )
+                .bind(user_id)
+                .bind(&req.name)
+                .bind(&req.background_color)
+                .bind(&req.button_color)
+                .bind(&req.container_button_color)
+                .bind(&req.button_text_color)
+                .bind(&req.text_color)
+                .bind(&req.text_secondary_color)
+                .bind(&req.border_color)
+                .bind(&req.accent_color)
+                .bind(&req.prog_bar_color)
+                .bind(&req.error_color)
+                .bind(&req.bonus_color)
+                .bind(&req.secondary_background)
+                .bind(&req.container_background)
+                .bind(&req.standout_color)
+                .bind(&req.hover_color)
+                .bind(&req.link_color)
+                .bind(&req.thumb_color)
+                .bind(&req.unfilled_color)
+                .bind(&req.check_box_color)
+                .fetch_one(pool)
+                .await?;
+
+                Ok(crate::models::CustomTheme {
+                    themeid: row.try_get("themeid")?,
+                    name: row.try_get("name")?,
+                    background_color: row.try_get("background_color")?,
+                    button_color: row.try_get("button_color")?,
+                    container_button_color: row.try_get("container_button_color")?,
+                    button_text_color: row.try_get("button_text_color")?,
+                    text_color: row.try_get("text_color")?,
+                    text_secondary_color: row.try_get("text_secondary_color")?,
+                    border_color: row.try_get("border_color")?,
+                    accent_color: row.try_get("accent_color")?,
+                    prog_bar_color: row.try_get("prog_bar_color")?,
+                    error_color: row.try_get("error_color")?,
+                    bonus_color: row.try_get("bonus_color")?,
+                    secondary_background: row.try_get("secondary_background")?,
+                    container_background: row.try_get("container_background")?,
+                    standout_color: row.try_get("standout_color")?,
+                    hover_color: row.try_get("hover_color")?,
+                    link_color: row.try_get("link_color")?,
+                    thumb_color: row.try_get("thumb_color")?,
+                    unfilled_color: row.try_get("unfilled_color")?,
+                    check_box_color: row.try_get("check_box_color")?,
+                })
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(
+                    r#"INSERT INTO CustomThemes
+                       (UserID, Name, BackgroundColor, ButtonColor, ContainerButtonColor,
+                        ButtonTextColor, TextColor, TextSecondaryColor, BorderColor, AccentColor,
+                        ProgBarColor, ErrorColor, BonusColor, SecondaryBackground, ContainerBackground,
+                        StandoutColor, HoverColor, LinkColor, ThumbColor, UnfilledColor, CheckBoxColor)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"#
+                )
+                .bind(user_id)
+                .bind(&req.name)
+                .bind(&req.background_color)
+                .bind(&req.button_color)
+                .bind(&req.container_button_color)
+                .bind(&req.button_text_color)
+                .bind(&req.text_color)
+                .bind(&req.text_secondary_color)
+                .bind(&req.border_color)
+                .bind(&req.accent_color)
+                .bind(&req.prog_bar_color)
+                .bind(&req.error_color)
+                .bind(&req.bonus_color)
+                .bind(&req.secondary_background)
+                .bind(&req.container_background)
+                .bind(&req.standout_color)
+                .bind(&req.hover_color)
+                .bind(&req.link_color)
+                .bind(&req.thumb_color)
+                .bind(&req.unfilled_color)
+                .bind(&req.check_box_color)
+                .execute(pool)
+                .await?;
+
+                let row = sqlx::query(
+                    r#"SELECT ThemeID as themeid, Name as name, BackgroundColor as background_color,
+                       ButtonColor as button_color, ContainerButtonColor as container_button_color,
+                       ButtonTextColor as button_text_color, TextColor as text_color,
+                       TextSecondaryColor as text_secondary_color, BorderColor as border_color,
+                       AccentColor as accent_color, ProgBarColor as prog_bar_color,
+                       ErrorColor as error_color, BonusColor as bonus_color,
+                       SecondaryBackground as secondary_background, ContainerBackground as container_background,
+                       StandoutColor as standout_color, HoverColor as hover_color,
+                       LinkColor as link_color, ThumbColor as thumb_color,
+                       UnfilledColor as unfilled_color, CheckBoxColor as check_box_color
+                       FROM CustomThemes WHERE UserID = ? AND Name = ? ORDER BY ThemeID DESC LIMIT 1"#
+                )
+                .bind(user_id)
+                .bind(&req.name)
+                .fetch_one(pool)
+                .await?;
+
+                Ok(crate::models::CustomTheme {
+                    themeid: row.try_get("themeid")?,
+                    name: row.try_get("name")?,
+                    background_color: row.try_get("background_color")?,
+                    button_color: row.try_get("button_color")?,
+                    container_button_color: row.try_get("container_button_color")?,
+                    button_text_color: row.try_get("button_text_color")?,
+                    text_color: row.try_get("text_color")?,
+                    text_secondary_color: row.try_get("text_secondary_color")?,
+                    border_color: row.try_get("border_color")?,
+                    accent_color: row.try_get("accent_color")?,
+                    prog_bar_color: row.try_get("prog_bar_color")?,
+                    error_color: row.try_get("error_color")?,
+                    bonus_color: row.try_get("bonus_color")?,
+                    secondary_background: row.try_get("secondary_background")?,
+                    container_background: row.try_get("container_background")?,
+                    standout_color: row.try_get("standout_color")?,
+                    hover_color: row.try_get("hover_color")?,
+                    link_color: row.try_get("link_color")?,
+                    thumb_color: row.try_get("thumb_color")?,
+                    unfilled_color: row.try_get("unfilled_color")?,
+                    check_box_color: row.try_get("check_box_color")?,
+                })
+            }
+        }
+    }
+
+    pub async fn delete_custom_theme(&self, theme_id: i32, user_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"DELETE FROM "CustomThemes" WHERE themeid = $1 AND userid = $2"#)
+                    .bind(theme_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("DELETE FROM CustomThemes WHERE ThemeID = ? AND UserID = ?")
+                    .bind(theme_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
@@ -25178,9 +25797,11 @@ impl DatabasePool {
     // Get playlist episodes dynamically without using PlaylistContents table
     // ULTRA-PRECISE implementation covering ALL playlist options with timezone awareness
     pub async fn get_playlist_episodes_dynamic(
-        &self, 
-        playlist_id: i32, 
-        user_id: i32
+        &self,
+        playlist_id: i32,
+        user_id: i32,
+        limit: i64,
+        offset: i64,
     ) -> AppResult<crate::models::PlaylistEpisodesResponse> {
         use tracing::{info, debug, warn};
         
@@ -25374,25 +25995,45 @@ impl DatabasePool {
                 } else {
                     format!(" WHERE {}", where_conditions.join(" AND "))
                 };
-                
+
                 let order_clause = format!(" ORDER BY {}", order_parts.join(", "));
-                
-                // Apply MaxEpisodes limit if specified (playlist setting, not pagination)
-                let limit_clause = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("maxepisodes")? {
+
+                // Count total matching episodes (respecting maxepisodes if set)
+                let max_eps_opt = playlist.try_get::<Option<i32>, _>("maxepisodes")?;
+                let count_query = format!(
+                    r#"SELECT COUNT(DISTINCT e.episodeid) FROM "Episodes" e
+                    JOIN "Podcasts" p ON e.podcastid = p.podcastid AND p.userid = {}
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}{}"#,
+                    user_id, user_id, where_clause
+                );
+                let raw_total: i64 = sqlx::query_scalar(&count_query)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                let total_count = if let Some(max_eps) = max_eps_opt {
+                    if max_eps > 0 { raw_total.min(max_eps as i64) } else { raw_total }
+                } else {
+                    raw_total
+                };
+
+                // Compute effective page limit respecting maxepisodes
+                let page_limit = if let Some(max_eps) = max_eps_opt {
                     if max_eps > 0 {
-                        format!(" LIMIT {}", max_eps)
+                        let remaining = (max_eps as i64).saturating_sub(offset);
+                        limit.min(remaining).max(0)
                     } else {
-                        String::new()
+                        limit
                     }
                 } else {
-                    String::new()
+                    limit
                 };
-                
-                let final_query = format!("{}{}{}{}", 
-                    query_parts.join(" "), where_clause, order_clause, limit_clause);
-                
+                let pagination_clause = format!(" LIMIT {} OFFSET {}", page_limit, offset);
+
+                let final_query = format!("{}{}{}{}",
+                    query_parts.join(" "), where_clause, order_clause, pagination_clause);
+
                 debug!("🔍 Final dynamic playlist query: {}", final_query);
-                
+
                 // Execute the main query
                 let rows = sqlx::query(&final_query)
                     .bind(user_id)
@@ -25422,19 +26063,20 @@ impl DatabasePool {
                     });
                 }
 
-                debug!("📝 Retrieved {} episodes from dynamic query", episodes.len());
-                
+                debug!("📝 Retrieved {} episodes from dynamic query (total: {})", episodes.len(), total_count);
+
                 // Create playlist info from the playlist row we already have
                 let playlist_info = crate::models::PlaylistInfo {
                     name: playlist.try_get::<String, _>("name")?,
                     description: playlist.try_get::<String, _>("description")?,
-                    episode_count: episodes.len() as i32,
+                    episode_count: total_count as i32,
                     icon_name: playlist.try_get::<String, _>("iconname")?,
                 };
-                
+
                 Ok(crate::models::PlaylistEpisodesResponse {
                     episodes,
                     playlist_info,
+                    total: total_count,
                 })
             }
             DatabasePool::MySQL(pool) => {
@@ -25610,25 +26252,45 @@ impl DatabasePool {
                 } else {
                     format!(" WHERE {}", where_conditions.join(" AND "))
                 };
-                
+
                 let order_clause = format!(" ORDER BY {}", order_parts.join(", "));
-                
-                // Apply MaxEpisodes limit if specified (MySQL)
-                let limit_clause = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("MaxEpisodes")? {
+
+                // Count total matching episodes (MySQL)
+                let max_eps_opt = playlist.try_get::<Option<i32>, _>("MaxEpisodes")?;
+                let count_query = format!(
+                    "SELECT COUNT(DISTINCT e.EpisodeID) FROM Episodes e
+                    JOIN Podcasts p ON e.PodcastID = p.PodcastID AND p.UserID = {}
+                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}{}",
+                    user_id, user_id, where_clause
+                );
+                let raw_total: i64 = sqlx::query_scalar(&count_query)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                let total_count = if let Some(max_eps) = max_eps_opt {
+                    if max_eps > 0 { raw_total.min(max_eps as i64) } else { raw_total }
+                } else {
+                    raw_total
+                };
+
+                // Compute effective page limit respecting MaxEpisodes (MySQL)
+                let page_limit = if let Some(max_eps) = max_eps_opt {
                     if max_eps > 0 {
-                        format!(" LIMIT {}", max_eps)
+                        let remaining = (max_eps as i64).saturating_sub(offset);
+                        limit.min(remaining).max(0)
                     } else {
-                        String::new()
+                        limit
                     }
                 } else {
-                    String::new()
+                    limit
                 };
-                
-                let final_query = format!("{}{}{}{}", 
-                    query_parts.join(" "), where_clause, order_clause, limit_clause);
-                
+                let pagination_clause = format!(" LIMIT {} OFFSET {}", page_limit, offset);
+
+                let final_query = format!("{}{}{}{}",
+                    query_parts.join(" "), where_clause, order_clause, pagination_clause);
+
                 debug!("🔍 Final MySQL dynamic playlist query: {}", final_query);
-                
+
                 // Execute the main MySQL query
                 let rows = sqlx::query(&final_query)
                     .bind(user_id)
@@ -25658,19 +26320,20 @@ impl DatabasePool {
                     });
                 }
 
-                debug!("📝 Retrieved {} episodes from MySQL dynamic query", episodes.len());
-                
+                debug!("📝 Retrieved {} episodes from MySQL dynamic query (total: {})", episodes.len(), total_count);
+
                 // Create playlist info from the MySQL playlist row we already have
                 let playlist_info = crate::models::PlaylistInfo {
                     name: playlist.try_get::<String, _>("Name")?,
                     description: playlist.try_get::<String, _>("Description")?,
-                    episode_count: episodes.len() as i32,
+                    episode_count: total_count as i32,
                     icon_name: playlist.try_get::<String, _>("IconName")?,
                 };
-                
+
                 Ok(crate::models::PlaylistEpisodesResponse {
                     episodes,
                     playlist_info,
+                    total: total_count,
                 })
             }
         }

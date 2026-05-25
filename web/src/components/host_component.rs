@@ -1,5 +1,5 @@
 use crate::components::gen_components::LoadingModal;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::requests::people_req::{
     call_get_person_subscriptions, call_subscribe_to_person, call_unsubscribe_from_person,
 };
@@ -455,8 +455,10 @@ pub fn host_dropdown(
                         } else {
                             // Handle error
                             dispatch.reduce_mut(|state| {
-                                state.error_message = Some(error_msg.clone());
                                 state.is_loading = Some(false);
+                            });
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                state.error_message = Some(error_msg.clone());
                             });
                         }
                     });

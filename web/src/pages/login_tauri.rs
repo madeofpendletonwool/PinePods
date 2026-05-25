@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::notification_center::ToastNotification;
 use crate::requests::login_requests::{self, call_check_mfa_enabled};
@@ -126,14 +126,24 @@ pub fn login() -> Html {
     let i18n_login = i18n.t("auth.login").to_string();
     let i18n_pinepods = i18n.t("common.pinepods").to_string();
     let i18n_password_reset_successfully = i18n.t("login.password_reset_successfully").to_string();
+    let i18n_date_format_mdy = i18n.t("login.date_format_mdy").to_string();
+    let i18n_date_format_dmy = i18n.t("login.date_format_dmy").to_string();
+    let i18n_date_format_ymd = i18n.t("login.date_format_ymd").to_string();
+    let i18n_date_format_julian = i18n.t("login.date_format_julian").to_string();
+    let i18n_date_format_iso8601 = i18n.t("login.date_format_iso8601").to_string();
+    let i18n_date_format_usa = i18n.t("login.date_format_usa").to_string();
+    let i18n_date_format_eur = i18n.t("login.date_format_eur").to_string();
+    let i18n_date_format_jis = i18n.t("login.date_format_jis").to_string();
+    let i18n_not_used_client = i18n.t("login.not_used_client").to_string();
 
     let history = BrowserHistory::new();
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
     let (app_state, dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
-    let _error_message = app_state.error_message.clone();
-    let error_message = app_state.error_message.clone();
+    let (notif_state, _notif_dispatch) = use_store::<NotificationState>();
+    let _error_message = notif_state.error_message.clone();
+    let error_message = notif_state.error_message.clone();
     let time_zone = use_state(|| "".to_string());
     let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
@@ -142,7 +152,7 @@ pub fn login() -> Html {
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
-    let info_message = app_state.info_message.clone();
+    let info_message = notif_state.info_message.clone();
     // Define the initial state
     // Define states for both self-service and first admin
     let page_state = use_state(|| PageState::Default);
@@ -534,7 +544,7 @@ pub fn login() -> Html {
                                             }
                                         }
                                         Err(_) => {
-                                            post_state.reduce_mut(|state| {
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message = Option::from(
                                                     i18n_error_checking_mfa_status_clone,
                                                 )
@@ -546,7 +556,7 @@ pub fn login() -> Html {
                                 }
                             }
                             Err(_) => {
-                                post_state.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Option::from(i18n_error_checking_first_login_clone)
                                 });
@@ -555,7 +565,7 @@ pub fn login() -> Html {
                     }
                     Err(_) => {
                         // console::log_1(&format!("Error logging into server: {}", server_name).into());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(i18n_credentials_incorrect.clone())
                         });
                         // Handle error
@@ -636,7 +646,7 @@ pub fn login() -> Html {
             if let Ok(value_int) = value_str.parse::<i32>() {
                 time_pref.set(value_int);
             } else {
-                time_state_error.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Option::from(i18n_error_parsing_time.clone())
                 });
             }
@@ -707,14 +717,14 @@ pub fn login() -> Html {
                                     }
                                 }
                                 Err(_) => {
-                                    post_state.reduce_mut(|state| {
+                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message =
                                             Option::from(i18n_error_checking_mfa_status_clone)
                                     });
                                 }
                             }
                         } else {
-                            post_state.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_setting_timezone_clone)
                             });
@@ -723,9 +733,8 @@ pub fn login() -> Html {
                     }
                     Err(e) => {
                         page_state.set(PageState::Default);
-                        // dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
                         let formatted_error = format_error_message(&e.to_string());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!(
                                 "Error setting up time zone: {:?}",
                                 formatted_error
@@ -779,14 +788,14 @@ pub fn login() -> Html {
                             <div>
                             <label for="date_format" style="margin-right: 10px;">{&i18n.t("login.date_format")}{":"}</label>
                             <select id="date_format" name="date_format" class="email-select border p-2 rounded" oninput={on_df_change}>
-                                <option value="MDY">{"MDY (MM-DD-YYYY)"}</option>
-                                <option value="DMY">{"DMY (DD-MM-YYYY)"}</option>
-                                <option value="YMD">{"YMD (YYYY-MM-DD)"}</option>
-                                <option value="JUL">{"JUL (YY/DDD)"}</option>
-                                <option value="ISO">{"ISO (YYYY-MM-DD)"}</option>
-                                <option value="USA">{"USA (MM/DD/YYYY)"}</option>
-                                <option value="EUR">{"EUR (DD.MM.YYYY)"}</option>
-                                <option value="JIS">{"JIS (YYYY-MM-DD)"}</option>
+                                <option value="MDY">{ &i18n_date_format_mdy }</option>
+                                <option value="DMY">{ &i18n_date_format_dmy }</option>
+                                <option value="YMD">{ &i18n_date_format_ymd }</option>
+                                <option value="JUL">{ &i18n_date_format_julian }</option>
+                                <option value="ISO">{ &i18n_date_format_iso8601 }</option>
+                                <option value="USA">{ &i18n_date_format_usa }</option>
+                                <option value="EUR">{ &i18n_date_format_eur }</option>
+                                <option value="JIS">{ &i18n_date_format_jis }</option>
                             </select>
                         </div>
                             <button type="submit" onclick={on_time_zone_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{&i18n.t("common.submit")}</button>
@@ -895,7 +904,7 @@ pub fn login() -> Html {
                             history.push("/home"); // Use the route path
                         } else {
                             page_state.set(PageState::Default);
-                            post_state.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_validating_mfa.clone())
                             });
@@ -904,7 +913,7 @@ pub fn login() -> Html {
                     Err(e) => {
                         page_state.set(PageState::Default);
                         let formatted_error = format_error_message(&e.to_string());
-                        post_state.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!(
                                 "{}: {:?}",
                                 i18n_error_setting_timezone_details.clone(),
@@ -1000,8 +1009,10 @@ pub fn login() -> Html {
 
 #[function_component(ChangeServer)]
 pub fn login() -> Html {
+    let (i18n, _) = use_translation();
+    let i18n_not_used_client = i18n.t("login.not_used_client").to_string();
     html! {
-        <p>{"This route isn't used on the client version"}</p>
+        <p>{ &i18n_not_used_client }</p>
     }
 }
 

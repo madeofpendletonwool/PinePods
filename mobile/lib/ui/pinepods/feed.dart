@@ -38,6 +38,11 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
   int? _contextMenuEpisodeIndex; // Index of episode showing context menu
   Map<String, bool> _localDownloadStatus = {}; // Cache for local download status
 
+  // Pagination state
+  int _offset = 0;
+  int _total = 0;
+  bool _isLoadingMore = false;
+
   @override
   void initState() {
     super.initState();
@@ -57,14 +62,17 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     setState(() {
       _isLoading = true;
       _errorMessage = '';
+      _offset = 0;
+      _total = 0;
+      _episodes = [];
     });
 
     try {
       final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
       final settings = settingsBloc.currentSettings;
 
-      if (settings.pinepodsServer == null || 
-          settings.pinepodsApiKey == null || 
+      if (settings.pinepodsServer == null ||
+          settings.pinepodsApiKey == null ||
           settings.pinepodsUserId == null) {
         setState(() {
           _errorMessage = 'Not connected to PinePods server. Please login first.';
@@ -80,21 +88,23 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       // Use the stored user ID from login
       final userId = settings.pinepodsUserId!;
 
-      final episodes = await _pinepodsService.getRecentEpisodes(userId);
-      
+      final page = await _pinepodsService.getRecentEpisodes(userId, limit: 50, offset: 0);
+
       // Enrich episodes with best available positions (local vs server)
       final enrichedEpisodes = await PositionUtils.enrichEpisodesWithBestPositions(
         context,
         _pinepodsService,
-        episodes,
+        page.episodes,
         userId,
       );
-      
+
       setState(() {
         _episodes = enrichedEpisodes;
+        _total = page.total;
+        _offset = enrichedEpisodes.length;
         _isLoading = false;
       });
-      
+
       // After loading episodes, check their local download status
       await _loadLocalDownloadStatuses();
     } catch (e) {
@@ -102,6 +112,47 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
         _errorMessage = 'Failed to load recent episodes: ${e.toString()}';
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _loadMoreEpisodes() async {
+    if (_isLoadingMore || _offset >= _total) return;
+
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+
+    if (settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null ||
+        settings.pinepodsUserId == null) {
+      return;
+    }
+
+    final userId = settings.pinepodsUserId!;
+
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final page = await _pinepodsService.getRecentEpisodes(
+        userId, limit: 50, offset: _offset,
+      );
+
+      final enrichedEpisodes = await PositionUtils.enrichEpisodesWithBestPositions(
+        context,
+        _pinepodsService,
+        page.episodes,
+        userId,
+      );
+
+      setState(() {
+        _episodes.addAll(enrichedEpisodes);
+        _total = page.total;
+        _offset += enrichedEpisodes.length;
+        _isLoadingMore = false;
+      });
+
+      await _loadLocalDownloadStatuses();
+    } catch (e) {
+      setState(() => _isLoadingMore = false);
     }
   }
 
@@ -784,6 +835,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
   }
 
   Widget _buildEpisodesList() {
+    final showFooter = _isLoadingMore || _offset < _total;
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
@@ -809,8 +861,20 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
               ),
             );
           }
-          // Episodes (index - 1 because of header)
+
           final episodeIndex = index - 1;
+
+          // Footer: loading spinner that triggers the next page when rendered
+          if (showFooter && episodeIndex == _episodes.length) {
+            if (!_isLoadingMore) {
+              WidgetsBinding.instance.addPostFrameCallback((_) => _loadMoreEpisodes());
+            }
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+
           return PinepodsEpisodeCard(
             episode: _episodes[episodeIndex],
             onTap: () {
@@ -827,7 +891,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
             onPlayPressed: () => _playEpisode(_episodes[episodeIndex]),
           );
         },
-        childCount: _episodes.length + 1, // +1 for header
+        childCount: _episodes.length + 1 + (showFooter ? 1 : 0), // +1 header, +1 optional footer
       ),
     );
   }

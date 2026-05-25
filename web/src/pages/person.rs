@@ -3,7 +3,7 @@ use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::ExpandedDescriptions;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
@@ -261,19 +261,23 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 new_set.remove(&podcast_id);
                                 added_podcasts_callback.set(new_set);
                                 dispatch_callback.reduce_mut(|state| {
-                                    state.info_message = Some(i18n_podcast_removed.clone());
                                     state.is_loading = Some(false);
+                                });
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                    state.info_message = Some(i18n_podcast_removed.clone());
                                 });
                             }
                             Err(e) => {
+                                let formatted_error = format_error_message(&e.to_string());
                                 dispatch_callback.reduce_mut(|state| {
-                                    let formatted_error = format_error_message(&e.to_string());
+                                    state.is_loading = Some(false);
+                                });
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}: {:?}",
                                         i18n_error_removing_podcast.clone(),
                                         formatted_error
                                     ));
-                                    state.is_loading = Some(false);
                                 });
                             }
                         }
@@ -319,8 +323,10 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             }
                                         }
                                     }
-                                    state.info_message = Some(i18n_podcast_added.clone());
                                     state.is_loading = Some(false);
+                                });
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                    state.info_message = Some(i18n_podcast_added.clone());
                                 });
                                 let mut new_set = (*added_podcasts_callback).clone();
                                 new_set.insert(podcast.podcastid);
@@ -328,14 +334,16 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 added_pod_state.set(new_set.clone());
                             }
                             Err(e) => {
+                                let formatted_error = format_error_message(&e.to_string());
                                 dispatch_callback.reduce_mut(|state| {
-                                    let formatted_error = format_error_message(&e.to_string());
+                                    state.is_loading = Some(false);
+                                });
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}: {:?}",
                                         i18n_error_adding_podcast.clone(),
                                         formatted_error
                                     ));
-                                    state.is_loading = Some(false);
                                 });
                             }
                         }

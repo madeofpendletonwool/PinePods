@@ -5,7 +5,7 @@ use crate::components::gen_components::{
 use crate::components::loading::Loading;
 
 use crate::components::audio_player_bar::AudioPlayerBar;
-use crate::components::context::{AppState, FilterState};
+use crate::components::context::{AppState, EpisodeStatusState, FilterState};
 use crate::components::gen_funcs::{
     get_default_sort_direction, get_filter_preference, set_filter_preference,
 };
@@ -116,6 +116,8 @@ pub fn history() -> Html {
                                     state.episode_history = Some(HistoryDataResponse {
                                         data: fetched_episodes,
                                     });
+                                });
+                                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                     state.completed_episodes = Some(completed_episode_ids);
                                 });
                                 loading_ep.set(false);

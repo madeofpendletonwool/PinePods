@@ -1,5 +1,5 @@
 // notification_center.rs
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::requests::pod_req::RefreshProgress;
 use crate::requests::task_reqs::init_task_monitoring;
 use gloo_timers::callback::Interval;
@@ -111,7 +111,7 @@ pub fn notification_center() -> Html {
     let i18n_youtube_video = i18n.t("notification_center.item_youtube_video").to_string();
     let i18n_item = i18n.t("notification_center.item_generic").to_string();
 
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, dispatch) = use_store::<NotificationState>();
     let dropdown_open = use_state(|| false);
     let notification_count = use_state(|| 0);
     let ws_initialized = use_state(|| false);
@@ -119,13 +119,13 @@ pub fn notification_center() -> Html {
 
     // Initialize WebSocket connection on component mount
     {
-        let state = state.clone();
         let dispatch = dispatch.clone();
         let ws_initialized = ws_initialized.clone();
 
         use_effect_with((), move |_| {
             if !*ws_initialized {
-                init_task_monitoring(&state, dispatch);
+                let app_state = Dispatch::<AppState>::global().get();
+                init_task_monitoring(&app_state, dispatch);
                 ws_initialized.set(true);
             }
             || ()
@@ -617,7 +617,7 @@ struct ToastItem {
 
 #[function_component(ToastNotification)]
 pub fn toast_notification() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, dispatch) = use_store::<NotificationState>();
     let toast_queue = use_state(|| vec![]);
     let counter = use_state(|| 0);
 

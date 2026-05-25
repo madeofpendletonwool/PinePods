@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_backup_server, call_get_scheduled_backup, call_manual_backup_to_directory,
@@ -62,7 +62,7 @@ pub fn backup_server() -> Html {
                             }
                         }
                         Err(e) => {
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     error_prefix,
@@ -94,7 +94,7 @@ pub fn backup_server() -> Html {
             let dispatch_call = dispatch_call.clone();
             let db_pass = (*database_password).trim().to_string();
             if db_pass.is_empty() {
-                dispatch_call.reduce_mut(|audio_state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                     audio_state.error_message = Option::from(empty_password_msg.clone())
                 });
                 return;
@@ -133,7 +133,7 @@ pub fn backup_server() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch_call.reduce_mut(|audio_state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                             audio_state.error_message = Option::from(format!(
                                 "{}{}",
                                 backup_error_prefix.clone(),
@@ -198,7 +198,7 @@ pub fn backup_server() -> Html {
                     .await
                     {
                         Ok(_) => {
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(if new_enabled {
                                     enabled_msg.clone()
                                 } else {
@@ -208,7 +208,7 @@ pub fn backup_server() -> Html {
                         }
                         Err(e) => {
                             schedule_enabled_for_async.set(!new_enabled); // Revert on error
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     error_prefix.clone(),
@@ -252,13 +252,13 @@ pub fn backup_server() -> Html {
                                 .get("filename")
                                 .and_then(|f| f.as_str())
                                 .unwrap_or("backup file");
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message =
                                     Some(success_template.clone().replace("{}", filename));
                             });
                         }
                         Err(e) => {
-                            _dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     error_prefix.clone(),
@@ -274,192 +274,140 @@ pub fn backup_server() -> Html {
     };
 
     html! {
-        <div class="p-4 space-y-8">
-            <div class="backup-section">
-                <div class="flex items-center gap-3 mb-4">
-                    <i class="ph ph-clock-clockwise text-2xl text-blue-600"></i>
-                    <h2 class="item_container-text text-lg font-bold">{i18n.t("backup_server.scheduled_backups")}</h2>
+        <>
+            <div class="settings-subsection-title">
+                <i class="ph ph-clock-clockwise" style="margin-right:6px;color:var(--accent-color);"></i>
+                {i18n.t("backup_server.scheduled_backups")}
+            </div>
+
+            <div class="settings-row">
+                <div class="settings-row-label">
+                    <div>{i18n.t("backup_server.schedule_time")}</div>
                 </div>
-                <p class="item_container-text text-md mb-4">
-                    {i18n.t("backup_server.scheduled_backups_description")}
-                </p>
-
-                <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-4">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium item_container-text mb-2">
-                                {i18n.t("backup_server.schedule_time")}
-                            </label>
-                            <select
-                                value={(*cron_schedule).clone()}
-                                onchange={on_schedule_time_change}
-                                disabled={*schedule_loading}
-                                class="w-full p-2 border rounded-lg search-bar-input"
-                                key={(*cron_schedule).clone()}
-                            >
-                                <option value="0 0 2 * * *" selected={*cron_schedule == "0 0 2 * * *"}>{i18n.t("backup_server.daily_2am")}</option>
-                                <option value="0 0 3 * * 0" selected={*cron_schedule == "0 0 3 * * 0"}>{i18n.t("backup_server.weekly_sunday_3am")}</option>
-                                <option value="0 0 1 1 * *" selected={*cron_schedule == "0 0 1 1 * *"}>{i18n.t("backup_server.monthly_1st_1am")}</option>
-                                <option value="0 0 */6 * * *" selected={*cron_schedule == "0 0 */6 * * *"}>{i18n.t("backup_server.every_6_hours")}</option>
-                                <option value="0 0 */12 * * *" selected={*cron_schedule == "0 0 */12 * * *"}>{i18n.t("backup_server.every_12_hours")}</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium item_container-text mb-2">
-                                {i18n.t("backup_server.status")}
-                            </label>
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={*schedule_enabled}
-                                    disabled={*schedule_loading}
-                                    onclick={on_schedule_toggle}
-                                    class="sr-only peer"
-                                />
-                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                                <span class="ms-3 text-sm font-medium item_container-text">
-                                    {if *schedule_enabled { i18n.t("backup_server.enabled") } else { i18n.t("backup_server.disabled") }}
-                                </span>
-                            </label>
-                        </div>
-                    </div>
-
-                    if let Some(schedule_info) = &*current_schedule {
-                        if let Some(updated_at) = schedule_info.get("updated_at").and_then(|v| v.as_str()) {
-                            <div class="mt-4 text-sm text-gray-600 dark:text-gray-400">
-                                <i class="ph ph-info mr-1"></i>
-                                {format!("{}{}", i18n.t("backup_server.last_updated"), updated_at)}
-                            </div>
-                        }
-                    }
+                <div class="settings-row-control">
+                    <select
+                        value={(*cron_schedule).clone()}
+                        onchange={on_schedule_time_change}
+                        disabled={*schedule_loading}
+                        class="select"
+                        key={(*cron_schedule).clone()}
+                    >
+                        <option value="0 0 2 * * *" selected={*cron_schedule == "0 0 2 * * *"}>{i18n.t("backup_server.daily_2am")}</option>
+                        <option value="0 0 3 * * 0" selected={*cron_schedule == "0 0 3 * * 0"}>{i18n.t("backup_server.weekly_sunday_3am")}</option>
+                        <option value="0 0 1 1 * *" selected={*cron_schedule == "0 0 1 1 * *"}>{i18n.t("backup_server.monthly_1st_1am")}</option>
+                        <option value="0 0 */6 * * *" selected={*cron_schedule == "0 0 */6 * * *"}>{i18n.t("backup_server.every_6_hours")}</option>
+                        <option value="0 0 */12 * * *" selected={*cron_schedule == "0 0 */12 * * *"}>{i18n.t("backup_server.every_12_hours")}</option>
+                    </select>
                 </div>
             </div>
 
-            <div class="backup-section">
-                <div class="flex items-center gap-3 mb-4">
-                    <i class="ph ph-download-simple text-2xl text-green-600"></i>
-                    <h2 class="item_container-text text-lg font-bold">{i18n.t("backup_server.manual_backup")}</h2>
+            <div class="settings-row">
+                <div class="settings-row-label">
+                    <div>{i18n.t("backup_server.status")}</div>
                 </div>
-                <p class="item_container-text text-md mb-4">{i18n.t("backup_server.manual_backup_description")}</p>
+                <div class="settings-row-control">
+                    <label class="toggle">
+                        <input
+                            type="checkbox"
+                            checked={*schedule_enabled}
+                            disabled={*schedule_loading}
+                            onclick={on_schedule_toggle}
+                        />
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span style="font-size:13px;color:var(--text-color);">
+                            {if *schedule_enabled { i18n.t("backup_server.enabled") } else { i18n.t("backup_server.disabled") }}
+                        </span>
+                    </label>
+                </div>
+            </div>
 
-            <div class="space-y-4">
-                // Download backup section
-                <div class="backup-option">
-                    <h4 class="item_container-text font-semibold mb-2">{i18n.t("backup_server.download_backup_file")}</h4>
-                    <p class="item_container-text text-sm mb-3">{i18n.t("backup_server.download_backup_description")}</p>
-                    <div class="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4">
-                <input
-                    type="password"
-                    id="db-pw"
-                    disabled={*is_loading}
-                    oninput={Callback::from(move |e: InputEvent| {
-                        let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-                        database_password.set(input.value());
-                    })}
-                    class={classes!(
-                        "search-bar-input",
-                        "border",
-                        "text-sm",
-                        "rounded-lg",
-                        "block",
-                        "w-full",
-                        "p-2.5",
-                        if *is_loading { "opacity-50 cursor-not-allowed" } else { "" }
-                    )}
-                    placeholder="mYDBp@ss!"
-                />
-                <button
-                    onclick={on_download_click}
-                    disabled={*is_loading}
-                    class={classes!(
-                        "settings-button",
-                        "font-bold",
-                        "py-2",
-                        "px-6",
-                        "rounded",
-                        "focus:outline-none",
-                        "focus:shadow-outline",
-                        "inline-flex",
-                        "items-center",
-                        "justify-center",
-                        "min-w-[120px]",
-                        if *is_loading { "opacity-75 cursor-not-allowed" } else { "" }
-                    )}
-                >
-                    if *is_loading {
-                        <div class="inline-flex items-center">
-                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            {i18n.t("backup_server.exporting")}
+            if let Some(schedule_info) = &*current_schedule {
+                if let Some(updated_at) = schedule_info.get("updated_at").and_then(|v| v.as_str()) {
+                    <div class="settings-row">
+                        <div class="settings-row-label">
+                            <div class="settings-row-desc">
+                                <i class="ph ph-info" style="margin-right:4px;"></i>
+                                {format!("{}{}", i18n.t("backup_server.last_updated"), updated_at)}
+                            </div>
                         </div>
-                    } else {
-                        {i18n.t("backup_server.authenticate")}
-                    }
-                </button>
                     </div>
-                </div>
+                }
+            }
 
-                // Backup to directory section
-                <div class="backup-option">
-                    <h4 class="item_container-text font-semibold mb-2">{i18n.t("backup_server.save_to_backup_directory")}</h4>
-                    <p class="item_container-text text-sm mb-3">{i18n.t("backup_server.save_to_backup_description")}</p>
+            <div class="settings-subsection-title">
+                <i class="ph ph-download-simple" style="margin-right:6px;color:var(--accent-color);"></i>
+                {i18n.t("backup_server.manual_backup")}
+            </div>
+
+            <div class="settings-row">
+                <div class="settings-row-label">
+                    <div>{i18n.t("backup_server.download_backup_file")}</div>
+                    <div class="settings-row-desc">{i18n.t("backup_server.download_backup_description")}</div>
+                </div>
+                <div class="settings-row-control">
+                    <input
+                        type="password"
+                        id="db-pw"
+                        disabled={*is_loading}
+                        oninput={Callback::from(move |e: InputEvent| {
+                            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+                            database_password.set(input.value());
+                        })}
+                        class="input"
+                        placeholder="mYDBp@ss!"
+                        style="width:180px;"
+                    />
+                    <button
+                        onclick={on_download_click}
+                        disabled={*is_loading}
+                        class="btn btn-secondary"
+                        style="padding:6px 12px;"
+                    >
+                        if *is_loading {
+                            <i class="ph ph-spinner animate-spin"></i>
+                            <span>{i18n.t("backup_server.exporting")}</span>
+                        } else {
+                            <i class="ph ph-download-simple"></i>
+                            <span>{i18n.t("backup_server.authenticate")}</span>
+                        }
+                    </button>
+                </div>
+            </div>
+
+            <div class="settings-row">
+                <div class="settings-row-label">
+                    <div>{i18n.t("backup_server.save_to_backup_directory")}</div>
+                    <div class="settings-row-desc">{i18n.t("backup_server.save_to_backup_description")}</div>
+                </div>
+                <div class="settings-row-control">
                     <button
                         onclick={on_manual_backup_to_directory}
                         disabled={*is_loading}
-                        class={classes!(
-                            "settings-button",
-                            "font-bold",
-                            "py-2",
-                            "px-6",
-                            "rounded",
-                            "focus:outline-none",
-                            "focus:shadow-outline",
-                            "inline-flex",
-                            "items-center",
-                            "justify-center",
-                            "min-w-[120px]",
-                            if *is_loading { "opacity-75 cursor-not-allowed" } else { "" }
-                        )}
+                        class="btn btn-secondary"
+                        style="padding:6px 12px;"
                     >
                         if *is_loading {
-                            <div class="inline-flex items-center">
-                                <svg class="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                {i18n.t("backup_server.creating")}
-                            </div>
+                            <i class="ph ph-spinner animate-spin"></i>
+                            <span>{i18n.t("backup_server.creating")}</span>
                         } else {
-                            {i18n.t("backup_server.create_backup")}
+                            <i class="ph ph-folder-plus"></i>
+                            <span>{i18n.t("backup_server.create_backup")}</span>
                         }
                     </button>
                 </div>
             </div>
 
             if *is_loading {
-                <div class="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                    <div class="flex items-center space-x-3">
-                        <div class="flex-shrink-0">
-                            <svg class="animate-spin h-5 w-5 text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
+                <div class="settings-row">
+                    <div class="settings-row-label">
+                        <div class="settings-row-desc" style="display:flex;align-items:center;gap:8px;">
+                            <i class="ph ph-spinner animate-spin"></i>
+                            <span>{i18n.t("backup_server.backing_up_database")}</span>
                         </div>
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium text-blue-900 dark:text-blue-100">
-                                {i18n.t("backup_server.backing_up_database")}
-                            </p>
-                            <p class="text-sm text-blue-700 dark:text-blue-300">
-                                {i18n.t("backup_server.backup_loading_message")}
-                            </p>
-                        </div>
+                        <div class="settings-row-desc">{i18n.t("backup_server.backup_loading_message")}</div>
                     </div>
                 </div>
             }
-            </div>
-        </div>
+        </>
     }
 }

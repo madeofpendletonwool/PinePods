@@ -1,7 +1,7 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, ExpandedDescriptions, FilterState, UIState};
+use crate::components::context::{AppState, ExpandedDescriptions, FilterState, NotificationState, UIState};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::safehtml::SafeHtml;
@@ -529,7 +529,7 @@ pub fn podcasts() -> Html {
                         Ok(success) => {
                             if success {
                                 dispatch_call.apply(AppStateMsg::RemovePodcast(pid));
-                                dispatch_call.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Some(if url.starts_with("https://www.youtube.com") {
                                             youtube_success_msg.clone()
@@ -538,7 +538,7 @@ pub fn podcasts() -> Html {
                                         })
                                 });
                             } else {
-                                dispatch_call.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Some(if url.starts_with("https://www.youtube.com") {
                                             youtube_error_msg.clone()
@@ -550,7 +550,7 @@ pub fn podcasts() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch_call.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("{}{:?}", error_prefix, formatted_error))
                             });
@@ -727,7 +727,7 @@ pub fn podcasts() -> Html {
                 .await
                 {
                     Ok(new_podcast) => {
-                        dispatch_call.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg);
                         });
                         dispatch_call.reduce_mut(move |state| {
@@ -747,7 +747,7 @@ pub fn podcasts() -> Html {
                         });
                     }
                     Err(e) => {
-                        dispatch_call.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!("{}{}", error_prefix, e));
                         });
                     }
@@ -795,7 +795,7 @@ pub fn podcasts() -> Html {
                 .await
                 {
                     Ok(new_podcast) => {
-                        dispatch_call.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg);
                         });
                         dispatch_call.reduce_mut(move |state| {
@@ -815,7 +815,7 @@ pub fn podcasts() -> Html {
                         });
                     }
                     Err(e) => {
-                        dispatch_call.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!("{}{}", error_prefix, e));
                         });
                     }

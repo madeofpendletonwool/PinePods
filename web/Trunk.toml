@@ -3,6 +3,9 @@ target = "index.html"
 dist = "dist"
 release = true
 
+[tools]
+wasm-opt = ["-Oz", "--enable-mutable-globals"]
+
 # [watch]
 # ignore = ["dist/**"]
 

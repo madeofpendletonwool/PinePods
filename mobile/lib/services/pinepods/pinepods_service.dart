@@ -236,12 +236,17 @@ class PinepodsService {
   }
 
   // Get recent episodes (last 30 days)
-  Future<List<PinepodsEpisode>> getRecentEpisodes(int userId) async {
+  Future<EpisodePage> getRecentEpisodes(int userId, {int limit = 50, int offset = 0}) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated - server or API key missing');
     }
 
-    final url = Uri.parse('$_server/api/data/return_episodes/$userId');
+    final url = Uri.parse('$_server/api/data/return_episodes/$userId').replace(
+      queryParameters: {
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      },
+    );
 
     try {
       final response = await http.get(
@@ -250,22 +255,22 @@ class PinepodsService {
       );
 
       if (response.statusCode == 200) {
-        final responseText = response.body;
-        final data = jsonDecode(responseText);
+        final data = jsonDecode(response.body);
 
-        // Handle the response structure from the web implementation
         if (data is Map && data['episodes'] != null) {
           final episodesList = data['episodes'] as List;
-          return episodesList
+          final episodes = episodesList
               .map((episode) => PinepodsEpisode.fromJson(episode))
               .toList();
+          final total = (data['total'] as num?)?.toInt() ?? episodes.length;
+          return EpisodePage(episodes: episodes, total: total);
         } else if (data is List) {
-          // Handle direct list response
-          return data
+          final episodes = data
               .map((episode) => PinepodsEpisode.fromJson(episode))
               .toList();
+          return EpisodePage(episodes: episodes, total: episodes.length);
         } else {
-          return [];
+          return EpisodePage(episodes: [], total: 0);
         }
       } else {
         throw Exception(
@@ -1709,14 +1714,16 @@ class PinepodsService {
   // Get playlist episodes
   Future<PlaylistEpisodesResponse> getPlaylistEpisodes(
     int userId,
-    int playlistId,
-  ) async {
+    int playlistId, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse(
-      '$_server/api/data/get_playlist_episodes?user_id=$userId&playlist_id=$playlistId',
+      '$_server/api/data/get_playlist_episodes?user_id=$userId&playlist_id=$playlistId&limit=$limit&offset=$offset',
     );
     print('Making API call to: $url');
 
@@ -1768,15 +1775,22 @@ class PinepodsService {
   }
 
   // Search episodes in user's subscriptions
-  Future<List<SearchEpisodeResult>> searchEpisodes(
+  Future<SearchResultPage> searchEpisodes(
     int userId,
-    String searchTerm,
-  ) async {
+    String searchTerm, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/search_data');
+    final url = Uri.parse('$_server/api/data/search_data').replace(
+      queryParameters: {
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      },
+    );
     print('Making API call to: $url');
 
     try {
@@ -1789,13 +1803,14 @@ class PinepodsService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List<dynamic> episodesData = data['data'] ?? [];
+        final total = (data['total'] as num?)?.toInt() ?? episodesData.length;
 
-        List<SearchEpisodeResult> episodes = [];
+        List<SearchEpisodeResult> results = [];
         for (var episodeData in episodesData) {
-          episodes.add(SearchEpisodeResult.fromJson(episodeData));
+          results.add(SearchEpisodeResult.fromJson(episodeData));
         }
 
-        return episodes;
+        return SearchResultPage(results: results, total: total);
       } else {
         throw Exception('Failed to search episodes: ${response.statusCode}');
       }
@@ -2167,10 +2182,12 @@ class CreatePlaylistRequest {
 class PlaylistEpisodesResponse {
   final List<PinepodsEpisode> episodes;
   final PlaylistInfo playlistInfo;
+  final int total;
 
   PlaylistEpisodesResponse({
     required this.episodes,
     required this.playlistInfo,
+    required this.total,
   });
 
   factory PlaylistEpisodesResponse.fromJson(Map<String, dynamic> json) {
@@ -2179,6 +2196,7 @@ class PlaylistEpisodesResponse {
           .map((e) => PinepodsEpisode.fromJson(e))
           .toList(),
       playlistInfo: PlaylistInfo.fromJson(json['playlist_info'] ?? {}),
+      total: (json['total'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -2323,4 +2341,18 @@ class SearchEpisodeResult {
 
     return '';
   }
+}
+
+class EpisodePage {
+  final List<PinepodsEpisode> episodes;
+  final int total;
+
+  EpisodePage({required this.episodes, required this.total});
+}
+
+class SearchResultPage {
+  final List<SearchEpisodeResult> results;
+  final int total;
+
+  SearchResultPage({required this.results, required this.total});
 }

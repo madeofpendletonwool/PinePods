@@ -1,6 +1,6 @@
 use anyhow::{Context, Error};
 // use futures_util::stream::StreamExt;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::notification_center::TaskProgress;
 use crate::requests::episode::Episode;
 use futures::StreamExt;
@@ -777,6 +777,39 @@ pub async fn call_remove_queued_episode(
             } else {
                 "episode"
             },
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+pub async fn call_clear_queue(
+    server_name: &String,
+    api_key: &Option<String>,
+    user_id: &i32,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/clear_queue", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::json!({ "user_id": user_id }).to_string();
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+    if response.ok() {
+        let response_body: QueueResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.data)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to clear queue: {} - {}",
             response.status_text(),
             error_text
         )))
@@ -2901,7 +2934,7 @@ pub async fn connect_to_episode_websocket(
     user_id: &i32,
     api_key: &str,
     nextcloud_refresh: bool,
-    dispatch: Dispatch<AppState>,
+    dispatch: Dispatch<NotificationState>,
 ) -> Result<Vec<EpisodeWebsocketResponse>, Error> {
     let clean_server_name = server_name
         .trim_start_matches("http://")
@@ -3049,10 +3082,11 @@ pub async fn connect_to_episode_websocket(
                                     );
 
                                     // Reset refreshing state when complete
-                                    dispatch.reduce_mut(|state| {
+                                    Dispatch::<AppState>::global().reduce_mut(|state| {
                                         state.is_refreshing = Some(false);
+                                    });
+                                    dispatch.reduce_mut(|state| {
                                         state.refresh_progress = None;
-                                        state.clone()
                                     });
 
                                     break;
@@ -4039,6 +4073,38 @@ pub async fn call_delete_playlist(
 pub struct PlaylistEpisodesResponse {
     pub episodes: Vec<Episode>,
     pub playlist_info: PlaylistInfo,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlaylistFeedPage {
+    pub episodes: Vec<Episode>,
+    pub playlist_info: PlaylistInfo,
+    pub total: i64,
+}
+
+pub async fn call_get_playlist_episodes_paged(
+    server: &str,
+    api_key: &str,
+    user_id: &i32,
+    playlist_id: i32,
+    limit: i64,
+    offset: i64,
+) -> Result<PlaylistFeedPage, anyhow::Error> {
+    let endpoint = format!(
+        "{}/api/data/get_playlist_episodes?user_id={}&playlist_id={}&limit={}&offset={}",
+        server, user_id, playlist_id, limit, offset
+    );
+    let response = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if !response.ok() {
+        return Err(anyhow::anyhow!("Server returned error: {}", response.status()));
+    }
+    let text = response.text().await?;
+    serde_json::from_str::<PlaylistFeedPage>(&text)
+        .map_err(|e| anyhow::anyhow!("Failed to deserialize playlist page: {}", e))
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
