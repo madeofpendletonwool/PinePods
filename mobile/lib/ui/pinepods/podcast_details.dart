@@ -974,22 +974,36 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
     try {
-      final success = await _pinepodsService.markEpisodeCompleted(
-        episode.episodeId,
-        userId,
-        episode.isYoutube,
-      );
-
-      if (success) {
-        setState(() {
-          _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
-          _filteredEpisodes = _episodes.where((e) => 
-            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-          ).toList();
-        });
-        _showSnackBar('Episode marked as complete', Colors.green);
+      if (episode.completed) {
+        final success = await _pinepodsService.markEpisodeUncompleted(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
+        if (success) {
+          setState(() {
+            _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: false);
+            _filterEpisodes();
+          });
+          _showSnackBar('Episode marked as incomplete', Colors.green);
+        } else {
+          _showSnackBar('Failed to mark episode incomplete', Colors.red);
+        }
       } else {
-        _showSnackBar('Failed to mark episode complete', Colors.red);
+        final success = await _pinepodsService.markEpisodeCompleted(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
+        if (success) {
+          setState(() {
+            _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
+            _filterEpisodes();
+          });
+          _showSnackBar('Episode marked as complete', Colors.green);
+        } else {
+          _showSnackBar('Failed to mark episode complete', Colors.red);
+        }
       }
     } catch (e) {
       _showSnackBar('Error marking episode complete: $e', Colors.red);
@@ -1058,7 +1072,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: SafeArea(child: Column(
         children: [
           Expanded(
             child: CustomScrollView(
@@ -1438,7 +1452,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           ),
           _buildBottomPlayer(),
         ],
-      ),
+      )),
     );
   }
 
