@@ -955,13 +955,14 @@
     "search_new": ""
   },
   "settings": {
-    "12_hour": "",
-    "24_hour": "",
-    "account_settings": "",
-    "add_custom_feed": "",
-    "admin_check_error": "",
-    "admin_settings": "",
-    "admin_status": "",
+    "12_hour": "12 timer",
+    "24_hour": "24 timer",
+    "account_settings": "Brugerindstillinger",
+    "add_custom_feed": "Tilføj brugerdefineret feed",
+    "add_local_podcast": "Tilføj lokal podcast",
+    "admin_check_error": "Fejl ved kontrol af administratorstatus",
+    "admin_settings": "Administratorindstillinger",
+    "admin_status": "Administratorstatus",
     "admin_user_question": "",
     "api_keys": "",
     "apply_theme": "",
@@ -1036,6 +1037,18 @@
     "play": "",
     "something_went_wrong": "",
     "unable_to_display_episode": ""
+  },
+  "shared_links": {
+    "actions": "Handlinger",
+    "cancel": "Annuller",
+    "delete": "Slet",
+    "description": "Administrer afsnitlinks, du har delt. Du kan forlænge deres udløb eller fjerne dem, før de udløber.",
+    "episode": "Afsnit",
+    "expires": "Udløber",
+    "extend": "Forlæng",
+    "no_links": "Du har ingen delte links.",
+    "podcast": "Podcast",
+    "title": "Delte links"
   },
   "start_page_options": {
     "apply_start_page": "",
