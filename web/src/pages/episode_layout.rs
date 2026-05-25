@@ -1097,15 +1097,21 @@ pub fn episode_layout() -> Html {
                                                 );
                                             }
                                         }
-                                        // Add notification status check here
-                                        match call_get_podcast_notifications_status(
-                                            server_name.clone(),
-                                            api_key.clone().unwrap(),
-                                            user_id,
-                                            id,
-                                        )
-                                        .await
-                                        {
+                                        let (notif_result, fav_result) = futures::join!(
+                                            call_get_podcast_notifications_status(
+                                                server_name.clone(),
+                                                api_key.clone().unwrap(),
+                                                user_id,
+                                                id,
+                                            ),
+                                            call_get_podcast_favorite_status(
+                                                server_name.clone(),
+                                                api_key.clone().unwrap(),
+                                                user_id,
+                                                id,
+                                            ),
+                                        );
+                                        match notif_result {
                                             Ok(status) => {
                                                 notification_effect.set(status);
                                             }
@@ -1119,15 +1125,7 @@ pub fn episode_layout() -> Html {
                                                 );
                                             }
                                         }
-                                        // Fetch favorite status
-                                        match call_get_podcast_favorite_status(
-                                            server_name.clone(),
-                                            api_key.clone().unwrap(),
-                                            user_id,
-                                            id,
-                                        )
-                                        .await
-                                        {
+                                        match fav_result {
                                             Ok(status) => {
                                                 favorite_effect.set(status);
                                             }

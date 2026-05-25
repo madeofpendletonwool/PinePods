@@ -601,6 +601,25 @@ pub async fn remove_queued_episode(
     }))
 }
 
+pub async fn clear_all_queue(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<crate::models::ClearQueueRequest>,
+) -> Result<Json<crate::models::QueueResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+    if !check_user_access(&state, &api_key, request.user_id).await? {
+        return Err(AppError::forbidden("You can only clear your own queue!"));
+    }
+    state.db_pool.clear_queue(request.user_id).await?;
+    Ok(Json(crate::models::QueueResponse {
+        data: "Queue cleared successfully".to_string(),
+    }))
+}
+
 // Get queued episodes - matches call_get_queued_episodes from frontend
 pub async fn get_queued_episodes(
     Query(query): Query<TimeInfoQuery>, // Reuse TimeInfoQuery since it just needs user_id
@@ -1713,6 +1732,36 @@ pub async fn get_stats(
         } else {
             Err(AppError::not_found("Stats not found for the given user ID"))
         }
+    } else {
+        Err(AppError::forbidden("You can only get stats for your own account."))
+    }
+}
+
+// Query parameters for get_extended_stats
+#[derive(Deserialize)]
+pub struct GetExtendedStatsQuery {
+    pub user_id: i32,
+}
+
+// Get extended user stats with rich listening insights
+pub async fn get_extended_stats(
+    Query(query): Query<GetExtendedStatsQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == query.user_id || is_web_key {
+        let stats = state.db_pool.get_extended_stats(query.user_id).await?;
+        Ok(Json(stats))
     } else {
         Err(AppError::forbidden("You can only get stats for your own account."))
     }

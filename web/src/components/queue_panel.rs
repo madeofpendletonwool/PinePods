@@ -2,7 +2,7 @@ use crate::components::audio::on_play_pause;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_components::FallbackImage;
 use crate::requests::pod_req::{
-    call_get_queued_episodes, call_remove_queued_episode, call_reorder_queue,
+    call_clear_queue, call_get_queued_episodes, call_remove_queued_episode, call_reorder_queue,
     QueuePodcastRequest, QueuedEpisodesResponse,
 };
 use wasm_bindgen::JsCast;
@@ -23,6 +23,31 @@ pub fn queue_panel() -> Html {
         let ui_dispatch = ui_dispatch.clone();
         Callback::from(move |_: MouseEvent| {
             ui_dispatch.reduce_mut(|s| s.queue_panel_open = false);
+        })
+    };
+
+    let on_clear_queue = {
+        let app_dispatch = app_dispatch.clone();
+        let app_state = app_state.clone();
+        Callback::from(move |_: MouseEvent| {
+            if let (Some(auth), Some(user)) = (
+                app_state.auth_details.as_ref(),
+                app_state.user_details.as_ref(),
+            ) {
+                let server = auth.server_name.clone();
+                let key = auth.api_key.clone();
+                let uid = user.UserID;
+                let dispatch = app_dispatch.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if call_clear_queue(&server, &key, &uid).await.is_ok() {
+                        dispatch.reduce_mut(|s| {
+                            s.queued_episodes =
+                                Some(QueuedEpisodesResponse { episodes: vec![] });
+                            s.queued_episode_ids = Some(vec![]);
+                        });
+                    }
+                });
+            }
         })
     };
 
@@ -218,6 +243,9 @@ pub fn queue_panel() -> Html {
                         </div>
                     </div>
                     <div class="queue-head-actions">
+                        <button class="player-btn" onclick={on_clear_queue} title="Clear queue">
+                            <i class="ph ph-broom"></i>
+                        </button>
                         <button class="player-btn" onclick={close.clone()} title="Close">
                             <i class="ph ph-x"></i>
                         </button>
@@ -368,7 +396,7 @@ pub fn queue_panel() -> Html {
                                     ondragover={ondragover.clone()}
                                     ondragend={ondragend.clone()}
                                     ondrop={ondrop.clone()}
-                                    key={i}
+                                    key={ep_id}
                                 >
                                     <div class="queue-drag-handle">
                                         <i class="ph ph-dots-six-vertical"></i>

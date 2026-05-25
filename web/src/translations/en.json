@@ -1091,7 +1091,21 @@
     "time_listened": "Time Listened",
     "unknown_sync_type": "Unknown sync type",
     "user_created": "User Created",
-    "user_statistics": "User Statistics"
+    "user_statistics": "User Statistics",
+    "listening_insights": "Listening Insights",
+    "top_podcasts_section": "Top Podcasts",
+    "favorite_categories_section": "Favorite Categories",
+    "completion_rate": "Completion Rate",
+    "longest_episode": "Longest Episode Listened",
+    "listening_badge": "Listening Style",
+    "total_downloaded": "Total Data Downloaded",
+    "current_streak": "Day Streak",
+    "listening_by_day": "Listening by Day of Week",
+    "badge_night_owl": "Night Owl",
+    "badge_evening_listener": "Evening Listener",
+    "badge_afternoon_listener": "Afternoon Listener",
+    "badge_morning_listener": "Morning Listener",
+    "no_listening_data": "No listening history yet"
   },
   "validation": {
     "invalid_email": "Invalid email address",

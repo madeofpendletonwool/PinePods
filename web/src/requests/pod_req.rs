@@ -783,6 +783,39 @@ pub async fn call_remove_queued_episode(
     }
 }
 
+pub async fn call_clear_queue(
+    server_name: &String,
+    api_key: &Option<String>,
+    user_id: &i32,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/clear_queue", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::json!({ "user_id": user_id }).to_string();
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+    if response.ok() {
+        let response_body: QueueResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.data)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to clear queue: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct QueuedEpisodesResponse {
     pub episodes: Vec<Episode>,

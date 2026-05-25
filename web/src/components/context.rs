@@ -19,7 +19,7 @@ use crate::requests::search_pods::{
     YouTubeSearchResults,
 };
 use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
-use crate::requests::stat_reqs::UserStats;
+use crate::requests::stat_reqs::{UserStats, ExtendedUserStats};
 use serde::Deserialize;
 use serde_json::{from_str, json};
 use std::collections::HashSet;
@@ -290,6 +290,7 @@ impl DownloadedEpisodeRecords {
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
 pub struct UserStatsStore {
     pub stats: Option<UserStats>,
+    pub extended_stats: Option<ExtendedUserStats>,
     pub pinepods_version: Option<String>,
 }
 

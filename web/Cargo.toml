@@ -102,6 +102,9 @@ server_build = []
 
 [profile.release]
 lto = true
+strip = true
+codegen-units = 1
+opt-level = "z"
 
 [target.wasm32-unknown-unknown]
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

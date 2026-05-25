@@ -323,6 +323,11 @@ pub struct QueuePodcastRequest {
     pub is_youtube: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ClearQueueRequest {
+    pub user_id: i32,
+}
+
 // Saved episodes models
 #[derive(Debug, Deserialize)]
 pub struct SavePodcastRequest {

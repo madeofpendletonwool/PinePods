@@ -383,9 +383,9 @@ pub fn search_bar() -> Html {
 
     let (_, ui_dispatch) = use_store::<UIState>();
     let (app_state_for_queue, _) = use_store::<AppState>();
-    let queue_count = app_state_for_queue.queued_episode_ids
+    let queue_count = app_state_for_queue.queued_episodes
         .as_ref()
-        .map(|ids| ids.len())
+        .map(|q| q.episodes.len())
         .unwrap_or(0);
 
     let toggle_queue = {
