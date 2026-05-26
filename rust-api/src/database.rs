@@ -4619,11 +4619,32 @@ impl DatabasePool {
     }
 
     // Get saved episodes - matches Python saved_episode_list function
-    pub async fn get_saved_episodes(&self, user_id: i32) -> AppResult<Vec<crate::models::SavedEpisode>> {
+    pub async fn get_saved_episodes(
+        &self,
+        user_id: i32,
+        limit: i64,
+        offset: i64,
+        sort_by: &str,
+        sort_order: &str,
+        filter: &str,
+    ) -> AppResult<(Vec<crate::models::SavedEpisode>, i64)> {
+        // Validate and map sort column/direction to prevent SQL injection
+        let order_col = match sort_by {
+            "duration" => "episodeduration",
+            "title"    => "episodetitle",
+            _          => "savedate",  // "date" or any unknown value
+        };
+        let order_dir = if sort_order == "asc" { "ASC" } else { "DESC" };
+        let filter_clause = match filter {
+            "completed"   => " WHERE completed = true",
+            "in_progress" => " WHERE completed = false AND listenduration IS NOT NULL AND listenduration > 0",
+            _             => "",
+        };
+
         match self {
             DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
-                    r#"SELECT * FROM (
+                let sql = format!(
+                    r#"SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             "Podcasts".podcastname as podcastname,
                             "Episodes".episodetitle as episodetitle,
@@ -4698,18 +4719,27 @@ impl DatabasePool {
                             "SavedVideos".videoid = "DownloadedVideos".videoid
                             AND "DownloadedVideos".userid = $6
                         WHERE "SavedVideos".userid = $7
-                    ) combined
-                    ORDER BY savedate DESC"#
-                )
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
+                    ) combined{filter_clause}
+                    ORDER BY {order_col} {order_dir} NULLS LAST
+                    LIMIT $8 OFFSET $9"#
+                );
+
+                let rows = sqlx::query(&sql)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(pool)
+                    .await?;
+
+                let total: i64 = rows.first()
+                    .and_then(|r| r.try_get::<i64, _>("total_count").ok())
+                    .unwrap_or(0);
 
                 let mut episodes = Vec::new();
                 for row in rows {
@@ -4737,11 +4767,17 @@ impl DatabasePool {
                             .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
                     });
                 }
-                Ok(episodes)
+                Ok((episodes, total))
             }
             DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query(
-                    "SELECT * FROM (
+                // MySQL uses ? placeholders; COUNT(*) OVER() requires MySQL 8+
+                let mysql_filter = match filter {
+                    "completed"   => " WHERE completed = 1",
+                    "in_progress" => " WHERE completed = 0 AND listenduration IS NOT NULL AND listenduration > 0",
+                    _             => "",
+                };
+                let sql = format!(
+                    "SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             Podcasts.PodcastName as podcastname,
                             Episodes.EpisodeTitle as episodetitle,
@@ -4816,18 +4852,27 @@ impl DatabasePool {
                             SavedVideos.VideoID = DownloadedVideos.VideoID
                             AND DownloadedVideos.UserID = ?
                         WHERE SavedVideos.UserID = ?
-                    ) combined
-                    ORDER BY savedate DESC"
-                )
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
+                    ) combined{mysql_filter}
+                    ORDER BY {order_col} {order_dir}
+                    LIMIT ? OFFSET ?"
+                );
+
+                let rows = sqlx::query(&sql)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(pool)
+                    .await?;
+
+                let total: i64 = rows.first()
+                    .and_then(|r| r.try_get::<i64, _>("total_count").ok())
+                    .unwrap_or(0);
 
                 let mut episodes = Vec::new();
                 for row in rows {
@@ -4855,7 +4900,7 @@ impl DatabasePool {
                             .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
                     });
                 }
-                Ok(episodes)
+                Ok((episodes, total))
             }
         }
     }
@@ -17241,18 +17286,40 @@ impl DatabasePool {
     }
 
     // Get user history - matches Python user_history function exactly with YouTube UNION
-    pub async fn user_history(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
+    pub async fn user_history(
+        &self,
+        user_id: i32,
+        limit: i64,
+        offset: i64,
+        sort_by: &str,
+        sort_order: &str,
+        filter: &str,
+    ) -> AppResult<(Vec<serde_json::Value>, i64)> {
+        // Validate and map sort column/direction to prevent SQL injection
+        let order_col = match sort_by {
+            "duration" => "episodeduration",
+            "title"    => "episodetitle",
+            _          => "listendate",  // "date" or any unknown value
+        };
+        let order_dir = if sort_order == "asc" { "ASC" } else { "DESC" };
+        let filter_clause = match filter {
+            "completed"   => " WHERE completed = true",
+            "in_progress" => " WHERE completed = false AND listenduration IS NOT NULL AND listenduration > 0",
+            _             => "",
+        };
+
         match self {
             DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
-                    r#"SELECT * FROM (
+                let null_sort_last = if order_col == "listendate" { " NULLS LAST" } else { "" };
+                let sql = format!(
+                    r#"SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             "Episodes".episodeid as episodeid,
                             "UserEpisodeHistory".listendate as listendate,
                             "UserEpisodeHistory".listenduration as listenduration,
                             "Episodes".episodetitle as episodetitle,
                             "Episodes".episodedescription as episodedescription,
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "Episodes".episodeartwork
@@ -17283,7 +17350,7 @@ impl DatabasePool {
                             "YouTubeVideos".listenposition as listenduration,
                             "YouTubeVideos".videotitle as episodetitle,
                             "YouTubeVideos".videodescription as episodedescription,
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "YouTubeVideos".thumbnailurl
@@ -17305,12 +17372,21 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedVideos" ON "YouTubeVideos".videoid = "DownloadedVideos".videoid AND "DownloadedVideos".userid = $1
                         WHERE "YouTubeVideos".listenposition > 0
                           AND "Podcasts".userid = $1
-                    ) combined_results
-                    ORDER BY listendate DESC NULLS LAST"#
-                )
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
+                    ) combined_results{filter_clause}
+                    ORDER BY {order_col} {order_dir}{null_sort_last}
+                    LIMIT $2 OFFSET $3"#
+                );
+
+                let rows = sqlx::query(&sql)
+                    .bind(user_id)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(pool)
+                    .await?;
+
+                let total: i64 = rows.first()
+                    .and_then(|r| r.try_get::<i64, _>("total_count").ok())
+                    .unwrap_or(0);
 
                 let mut episodes = Vec::new();
                 for row in rows {
@@ -17318,7 +17394,7 @@ impl DatabasePool {
                         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string());
                     let episodepubdate = row.try_get::<Option<chrono::NaiveDateTime>, _>("episodepubdate")?
                         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string());
-                    
+
                     episodes.push(serde_json::json!({
                         "episodeid": row.get::<Option<i32>, _>("episodeid"),
                         "listendate": listendate,
@@ -17337,18 +17413,23 @@ impl DatabasePool {
                         "is_youtube": row.get::<Option<bool>, _>("is_youtube")
                     }));
                 }
-                Ok(episodes)
+                Ok((episodes, total))
             }
             DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query(
-                    "SELECT * FROM (
+                let mysql_filter = match filter {
+                    "completed"   => " WHERE completed = 1",
+                    "in_progress" => " WHERE completed = 0 AND listenduration IS NOT NULL AND listenduration > 0",
+                    _             => "",
+                };
+                let sql = format!(
+                    "SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             e.EpisodeID as episodeid,
                             ueh.ListenDate as listendate,
                             ueh.ListenDuration as listenduration,
                             e.EpisodeTitle as episodetitle,
                             e.EpisodeDescription as episodedescription,
-                            CASE 
+                            CASE
                                 WHEN p.UsePodcastCoversCustomized = 1 AND p.UsePodcastCovers = 1 THEN p.ArtworkURL
                                 WHEN u.UsePodcastCovers = 1 THEN p.ArtworkURL
                                 ELSE e.EpisodeArtwork
@@ -17379,7 +17460,7 @@ impl DatabasePool {
                             yv.ListenPosition as listenduration,
                             yv.VideoTitle as episodetitle,
                             yv.VideoDescription as episodedescription,
-                            CASE 
+                            CASE
                                 WHEN p.UsePodcastCoversCustomized = 1 AND p.UsePodcastCovers = 1 THEN p.ArtworkURL
                                 WHEN u.UsePodcastCovers = 1 THEN p.ArtworkURL
                                 ELSE yv.ThumbnailURL
@@ -17401,19 +17482,28 @@ impl DatabasePool {
                         LEFT JOIN DownloadedVideos dv ON yv.VideoID = dv.VideoID AND dv.UserID = ?
                         WHERE yv.ListenPosition > 0
                           AND p.UserID = ?
-                    ) combined_results
-                    ORDER BY listendate DESC"
-                )
-                .bind(user_id)  // SavedEpisodes join
-                .bind(user_id)  // EpisodeQueue join  
-                .bind(user_id)  // DownloadedEpisodes join
-                .bind(user_id)  // WHERE clause
-                .bind(user_id)  // SavedVideos join
-                .bind(user_id)  // EpisodeQueue join (YouTube)
-                .bind(user_id)  // DownloadedVideos join
-                .bind(user_id)  // WHERE clause (YouTube)
-                .fetch_all(pool)
-                .await?;
+                    ) combined_results{mysql_filter}
+                    ORDER BY {order_col} {order_dir}
+                    LIMIT ? OFFSET ?"
+                );
+
+                let rows = sqlx::query(&sql)
+                    .bind(user_id)  // SavedEpisodes join
+                    .bind(user_id)  // EpisodeQueue join
+                    .bind(user_id)  // DownloadedEpisodes join
+                    .bind(user_id)  // WHERE clause
+                    .bind(user_id)  // SavedVideos join
+                    .bind(user_id)  // EpisodeQueue join (YouTube)
+                    .bind(user_id)  // DownloadedVideos join
+                    .bind(user_id)  // WHERE clause (YouTube)
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(pool)
+                    .await?;
+
+                let total: i64 = rows.first()
+                    .and_then(|r| r.try_get::<i64, _>("total_count").ok())
+                    .unwrap_or(0);
 
                 let mut episodes = Vec::new();
                 for row in rows {
@@ -17421,7 +17511,7 @@ impl DatabasePool {
                         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string());
                     let episodepubdate = row.try_get::<Option<chrono::NaiveDateTime>, _>("episodepubdate")?
                         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string());
-                    
+
                     episodes.push(serde_json::json!({
                         "episodeid": row.get::<Option<i32>, _>("episodeid"),
                         "listendate": listendate,
@@ -17440,7 +17530,7 @@ impl DatabasePool {
                         "is_youtube": row.get::<Option<bool>, _>("is_youtube")
                     }));
                 }
-                Ok(episodes)
+                Ok((episodes, total))
             }
         }
     }

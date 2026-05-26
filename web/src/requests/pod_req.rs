@@ -912,6 +912,46 @@ pub struct SavedEpisodesResponse {
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct SavedDataResponse {
     pub saved_episodes: Vec<Episode>,
+    pub total: i64,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct SavedPage {
+    pub saved_episodes: Vec<Episode>,
+    pub total: i64,
+}
+
+#[allow(dead_code)]
+pub async fn call_get_saved_episodes_paged(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+    limit: i64,
+    offset: i64,
+    sort_by: &str,
+    sort_order: &str,
+    filter: &str,
+) -> Result<SavedPage, anyhow::Error> {
+    let url = format!(
+        "{}/api/data/saved_episode_list/{}?limit={}&offset={}&sort_by={}&sort_order={}&filter={}",
+        server_name, user_id, limit, offset, sort_by, sort_order, filter
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch saved episodes: {}",
+            response.status_text()
+        )));
+    }
+    let text = response.text().await?;
+    serde_json::from_str::<SavedPage>(&text)
+        .map_err(|_| anyhow::Error::msg("Failed to deserialize saved episodes page"))
 }
 
 #[allow(dead_code)]
@@ -1047,6 +1087,46 @@ pub async fn call_remove_saved_episode(
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct HistoryDataResponse {
     pub data: Vec<Episode>,
+    pub total: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct HistoryPage {
+    pub data: Vec<Episode>,
+    pub total: i64,
+}
+
+#[allow(dead_code)]
+pub async fn call_get_user_history_paged(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+    limit: i64,
+    offset: i64,
+    sort_by: &str,
+    sort_order: &str,
+    filter: &str,
+) -> Result<HistoryPage, anyhow::Error> {
+    let url = format!(
+        "{}/api/data/user_history/{}?limit={}&offset={}&sort_by={}&sort_order={}&filter={}",
+        server_name, user_id, limit, offset, sort_by, sort_order, filter
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch history: {}",
+            response.status_text()
+        )));
+    }
+    let text = response.text().await?;
+    serde_json::from_str::<HistoryPage>(&text)
+        .map_err(|_| anyhow::Error::msg("Failed to deserialize history page"))
 }
 
 #[allow(dead_code)]

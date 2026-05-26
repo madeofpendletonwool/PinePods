@@ -53,6 +53,11 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // Pagination state
+  int _offset = 0;
+  int _total = 0;
+  bool _isLoadingMore = false;
+
   // Sort and filter state
   SavedSortDirection _sortDirection = SavedSortDirection.newestFirst;
   EpisodeFilter _activeFilter = EpisodeFilter.all;
@@ -131,10 +136,8 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
   }
 
   void _filterEpisodes() {
-    // Start with all episodes
+    // Sort and status filter are handled server-side; only apply search locally
     var filtered = List<PinepodsEpisode>.from(_episodes);
-
-    // Apply search filter
     if (_searchQuery.isNotEmpty) {
       filtered = filtered.where((episode) {
         return episode.episodeTitle.toLowerCase().contains(_searchQuery.toLowerCase()) ||
@@ -142,62 +145,62 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
                episode.episodeDescription.toLowerCase().contains(_searchQuery.toLowerCase());
       }).toList();
     }
-
-    // Apply status filter
-    switch (_activeFilter) {
-      case EpisodeFilter.completed:
-        filtered = filtered.where((episode) => episode.completed).toList();
-        break;
-      case EpisodeFilter.inProgress:
-        filtered = filtered.where((episode) =>
-          episode.isStarted && !episode.completed
-        ).toList();
-        break;
-      case EpisodeFilter.all:
-        // No filtering needed
-        break;
-    }
-
-    // Apply sorting
-    filtered.sort((a, b) {
-      switch (_sortDirection) {
-        case SavedSortDirection.newestFirst:
-          return _compareDates(b.saveDate ?? '', a.saveDate ?? '');
-        case SavedSortDirection.oldestFirst:
-          return _compareDates(a.saveDate ?? '', b.saveDate ?? '');
-        case SavedSortDirection.shortestFirst:
-          return a.episodeDuration.compareTo(b.episodeDuration);
-        case SavedSortDirection.longestFirst:
-          return b.episodeDuration.compareTo(a.episodeDuration);
-        case SavedSortDirection.titleAZ:
-          return a.episodeTitle.toLowerCase().compareTo(b.episodeTitle.toLowerCase());
-        case SavedSortDirection.titleZA:
-          return b.episodeTitle.toLowerCase().compareTo(a.episodeTitle.toLowerCase());
-      }
-    });
-
     _filteredEpisodes = filtered;
   }
 
-  int _compareDates(String dateA, String dateB) {
-    final a = DateTime.tryParse(dateA) ?? DateTime(1970);
-    final b = DateTime.tryParse(dateB) ?? DateTime(1970);
-    return a.compareTo(b);
+  String _sortByParam(SavedSortDirection direction) {
+    switch (direction) {
+      case SavedSortDirection.shortestFirst:
+      case SavedSortDirection.longestFirst:
+        return 'duration';
+      case SavedSortDirection.titleAZ:
+      case SavedSortDirection.titleZA:
+        return 'title';
+      default:
+        return 'date';
+    }
+  }
+
+  String _sortOrderParam(SavedSortDirection direction) {
+    switch (direction) {
+      case SavedSortDirection.oldestFirst:
+      case SavedSortDirection.shortestFirst:
+      case SavedSortDirection.titleAZ:
+        return 'asc';
+      default:
+        return 'desc';
+    }
+  }
+
+  String _filterParam(EpisodeFilter filter) {
+    switch (filter) {
+      case EpisodeFilter.completed: return 'completed';
+      case EpisodeFilter.inProgress: return 'in_progress';
+      case EpisodeFilter.all: return 'all';
+    }
   }
 
   void _setSortDirection(SavedSortDirection direction) {
     setState(() {
       _sortDirection = direction;
-      _filterEpisodes();
+      _episodes = [];
+      _filteredEpisodes = [];
+      _offset = 0;
+      _total = 0;
     });
     _saveSortPreference(direction);
+    _loadSavedEpisodes();
   }
 
   void _setFilter(EpisodeFilter filter) {
     setState(() {
       _activeFilter = filter;
-      _filterEpisodes();
+      _episodes = [];
+      _filteredEpisodes = [];
+      _offset = 0;
+      _total = 0;
     });
+    _loadSavedEpisodes();
   }
 
   void _clearAllFilters() {
@@ -205,8 +208,12 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       _activeFilter = EpisodeFilter.all;
       _searchController.clear();
       _searchQuery = '';
-      _filterEpisodes();
+      _episodes = [];
+      _filteredEpisodes = [];
+      _offset = 0;
+      _total = 0;
     });
+    _loadSavedEpisodes();
   }
 
   PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
@@ -215,14 +222,18 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     setState(() {
       _isLoading = true;
       _errorMessage = '';
+      _offset = 0;
+      _total = 0;
+      _episodes = [];
+      _filteredEpisodes = [];
     });
 
     try {
       final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
       final settings = settingsBloc.currentSettings;
 
-      if (settings.pinepodsServer == null || 
-          settings.pinepodsApiKey == null || 
+      if (settings.pinepodsServer == null ||
+          settings.pinepodsApiKey == null ||
           settings.pinepodsUserId == null) {
         setState(() {
           _errorMessage = 'Not connected to PinePods server. Please login first.';
@@ -235,23 +246,30 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
       final userId = settings.pinepodsUserId!;
 
-      final episodes = await _pinepodsService.getSavedEpisodes(userId);
-      
-      // Enrich episodes with best available positions (local vs server)
+      final page = await _pinepodsService.getSavedEpisodesPaged(
+        userId,
+        limit: 50,
+        offset: 0,
+        sortBy: _sortByParam(_sortDirection),
+        sortOrder: _sortOrderParam(_sortDirection),
+        filter: _filterParam(_activeFilter),
+      );
+
       final enrichedEpisodes = await PositionUtils.enrichEpisodesWithBestPositions(
         context,
         _pinepodsService,
-        episodes,
+        page.episodes,
         userId,
       );
-      
+
       setState(() {
         _episodes = enrichedEpisodes;
-        _filterEpisodes(); // Initialize filtered list
+        _total = page.total;
+        _offset = enrichedEpisodes.length;
+        _filterEpisodes();
         _isLoading = false;
       });
-      
-      // After loading episodes, check their local download status
+
       await LocalDownloadUtils.loadLocalDownloadStatuses(context, enrichedEpisodes);
     } catch (e) {
       setState(() {
@@ -261,8 +279,53 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
     }
   }
 
+  Future<void> _loadMoreEpisodes() async {
+    if (_isLoadingMore || _offset >= _total) return;
+
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+
+    if (settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null ||
+        settings.pinepodsUserId == null) {
+      return;
+    }
+
+    final userId = settings.pinepodsUserId!;
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final page = await _pinepodsService.getSavedEpisodesPaged(
+        userId,
+        limit: 50,
+        offset: _offset,
+        sortBy: _sortByParam(_sortDirection),
+        sortOrder: _sortOrderParam(_sortDirection),
+        filter: _filterParam(_activeFilter),
+      );
+
+      final enrichedEpisodes = await PositionUtils.enrichEpisodesWithBestPositions(
+        context,
+        _pinepodsService,
+        page.episodes,
+        userId,
+      );
+
+      setState(() {
+        _episodes.addAll(enrichedEpisodes);
+        _total = page.total;
+        _offset += enrichedEpisodes.length;
+        _filterEpisodes();
+        _isLoadingMore = false;
+      });
+
+      await LocalDownloadUtils.loadLocalDownloadStatuses(context, enrichedEpisodes);
+    } catch (e) {
+      setState(() => _isLoadingMore = false);
+    }
+  }
+
   Future<void> _refresh() async {
-    // Clear local download status cache on refresh
     LocalDownloadUtils.clearCache();
     await _loadSavedEpisodes();
   }
@@ -910,9 +973,8 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
   }
 
   Widget _buildEpisodesList() {
-    // Check if filters returned no results
-    final hasActiveFilters = _searchQuery.isNotEmpty || _activeFilter != EpisodeFilter.all;
-    if (_filteredEpisodes.isEmpty && hasActiveFilters) {
+    final hasActiveSearch = _searchQuery.isNotEmpty;
+    if (_filteredEpisodes.isEmpty && !_isLoadingMore && hasActiveSearch) {
       return SliverFillRemaining(
         child: Center(
           child: Column(
@@ -947,11 +1009,12 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
       );
     }
 
+    final showFooter = _isLoadingMore || _offset < _total;
+
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
           if (index == 0) {
-            // Header
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Row(
@@ -972,10 +1035,22 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
               ),
             );
           }
-          // Episodes (index - 1 because of header)
+
           final episodeIndex = index - 1;
+
+          // Footer: triggers load more when it becomes visible
+          if (showFooter && episodeIndex == _filteredEpisodes.length) {
+            if (!_isLoadingMore) {
+              WidgetsBinding.instance.addPostFrameCallback((_) => _loadMoreEpisodes());
+            }
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+
+          if (episodeIndex >= _filteredEpisodes.length) return null;
           final episode = _filteredEpisodes[episodeIndex];
-          // Find the original index for context menu operations
           final originalIndex = _episodes.indexOf(episode);
           return PinepodsEpisodeCard(
             episode: episode,
@@ -993,7 +1068,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
             onPlayPressed: () => _playEpisode(episode),
           );
         },
-        childCount: _filteredEpisodes.length + 1, // +1 for header
+        childCount: _filteredEpisodes.length + 1 + (showFooter ? 1 : 0),
       ),
     );
   }

@@ -662,7 +662,21 @@
     "sync_gpodder": "Sync GPodder",
     "syncing": "Syncing...",
     "syncing_with_device": "Syncing with device: {} (ID: {}, remote: {})",
-    "your_gpodder_devices": "Your GPodder Devices"
+    "your_gpodder_devices": "Your GPodder Devices",
+    "current_sync_server": "Current Sync Server",
+    "remove_sync": "Remove Sync",
+    "gpodder_sync_statistics": "Gpodder Sync Statistics",
+    "show_extra_options": "Show Extra Options",
+    "name": "Name",
+    "type": "Type",
+    "last_sync": "Last Sync",
+    "never": "Never",
+    "status": "Status",
+    "default": "Default",
+    "add_new_device": "Add New Device",
+    "device_name": "Device Name",
+    "device_type": "Device Type",
+    "caption_optional": "Optional Note"
   },
   "notification_center": {
     "active_tasks": "Active Tasks",
@@ -720,6 +734,7 @@
     "test_notification_sent": "Test notification sent!",
     "topic": "Topic: ",
     "username": "Username",
+    "gotify": "gotify",
     "username_password_or_token": "Choose either username/password OR access token, not both"
   },
   "oauth_callback": {
@@ -900,7 +915,12 @@
     "search_results": "Search Results",
     "show_ignored": "Show Ignored",
     "show_unmatched": "Show Unmatched",
-    "unmatched_podcasts": "Unmatched Podcasts"
+    "unmatched_podcasts": "Unmatched Podcasts",
+    "all_podcasts_matched": "All Podcasts Matched!",
+    "podcasts_ignored": "Ignored Podcasts",
+    "hide": "Hide",
+    "show": "Show",
+    "restore": "Restore"
   },
   "podcast_layout": {
     "add_error": "Error adding podcast",
@@ -981,7 +1001,13 @@
     "restoring": "Restoring...",
     "select_existing_backup": "Select Existing Backup",
     "server_restore": "Server Restore",
-    "upload_backup_file": "Upload Backup File"
+    "upload_backup_file": "Upload Backup File",
+    "warning": "WARNING: This will delete everything on your server and restore to the point that the backup contains.",
+    "restore_method": "Restore Method",
+    "select_from_server_backups": "Select From Server Backups",
+    "backup_file_sql": "Backup File (.sql)",
+    "upload_backup_hint": "Upload a backup file and provide your database password to restore your server.",
+    "choose_file": "Choose File"
   },
   "rss_feeds": {
     "copy_to_clipboard": "Copy to Clipboard",
@@ -989,7 +1015,9 @@
     "error_toggling_rss_feeds": "Error toggling RSS feeds: ",
     "rss_feed_description": "RSS feeds allow you to subscribe to your Pinepods queue using any RSS reader. This creates a personal RSS feed that includes all queued episodes.",
     "rss_feed_settings": "RSS Feed Settings:",
-    "rss_feed_url": "Your RSS Feed URL:"
+    "rss_feed_url": "Your RSS Feed URL:",
+    "url_includes_api_key": "The url uses a custom API key only valid for this shared link. Share away!",
+    "your_rss_feed_url": "Your RSS feed URL"
   },
   "safehtml": {
     "start_episode_first": "Please start playing this episode before using timecodes.",
@@ -1096,7 +1124,8 @@
     "user_settings": "User Settings",
     "username": "Username",
     "username_min_length": "Username must be at least 4 characters long",
-    "yes": "Yes"
+    "yes": "Yes",
+    "custom_themes": "Custom Themes"
   },
   "shared_episode": {
     "episode_transcript": "Episode Transcript",
@@ -1120,7 +1149,9 @@
     "select_start_page": "Select a start page",
     "start_page_description": "Choose your preferred start page. This is the page you'll see first when opening Pinepods.",
     "start_page_settings": "Start Page Settings",
-    "start_page_updated_successfully": "Start page updated successfully!"
+    "start_page_updated_successfully": "Start page updated successfully!",
+    "podcast_cover_display": "Podcast Cover Display",
+    "always_use_podcast_covers": "Always use podcast covers instead of episode covers"
   },
   "time_formats": {
     "12_hour": "12 Hour",
