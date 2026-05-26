@@ -113,6 +113,15 @@ pub struct FeedQueryParams {
     pub since: Option<String>, // ISO-8601 e.g. "2026-05-01T00:00:00"
 }
 
+#[derive(Deserialize, Default)]
+pub struct ListQueryParams {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub sort_by: Option<String>,    // "date" | "duration" | "title"
+    pub sort_order: Option<String>, // "asc" | "desc"
+    pub filter: Option<String>,     // "all" | "completed" | "in_progress"
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PodcastValues {
     pub pod_title: String,
@@ -745,11 +754,12 @@ pub async fn remove_saved_episode(
 // Get saved episodes - matches call_get_saved_episodes from frontend
 pub async fn get_saved_episodes(
     Path(user_id): Path<i32>,
+    Query(params): Query<ListQueryParams>,
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<crate::models::SavedEpisodesResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -761,10 +771,15 @@ pub async fn get_saved_episodes(
         return Err(AppError::forbidden("You can only get your own saved episodes!"));
     }
 
-    // Get saved episodes from database
-    let saved_episodes = state.db_pool.get_saved_episodes(user_id).await?;
-    
-    Ok(Json(crate::models::SavedEpisodesResponse { saved_episodes }))
+    let limit = params.limit.unwrap_or(50).min(200).max(1);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let sort_by = params.sort_by.as_deref().unwrap_or("date");
+    let sort_order = params.sort_order.as_deref().unwrap_or("desc");
+    let filter = params.filter.as_deref().unwrap_or("all");
+
+    let (saved_episodes, total) = state.db_pool.get_saved_episodes(user_id, limit, offset, sort_by, sort_order, filter).await?;
+
+    Ok(Json(crate::models::SavedEpisodesResponse { saved_episodes, total }))
 }
 
 // Add history - matches call_add_history from frontend
@@ -2027,6 +2042,7 @@ pub async fn record_listen_duration(
 pub async fn user_history(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
+    Query(params): Query<ListQueryParams>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
@@ -2040,8 +2056,14 @@ pub async fn user_history(
         return Err(AppError::forbidden("You can only return history for yourself!"));
     }
 
-    let history = state.db_pool.user_history(user_id).await?;
-    Ok(Json(serde_json::json!({ "data": history })))
+    let limit = params.limit.unwrap_or(50).min(200).max(1);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let sort_by = params.sort_by.as_deref().unwrap_or("date");
+    let sort_order = params.sort_order.as_deref().unwrap_or("desc");
+    let filter = params.filter.as_deref().unwrap_or("all");
+
+    let (history, total) = state.db_pool.user_history(user_id, limit, offset, sort_by, sort_order, filter).await?;
+    Ok(Json(serde_json::json!({ "data": history, "total": total })))
 }
 
 // Increment listen time - matches Python increment_listen_time endpoint exactly

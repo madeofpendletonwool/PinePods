@@ -3781,6 +3781,17 @@ input[type="range"]::-moz-range-thumb {
 
 .ep-mobile-hosts-scroll::-webkit-scrollbar { display: none; }
 
+.ep-mobile-no-hosts-msg {
+    font-size: 0.85rem;
+    color: var(--text-color);
+    margin: 0;
+}
+
+.ep-mobile-no-hosts-link {
+    color: var(--link-color);
+    margin-left: 0.25em;
+}
+
 .ep-mobile-host-chip {
     display: flex;
     flex-direction: column;

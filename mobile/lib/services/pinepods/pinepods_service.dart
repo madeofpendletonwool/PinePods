@@ -872,6 +872,67 @@ class PinepodsService {
     }
   }
 
+  // Get user history with pagination support
+  Future<EpisodePage> getUserHistoryPaged(
+    int userId, {
+    int limit = 50,
+    int offset = 0,
+    String sortBy = 'date',
+    String sortOrder = 'desc',
+    String filter = 'all',
+  }) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/user_history/$userId').replace(
+      queryParameters: {
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+        'sort_by': sortBy,
+        'sort_order': sortOrder,
+        'filter': filter,
+      },
+    );
+
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final total = (data['total'] as num?)?.toInt() ?? 0;
+        final episodesList = data['data'] as List<dynamic>? ?? [];
+
+        final episodes = episodesList.map((episodeData) {
+          return PinepodsEpisode(
+            podcastName: episodeData['podcastname'] ?? '',
+            episodeTitle: episodeData['episodetitle'] ?? '',
+            episodePubDate: episodeData['episodepubdate'] ?? '',
+            episodeDescription: episodeData['episodedescription'] ?? '',
+            episodeArtwork: episodeData['episodeartwork'] ?? '',
+            episodeUrl: episodeData['episodeurl'] ?? '',
+            episodeDuration: episodeData['episodeduration'] ?? 0,
+            listenDuration: episodeData['listenduration'] ?? 0,
+            episodeId: episodeData['episodeid'] ?? 0,
+            completed: episodeData['completed'] ?? false,
+            saved: episodeData['saved'] ?? false,
+            queued: episodeData['queued'] ?? false,
+            downloaded: episodeData['downloaded'] ?? false,
+            isYoutube: episodeData['is_youtube'] ?? false,
+            listenDate: episodeData['listendate'],
+          );
+        }).toList();
+
+        return EpisodePage(episodes: episodes, total: total);
+      } else {
+        throw Exception('Failed to load user history: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting paged user history: $e');
+      rethrow;
+    }
+  }
+
   // Get queued episodes
   Future<List<PinepodsEpisode>> getQueuedEpisodes(int userId) async {
     if (_server == null || _apiKey == null) {
@@ -971,6 +1032,67 @@ class PinepodsService {
       }
     } catch (e) {
       print('Error getting saved episodes: $e');
+      rethrow;
+    }
+  }
+
+  // Get saved episodes with pagination support
+  Future<EpisodePage> getSavedEpisodesPaged(
+    int userId, {
+    int limit = 50,
+    int offset = 0,
+    String sortBy = 'date',
+    String sortOrder = 'desc',
+    String filter = 'all',
+  }) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/saved_episode_list/$userId').replace(
+      queryParameters: {
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+        'sort_by': sortBy,
+        'sort_order': sortOrder,
+        'filter': filter,
+      },
+    );
+
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final total = (data['total'] as num?)?.toInt() ?? 0;
+        final episodesList = data['saved_episodes'] as List<dynamic>? ?? [];
+
+        final episodes = episodesList.map((episodeData) {
+          return PinepodsEpisode(
+            podcastName: episodeData['podcastname'] ?? '',
+            episodeTitle: episodeData['episodetitle'] ?? '',
+            episodePubDate: episodeData['episodepubdate'] ?? '',
+            episodeDescription: episodeData['episodedescription'] ?? '',
+            episodeArtwork: episodeData['episodeartwork'] ?? '',
+            episodeUrl: episodeData['episodeurl'] ?? '',
+            episodeDuration: episodeData['episodeduration'] ?? 0,
+            listenDuration: episodeData['listenduration'] ?? 0,
+            episodeId: episodeData['episodeid'] ?? 0,
+            completed: episodeData['completed'] ?? false,
+            saved: episodeData['saved'] ?? true,
+            queued: episodeData['queued'] ?? false,
+            downloaded: episodeData['downloaded'] ?? false,
+            isYoutube: episodeData['is_youtube'] ?? false,
+            saveDate: episodeData['savedate'],
+          );
+        }).toList();
+
+        return EpisodePage(episodes: episodes, total: total);
+      } else {
+        throw Exception('Failed to load saved episodes: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting paged saved episodes: $e');
       rethrow;
     }
   }

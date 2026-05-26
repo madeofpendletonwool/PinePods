@@ -360,6 +360,7 @@ pub struct SavedEpisode {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SavedEpisodesResponse {
     pub saved_episodes: Vec<SavedEpisode>,
+    pub total: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
