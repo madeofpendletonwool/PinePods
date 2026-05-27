@@ -1180,7 +1180,10 @@
     "24_hour": "24 Hour"
   },
   "queue_panel": {
-    "up_next": "Queue"
+    "up_next": "Queue",
+    "now_playing": "Now Playing",
+    "queue_is_empty": "Queue is Empty",
+    "add_episodes_hint": "Add Episodes to the queue for them to appear here"
   },
   "user_self_service": {
     "enable_user_self_service": "Enable User Self Service",

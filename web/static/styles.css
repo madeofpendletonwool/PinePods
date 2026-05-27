@@ -3747,6 +3747,12 @@ input[type="range"]::-moz-range-thumb {
     color: var(--button-text-color) !important;
 }
 
+/* 2-button pre-subscribed state: center rather than spreading to edges */
+.ep-mobile-actions.ep-mobile-actions-sparse {
+    justify-content: center;
+    gap: 2rem;
+}
+
 .ep-mobile-no-media {
     font-size: 0.85rem;
     opacity: 0.6;

@@ -5440,36 +5440,59 @@ impl DatabasePool {
         let mut first_episode_id = None;
         
         for episode in episodes {
-            // Check if episode already exists by URL (the canonical identifier for episodes)
-            // URL uniquely identifies an episode - same title with different URL = different episode
-            let existing_episode_id = match self {
-                DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodeurl = $2"#)
-                        .bind(podcast_id)
-                        .bind(&episode.url)
-                        .fetch_optional(pool)
-                        .await?;
-                    row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
+            // Check if episode already exists. URL is the canonical identifier, but when URL is
+            // empty (e.g. video feeds before parsing was fixed) fall back to title-based dedup
+            // to avoid collapsing all empty-URL episodes into a single row.
+            let existing_episode_id = if episode.url.is_empty() {
+                match self {
+                    DatabasePool::Postgres(pool) => {
+                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodetitle = $2"#)
+                            .bind(podcast_id)
+                            .bind(&episode.title)
+                            .fetch_optional(pool)
+                            .await?;
+                        row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
+                    }
+                    DatabasePool::MySQL(pool) => {
+                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeTitle = ?")
+                            .bind(podcast_id)
+                            .bind(&episode.title)
+                            .fetch_optional(pool)
+                            .await?;
+                        row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
+                    }
                 }
-                DatabasePool::MySQL(pool) => {
-                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeURL = ?")
-                        .bind(podcast_id)
-                        .bind(&episode.url)
-                        .fetch_optional(pool)
-                        .await?;
-                    row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
+            } else {
+                match self {
+                    DatabasePool::Postgres(pool) => {
+                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodeurl = $2"#)
+                            .bind(podcast_id)
+                            .bind(&episode.url)
+                            .fetch_optional(pool)
+                            .await?;
+                        row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
+                    }
+                    DatabasePool::MySQL(pool) => {
+                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeURL = ?")
+                            .bind(podcast_id)
+                            .bind(&episode.url)
+                            .fetch_optional(pool)
+                            .await?;
+                        row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
+                    }
                 }
             };
 
             if let Some(episode_id) = existing_episode_id {
-                // Episode already exists (same URL) - UPDATE it with new metadata
+                // Episode already exists - UPDATE it with new metadata
                 match self {
                     DatabasePool::Postgres(pool) => {
                         sqlx::query(
                             r#"UPDATE "Episodes"
                                SET episodetitle = $1, episodedescription = $2, episodeurl = $3,
-                                   episodeartwork = $4, episodepubdate = $5, episodeduration = $6
-                               WHERE episodeid = $7"#
+                                   episodeartwork = $4, episodepubdate = $5, episodeduration = $6,
+                                   is_video = $7
+                               WHERE episodeid = $8"#
                         )
                         .bind(&episode.title)
                         .bind(&episode.description)
@@ -5477,6 +5500,7 @@ impl DatabasePool {
                         .bind(&episode.artwork_url)
                         .bind(&episode.pub_date)
                         .bind(episode.duration)
+                        .bind(episode.is_video)
                         .bind(episode_id)
                         .execute(pool)
                         .await?;
@@ -5485,7 +5509,8 @@ impl DatabasePool {
                         sqlx::query(
                             "UPDATE Episodes
                              SET EpisodeTitle = ?, EpisodeDescription = ?, EpisodeURL = ?,
-                                 EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?
+                                 EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?,
+                                 IsVideo = ?
                              WHERE EpisodeID = ?"
                         )
                         .bind(&episode.title)
@@ -5494,6 +5519,7 @@ impl DatabasePool {
                         .bind(&episode.artwork_url)
                         .bind(&episode.pub_date)
                         .bind(episode.duration)
+                        .bind(episode.is_video)
                         .bind(episode_id)
                         .execute(pool)
                         .await?;
@@ -5507,9 +5533,9 @@ impl DatabasePool {
             let episode_id = match self {
                 DatabasePool::Postgres(pool) => {
                     let row = sqlx::query(
-                        r#"INSERT INTO "Episodes" 
-                           (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration)
-                           VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        r#"INSERT INTO "Episodes"
+                           (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration, is_video)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                            RETURNING episodeid"#
                     )
                     .bind(podcast_id)
@@ -5519,16 +5545,17 @@ impl DatabasePool {
                     .bind(&episode.artwork_url)
                     .bind(&episode.pub_date)
                     .bind(episode.duration)
+                    .bind(episode.is_video)
                     .fetch_one(pool)
                     .await?;
-                    
+
                     row.try_get::<i32, _>("episodeid")?
                 }
                 DatabasePool::MySQL(pool) => {
                     let result = sqlx::query(
-                        "INSERT INTO Episodes 
-                         (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)"
+                        "INSERT INTO Episodes
+                         (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, IsVideo)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
                     )
                     .bind(podcast_id)
                     .bind(&episode.title)
@@ -5537,18 +5564,19 @@ impl DatabasePool {
                     .bind(&episode.artwork_url)
                     .bind(&episode.pub_date)
                     .bind(episode.duration)
+                    .bind(episode.is_video)
                     .execute(pool)
                     .await?;
-                    
+
                     result.last_insert_id() as i32
                 }
             };
-            
+
             // Send notification for new episode - matches Python implementation exactly
             if let Err(e) = self.check_and_send_notification(podcast_id, &episode.title).await {
                 tracing::warn!("Failed to send notification for episode '{}': {}", episode.title, e);
             }
-            
+
             // Set first episode ID if not set
             if first_episode_id.is_none() {
                 first_episode_id = Some(episode_id);
@@ -5583,36 +5611,58 @@ impl DatabasePool {
         let mut new_episodes = Vec::new();
         
         for mut episode in episodes {
-            // Check if episode already exists by URL (the canonical identifier for episodes)
-            // URL uniquely identifies an episode - same title with different URL = different episode
-            let existing_episode_id = match self {
-                DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodeurl = $2"#)
-                        .bind(podcast_id)
-                        .bind(&episode.url)
-                        .fetch_optional(pool)
-                        .await?;
-                    row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
+            // Check if episode already exists. URL is the canonical identifier, but when URL is
+            // empty fall back to title-based dedup to avoid collapsing all empty-URL episodes.
+            let existing_episode_id = if episode.url.is_empty() {
+                match self {
+                    DatabasePool::Postgres(pool) => {
+                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodetitle = $2"#)
+                            .bind(podcast_id)
+                            .bind(&episode.title)
+                            .fetch_optional(pool)
+                            .await?;
+                        row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
+                    }
+                    DatabasePool::MySQL(pool) => {
+                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeTitle = ?")
+                            .bind(podcast_id)
+                            .bind(&episode.title)
+                            .fetch_optional(pool)
+                            .await?;
+                        row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
+                    }
                 }
-                DatabasePool::MySQL(pool) => {
-                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeURL = ?")
-                        .bind(podcast_id)
-                        .bind(&episode.url)
-                        .fetch_optional(pool)
-                        .await?;
-                    row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
+            } else {
+                match self {
+                    DatabasePool::Postgres(pool) => {
+                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodeurl = $2"#)
+                            .bind(podcast_id)
+                            .bind(&episode.url)
+                            .fetch_optional(pool)
+                            .await?;
+                        row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
+                    }
+                    DatabasePool::MySQL(pool) => {
+                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeURL = ?")
+                            .bind(podcast_id)
+                            .bind(&episode.url)
+                            .fetch_optional(pool)
+                            .await?;
+                        row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
+                    }
                 }
             };
 
             if let Some(episode_id) = existing_episode_id {
-                // Episode already exists (same URL) - UPDATE it with new metadata
+                // Episode already exists - UPDATE it with new metadata
                 match self {
                     DatabasePool::Postgres(pool) => {
                         sqlx::query(
                             r#"UPDATE "Episodes"
                                SET episodetitle = $1, episodedescription = $2, episodeurl = $3,
-                                   episodeartwork = $4, episodepubdate = $5, episodeduration = $6
-                               WHERE episodeid = $7"#
+                                   episodeartwork = $4, episodepubdate = $5, episodeduration = $6,
+                                   is_video = $7
+                               WHERE episodeid = $8"#
                         )
                         .bind(&episode.title)
                         .bind(&episode.description)
@@ -5620,6 +5670,7 @@ impl DatabasePool {
                         .bind(&episode.artwork_url)
                         .bind(&episode.pub_date)
                         .bind(episode.duration)
+                        .bind(episode.is_video)
                         .bind(episode_id)
                         .execute(pool)
                         .await?;
@@ -5628,7 +5679,8 @@ impl DatabasePool {
                         sqlx::query(
                             "UPDATE Episodes
                              SET EpisodeTitle = ?, EpisodeDescription = ?, EpisodeURL = ?,
-                                 EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?
+                                 EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?,
+                                 IsVideo = ?
                              WHERE EpisodeID = ?"
                         )
                         .bind(&episode.title)
@@ -5637,6 +5689,7 @@ impl DatabasePool {
                         .bind(&episode.artwork_url)
                         .bind(&episode.pub_date)
                         .bind(episode.duration)
+                        .bind(episode.is_video)
                         .bind(episode_id)
                         .execute(pool)
                         .await?;
@@ -5660,14 +5713,14 @@ impl DatabasePool {
                     }
                 }
             }
-            
+
             // Insert new episode
             let episode_id = match self {
                 DatabasePool::Postgres(pool) => {
                     let row = sqlx::query(
-                        r#"INSERT INTO "Episodes" 
-                           (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration)
-                           VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        r#"INSERT INTO "Episodes"
+                           (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration, is_video)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                            RETURNING episodeid"#
                     )
                     .bind(podcast_id)
@@ -5677,16 +5730,17 @@ impl DatabasePool {
                     .bind(&episode.artwork_url)
                     .bind(&episode.pub_date)
                     .bind(episode.duration)
+                    .bind(episode.is_video)
                     .fetch_one(pool)
                     .await?;
-                    
+
                     row.try_get::<i32, _>("episodeid")?
                 }
                 DatabasePool::MySQL(pool) => {
                     let result = sqlx::query(
-                        "INSERT INTO Episodes 
-                         (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)"
+                        "INSERT INTO Episodes
+                         (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, IsVideo)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
                     )
                     .bind(podcast_id)
                     .bind(&episode.title)
@@ -5695,9 +5749,10 @@ impl DatabasePool {
                     .bind(&episode.artwork_url)
                     .bind(&episode.pub_date)
                     .bind(episode.duration)
+                    .bind(episode.is_video)
                     .execute(pool)
                     .await?;
-                    
+
                     result.last_insert_id() as i32
                 }
             };
@@ -6161,13 +6216,16 @@ impl DatabasePool {
                 episode_data.insert("summary".to_string(), summary.content.clone());
             }
             
-            // Links for audio/enclosures
+            // Links for audio/video enclosures
             for link in &entry.links {
                 if let Some(media_type) = &link.media_type {
-                    if media_type.starts_with("audio/") {
+                    if media_type.starts_with("audio/") || media_type.starts_with("video/") {
                         episode_data.insert("enclosure_url".to_string(), link.href.clone());
                         if let Some(length) = &link.length {
                             episode_data.insert("enclosure_length".to_string(), length.to_string());
+                        }
+                        if media_type.starts_with("video/") {
+                            episode_data.insert("is_video".to_string(), "true".to_string());
                         }
                     }
                 }
@@ -6207,12 +6265,15 @@ impl DatabasePool {
                 for content in &media.content {
                     if let Some(content_type) = &content.content_type {
                         let type_str = content_type.to_string();
-                        if type_str.starts_with("audio/") {
+                        if type_str.starts_with("audio/") || type_str.starts_with("video/") {
                             if let Some(url) = &content.url {
                                 // Store as enclosure_url to match Python parsing logic
                                 episode_data.insert("enclosure_url".to_string(), url.to_string());
                                 if let Some(size) = &content.size {
                                     episode_data.insert("enclosure_length".to_string(), size.to_string());
+                                }
+                                if type_str.starts_with("video/") {
+                                    episode_data.insert("is_video".to_string(), "true".to_string());
                                 }
                             }
                         } else if type_str.starts_with("image/") {
@@ -6253,9 +6314,9 @@ impl DatabasePool {
         
         // EXACT Python replication: parsed_audio_url = entry.enclosures[0].href if entry.enclosures else ""
         episode.url = self.parse_audio_url_comprehensive(data);
-        
-        // Debug logging for episode URL extraction
-        
+
+        episode.is_video = data.get("is_video").map(|v| v == "true").unwrap_or(false);
+
         // Artwork with comprehensive fallbacks and validation like Python
         episode.artwork_url = self.parse_artwork_comprehensive(data, default_artwork);
         
@@ -15249,19 +15310,24 @@ impl DatabasePool {
                 }
             }
             
-            // Extract audio URL from media or links
+            // Extract audio/video URL from media or links
             let mut audio_url = String::new();
             let mut enclosure_length = String::new();
-            
+            let mut is_video_episode = false;
+
             // Check media objects first
             for media in &entry.media {
                 for content in &media.content {
                     if let Some(url) = &content.url {
                         if let Some(media_type) = &content.content_type {
-                            if media_type.to_string().starts_with("audio/") {
+                            let type_str = media_type.to_string();
+                            if type_str.starts_with("audio/") || type_str.starts_with("video/") {
                                 audio_url = url.to_string();
                                 if let Some(size) = content.size {
                                     enclosure_length = size.to_string();
+                                }
+                                if type_str.starts_with("video/") {
+                                    is_video_episode = true;
                                 }
                                 break;
                             }
@@ -15270,15 +15336,18 @@ impl DatabasePool {
                 }
                 if !audio_url.is_empty() { break; }
             }
-            
+
             // Fallback to links if no media found
             if audio_url.is_empty() {
                 for link in &entry.links {
                     if let Some(media_type) = &link.media_type {
-                        if media_type.starts_with("audio/") {
+                        if media_type.starts_with("audio/") || media_type.starts_with("video/") {
                             audio_url = link.href.clone();
                             if let Some(length) = &link.length {
                                 enclosure_length = length.to_string();
+                            }
+                            if media_type.starts_with("video/") {
+                                is_video_episode = true;
                             }
                             break;
                         }
@@ -15337,7 +15406,8 @@ impl DatabasePool {
                 "artwork": if episode_artwork.is_empty() { None } else { Some(episode_artwork) },
                 "content": entry.content.as_ref().and_then(|c| c.body.clone()),
                 "duration": duration_seconds,
-                "guid": entry.id.clone()
+                "guid": entry.id.clone(),
+                "is_video": is_video_episode
             });
             
             episodes.push(episode_json);
@@ -16783,70 +16853,79 @@ impl DatabasePool {
     pub async fn unsubscribe_from_person(&self, user_id: i32, person_id: i32, person_name: &str) -> AppResult<bool> {
         println!("Unsubscribing user {} from person {}: {}", user_id, person_id, person_name);
 
-        // Find and delete the person record
-        let rows_affected = match self {
+        // Resolve the actual personid (primary key) so we can delete child rows first.
+        let resolved_id: Option<i32> = match self {
             DatabasePool::Postgres(pool) => {
-                // When peopledbid is 0 or not set, use name for lookup to avoid collisions
                 if person_id == 0 {
-                    sqlx::query(r#"DELETE FROM "People" WHERE userid = $1 AND LOWER(name) = LOWER($2)"#)
+                    sqlx::query(r#"SELECT personid FROM "People" WHERE userid = $1 AND LOWER(name) = LOWER($2)"#)
                         .bind(user_id)
                         .bind(person_name)
-                        .execute(pool)
+                        .fetch_optional(pool)
                         .await?
-                        .rows_affected()
+                        .map(|r| r.try_get("personid"))
+                        .transpose()?
                 } else {
-                    sqlx::query(r#"DELETE FROM "People" WHERE userid = $1 AND personid = $2"#)
+                    sqlx::query(r#"SELECT personid FROM "People" WHERE userid = $1 AND personid = $2"#)
                         .bind(user_id)
                         .bind(person_id)
-                        .execute(pool)
+                        .fetch_optional(pool)
                         .await?
-                        .rows_affected()
+                        .map(|r| r.try_get("personid"))
+                        .transpose()?
                 }
             }
             DatabasePool::MySQL(pool) => {
-                // When peopledbid is 0 or not set, use name for lookup to avoid collisions
                 if person_id == 0 {
-                    sqlx::query("DELETE FROM People WHERE UserID = ? AND LOWER(Name) = LOWER(?)")
+                    sqlx::query("SELECT PersonID FROM People WHERE UserID = ? AND LOWER(Name) = LOWER(?)")
                         .bind(user_id)
                         .bind(person_name)
-                        .execute(pool)
+                        .fetch_optional(pool)
                         .await?
-                        .rows_affected()
+                        .map(|r| r.try_get("PersonID"))
+                        .transpose()?
                 } else {
-                    sqlx::query("DELETE FROM People WHERE UserID = ? AND PersonID = ?")
+                    sqlx::query("SELECT PersonID FROM People WHERE UserID = ? AND PersonID = ?")
                         .bind(user_id)
                         .bind(person_id)
-                        .execute(pool)
+                        .fetch_optional(pool)
                         .await?
-                        .rows_affected()
+                        .map(|r| r.try_get("PersonID"))
+                        .transpose()?
                 }
             }
         };
-        
-        if rows_affected > 0 {
-            // PeopleEpisodes rows are keyed by personid which is unique per user,
-            // so always clean them up when the user's People row is deleted.
-            match self {
-                DatabasePool::Postgres(pool) => {
-                    let _ = sqlx::query(r#"DELETE FROM "PeopleEpisodes" WHERE personid = $1"#)
-                        .bind(person_id)
-                        .execute(pool)
-                        .await;
-                }
-                DatabasePool::MySQL(pool) => {
-                    let _ = sqlx::query("DELETE FROM PeopleEpisodes WHERE PersonID = ?")
-                        .bind(person_id)
-                        .execute(pool)
-                        .await;
-                }
-            }
 
-            println!("Successfully unsubscribed from person {}", person_id);
-            Ok(true)
-        } else {
+        let Some(real_person_id) = resolved_id else {
             println!("Person subscription not found for user {} and person {}", user_id, person_id);
-            Ok(false)
+            return Ok(false);
+        };
+
+        // Delete child rows first to satisfy the FK constraint, then the parent.
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"DELETE FROM "PeopleEpisodes" WHERE personid = $1"#)
+                    .bind(real_person_id)
+                    .execute(pool)
+                    .await?;
+                sqlx::query(r#"DELETE FROM "People" WHERE personid = $1"#)
+                    .bind(real_person_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("DELETE FROM PeopleEpisodes WHERE PersonID = ?")
+                    .bind(real_person_id)
+                    .execute(pool)
+                    .await?;
+                sqlx::query("DELETE FROM People WHERE PersonID = ?")
+                    .bind(real_person_id)
+                    .execute(pool)
+                    .await?;
+            }
         }
+
+        println!("Successfully unsubscribed from person {}", real_person_id);
+        Ok(true)
     }
     
     // Get person subscriptions - matches Python get_person_subscriptions function exactly
@@ -18319,18 +18398,74 @@ impl DatabasePool {
             .collect();
 
         let results = futures::future::join_all(show_futures).await;
+
+        // Collect podcast IDs from successful show processing, then update once to avoid races
+        let mut all_podcast_ids: Vec<i32> = Vec::new();
         for (result, (title, _, _)) in results.into_iter().zip(shows.iter()) {
             match result {
-                Ok(_) => tracing::info!("Successfully processed show: {}", title),
+                Ok(podcast_id) => {
+                    tracing::info!("Successfully processed show: {}", title);
+                    all_podcast_ids.push(podcast_id);
+                }
                 Err(e) => tracing::error!("Error processing show {}: {}", title, e),
+            }
+        }
+
+        // Single atomic update of associatedpodcasts with all discovered podcast IDs
+        if !all_podcast_ids.is_empty() {
+            match self {
+                DatabasePool::Postgres(pool) => {
+                    let row = sqlx::query(r#"SELECT associatedpodcasts FROM "People" WHERE personid = $1"#)
+                        .bind(person_id)
+                        .fetch_one(pool)
+                        .await?;
+                    let current: Option<String> = row.try_get("associatedpodcasts")?;
+                    let mut id_set: std::collections::HashSet<String> = current
+                        .unwrap_or_default()
+                        .split(',')
+                        .filter(|s| !s.trim().is_empty() && s.trim() != "0")
+                        .map(|s| s.trim().to_string())
+                        .collect();
+                    for pid in &all_podcast_ids {
+                        id_set.insert(pid.to_string());
+                    }
+                    let updated: String = id_set.into_iter().collect::<Vec<_>>().join(",");
+                    sqlx::query(r#"UPDATE "People" SET associatedpodcasts = $2 WHERE personid = $1"#)
+                        .bind(person_id)
+                        .bind(&updated)
+                        .execute(pool)
+                        .await?;
+                }
+                DatabasePool::MySQL(pool) => {
+                    let row = sqlx::query("SELECT AssociatedPodcasts FROM People WHERE PersonID = ?")
+                        .bind(person_id)
+                        .fetch_one(pool)
+                        .await?;
+                    let current: Option<String> = row.try_get("AssociatedPodcasts")?;
+                    let mut id_set: std::collections::HashSet<String> = current
+                        .unwrap_or_default()
+                        .split(',')
+                        .filter(|s| !s.trim().is_empty() && s.trim() != "0")
+                        .map(|s| s.trim().to_string())
+                        .collect();
+                    for pid in &all_podcast_ids {
+                        id_set.insert(pid.to_string());
+                    }
+                    let updated: String = id_set.into_iter().collect::<Vec<_>>().join(",");
+                    sqlx::query("UPDATE People SET AssociatedPodcasts = ? WHERE PersonID = ?")
+                        .bind(&updated)
+                        .bind(person_id)
+                        .execute(pool)
+                        .await?;
+                }
             }
         }
 
         Ok(())
     }
 
-    // Helper function to process individual show for person - matches Python logic
-    async fn process_person_show(&self, user_id: i32, person_id: i32, title: &str, feed_url: &str, _feed_id: i32) -> AppResult<()> {
+    // Helper function to process individual show for person - returns the podcast_id used
+    async fn process_person_show(&self, user_id: i32, person_id: i32, title: &str, feed_url: &str, _feed_id: i32) -> AppResult<i32> {
         // First check if podcast exists for user
         let user_podcast_id = self.get_podcast_id_by_feed_url(user_id, feed_url).await?;
         
@@ -18399,11 +18534,11 @@ impl DatabasePool {
         };
         
         tracing::info!("Using podcast: ID={}, Title={}", podcast_id, title);
-        
+
         // Add episodes to PeopleEpisodes
         self.add_people_episodes(person_id, podcast_id, feed_url).await?;
-        
-        Ok(())
+
+        Ok(podcast_id)
     }
 
     // Add people episodes - matches Python add_people_episodes function exactly
