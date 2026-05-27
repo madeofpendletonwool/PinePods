@@ -3570,6 +3570,10 @@ pub fn episode_layout() -> Html {
                                             })
                                         };
                                         let sanitized_description = sanitize_html(&podcast_info.description);
+                                        let is_video_podcast = search_state.podcast_feed_results
+                                            .as_ref()
+                                            .map(|r| r.episodes.iter().any(|e| e.is_video))
+                                            .unwrap_or(false);
                                         let layout = if state.is_mobile.unwrap_or(false) {
                                             let server_for_proxy = server_name.clone().unwrap_or_default();
                                             html! {
@@ -3583,7 +3587,17 @@ pub fn episode_layout() -> Html {
                                                             class="ep-mobile-art rounded-corners"
                                                         />
                                                         <div class="ep-mobile-meta">
-                                                            <h2 class="ep-mobile-title">{ &podcast_info.podcastname }</h2>
+                                                            <div class="flex items-center gap-2">
+                                                                <h2 class="ep-mobile-title">{ &podcast_info.podcastname }</h2>
+                                                                { if is_video_podcast {
+                                                                    html! {
+                                                                        <span class="inline-flex items-center gap-1 bg-opacity-80 bg-gray-700 text-white text-xs px-1.5 py-0.5 rounded-full">
+                                                                            <i class="ph ph-television"></i>
+                                                                            {"Video"}
+                                                                        </span>
+                                                                    }
+                                                                } else { html! {} }}
+                                                            </div>
                                                             <p class="ep-mobile-podcast-name">{ &podcast_info.author }</p>
                                                             <p class="ep-mobile-subinfo">
                                                                 { format!("{}{} · {}{}",
@@ -3775,6 +3789,14 @@ pub fn episode_layout() -> Html {
                                                     <div class="item-header-info">
                                                         <div class="title-button-container">
                                                             <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
+                                                            { if is_video_podcast {
+                                                                html! {
+                                                                    <span class="inline-flex items-center gap-1 bg-opacity-80 bg-gray-700 text-white text-xs px-2 py-1 rounded-full self-center">
+                                                                        <i class="ph ph-television"></i>
+                                                                        {"Video"}
+                                                                    </span>
+                                                                }
+                                                            } else { html! {} }}
                                                             {
                                                                 if search_state.podcast_added.unwrap_or(false) {
                                                                     html! {

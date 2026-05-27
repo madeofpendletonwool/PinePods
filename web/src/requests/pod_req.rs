@@ -407,6 +407,8 @@ pub struct Podcast {
     pub podcastindexid: i32,
     #[serde(default)]
     pub is_favorite: bool,
+    #[serde(default)]
+    pub is_video: bool,
 }
 
 pub async fn call_get_podcasts(
@@ -481,6 +483,8 @@ pub struct PodcastExtra {
     #[serde(default)]
     pub is_youtube: bool,
     #[serde(default)]
+    pub is_video: bool,
+    #[serde(default)]
     pub is_favorite: bool,
 }
 
@@ -504,6 +508,7 @@ impl From<Podcast> for PodcastExtra {
             episodes_played: 0,
             oldest_episode_date: None,
             is_youtube,
+            is_video: podcast.is_video,
             is_favorite: podcast.is_favorite,
         }
     }
@@ -524,6 +529,7 @@ impl From<PodcastExtra> for Podcast {
             explicit: podcast_extra.explicit,
             podcastindexid: podcast_extra.podcastindexid,
             is_favorite: podcast_extra.is_favorite,
+            is_video: podcast_extra.is_video,
         }
     }
 }

@@ -210,7 +210,7 @@ fn render_podcasts(
                                         <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
                                     </div>
                                     <div class="ep-meta">
-                                        <i class="ph ph-broadcast"></i>
+                                        <i class={if podcast.is_video { "ph ph-television" } else { "ph ph-broadcast" }}></i>
                                         <span>{ format!("{}{}", &i18n.t("podcasts.episode_count"), &podcast.episodecount.clone().unwrap_or_else(|| 0)) }</span>
                                     </div>
                                 </div>
@@ -274,9 +274,9 @@ fn render_podcasts(
                                 class="podcast-grid-item relative"
                                 onclick={on_click}
                             >
-                                // Episode count badge (top-right)
+                                // Episode count badge (top-right); icon switches to TV for video podcasts
                                 <div class="absolute top-1 right-1 z-10 bg-opacity-80 bg-gray-800 text-white rounded-full px-2 py-1 text-xs font-bold">
-                                    <i class="ph ph-broadcast inline-block mr-1"></i>
+                                    <i class={format!("ph {} inline-block mr-1", if podcast.is_video { "ph-television" } else { "ph-broadcast" })}></i>
                                     {episode_count}
                                 </div>
 

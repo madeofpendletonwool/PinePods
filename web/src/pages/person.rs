@@ -294,6 +294,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             explicit: d.explicit,
                                             podcastindexid: d.podcastindexid,
                                             is_favorite: false,
+                                            is_video: false,
                                         })
                                     }
                                     Err(_) => None,
@@ -852,45 +853,35 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         };
 
                                         html! {
-                                            <div>
-                                            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
-                                                    <div class="flex flex-col w-auto object-cover pl-4">
-                                                        <FallbackImage
-                                                            src={podcast.artworkurl.clone().unwrap()}
-                                                            onclick={on_title_click.clone()}
-                                                            alt={format!("{} {}", &i18n.t("person.cover_for"), podcast.podcastname.clone())}
-                                                            class="episode-image"
-                                                        />
+                                            <div class="ep-row">
+                                                <div class="ep-art-wrap" onclick={on_title_click.clone()}>
+                                                    <FallbackImage
+                                                        src={podcast.artworkurl.clone().unwrap()}
+                                                        alt={format!("{} {}", &i18n.t("person.cover_for"), podcast.podcastname.clone())}
+                                                        class="ep-art-img"
+                                                    />
+                                                </div>
+                                                <div class="ep-body">
+                                                    <div class="ep-title cursor-pointer" onclick={on_title_click}>
+                                                        { &podcast.podcastname }
                                                     </div>
-                                                    <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                                                        <p class="item_container-text episode-title font-semibold cursor-pointer" onclick={on_title_click}>
-                                                            { &podcast.podcastname }
-                                                        </p>
-                                                        <hr class="my-2 border-t hidden md:block"/>
-                                                        {
-                                                            html! {
-                                                                <div class="item-description-text hidden md:block">
-                                                                    <div
-                                                                        class={format!("item_container-text episode-description-container {}", description_class)}
-                                                                        onclick={toggle_expanded}  // Make the description container clickable
-                                                                        id={format!("desc-{}", podcast.podcastid)}
-                                                                    >
-                                                                        <SafeHtml html={preview_description} />
-                                                                    </div>
-                                                                </div>
-                                                            }
-                                                        }
-
-                                                        <p class="item_container-text">{ format!("{}: {}", &i18n.t("person.episode_count"), &podcast.episodecount.unwrap_or_else(|| 0)) }</p>
+                                                    <hr class="ep-divider" />
+                                                    <div
+                                                        class={format!("ep-desc {}", description_class)}
+                                                        onclick={toggle_expanded}
+                                                        id={format!("desc-{}", podcast.podcastid)}
+                                                    >
+                                                        <SafeHtml html={preview_description} />
                                                     </div>
-                                                    <button class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
-                                                        <i class={classes!(
-                                                            "ph",
-                                                            button_text,
-                                                            "text-4xl"
-                                                        )} onclick={onclick}></i>
+                                                    <div class="ep-meta">
+                                                        <i class="ph ph-broadcast"></i>
+                                                        <span>{ format!("{}: {}", &i18n.t("person.episode_count"), &podcast.episodecount.unwrap_or_else(|| 0)) }</span>
+                                                    </div>
+                                                </div>
+                                                <div class="ep-actions">
+                                                    <button class="ico" onclick={onclick}>
+                                                        <i class={classes!("ph", button_text)}></i>
                                                     </button>
-
                                                 </div>
                                             </div>
                                         }

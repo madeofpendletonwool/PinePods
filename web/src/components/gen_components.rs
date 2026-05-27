@@ -859,7 +859,7 @@ pub fn on_shownotes_click(
         let history_clone = history.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
-            if episode_id != 0 {
+            if episode_id > 0 {
                 if is_youtube {
                     history_clone.push(format!("/episode?episode_id={}&youtube=true", episode_id));
                 } else {

@@ -45,6 +45,7 @@ pub fn subscribed_people() -> Html {
     let (post_state, post_dispatch) = use_store::<AppState>();
     let loading = use_state(|| true);
     let expanded_state = use_state(|| std::collections::HashMap::<i32, bool>::new());
+    let loading_episodes = use_state(|| std::collections::HashSet::<i32>::new());
     let subscribed_people = use_state(|| Vec::<PersonWithEpisodes>::new());
     let api_key = post_state
         .auth_details
@@ -101,6 +102,7 @@ pub fn subscribed_people() -> Html {
         let server_name = server_name.clone();
         let subscribed_people = subscribed_people.clone();
         let expanded_state = expanded_state.clone();
+        let loading_episodes = loading_episodes.clone();
 
         use_effect_with(expanded_state.clone(), move |expanded_state| {
             let api_key = api_key.clone();
@@ -119,14 +121,25 @@ pub fn subscribed_people() -> Html {
                             .copied()
                             .unwrap_or(false)
                             && person.episodes.is_empty()
+                            && !loading_episodes.contains(&person.person.personid)
                     })
                     .map(|person| (person.person.personid, person.person.name.clone()))
                     .collect();
+
+                // Mark all pending persons as loading before spawning tasks
+                if !person_ids.is_empty() {
+                    let mut new_loading = (*loading_episodes).clone();
+                    for (pid, _) in &person_ids {
+                        new_loading.insert(*pid);
+                    }
+                    loading_episodes.set(new_loading);
+                }
 
                 for (person_id, person_name) in person_ids {
                     let server = server.clone();
                     let key = key.clone();
                     let subscribed_people = subscribed_people.clone();
+                    let loading_episodes_task = loading_episodes.clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
                         match people_req::call_get_person_episodes(&server, &key, uid, person_id)
@@ -154,6 +167,9 @@ pub fn subscribed_people() -> Html {
                                 );
                             }
                         }
+                        loading_episodes_task.set(
+                            (*loading_episodes_task).iter().copied().filter(|&id| id != person_id).collect()
+                        );
                     });
                 }
             }
@@ -230,6 +246,7 @@ pub fn subscribed_people() -> Html {
         let episode_count_text = i18n.t("people_subs.episode_count").to_string();
         let shows_text = i18n.t("people_subs.shows").to_string();
         let avatar_alt_text = i18n.t("people_subs.avatar_alt").to_string();
+        let loading_episodes = loading_episodes.clone();
 
         move || {
             if people.is_empty() {
@@ -246,6 +263,7 @@ pub fn subscribed_people() -> Html {
                         people.into_iter().map(|person| {
                             let active_modal = active_clonedal.clone();
                             let is_expanded = *expanded_state.get(&person.person.personid).unwrap_or(&false);
+                            let is_loading_eps = loading_episodes.contains(&person.person.personid);
                             let person_id = person.person.personid;
                             let person_name = person.person.name.clone();
                             let person_name2 = person_name.clone();
@@ -255,6 +273,7 @@ pub fn subscribed_people() -> Html {
                                         &person.person,
                                         person.episodes.clone(),
                                         is_expanded,
+                                        is_loading_eps,
                                         toggle_person.reform(move |_| person_id),
                                         on_unsubscribe.reform(move |_| (person_id, person_name.clone())),
                                         on_navigate_to_person.reform(move |_| person_name2.clone()),
@@ -317,6 +336,7 @@ fn render_host_with_episodes(
     person: &PersonSubscription,
     episodes: Vec<Episode>,
     is_expanded: bool,
+    is_loading: bool,
     toggle_host_expanded: Callback<MouseEvent>,
     on_unsubscribe: Callback<MouseEvent>,
     on_navigate: Callback<MouseEvent>,
@@ -393,7 +413,14 @@ fn render_host_with_episodes(
             { if is_expanded {
                 html! {
                     <div class="episodes-dropdown pl-4 flex-grow overflow-y-auto">
-                        { if episodes.is_empty() {
+                        { if is_loading && episodes.is_empty() {
+                            html! {
+                                <div class="flex items-center gap-2 p-4">
+                                    <div class="loading-animation" style="transform: scale(0.35); transform-origin: left center; height: 24px; width: 60px;"></div>
+                                    <p class="item_container-text text-sm italic text-gray-400">{"Loading episodes..."}</p>
+                                </div>
+                            }
+                        } else if episodes.is_empty() {
                             html! {
                                 <p class="item_container-text text-sm italic text-gray-400 p-4">
                                     {"No recent episodes found."}
