@@ -1,5 +1,6 @@
 use crate::{error::AppResult, AppState, database::DatabasePool};
 use crate::handlers::refresh::PodcastForRefresh;
+use crate::handlers::youtube::process_youtube_channel;
 use tracing::{info, warn, error};
 use serde_json::Value;
 use sqlx::Row;
@@ -14,7 +15,7 @@ pub async fn refresh_podcast(state: &AppState, podcast_id: i32) -> AppResult<Vec
     // Mark as refreshing
     state.redis_client.set_podcast_refreshing(podcast_id).await?;
     
-    let result = refresh_podcast_internal(&state.db_pool, podcast_id).await;
+    let result = refresh_podcast_internal(state, podcast_id).await;
     
     // Clear refreshing flag
     state.redis_client.clear_podcast_refreshing(podcast_id).await?;
@@ -23,22 +24,22 @@ pub async fn refresh_podcast(state: &AppState, podcast_id: i32) -> AppResult<Vec
 }
 
 /// Internal refresh logic - matches Python refresh_pods_for_user function
-async fn refresh_podcast_internal(db_pool: &DatabasePool, podcast_id: i32) -> AppResult<Vec<Value>> {
+async fn refresh_podcast_internal(state: &AppState, podcast_id: i32) -> AppResult<Vec<Value>> {
     info!("Refresh begin for podcast {}", podcast_id);
-    
+
     // Get podcast details from database
-    let podcast_info = get_podcast_for_refresh(db_pool, podcast_id).await?;
-    
+    let podcast_info = get_podcast_for_refresh(&state.db_pool, podcast_id).await?;
+
     if let Some(podcast) = podcast_info {
         info!("Processing podcast: {}", podcast_id);
-        
+
         if podcast.is_youtube {
             // Handle YouTube channel refresh
-            refresh_youtube_channel(db_pool, podcast_id, &podcast.feed_url, podcast.feed_cutoff_days.unwrap_or(0)).await?;
+            refresh_youtube_channel(state, podcast_id, &podcast.feed_url, podcast.feed_cutoff_days.unwrap_or(0)).await?;
             Ok(vec![])
         } else {
             // Handle regular RSS podcast refresh
-            let episodes = db_pool.add_episodes(
+            let episodes = state.db_pool.add_episodes(
                 podcast_id,
                 &podcast.feed_url,
                 podcast.artwork_url.as_deref().unwrap_or(""),
@@ -69,7 +70,7 @@ pub async fn refresh_all_podcasts(state: &AppState) -> AppResult<()> {
     let mut failed_refreshes = 0;
     
     for podcast in podcasts {
-        match refresh_single_podcast(&state.db_pool, &podcast).await {
+        match refresh_single_podcast(state, &podcast).await {
             Ok(_) => {
                 successful_refreshes += 1;
             }
@@ -85,11 +86,11 @@ pub async fn refresh_all_podcasts(state: &AppState) -> AppResult<()> {
 }
 
 /// Refresh a single podcast - matches Python refresh logic
-async fn refresh_single_podcast(db_pool: &DatabasePool, podcast: &PodcastForRefresh) -> AppResult<()> {
+async fn refresh_single_podcast(state: &AppState, podcast: &PodcastForRefresh) -> AppResult<()> {
     println!("🔄 Starting refresh for podcast '{}' (ID: {})", podcast.name, podcast.id);
-    
+
     // Count episodes before refresh
-    let episodes_before = match db_pool {
+    let episodes_before = match &state.db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
             sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE podcastid = $1"#)
                 .bind(podcast.id)
@@ -103,13 +104,13 @@ async fn refresh_single_podcast(db_pool: &DatabasePool, podcast: &PodcastForRefr
                 .await.unwrap_or(0)
         }
     };
-    
+
     if podcast.is_youtube {
         // Handle YouTube channel
-        refresh_youtube_channel(db_pool, podcast.id, &podcast.feed_url, podcast.feed_cutoff_days.unwrap_or(0)).await?;
+        refresh_youtube_channel(state, podcast.id, &podcast.feed_url, podcast.feed_cutoff_days.unwrap_or(0)).await?;
     } else {
         // Handle regular RSS podcast
-        db_pool.add_episodes(
+        state.db_pool.add_episodes(
             podcast.id,
             &podcast.feed_url,
             podcast.artwork_url.as_deref().unwrap_or(""),
@@ -120,7 +121,7 @@ async fn refresh_single_podcast(db_pool: &DatabasePool, podcast: &PodcastForRefr
     }
     
     // Count episodes after refresh
-    let episodes_after: i64 = match db_pool {
+    let episodes_after: i64 = match &state.db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
             sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE podcastid = $1"#)
                 .bind(podcast.id)
@@ -145,27 +146,19 @@ async fn refresh_single_podcast(db_pool: &DatabasePool, podcast: &PodcastForRefr
     Ok(())
 }
 
-/// Handle YouTube channel refresh - matches Python YouTube processing
-async fn refresh_youtube_channel(db_pool: &DatabasePool, podcast_id: i32, feed_url: &str, feed_cutoff_days: i32) -> AppResult<()> {
+/// Handle YouTube channel refresh — fetches new videos and retries any missing audio downloads
+async fn refresh_youtube_channel(state: &AppState, podcast_id: i32, feed_url: &str, feed_cutoff_days: i32) -> AppResult<()> {
     // Extract channel ID from feed URL
     let channel_id = if feed_url.contains("channel/") {
         feed_url.split("channel/").nth(1).unwrap_or(feed_url)
     } else {
         feed_url
     };
-    
-    // Clean up any trailing slashes or query parameters
     let channel_id = channel_id.split('/').next().unwrap_or(channel_id);
     let channel_id = channel_id.split('?').next().unwrap_or(channel_id);
-    
-    info!("Processing YouTube channel: {} for podcast {}", channel_id, podcast_id);
-    
-    // TODO: Implement YouTube video processing
-    // This would match the Python youtube.process_youtube_videos function
-    // For now, we'll just log that it's not implemented
-    warn!("YouTube channel refresh not yet implemented for channel: {}", channel_id);
-    
-    Ok(())
+
+    info!("Refreshing YouTube channel: {} for podcast {}", channel_id, podcast_id);
+    process_youtube_channel(podcast_id, channel_id, feed_cutoff_days, state).await
 }
 
 /// Get podcast details for refresh - matches Python select_podcast query

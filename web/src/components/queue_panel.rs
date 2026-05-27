@@ -335,14 +335,19 @@ pub fn queue_panel() -> Html {
                             };
 
                             // Title click: navigate to episode page.
+                            let ep_is_youtube = ep.is_youtube;
                             let on_title_click = {
                                 let ui_dispatch_nav = ui_dispatch.clone();
                                 Callback::from(move |e: MouseEvent| {
                                     e.stop_propagation();
                                     ui_dispatch_nav
                                         .reduce_mut(|s| s.queue_panel_open = false);
-                                    BrowserHistory::new()
-                                        .push(format!("/episode?episode_id={}", ep_id));
+                                    let url = if ep_is_youtube {
+                                        format!("/episode?episode_id={}&youtube=true", ep_id)
+                                    } else {
+                                        format!("/episode?episode_id={}", ep_id)
+                                    };
+                                    BrowserHistory::new().push(url);
                                 })
                             };
 

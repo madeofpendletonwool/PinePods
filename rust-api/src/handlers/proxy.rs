@@ -1,5 +1,5 @@
 use axum::{
-    extract::Query,
+    extract::{Path, Query},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
@@ -75,4 +75,20 @@ fn is_valid_image_url(url: &str) -> bool {
     } else {
         false
     }
+}
+
+// Returns a simple SVG placeholder image at the requested dimensions
+pub async fn placeholder_image(
+    Path((width, height)): Path<(u32, u32)>,
+) -> impl IntoResponse {
+    let svg = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><rect width="{w}" height="{h}" fill="#1a1a2e"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#4a4a6a">{w}x{h}</text></svg>"##,
+        w = width,
+        h = height
+    );
+
+    let mut headers = HeaderMap::new();
+    headers.insert("content-type", "image/svg+xml".parse().unwrap());
+    headers.insert("cache-control", "public, max-age=86400".parse().unwrap());
+    (headers, svg)
 }

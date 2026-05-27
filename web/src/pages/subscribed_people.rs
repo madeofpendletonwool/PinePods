@@ -5,12 +5,15 @@ use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
 use crate::requests::episode::Episode;
-use crate::requests::people_req::{self, PersonSubscription};
+use crate::requests::people_req::{
+    self, call_unsubscribe_from_person, PersonSubscription,
+};
 use i18nrs::yew::use_translation;
 use std::rc::Rc;
+use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
-use yew_router::history::BrowserHistory;
+use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 
 use wasm_bindgen::prelude::*;
@@ -39,7 +42,6 @@ pub fn subscribed_people() -> Html {
         active_modal_clone.set(None);
     });
 
-    // let error = use_state(|| None);
     let (post_state, post_dispatch) = use_store::<AppState>();
     let loading = use_state(|| true);
     let expanded_state = use_state(|| std::collections::HashMap::<i32, bool>::new());
@@ -54,10 +56,7 @@ pub fn subscribed_people() -> Html {
         .as_ref()
         .map(|ud| ud.server_name.clone());
 
-    // Effect to fetch subscriptions on component mount
-    // Effect to fetch subscriptions on component mount
-    //
-    //
+    // Fetch subscriptions on mount
     {
         let api_key = api_key.clone();
         let user_id = user_id.clone();
@@ -95,6 +94,7 @@ pub fn subscribed_people() -> Html {
         });
     }
 
+    // Fetch episodes when a person is expanded
     {
         let api_key = api_key.clone();
         let user_id = user_id.clone();
@@ -111,7 +111,6 @@ pub fn subscribed_people() -> Html {
             if let (Some(server), Some(Some(key)), Some(uid)) = (server_name, api_key, user_id) {
                 let people = (*subscribed_people).clone();
 
-                // Move people IDs into the async block instead of the whole people Vec
                 let person_ids: Vec<_> = people
                     .iter()
                     .filter(|person| {
@@ -130,7 +129,6 @@ pub fn subscribed_people() -> Html {
                     let subscribed_people = subscribed_people.clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
-                        // In the effect that loads episodes
                         match people_req::call_get_person_episodes(&server, &key, uid, person_id)
                             .await
                         {
@@ -141,23 +139,11 @@ pub fn subscribed_people() -> Html {
                                         .into_iter()
                                         .map(|mut p| {
                                             if p.person.personid == person_id {
-                                                web_sys::console::log_1(
-                                                    &format!(
-                                                        "Setting episodes for person {}: {:?}",
-                                                        person_id, new_episodes
-                                                    )
-                                                    .into(),
-                                                );
                                                 p.episodes = new_episodes.clone();
                                             }
                                             p
                                         })
                                         .collect(),
-                                );
-                                // Log the updated state
-                                web_sys::console::log_1(
-                                    &format!("Updated people state: {:?}", *subscribed_people)
-                                        .into(),
                                 );
                             }
                             Err(e) => {
@@ -174,6 +160,7 @@ pub fn subscribed_people() -> Html {
             || ()
         });
     }
+
     let toggle_person = {
         let expanded_state = expanded_state.clone();
         Callback::from(move |person_id: i32| {
@@ -181,6 +168,56 @@ pub fn subscribed_people() -> Html {
             let current_state = new_state.get(&person_id).copied().unwrap_or(false);
             new_state.insert(person_id, !current_state);
             expanded_state.set(new_state);
+        })
+    };
+
+    // Unsubscribe: optimistic removal from local state, then API call
+    let on_unsubscribe = {
+        let subscribed_people = subscribed_people.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+
+        Callback::from(move |(person_id, person_name): (i32, String)| {
+            // Optimistic removal
+            subscribed_people.set(
+                (*subscribed_people)
+                    .iter()
+                    .filter(|p| p.person.personid != person_id)
+                    .cloned()
+                    .collect(),
+            );
+
+            let server = server_name.clone();
+            let key = api_key.clone();
+            let uid = user_id.clone();
+            let subscribed_people_revert = subscribed_people.clone();
+
+            spawn_local(async move {
+                if let (Some(server), Some(Some(key)), Some(uid)) = (server, key, uid) {
+                    if let Err(e) = call_unsubscribe_from_person(
+                        &server,
+                        &key,
+                        uid,
+                        person_id,
+                        person_name,
+                    )
+                    .await
+                    {
+                        log::error!("Failed to unsubscribe: {}", e);
+                        // No revert here — page reload will show correct state
+                    }
+                }
+            });
+        })
+    };
+
+    // Navigate to person profile page
+    let history = BrowserHistory::new();
+    let on_navigate_to_person = {
+        let history = history.clone();
+        Callback::from(move |person_name: String| {
+            history.push(format!("/person/{}", person_name));
         })
     };
 
@@ -209,13 +246,18 @@ pub fn subscribed_people() -> Html {
                         people.into_iter().map(|person| {
                             let active_modal = active_clonedal.clone();
                             let is_expanded = *expanded_state.get(&person.person.personid).unwrap_or(&false);
+                            let person_id = person.person.personid;
+                            let person_name = person.person.name.clone();
+                            let person_name2 = person_name.clone();
                             html! {
                                 <div key={person.person.personid}>
                                     { render_host_with_episodes(
                                         &person.person,
                                         person.episodes.clone(),
                                         is_expanded,
-                                        toggle_person.reform(move |_| person.person.personid),
+                                        toggle_person.reform(move |_| person_id),
+                                        on_unsubscribe.reform(move |_| (person_id, person_name.clone())),
+                                        on_navigate_to_person.reform(move |_| person_name2.clone()),
                                         post_state.clone(),
                                         post_dispatch.clone(),
                                         desc_state.clone(),
@@ -262,23 +304,22 @@ pub fn subscribed_people() -> Html {
     }
 }
 
-#[allow(dead_code)]
 fn get_proxied_image_url(server_name: &str, original_url: String) -> String {
-    let proxied_url = format!(
+    format!(
         "{}/api/proxy/image?url={}",
         server_name,
         urlencoding::encode(&original_url)
-    );
-    web_sys::console::log_1(&format!("Proxied URL: {}", proxied_url).into());
-    proxied_url
+    )
 }
 
-#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 fn render_host_with_episodes(
     person: &PersonSubscription,
     episodes: Vec<Episode>,
     is_expanded: bool,
     toggle_host_expanded: Callback<MouseEvent>,
+    on_unsubscribe: Callback<MouseEvent>,
+    on_navigate: Callback<MouseEvent>,
     state: Rc<AppState>,
     dispatch: Dispatch<AppState>,
     desc_rc: Rc<ExpandedDescriptions>,
@@ -291,26 +332,23 @@ fn render_host_with_episodes(
     shows_text: &str,
     avatar_alt_text: &str,
 ) -> Html {
-    let _episode_count = episodes.len();
-    let history_clone = BrowserHistory::new();
-    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let proxied_url = get_proxied_image_url(&server_name.clone().unwrap(), person.image.clone());
+    let proxied_url = get_proxied_image_url(&server_name.clone().unwrap_or_default(), person.image.clone());
 
-    let handle_click = {
+    let handle_expand = {
         let toggle_host_expanded = toggle_host_expanded.clone();
         Callback::from(move |e: MouseEvent| {
-            e.stop_propagation(); // Stop event propagation
-            e.prevent_default(); // Prevent default behavior
+            e.stop_propagation();
+            e.prevent_default();
             toggle_host_expanded.emit(e);
         })
     };
 
     html! {
         <div key={person.personid}>
-            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full" onclick={handle_click}>
-                <div class="flex flex-col w-auto object-cover pl-4">
+            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
+                // Clickable avatar + name → navigates to person profile
+                <div class="flex flex-col w-auto object-cover pl-4 cursor-pointer" onclick={on_navigate.clone()}>
                     <img
                         src={format!("{}", proxied_url)}
                         alt={format!("{} {}", avatar_alt_text, person.name)}
@@ -318,20 +356,59 @@ fn render_host_with_episodes(
                     />
                 </div>
                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                    <p class="item_container-text episode-title font-semibold cursor-pointer">
+                    <p class="item_container-text episode-title font-semibold cursor-pointer text-blue-500 hover:underline"
+                       onclick={on_navigate}>
                         { &person.name }
                     </p>
                     <hr class="my-2 border-t hidden md:block"/>
-                    <p class="item_container-text">{ format!("{}: {}", episode_count_text, person.episode_count) }</p>
+                    {
+                        if person.episode_count == 0 {
+                            html! { <p class="item_container-text text-sm italic text-gray-400">{"Loading episodes..."}</p> }
+                        } else {
+                            html! { <p class="item_container-text">{ format!("{}: {}", episode_count_text, person.episode_count) }</p> }
+                        }
+                    }
                     <p class="item_container-text text-sm">{ format!("{}: {}", shows_text, person.associatedpodcasts) }</p>
+                </div>
+                // Right-side action buttons
+                <div class="flex flex-col items-center justify-center gap-2 px-4 self-center">
+                    // Expand/collapse episodes button
+                    <button
+                        class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-300"
+                        onclick={handle_expand}
+                        title="Toggle episodes"
+                    >
+                        <i class={if is_expanded { "ph ph-caret-up text-xl" } else { "ph ph-caret-down text-xl" }}></i>
+                    </button>
+                    // Unsubscribe button
+                    <button
+                        class="px-2 py-1 bg-red-500 hover:bg-red-600 text-white text-sm rounded"
+                        onclick={on_unsubscribe}
+                        title="Unsubscribe"
+                    >
+                        <i class="ph ph-user-minus"></i>
+                    </button>
                 </div>
             </div>
             { if is_expanded {
                 html! {
                     <div class="episodes-dropdown pl-4 flex-grow overflow-y-auto">
-                        { for episodes.iter().map(|ep| html! {
-                            <EpisodeListItem key={ep.episodeid} episode={ep.clone()} />
-                        }) }
+                        { if episodes.is_empty() {
+                            html! {
+                                <p class="item_container-text text-sm italic text-gray-400 p-4">
+                                    {"No recent episodes found."}
+                                </p>
+                            }
+                        } else {
+                            html! {
+                                <>
+                                { for episodes.iter().map(|ep| html! {
+                                    // Use episodeurl as key to avoid -1 ID collisions for system-podcast episodes
+                                    <EpisodeListItem key={ep.episodeurl.clone()} episode={ep.clone()} />
+                                }) }
+                                </>
+                            }
+                        }}
                     </div>
                 }
             } else {

@@ -28,7 +28,7 @@ use gloo_timers::callback::Timeout;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
-use web_sys::{window, Element, HtmlInputElement, MouseEvent};
+use web_sys::{window, Element, HtmlInputElement, KeyboardEvent, MouseEvent};
 use yew::prelude::*;
 use yew::Callback;
 use yew_router::history::{BrowserHistory, History};
@@ -197,16 +197,18 @@ pub fn search_bar() -> Html {
     let server_details_sel = use_selector(|state: &AppState| state.server_details.clone());
     let server_details = (*server_details_sel).clone();
     let podcast_value = use_state(|| "".to_string());
-    let search_index = use_state(|| "podcast_index".to_string()); // Default to "podcast_index"
+    let search_index = use_state(|| "podcast_index".to_string());
     let is_submitting = use_state(|| false);
+
+    // Mobile takeover state
+    let is_mobile = use_state(|| false);
+    let expanded = use_state(|| false);
+    let src_menu_open = use_state(|| false);
+    let mobile_input_ref = use_node_ref();
 
     let history_clone = history.clone();
     let podcast_value_clone = podcast_value.clone();
     let search_index_clone = search_index.clone();
-    // State for toggling the dropdown in mobile view
-    let mobile_dropdown_open = use_state(|| false);
-    // State for animation - separate from actual visibility to allow animation to complete
-    let mobile_dropdown_animating = use_state(|| false);
 
     let handle_submit = {
         let is_submitting = is_submitting.clone();
@@ -235,12 +237,10 @@ pub fn search_bar() -> Html {
                                 channels: yt_results.results,
                                 videos: Vec::new(),
                             };
-
                             Dispatch::<AppState>::global().reduce_mut(|state| {
                                 state.youtube_search_results = Some(search_results);
                                 state.is_loading = Some(false);
                             });
-
                             history.push("/youtube_layout");
                         }
                         Err(e) => {
@@ -263,15 +263,16 @@ pub fn search_bar() -> Html {
                                 state.search_results = Some(search_results);
                                 state.podcast_added = Some(false);
                             });
-                            Dispatch::<AppState>::global().reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<AppState>::global()
+                                .reduce_mut(|state| state.is_loading = Some(false));
                             history.push("/pod_layout");
                         }
                         Err(_) => {
-                            Dispatch::<AppState>::global().reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<AppState>::global()
+                                .reduce_mut(|state| state.is_loading = Some(false));
                         }
                     }
                 }
-                // Reset submission state after completion
                 is_submitting_clone.set(false);
             });
         }
@@ -279,8 +280,10 @@ pub fn search_bar() -> Html {
 
     let on_submit = {
         let handle_submit = handle_submit.clone();
+        let expanded = expanded.clone();
         Callback::from(move |e: SubmitEvent| {
             e.prevent_default();
+            expanded.set(false);
             handle_submit();
         })
     };
@@ -293,96 +296,9 @@ pub fn search_bar() -> Html {
         })
     };
 
-    let on_submit_click = {
-        let handle_submit = handle_submit.clone();
-        Callback::from(move |_: MouseEvent| {
-            handle_submit();
-        })
-    };
-
-    let on_search_click = {
-        let handle_submit = handle_submit.clone();
-        let mobile_dropdown_open = mobile_dropdown_open.clone();
-        let mobile_dropdown_animating = mobile_dropdown_animating.clone();
-        Callback::from(move |_: MouseEvent| {
-            if web_sys::window()
-                .unwrap()
-                .inner_width()
-                .unwrap()
-                .as_f64()
-                .unwrap()
-                < 768.0
-            {
-                if !*mobile_dropdown_open {
-                    // Opening the dropdown
-                    mobile_dropdown_open.set(true);
-                    mobile_dropdown_animating.set(true);
-                } else {
-                    // Closing the dropdown - start animation first
-                    mobile_dropdown_animating.set(false);
-
-                    // Set a timeout to actually close the dropdown after animation
-                    let mobile_dropdown_open_clone = mobile_dropdown_open.clone();
-                    wasm_bindgen_futures::spawn_local(async move {
-                        // Wait for animation to complete (300ms)
-                        let promise = js_sys::Promise::new(&mut |resolve, _| {
-                            web_sys::window()
-                                .unwrap()
-                                .set_timeout_with_callback_and_timeout_and_arguments_0(
-                                    &resolve, 300,
-                                )
-                                .unwrap();
-                        });
-                        let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
-
-                        // Now actually close the dropdown
-                        mobile_dropdown_open_clone.set(false);
-                    });
-                }
-            } else {
-                handle_submit();
-            }
-        })
-    };
-
-    let dropdown_open = use_state(|| false);
-
-    let toggle_dropdown = {
-        let dropdown_open = dropdown_open.clone();
-        Callback::from(move |_: MouseEvent| {
-            dropdown_open.set(!*dropdown_open);
-        })
-    };
-
-    let on_dropdown_select = {
-        let dropdown_open = dropdown_open.clone();
-        let search_index = search_index.clone();
-        move |category: &str| {
-            search_index.set(category.to_string());
-            dropdown_open.set(false);
-        }
-    };
-
-    let on_dropdown_select_itunes = {
-        let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_: MouseEvent| on_dropdown_select("itunes"))
-    };
-
-    let on_dropdown_select_podcast_index = {
-        let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_: MouseEvent| on_dropdown_select("podcast_index"))
-    };
-
-    let on_dropdown_select_youtube = {
-        let on_dropdown_select = on_dropdown_select.clone();
-        Callback::from(move |_: MouseEvent| on_dropdown_select("youtube"))
-    };
-
-    let search_index_display = match search_index.as_str() {
-        "podcast_index" => "Podcast Index",
-        "itunes" => "iTunes",
-        "youtube" => "youtube",
-        _ => "Unknown",
+    let on_clear_input = {
+        let podcast_value = podcast_value.clone();
+        Callback::from(move |_: MouseEvent| podcast_value.set("".to_string()))
     };
 
     let (_, ui_dispatch) = use_store::<UIState>();
@@ -398,13 +314,12 @@ pub fn search_bar() -> Html {
         })
     };
 
+    // Desktop source picker dropdown
     let src_dropdown_open = use_state(|| false);
 
     let toggle_src_dropdown = {
         let src_dropdown_open = src_dropdown_open.clone();
-        Callback::from(move |_: MouseEvent| {
-            src_dropdown_open.set(!*src_dropdown_open);
-        })
+        Callback::from(move |_: MouseEvent| src_dropdown_open.set(!*src_dropdown_open))
     };
 
     let select_src = {
@@ -416,68 +331,326 @@ pub fn search_bar() -> Html {
         }
     };
 
-    let select_podcast_index = { let s = select_src.clone(); Callback::from(move |_: MouseEvent| s("podcast_index")) };
-    let select_itunes = { let s = select_src.clone(); Callback::from(move |_: MouseEvent| s("itunes")) };
-    let select_youtube = { let s = select_src.clone(); Callback::from(move |_: MouseEvent| s("youtube")) };
+    let select_podcast_index = {
+        let s = select_src.clone();
+        Callback::from(move |_: MouseEvent| s("podcast_index"))
+    };
+    let select_itunes = {
+        let s = select_src.clone();
+        Callback::from(move |_: MouseEvent| s("itunes"))
+    };
+    let select_youtube = {
+        let s = select_src.clone();
+        Callback::from(move |_: MouseEvent| s("youtube"))
+    };
+
+    // Mobile takeover callbacks
+    let on_expand = {
+        let expanded = expanded.clone();
+        Callback::from(move |_: MouseEvent| expanded.set(true))
+    };
+
+    let on_collapse = {
+        let expanded = expanded.clone();
+        let src_menu_open = src_menu_open.clone();
+        Callback::from(move |_: MouseEvent| {
+            expanded.set(false);
+            src_menu_open.set(false);
+        })
+    };
+
+    let on_toggle_src_menu = {
+        let src_menu_open = src_menu_open.clone();
+        Callback::from(move |_: MouseEvent| src_menu_open.set(!*src_menu_open))
+    };
+
+    let on_src_menu_mouseleave = {
+        let src_menu_open = src_menu_open.clone();
+        Callback::from(move |_: MouseEvent| src_menu_open.set(false))
+    };
+
+    let select_podcast_index_mobile = {
+        let search_index = search_index.clone();
+        let src_menu_open = src_menu_open.clone();
+        Callback::from(move |_: MouseEvent| {
+            search_index.set("podcast_index".to_string());
+            src_menu_open.set(false);
+        })
+    };
+
+    let select_itunes_mobile = {
+        let search_index = search_index.clone();
+        let src_menu_open = src_menu_open.clone();
+        Callback::from(move |_: MouseEvent| {
+            search_index.set("itunes".to_string());
+            src_menu_open.set(false);
+        })
+    };
+
+    let select_youtube_mobile = {
+        let search_index = search_index.clone();
+        let src_menu_open = src_menu_open.clone();
+        Callback::from(move |_: MouseEvent| {
+            search_index.set("youtube".to_string());
+            src_menu_open.set(false);
+        })
+    };
+
+    let on_keydown_takeover = {
+        let expanded = expanded.clone();
+        let src_menu_open = src_menu_open.clone();
+        Callback::from(move |e: KeyboardEvent| {
+            if e.key() == "Escape" {
+                if *src_menu_open {
+                    src_menu_open.set(false);
+                } else {
+                    expanded.set(false);
+                }
+            }
+        })
+    };
+
+    // Viewport resize → update is_mobile (820px breakpoint)
+    {
+        let is_mobile = is_mobile.clone();
+        use_effect_with((), move |_| {
+            let w = web_sys::window().unwrap();
+            let width = w.inner_width().unwrap().as_f64().unwrap_or(1920.0);
+            is_mobile.set(width < 820.0);
+            let is_mobile_r = is_mobile.clone();
+            let w_r = w.clone();
+            let listener = EventListener::new(&w, "resize", move |_| {
+                let width = w_r.inner_width().unwrap().as_f64().unwrap_or(1920.0);
+                is_mobile_r.set(width < 820.0);
+            });
+            move || drop(listener)
+        });
+    }
+
+    // Reset expanded/src_menu_open when viewport returns to desktop width
+    {
+        let expanded = expanded.clone();
+        let src_menu_open = src_menu_open.clone();
+        let is_mobile_val = *is_mobile;
+        use_effect_with(is_mobile_val, move |&mobile| {
+            if !mobile {
+                expanded.set(false);
+                src_menu_open.set(false);
+            }
+            || ()
+        });
+    }
+
+    // Focus mobile input ~60ms after expand to let the morph land
+    {
+        let mobile_input_ref = mobile_input_ref.clone();
+        let expanded_val = *expanded;
+        use_effect_with(expanded_val, move |&exp| {
+            if exp {
+                let r = mobile_input_ref.clone();
+                Timeout::new(60, move || {
+                    if let Some(input) = r.cast::<HtmlInputElement>() {
+                        let _ = input.focus();
+                    }
+                })
+                .forget();
+            }
+            || ()
+        });
+    }
+
+    // Toggle body class so CSS can hide the fixed drawer-icon while expanded
+    {
+        let expanded_val = *expanded;
+        use_effect_with(expanded_val, move |&exp| {
+            if let Some(body) = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.body())
+            {
+                if exp {
+                    let _ = body.class_list().add_1("search-takeover-open");
+                } else {
+                    let _ = body.class_list().remove_1("search-takeover-open");
+                }
+            }
+            move || {
+                if let Some(body) = web_sys::window()
+                    .and_then(|w| w.document())
+                    .and_then(|d| d.body())
+                {
+                    let _ = body.class_list().remove_1("search-takeover-open");
+                }
+            }
+        });
+    }
+
+    let search_index_display = match search_index.as_str() {
+        "podcast_index" => "Podcast Index",
+        "itunes" => "iTunes",
+        "youtube" => "YouTube",
+        _ => "Unknown",
+    };
+
+    let src_icon_class = match search_index.as_str() {
+        "itunes" => "ph ph-apple-logo",
+        "youtube" => "ph ph-youtube-logo",
+        _ => "ph ph-globe-hemisphere-west",
+    };
+
+    let search_src_placeholder = match search_index.as_str() {
+        "podcast_index" => "Search Podcast Index\u{2026}".to_string(),
+        "itunes" => "Search iTunes\u{2026}".to_string(),
+        "youtube" => "Search YouTube\u{2026}".to_string(),
+        _ => "Search\u{2026}".to_string(),
+    };
 
     html! {
         <div class="episodes-container w-full">
-            <div class="topbar">
-                <div class="topbar-left">
-                    // Left spacer — drawer-icon buttons float above this area at z-49
-                </div>
-                <form class="topbar-right" onsubmit={on_submit.clone()}>
-                    <button
-                        type="button"
-                        class="iconbtn"
-                        onclick={toggle_queue}
-                        title="Queue"
-                    >
-                        <i class="ph ph-queue"></i>
-                        if queue_count > 0 {
-                            <span class="topbar-queue-badge">{ queue_count }</span>
-                        }
-                    </button>
-                    <div style="position: relative;">
-                        <button
-                            type="button"
-                            class="src-source"
-                            onclick={toggle_src_dropdown}
-                        >
-                            <span>{ search_index_display }</span>
-                            <i class="ph ph-caret-down"></i>
+            <div class={classes!("topbar", (*expanded && *is_mobile).then_some("is-expanded"))}>
+                if !*is_mobile {
+                    // ── Desktop layout ──────────────────────────────────────
+                    <div class="topbar-left">
+                        // spacer — drawer-icon buttons are fixed-position at z-49
+                    </div>
+                    <form class="topbar-right" onsubmit={on_submit.clone()}>
+                        <button type="button" class="iconbtn topbar-queue-btn"
+                                onclick={toggle_queue.clone()} title="Queue">
+                            <i class="ph ph-queue"></i>
+                            if queue_count > 0 {
+                                <span class="topbar-queue-badge">{ queue_count }</span>
+                            }
                         </button>
-                        if *src_dropdown_open {
-                            <div class="src-dropdown">
-                                <button type="button" class={classes!("src-dropdown-item", (*search_index == "podcast_index").then_some("is-active"))} onclick={select_podcast_index}>
-                                    { &i18n_podcast_index }
+                        <div style="position: relative;">
+                            <button type="button" class="src-source"
+                                    onclick={toggle_src_dropdown.clone()}>
+                                <span>{ search_index_display }</span>
+                                <i class="ph ph-caret-down"></i>
+                            </button>
+                            if *src_dropdown_open {
+                                <div class="src-dropdown">
+                                    <button type="button"
+                                        class={classes!("src-dropdown-item", (*search_index == "podcast_index").then_some("is-active"))}
+                                        onclick={select_podcast_index.clone()}>
+                                        { &i18n_podcast_index }
+                                    </button>
+                                    <button type="button"
+                                        class={classes!("src-dropdown-item", (*search_index == "itunes").then_some("is-active"))}
+                                        onclick={select_itunes.clone()}>
+                                        {"iTunes"}
+                                    </button>
+                                    <button type="button"
+                                        class={classes!("src-dropdown-item", (*search_index == "youtube").then_some("is-active"))}
+                                        onclick={select_youtube.clone()}>
+                                        {"YouTube"}
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                        <div class="src-input">
+                            <input
+                                type="search"
+                                placeholder="Search\u{2026}"
+                                value={(*podcast_value).clone()}
+                                oninput={on_input_change.clone()}
+                            />
+                            if !podcast_value.is_empty() {
+                                <button type="button" class="src-input-clear"
+                                        onclick={on_clear_input.clone()}>
+                                    <i class="ph ph-x"></i>
                                 </button>
-                                <button type="button" class={classes!("src-dropdown-item", (*search_index == "itunes").then_some("is-active"))} onclick={select_itunes}>
-                                    {"iTunes"}
-                                </button>
-                                <button type="button" class={classes!("src-dropdown-item", (*search_index == "youtube").then_some("is-active"))} onclick={select_youtube}>
-                                    {"YouTube"}
-                                </button>
-                            </div>
-                        }
+                            }
+                        </div>
+                        <button type="submit" class="iconbtn" title="Search">
+                            <i class="ph ph-magnifying-glass"></i>
+                        </button>
+                        <NotificationCenter />
+                    </form>
+                } else if !*expanded {
+                    // ── Mobile idle ─────────────────────────────────────────
+                    <div class="topbar-left">
+                        // spacer
                     </div>
-                    <div class="src-input">
-                        <input
-                            type="search"
-                            placeholder="Search\u{2026}"
-                            oninput={on_input_change.clone()}
-                        />
+                    <div class="topbar-right">
+                        <button type="button" class="iconbtn topbar-queue-btn"
+                                onclick={toggle_queue.clone()} title="Queue">
+                            <i class="ph ph-queue"></i>
+                            if queue_count > 0 {
+                                <span class="topbar-queue-badge">{ queue_count }</span>
+                            }
+                        </button>
+                        <button type="button" class="iconbtn search-trigger"
+                                onclick={on_expand.clone()}
+                                title="Search" aria-label="Open search">
+                            <i class="ph ph-magnifying-glass"></i>
+                        </button>
                     </div>
-                    <button
-                        type="submit"
-                        class="iconbtn"
-                        onclick={on_search_click.clone()}
-                        title="Search"
-                    >
-                        <i class="ph ph-magnifying-glass"></i>
-                    </button>
-                    <NotificationCenter />
-                </form>
+                } else {
+                    // ── Mobile expanded (takeover) ──────────────────────────
+                    <form class="topbar-search-takeover"
+                          onsubmit={on_submit.clone()}
+                          onkeydown={on_keydown_takeover.clone()}>
+                        <button type="button" class="iconbtn"
+                                onclick={on_collapse.clone()}
+                                title="Close search" aria-label="Close search">
+                            <i class="ph ph-arrow-left"></i>
+                        </button>
+                        <div style="position: relative;">
+                            <button type="button"
+                                    class="src-source src-source-icon"
+                                    onclick={on_toggle_src_menu.clone()}
+                                    title={format!("Search source: {}. Click to change.", search_index_display)}
+                                    aria-label={format!("Search source: {}. Click to change.", search_index_display)}>
+                                <i class={src_icon_class}></i>
+                                <i class="ph ph-caret-down src-combined-caret"></i>
+                            </button>
+                            if *src_menu_open {
+                                <div class="src-menu src-menu-takeover"
+                                     onmouseleave={on_src_menu_mouseleave.clone()}>
+                                    <button type="button"
+                                            class={classes!("src-menu-item", (*search_index == "podcast_index").then_some("is-active"))}
+                                            onclick={select_podcast_index_mobile.clone()}
+                                            aria-current={(*search_index == "podcast_index").then_some("true")}>
+                                        <i class="ph ph-globe-hemisphere-west"></i>
+                                        <span>{"Podcast Index"}</span>
+                                    </button>
+                                    <button type="button"
+                                            class={classes!("src-menu-item", (*search_index == "itunes").then_some("is-active"))}
+                                            onclick={select_itunes_mobile.clone()}
+                                            aria-current={(*search_index == "itunes").then_some("true")}>
+                                        <i class="ph ph-apple-logo"></i>
+                                        <span>{"iTunes"}</span>
+                                    </button>
+                                    <button type="button"
+                                            class={classes!("src-menu-item", (*search_index == "youtube").then_some("is-active"))}
+                                            onclick={select_youtube_mobile.clone()}
+                                            aria-current={(*search_index == "youtube").then_some("true")}>
+                                        <i class="ph ph-youtube-logo"></i>
+                                        <span>{"YouTube"}</span>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                        <div class="src-input">
+                            <input
+                                ref={mobile_input_ref.clone()}
+                                type="text"
+                                placeholder={search_src_placeholder}
+                                value={(*podcast_value).clone()}
+                                oninput={on_input_change.clone()}
+                            />
+                            if !podcast_value.is_empty() {
+                                <button type="button" class="src-input-clear"
+                                        onclick={on_clear_input.clone()}>
+                                    <i class="ph ph-x"></i>
+                                </button>
+                            }
+                        </div>
+                        <button type="submit" class="iconbtn"
+                                title="Search" aria-label="Submit search">
+                            <i class="ph ph-magnifying-glass"></i>
+                        </button>
+                    </form>
+                }
             </div>
             <ToastNotification />
         </div>
@@ -687,7 +860,11 @@ pub fn on_shownotes_click(
 
         wasm_bindgen_futures::spawn_local(async move {
             if episode_id != 0 {
-                history_clone.push(format!("/episode?episode_id={}", episode_id));
+                if is_youtube {
+                    history_clone.push(format!("/episode?episode_id={}&youtube=true", episode_id));
+                } else {
+                    history_clone.push(format!("/episode?episode_id={}", episode_id));
+                }
             } else {
                 let mut new_url = "/episode".to_string();
                 new_url.push_str("?podcast_title=");

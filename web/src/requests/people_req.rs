@@ -132,7 +132,7 @@ pub async fn call_get_person_episodes(
     person_id: i32,
 ) -> Result<Vec<Episode>, Error> {
     let url = format!(
-        "{}/api/data/person/episodes/{}/{}",
+        "{}/api/data/person/episodes/{}/{}?limit=50&offset=0",
         server_name, user_id, person_id
     );
 

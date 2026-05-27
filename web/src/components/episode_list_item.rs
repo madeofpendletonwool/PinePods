@@ -250,6 +250,10 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     /*
     Set up Context Menu
     */
+    // Episodes with episodeid <= 0 come from external feeds (unsubscribed podcasts).
+    // Only show the context menu for episodes the user can actually interact with.
+    let can_use_context_menu = props.episode.episodeid > 0;
+
     let show_context_menu = use_state(|| false);
     let context_menu_position = use_state(|| (0, 0));
 
@@ -261,6 +265,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         let context_menu_position = context_menu_position.clone();
 
         Callback::from(move |event: TouchEvent| {
+            if !can_use_context_menu { return; }
             if let Some(touch) = event.touches().get(0) {
                 event.prevent_default();
                 // Record position for the context menu
@@ -270,8 +275,6 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                 if let Some(button) = context_button_ref.cast::<web_sys::HtmlElement>() {
                     button.click();
                 } else {
-                    // If the button doesn't exist (maybe on mobile where it's hidden)
-                    // we'll just set our state to show the menu
                     show_context_menu.set(true);
                 }
             }
@@ -294,7 +297,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     {
         let show_context_menu = show_context_menu.clone();
         use_effect_with(is_long_press_state, move |is_pressed| {
-            if **is_pressed {
+            if **is_pressed && can_use_context_menu {
                 show_context_menu.set(true);
             }
             || ()
@@ -463,15 +466,17 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                                 }
                             }
                         </button>
-                        <div ref={context_button_ref.clone()}>
-                            <ContextMenuButton episode={props.episode.clone()} page_type={props.page_type.clone()} />
-                        </div>
+                        if can_use_context_menu {
+                            <div ref={context_button_ref.clone()}>
+                                <ContextMenuButton episode={props.episode.clone()} page_type={props.page_type.clone()} />
+                            </div>
+                        }
                     </div>
                 }
             </div>
 
             {
-                if *show_context_menu {
+                if *show_context_menu && can_use_context_menu {
                     html! {
                         <ContextMenuButton
                             episode={props.episode.clone()}

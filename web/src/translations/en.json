@@ -676,7 +676,15 @@
     "add_new_device": "Add New Device",
     "device_name": "Device Name",
     "device_type": "Device Type",
-    "caption_optional": "Optional Note"
+    "caption_optional": "Optional Note",
+    "internal_gpodder_api": "Internal Gpodder API",
+    "internal_gpodder_desc": "Enable the internal gpodder API to synchronize podcasts between Pinepods and other gpodder-compatible clients. This will disable external sync options while enabled.",
+    "nextcloud_server_url": "Nextcloud Server URL",
+    "authenticate": "Authenticate",
+    "gpodder_server_url": "Server URL",
+    "username": "Username",
+    "password": "Password",
+    "test_connection": "Test Connection"
   },
   "notification_center": {
     "active_tasks": "Active Tasks",
@@ -803,6 +811,12 @@
     "subscribe_to_hosts_message": "Subscribe to podcast hosts and guests to see their latest episodes here!",
     "subscribed_people": "Subscribed People"
   },
+  "not_found": {
+    "page_not_found": "Page Not Found",
+    "uncharted_territory": "Looks like we've wandered into uncharted territory!",
+    "grab_coffee": "Grab some coffee and try again",
+    "head_back_home": "Head back home"
+  },
   "person": {
     "add_podcasts_message": "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it.",
     "cover_for": "Cover for",
@@ -920,7 +934,15 @@
     "podcasts_ignored": "Ignored Podcasts",
     "hide": "Hide",
     "show": "Show",
-    "restore": "Restore"
+    "restore": "Restore",
+    "no_podcasts_need_matching": "No Podcasts Need Matching",
+    "showing_ignored": "Showing Ignored",
+    "click_to_search": "Click To Search Podcast Index for Matches",
+    "manual_search_options": "Manual Search",
+    "search_by_custom_terms": "Search by Name",
+    "match_btn": "Match",
+    "enter_podcast_id": "Search By Podcast Index ID",
+    "search": "Search"
   },
   "podcast_layout": {
     "add_error": "Error adding podcast",
@@ -1156,6 +1178,9 @@
   "time_formats": {
     "12_hour": "12 Hour",
     "24_hour": "24 Hour"
+  },
+  "queue_panel": {
+    "up_next": "Queue"
   },
   "user_self_service": {
     "enable_user_self_service": "Enable User Self Service",
