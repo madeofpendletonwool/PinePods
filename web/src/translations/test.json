@@ -166,7 +166,8 @@
     "no_downloaded_episodes_found": "ZZTEST-NO-DOWNLOADED-EPISODES-FOUND-ZZTEST",
     "no_episode_downloads_found": "ZZTEST-NO-EPISODE-DOWNLOADS-FOUND-ZZTEST",
     "search_downloaded_episodes": "ZZTEST-SEARCH-DOWNLOADED-EPISODES-ZZTEST",
-    "select": "ZZTEST-SELECT-ZZTEST"
+    "select": "ZZTEST-SELECT-ZZTEST",
+    "load_more": "Load More"
   },
   "downloads_tauri": {
     "downloaded_episodes_count": "ZZTEST-DOWNLOADED-EPISODES-COUNT-ZZTEST",
@@ -368,7 +369,8 @@
     "youtube_channel_successfully_removed": "ZZTEST-YOUTUBE-CHANNEL-SUCCESSFULLY-REMOVED-ZZTEST",
     "youtube_download_limit": "ZZTEST-YOUTUBE-DOWNLOAD-LIMIT-ZZTEST",
     "youtube_episode_limit_updated": "ZZTEST-YOUTUBE-EPISODE-LIMIT-UPDATED-ZZTEST",
-    "youtube_limit_description": "ZZTEST-YOUTUBE-LIMIT-DESCRIPTION-ZZTEST"
+    "youtube_limit_description": "ZZTEST-YOUTUBE-LIMIT-DESCRIPTION-ZZTEST",
+    "video": "Video"
   },
   "export_settings": {
     "download_export_opml": "ZZTEST-DOWNLOAD-EXPORT-OPML-ZZTEST",
@@ -687,7 +689,9 @@
     "no_subscribed_people_found": "ZZTEST-NO-SUBSCRIBED-PEOPLE-FOUND-ZZTEST",
     "shows": "ZZTEST-SHOWS-ZZTEST",
     "subscribe_to_hosts_message": "ZZTEST-SUBSCRIBE-TO-HOSTS-MESSAGE-ZZTEST",
-    "subscribed_people": "ZZTEST-SUBSCRIBED-PEOPLE-ZZTEST"
+    "subscribed_people": "ZZTEST-SUBSCRIBED-PEOPLE-ZZTEST",
+    "loading_episodes": "Loading episodes...",
+    "no_recent_episodes_found": "No recent episodes found."
   },
   "person": {
     "add_podcasts_message": "ZZTEST-ADD-PODCASTS-MESSAGE-ZZTEST",
@@ -708,7 +712,8 @@
     "profile_alt": "ZZTEST-PROFILE-ALT-ZZTEST",
     "subscribe": "ZZTEST-SUBSCRIBE-ZZTEST",
     "unknown_author": "ZZTEST-UNKNOWN-AUTHOR-ZZTEST",
-    "unsubscribe": "ZZTEST-UNSUBSCRIBE-ZZTEST"
+    "unsubscribe": "ZZTEST-UNSUBSCRIBE-ZZTEST",
+    "loading_podcasts": "Loading podcasts..."
   },
   "playback_settings": {
     "auto_complete_description": "ZZTEST-AUTO-COMPLETE-DESCRIPTION-ZZTEST",

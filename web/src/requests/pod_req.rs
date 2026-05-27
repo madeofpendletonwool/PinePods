@@ -407,6 +407,8 @@ pub struct Podcast {
     pub podcastindexid: i32,
     #[serde(default)]
     pub is_favorite: bool,
+    #[serde(default)]
+    pub is_video: bool,
 }
 
 pub async fn call_get_podcasts(
@@ -481,6 +483,8 @@ pub struct PodcastExtra {
     #[serde(default)]
     pub is_youtube: bool,
     #[serde(default)]
+    pub is_video: bool,
+    #[serde(default)]
     pub is_favorite: bool,
 }
 
@@ -504,6 +508,7 @@ impl From<Podcast> for PodcastExtra {
             episodes_played: 0,
             oldest_episode_date: None,
             is_youtube,
+            is_video: podcast.is_video,
             is_favorite: podcast.is_favorite,
         }
     }
@@ -524,6 +529,7 @@ impl From<PodcastExtra> for Podcast {
             explicit: podcast_extra.explicit,
             podcastindexid: podcast_extra.podcastindexid,
             is_favorite: podcast_extra.is_favorite,
+            is_video: podcast_extra.is_video,
         }
     }
 }
@@ -1206,6 +1212,82 @@ pub struct EpisodeDownloadResponse {
 pub struct DownloadDataResponse {
     #[serde(rename = "downloaded_episodes")]
     pub episodes: Vec<Episode>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct PodcastDownloadSummary {
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub artworkurl: Option<String>,
+    pub episode_count: i64,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct PodcastDownloadSummaryResponse {
+    pub podcasts: Vec<PodcastDownloadSummary>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct DownloadsPage {
+    pub episodes: Vec<Episode>,
+    pub total: i64,
+}
+
+pub async fn call_get_podcast_download_summary(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+) -> Result<PodcastDownloadSummaryResponse, anyhow::Error> {
+    let url = format!(
+        "{}/api/data/podcast_download_summary/{}",
+        server_name, user_id
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch podcast download summary: {}",
+            response.status_text()
+        )));
+    }
+    let text = response.text().await?;
+    serde_json::from_str::<PodcastDownloadSummaryResponse>(&text)
+        .map_err(|_| anyhow::Error::msg("Failed to deserialize podcast download summary"))
+}
+
+pub async fn call_get_podcast_downloads_paged(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+    podcast_id: i32,
+    limit: i64,
+    offset: i64,
+) -> Result<DownloadsPage, anyhow::Error> {
+    let url = format!(
+        "{}/api/data/podcast_downloads_paged/{}/{}?limit={}&offset={}",
+        server_name, user_id, podcast_id, limit, offset
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch podcast downloads: {}",
+            response.status_text()
+        )));
+    }
+    let text = response.text().await?;
+    serde_json::from_str::<DownloadsPage>(&text)
+        .map_err(|_| anyhow::Error::msg("Failed to deserialize podcast downloads page"))
 }
 
 pub async fn call_get_episode_downloads(

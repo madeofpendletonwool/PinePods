@@ -1203,6 +1203,91 @@ class PinepodsService {
     }
   }
 
+  Future<List<PodcastDownloadSummary>> getPodcastDownloadSummary(int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/podcast_download_summary/$userId');
+
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final podcastsList = data['podcasts'] as List<dynamic>? ?? [];
+
+        return podcastsList.map((p) {
+          return PodcastDownloadSummary(
+            podcastId: (p['podcastid'] as num?)?.toInt() ?? 0,
+            podcastName: p['podcastname'] ?? '',
+            artworkUrl: p['artworkurl'],
+            episodeCount: (p['episode_count'] as num?)?.toInt() ?? 0,
+          );
+        }).toList();
+      } else {
+        throw Exception('Failed to load podcast download summary: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting podcast download summary: $e');
+      rethrow;
+    }
+  }
+
+  Future<EpisodePage> getPodcastDownloadsPaged(
+    int userId,
+    int podcastId, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse(
+      '$_server/api/data/podcast_downloads_paged/$userId/$podcastId',
+    ).replace(queryParameters: {
+      'limit': limit.toString(),
+      'offset': offset.toString(),
+    });
+
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final total = (data['total'] as num?)?.toInt() ?? 0;
+        final episodesList = data['episodes'] as List<dynamic>? ?? [];
+
+        final episodes = episodesList.map((episodeData) {
+          return PinepodsEpisode(
+            podcastName: episodeData['podcastname'] ?? '',
+            episodeTitle: episodeData['episodetitle'] ?? '',
+            episodePubDate: episodeData['episodepubdate'] ?? '',
+            episodeDescription: episodeData['episodedescription'] ?? '',
+            episodeArtwork: episodeData['episodeartwork'] ?? '',
+            episodeUrl: episodeData['episodeurl'] ?? '',
+            episodeDuration: episodeData['episodeduration'] ?? 0,
+            listenDuration: episodeData['listenduration'] ?? 0,
+            episodeId: episodeData['episodeid'] ?? 0,
+            completed: episodeData['completed'] ?? false,
+            saved: episodeData['saved'] ?? false,
+            queued: episodeData['queued'] ?? false,
+            downloaded: episodeData['downloaded'] ?? true,
+            isYoutube: episodeData['is_youtube'] ?? false,
+          );
+        }).toList();
+
+        return EpisodePage(episodes: episodes, total: total);
+      } else {
+        throw Exception('Failed to load podcast downloads: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting podcast downloads paged: $e');
+      rethrow;
+    }
+  }
+
   // Get stream URL for episode
   String getStreamUrl(
     int episodeId,
@@ -2463,6 +2548,20 @@ class SearchEpisodeResult {
 
     return '';
   }
+}
+
+class PodcastDownloadSummary {
+  final int podcastId;
+  final String podcastName;
+  final String? artworkUrl;
+  final int episodeCount;
+
+  PodcastDownloadSummary({
+    required this.podcastId,
+    required this.podcastName,
+    this.artworkUrl,
+    required this.episodeCount,
+  });
 }
 
 class EpisodePage {

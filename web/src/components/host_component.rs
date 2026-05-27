@@ -1,18 +1,10 @@
-use crate::components::gen_components::LoadingModal;
 use crate::components::context::{AppState, NotificationState};
 use crate::requests::people_req::{
     call_get_person_subscriptions, call_subscribe_to_person, call_unsubscribe_from_person,
 };
-use crate::requests::pod_req::{
-    call_check_podcast, call_get_podcast_details, call_get_podcast_id, Person, Podcast,
-    PodcastDetails, PodcastResponse,
-};
-use crate::requests::search_pods::call_get_person_info;
-use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_get_podpeople_podcasts};
-use futures::future::join_all;
+use crate::requests::pod_req::Person;
 use i18nrs::yew::use_translation;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::MouseEvent;
 use yew::prelude::*;
@@ -29,35 +21,17 @@ pub struct Host {
     pub group: Option<String>,
     pub img: Option<String>,
     pub href: Option<String>,
-    pub id: Option<i32>,        // This is the podpeople id
-    pub person_id: Option<i32>, // This is the database personid
+    pub id: Option<i32>,        // podpeople id
+    pub person_id: Option<i32>, // database personid
 }
 
 #[derive(Properties, PartialEq, Clone)]
 pub struct HostDropdownProps {
     pub title: String,
     pub hosts: Vec<Person>,
-    pub podcast_feed_url: String, // Add this to help create a unique identifier
+    pub podcast_feed_url: String,
     pub podcast_id: i32,
     pub podcast_index_id: i32,
-}
-
-#[allow(dead_code)]
-fn map_podcast_details_to_podcast(details: PodcastDetails) -> Podcast {
-    Podcast {
-        podcastid: details.podcastid,
-        podcastname: details.podcastname,
-        artworkurl: Some(details.artworkurl),
-        description: Some(details.description),
-        episodecount: Some(details.episodecount),
-        websiteurl: Some(details.websiteurl),
-        feedurl: details.feedurl,
-        author: Some(details.author),
-        categories: Some(details.categories),
-        explicit: details.explicit,
-        podcastindexid: details.podcastindexid,
-        is_favorite: false,
-    }
 }
 
 #[derive(Properties, PartialEq, Clone)]
@@ -79,18 +53,16 @@ fn host_item(props: &HostItemProps) -> Html {
         server_name,
         podcast_feed_url: _,
         subscribed_hosts,
-        podcast_id,
+        podcast_id: _,
         on_subscribe_toggle,
         on_host_click,
     } = props;
 
-    // Capture i18n strings before they get moved
     let i18n_subscribe = i18n.t("host_component.subscribe").to_string();
     let i18n_unsubscribe = i18n.t("host_component.unsubscribe").to_string();
 
-    let is_subscribed = subscribed_hosts
-        .get(&host.name)
-        .map_or(false, |ids| ids.contains(podcast_id));
+    // Subscription is global per person — name-based check regardless of which podcast we're on
+    let is_subscribed = subscribed_hosts.contains_key(&host.name);
 
     let on_subscribe_click = {
         let host = host.clone();
@@ -101,12 +73,11 @@ fn host_item(props: &HostItemProps) -> Html {
     };
 
     fn get_proxied_image_url(server_name: &str, original_url: &str) -> String {
-        let proxied_url = format!(
+        format!(
             "{}/api/proxy/image?url={}",
             server_name,
             urlencoding::encode(original_url)
-        );
-        proxied_url
+        )
     }
 
     html! {
@@ -145,16 +116,12 @@ pub fn host_dropdown(
     }: &HostDropdownProps,
 ) -> Html {
     let (i18n, _) = use_translation();
-    let (search_state, _search_dispatch) = use_store::<AppState>();
+    let (search_state, _) = use_store::<AppState>();
 
-    // Capture i18n strings before they get moved
     let i18n_no_hosts_found = i18n.t("host_component.no_hosts_found").to_string();
     let i18n_add_hosts_here = i18n.t("host_component.add_hosts_here").to_string();
-    let i18n_failed_to_fetch_person_info = i18n
-        .t("host_component.failed_to_fetch_person_info")
-        .to_string();
     let subscribed_hosts = use_state(|| HashMap::<String, Vec<i32>>::new());
-    let person_ids = use_state(|| HashMap::<String, i32>::new()); // Store person IDs separately
+    let person_ids = use_state(|| HashMap::<String, i32>::new());
     let api_key = search_state
         .auth_details
         .as_ref()
@@ -163,10 +130,6 @@ pub fn host_dropdown(
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
-    let api_url = search_state
-        .server_details
-        .as_ref()
-        .map(|ud| ud.api_url.clone());
     let user_id = search_state
         .user_details
         .as_ref()
@@ -237,233 +200,25 @@ pub fn host_dropdown(
         );
     }
 
-    let loading_modal_visible = use_state(|| false);
-    let loading_name = use_state(|| String::new());
-
     let render_host = {
         let subscribed_hosts = subscribed_hosts.clone();
         let podcast_feed_url = podcast_feed_url.clone();
-        let _search_dispatch = _search_dispatch.clone();
         let history = history.clone();
-        let search_state = search_state.clone();
         let api_key = api_key.clone();
         let server_name = server_name.clone();
-        let api_url = api_url.clone();
         let user_id = user_id.clone();
-        let loading_modal_visible = loading_modal_visible.clone();
-        let loading_name = loading_name.clone();
-        let i18n_failed_to_fetch_person_info = i18n_failed_to_fetch_person_info.clone();
         move |host: &Person| {
             let host_name = host.name.clone();
             let history_clone = history.clone();
 
             let on_host_click = {
-                let dispatch_clone = _search_dispatch.clone();
-                let server_name = server_name.clone();
-                let api_key = api_key.clone();
-                let api_url = api_url.clone();
-                let user_id = user_id.clone();
                 let host_name = host_name.clone();
                 let history = history_clone.clone();
-                let search_state_call = search_state.clone();
-                let loading_modal_visible = loading_modal_visible.clone();
-                let loading_name = loading_name.clone();
-                let i18n_failed_to_fetch_person_info = i18n_failed_to_fetch_person_info.clone();
-
                 Callback::from(move |_: MouseEvent| {
-                    let hostname = host_name.clone();
-                    let api_url = api_url.clone();
-                    let api_key = api_key.clone();
-                    let server_name = server_name.clone();
-                    let temp_server_name = server_name.clone();
-                    let search_state = search_state_call.clone();
-                    let dispatch = dispatch_clone.clone();
-                    let history = history.clone();
-                    let loading_modal_visible = loading_modal_visible.clone();
-                    let loading_name = loading_name.clone();
-                    let error_msg = i18n_failed_to_fetch_person_info.clone();
-                    loading_name.set(hostname.clone());
-                    loading_modal_visible.set(true);
-
-                    wasm_bindgen_futures::spawn_local(async move {
-                        let target_url = format!("/person/{}", hostname);
-
-                        // Fetch person info
-                        if let Ok(person_search_result) = call_get_person_info(
-                            &hostname,
-                            &api_url.unwrap(),
-                            &api_key.clone().unwrap().unwrap(),
-                        )
-                        .await
-                        {
-                            // Extract unique podcast feeds from podcast index
-                            let mut processed_feeds = HashSet::new();
-                            let mut unique_feeds: HashSet<_> = person_search_result
-                                .items
-                                .iter()
-                                .filter_map(|item| {
-                                    let key = (
-                                        item.podcastname.clone(),
-                                        item.feedurl.clone(),
-                                        item.podcastid,
-                                    );
-                                    if processed_feeds.insert(key.clone()) {
-                                        Some(key)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-
-                            // Now fetch and add podpeople podcasts
-                            if let Ok(podpeople_results) = call_get_podpeople_podcasts(
-                                &hostname,
-                                &temp_server_name,
-                                &api_key.clone().unwrap().unwrap(),
-                            )
-                            .await
-                            {
-                                // Add podpeople podcasts to unique_feeds if they don't already exist
-                                for podcast in podpeople_results.podcasts {
-                                    let key =
-                                        (podcast.podcastname, podcast.feedurl, podcast.podcastid);
-                                    if processed_feeds.insert(key.clone()) {
-                                        unique_feeds.insert(key);
-                                    }
-                                }
-                            }
-
-                            let podcast_futures: Vec<_> = unique_feeds
-                                .into_iter()
-                                .map(|(feed_title, feed_url, feed_id)| {
-                                    let server_name = server_name.clone();
-                                    let api_key = api_key.clone();
-                                    let user_id = user_id;
-                                    let search_state = search_state.clone();
-                                    let podcast_index_id = feed_id;
-
-                                    async move {
-                                        let podcast_exists = call_check_podcast(
-                                            &server_name.clone().unwrap(),
-                                            &api_key.clone().unwrap().unwrap(),
-                                            user_id.unwrap(),
-                                            &feed_title.clone(),
-                                            &feed_url.clone(),
-                                        )
-                                        .await
-                                        .unwrap_or_default()
-                                        .exists;
-
-                                        if podcast_exists {
-                                            if let Ok(podcast_id) = call_get_podcast_id(
-                                                &server_name.clone().unwrap(),
-                                                &api_key.clone().unwrap(),
-                                                &search_state.user_details.as_ref().unwrap().UserID,
-                                                &feed_url,
-                                                &feed_title.clone(),
-                                            )
-                                            .await
-                                            {
-                                                if let Ok(podcast_details) =
-                                                    call_get_podcast_details(
-                                                        &server_name.clone().unwrap(),
-                                                        &api_key.clone().unwrap().unwrap(),
-                                                        search_state
-                                                            .user_details
-                                                            .as_ref()
-                                                            .unwrap()
-                                                            .UserID,
-                                                        podcast_id,
-                                                    )
-                                                    .await
-                                                {
-                                                    Some(map_podcast_details_to_podcast(
-                                                        podcast_details,
-                                                    ))
-                                                } else {
-                                                    None
-                                                }
-                                            } else {
-                                                None
-                                            }
-                                        } else {
-                                            match call_get_podcast_details_dynamic(
-                                                &server_name.clone().unwrap(),
-                                                &api_key.clone().unwrap().unwrap(),
-                                                user_id.unwrap(),
-                                                &feed_title.clone(),
-                                                &feed_url.clone(),
-                                                podcast_index_id,
-                                                false,
-                                                Some(true),
-                                            )
-                                            .await
-                                            {
-                                                Ok(clicked_feed_url) => {
-                                                    let unique_id = 1_000_000_000
-                                                        + rand::random_range(0..1_000_000_000);
-                                                    let details = clicked_feed_url.details;
-                                                    Some(Podcast {
-                                                        podcastid: unique_id,
-                                                        podcastname: details.podcastname, // Changed from podcast_title
-                                                        artworkurl: Some(details.artworkurl), // Changed from podcast_artwork
-                                                        description: Some(details.description), // Changed from podcast_description
-                                                        episodecount: Some(details.episodecount), // Changed from podcast_episode_count
-                                                        websiteurl: Some(details.websiteurl), // Changed from podcast_link
-                                                        feedurl: details.feedurl, // Changed from podcast_url
-                                                        author: Some(details.author), // Changed from podcast_author
-                                                        categories: details.categories,
-                                                        explicit: details.explicit, // Changed from podcast_explicit
-                                                        podcastindexid: details.podcastindexid, // Changed from podcast_index_id
-                                                        is_favorite: false,
-                                                    })
-                                                }
-                                                Err(e) => {
-                                                    web_sys::console::log_1(
-                                                        &format!(
-                                                            "Dynamic fetch error details: {:?}\nFor podcast: {} - {}",
-                                                            e,
-                                                            feed_title.clone(),
-                                                            feed_url.clone()
-                                                        )
-                                                        .into(),
-                                                    );
-                                                    None
-                                                }
-                                            }
-                                        }
-                                    }
-                                })
-                                .collect();
-
-                            let fetched_podcasts: Vec<_> = join_all(podcast_futures)
-                                .await
-                                .into_iter()
-                                .filter_map(|p| p)
-                                .collect();
-
-                            // Update the state once with all the fetched podcasts
-                            dispatch.reduce_mut(move |state| {
-                                state.podcast_feed_return = Some(PodcastResponse {
-                                    pods: Some(fetched_podcasts),
-                                });
-                                state.people_feed_results = Some(person_search_result);
-                                state.is_loading = Some(false);
-                            });
-                            loading_modal_visible.set(false);
-                            history.push(target_url);
-                        } else {
-                            // Handle error
-                            dispatch.reduce_mut(|state| {
-                                state.is_loading = Some(false);
-                            });
-                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                state.error_message = Some(error_msg.clone());
-                            });
-                        }
-                    });
+                    history.push(format!("/person/{}", host_name));
                 })
             };
+
             let sub_person_id = person_ids.clone();
             let on_subscribe_toggle = {
                 let api_key = api_key.clone();
@@ -483,37 +238,29 @@ pub fn host_dropdown(
                     let host_id = host.id.unwrap_or(0);
                     let person_ids = person_ids.clone();
 
-                    // Update UI immediately
-                    subscribed_hosts.set({
-                        let mut hosts = (*subscribed_hosts).clone();
-                        hosts
-                            .entry(host_name.clone())
-                            .and_modify(|podcasts| {
-                                if podcasts.contains(&podcast_id) {
-                                    podcasts.retain(|&id| id != podcast_id);
-                                } else {
-                                    podcasts.push(podcast_id);
-                                }
-                            })
-                            .or_insert_with(|| vec![podcast_id]);
-                        // Remove the entry if the podcast list is empty
-                        if let Some(podcasts) = hosts.get(&host_name) {
-                            if podcasts.is_empty() {
-                                hosts.remove(&host_name);
-                            }
-                        }
-                        hosts
-                    });
+                    // Determine action from current state before optimistic update
+                    let currently_subscribed = (*subscribed_hosts).contains_key(&host_name);
 
-                    // Make API call
+                    // Optimistic UI update
+                    if currently_subscribed {
+                        subscribed_hosts.set({
+                            let mut hosts = (*subscribed_hosts).clone();
+                            hosts.remove(&host_name);
+                            hosts
+                        });
+                    } else {
+                        subscribed_hosts.set({
+                            let mut hosts = (*subscribed_hosts).clone();
+                            hosts.insert(host_name.clone(), vec![podcast_id]);
+                            hosts
+                        });
+                    }
+
                     spawn_local(async move {
-                        let is_subscribed = (*subscribed_hosts)
-                            .get(&host_name)
-                            .map_or(false, |podcasts| podcasts.contains(&podcast_id));
+                        let id_to_use =
+                            (*person_ids).get(&host_name).copied().unwrap_or(host_id);
 
-                        let id_to_use = (*person_ids).get(&host_name).copied().unwrap_or(host_id);
-
-                        if is_subscribed {
+                        if currently_subscribed {
                             if let Err(e) = call_unsubscribe_from_person(
                                 &server_name.unwrap(),
                                 &api_key.unwrap().unwrap(),
@@ -526,18 +273,15 @@ pub fn host_dropdown(
                                 web_sys::console::log_1(
                                     &format!("Failed to unsubscribe: {:?}", e).into(),
                                 );
-                                // Revert UI change on error
+                                // Revert: re-insert
                                 subscribed_hosts.set({
                                     let mut hosts = (*subscribed_hosts).clone();
-                                    hosts
-                                        .entry(host_name.clone())
-                                        .or_insert_with(Vec::new)
-                                        .push(podcast_id);
+                                    hosts.insert(host_name.clone(), vec![podcast_id]);
                                     hosts
                                 });
                             }
                         } else {
-                            if let Err(e) = call_subscribe_to_person(
+                            match call_subscribe_to_person(
                                 &server_name.unwrap(),
                                 &api_key.unwrap().unwrap(),
                                 user_id.unwrap(),
@@ -548,23 +292,24 @@ pub fn host_dropdown(
                             )
                             .await
                             {
-                                web_sys::console::log_1(
-                                    &format!("Failed to subscribe: {:?}", e).into(),
-                                );
-                                // Revert UI change on error
-                                subscribed_hosts.set({
-                                    let mut hosts = (*subscribed_hosts).clone();
-                                    if let Some(podcasts) = hosts.get_mut(&host_name) {
-                                        podcasts.retain(|&id| id != podcast_id);
-                                    }
-                                    if hosts
-                                        .get(&host_name)
-                                        .map_or(false, |podcasts| podcasts.is_empty())
-                                    {
+                                Ok(response) => {
+                                    person_ids.set({
+                                        let mut ids = (*person_ids).clone();
+                                        ids.insert(host_name.clone(), response.person_id);
+                                        ids
+                                    });
+                                }
+                                Err(e) => {
+                                    web_sys::console::log_1(
+                                        &format!("Failed to subscribe: {:?}", e).into(),
+                                    );
+                                    // Revert: remove
+                                    subscribed_hosts.set({
+                                        let mut hosts = (*subscribed_hosts).clone();
                                         hosts.remove(&host_name);
-                                    }
-                                    hosts
-                                });
+                                        hosts
+                                    });
+                                }
                             }
                         }
                     });
@@ -572,7 +317,6 @@ pub fn host_dropdown(
             };
             let server_name_clone = server_name.clone();
             html! {
-            <>
                 <HostItem
                     host={host.clone()}
                     podcast_feed_url={podcast_feed_url.clone()}
@@ -582,8 +326,6 @@ pub fn host_dropdown(
                     on_subscribe_toggle={on_subscribe_toggle}
                     on_host_click={on_host_click}
                 />
-                <LoadingModal name={(*loading_name).clone()} is_visible={*loading_modal_visible} />
-            </>
             }
         }
     };

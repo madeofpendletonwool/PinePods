@@ -1,3 +1,4 @@
+use crate::components::click_events::create_on_title_click;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, NotificationState, PodcastState, UIState};
@@ -7,7 +8,7 @@ use crate::requests::pod_req::{
     call_add_podcast, call_check_podcast, call_remove_podcasts_name, PodcastDetails, PodcastValues,
     RemovePodcastValuesName,
 };
-use crate::requests::search_pods::{call_parse_podcast_url, UnifiedPodcast};
+use crate::requests::search_pods::UnifiedPodcast;
 use crate::components::app_drawer::App_drawer;
 use gloo::events::EventListener;
 use i18nrs::yew::use_translation;
@@ -384,66 +385,35 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     let podcast_categories_clone = podcast.categories.clone();
     let podcast_link_clone = podcast.link.clone();
 
-    // Create callback to open podcast details
-    // This is the original on_title_click function to restore
+    // Navigate to episode_layout with full subscription-check via create_on_title_click.
+    // This ensures podcast_added is set correctly for both subscribed and unsubscribed podcasts.
     let on_title_click = {
-        let dispatch = dispatch.clone();
-        let history = history.clone(); // Clone history for use inside the closure
-
-        Callback::from(move |e: MouseEvent| {
-            dispatch.reduce_mut(|state| state.is_loading = Some(true));
-            let server_name_click = server_name.clone();
-            let api_key_click = api_key.clone();
-            let podcast_id = podcast_id_clone.clone();
-            let podcast_title = podcast_title_clone.clone();
-            let podcast_url = podcast_url_clone.clone();
-            let podcast_description = podcast_description_clone.clone();
-            let podcast_author = podcast_author_clone.clone();
-            let podcast_artwork = podcast_artwork_clone.clone();
-            let podcast_explicit = podcast_explicit_clone.clone();
-            let podcast_episode_count = podcast_episode_count_clone.clone();
-            let podcast_categories = podcast_categories_clone.clone();
-            let podcast_link = podcast_link_clone.clone();
-            let podcast_index_id = podcast_index_clone.clone();
-            e.prevent_default(); // Prevent the default anchor behavior
-            let podcast_values = ClickedFeedURL {
-                podcastid: podcast_id,
-                podcastname: podcast_title,
-                feedurl: podcast_url.clone(),
-                description: podcast_description,
-                author: podcast_author,
-                artworkurl: podcast_artwork,
-                explicit: podcast_explicit,
-                episodecount: podcast_episode_count,
-                categories: podcast_categories,
-                websiteurl: podcast_link,
-                podcastindexid: podcast_index_id,
-                is_youtube: Some(false),
-            };
-            let dispatch = dispatch.clone();
-            let history = history.clone(); // Clone again for use inside async block
-            wasm_bindgen_futures::spawn_local(async move {
-                match call_parse_podcast_url(
-                    server_name_click.unwrap(),
-                    &api_key_click.unwrap(),
-                    &podcast_url,
-                )
-                .await
-                {
-                    Ok(podcast_feed_results) => {
-                        dispatch.reduce_mut(move |state| {
-                            state.podcast_feed_results = Some(podcast_feed_results);
-                            state.clicked_podcast_info = Some(podcast_values);
-                        });
-                        dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                        history.push("/episode_layout"); // Navigate to episode_layout
-                    }
-                    Err(e) => {
-                        web_sys::console::log_1(&format!("Error: {}", e).into());
-                    }
-                }
-            });
-        })
+        let categories_str = podcast_categories_clone.clone().map(|cats| {
+            cats.values().cloned().collect::<Vec<_>>().join(", ")
+        });
+        if let (Some(server), Some(uid)) = (server_name.clone(), user_id) {
+            create_on_title_click(
+                dispatch.clone(),
+                server,
+                api_key.clone(),
+                &history,
+                podcast_id_clone,
+                podcast_index_clone,
+                podcast_title_clone,
+                podcast_url_clone,
+                podcast_description_clone,
+                podcast_author_clone,
+                podcast_artwork_clone,
+                podcast_explicit_clone,
+                podcast_episode_count_clone,
+                categories_str,
+                podcast_link_clone,
+                uid,
+                false, // search results are never YouTube
+            )
+        } else {
+            Callback::from(|_: MouseEvent| {})
+        }
     };
 
     // Toggle description expansion

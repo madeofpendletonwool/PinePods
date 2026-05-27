@@ -217,6 +217,7 @@
     "no_downloaded_episodes_description": "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download to the server and show up here!",
     "no_downloaded_episodes_found": "No Downloaded Episodes Found",
     "no_episode_downloads_found": "No Episode Downloads Found",
+    "load_more": "Load More",
     "search_downloaded_episodes": "Search downloaded episodes...",
     "select": "Select"
   },
@@ -445,6 +446,7 @@
     "youtube_channel_successfully_removed": "YouTube channel successfully removed",
     "youtube_download_limit": "Youtube Download Episode Limit (days):",
     "youtube_episode_limit_updated": "Youtube Episode Limit Updated!",
+    "video": "Video",
     "youtube_limit_description": "Adjusts how long Youtube Feed audio is retained when downloaded to be streamed via the server. Youtube episodes will be removed after to free up space."
   },
   "export_settings": {
@@ -676,7 +678,15 @@
     "add_new_device": "Add New Device",
     "device_name": "Device Name",
     "device_type": "Device Type",
-    "caption_optional": "Optional Note"
+    "caption_optional": "Optional Note",
+    "internal_gpodder_api": "Internal Gpodder API",
+    "internal_gpodder_desc": "Enable the internal gpodder API to synchronize podcasts between Pinepods and other gpodder-compatible clients. This will disable external sync options while enabled.",
+    "nextcloud_server_url": "Nextcloud Server URL",
+    "authenticate": "Authenticate",
+    "gpodder_server_url": "Server URL",
+    "username": "Username",
+    "password": "Password",
+    "test_connection": "Test Connection"
   },
   "notification_center": {
     "active_tasks": "Active Tasks",
@@ -798,10 +808,18 @@
   "people_subs": {
     "avatar_alt": "Avatar for",
     "episode_count": "Episode Count",
+    "loading_episodes": "Loading episodes...",
+    "no_recent_episodes_found": "No recent episodes found.",
     "no_subscribed_people_found": "No Subscribed People Found",
     "shows": "Shows",
     "subscribe_to_hosts_message": "Subscribe to podcast hosts and guests to see their latest episodes here!",
     "subscribed_people": "Subscribed People"
+  },
+  "not_found": {
+    "page_not_found": "Page Not Found",
+    "uncharted_territory": "Looks like we've wandered into uncharted territory!",
+    "grab_coffee": "Grab some coffee and try again",
+    "head_back_home": "Head back home"
   },
   "person": {
     "add_podcasts_message": "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it.",
@@ -813,6 +831,7 @@
     "no_description_provided": "No Description Provided",
     "no_episodes_found": "No Episodes Found",
     "no_episodes_message": "This podcast strangely doesn't have any episodes. Try a more mainstream one maybe?",
+    "loading_podcasts": "Loading podcasts...",
     "no_podcasts_found": "No Podcasts Found",
     "no_podcasts_message": "This person doesn't seem to appear in any podcasts. Are you sure you got the right person?",
     "no_website_provided": "No Website Provided",
@@ -920,7 +939,15 @@
     "podcasts_ignored": "Ignored Podcasts",
     "hide": "Hide",
     "show": "Show",
-    "restore": "Restore"
+    "restore": "Restore",
+    "no_podcasts_need_matching": "No Podcasts Need Matching",
+    "showing_ignored": "Showing Ignored",
+    "click_to_search": "Click To Search Podcast Index for Matches",
+    "manual_search_options": "Manual Search",
+    "search_by_custom_terms": "Search by Name",
+    "match_btn": "Match",
+    "enter_podcast_id": "Search By Podcast Index ID",
+    "search": "Search"
   },
   "podcast_layout": {
     "add_error": "Error adding podcast",
@@ -1156,6 +1183,12 @@
   "time_formats": {
     "12_hour": "12 Hour",
     "24_hour": "24 Hour"
+  },
+  "queue_panel": {
+    "up_next": "Queue",
+    "now_playing": "Now Playing",
+    "queue_is_empty": "Queue is Empty",
+    "add_episodes_hint": "Add Episodes to the queue for them to appear here"
   },
   "user_self_service": {
     "enable_user_self_service": "Enable User Self Service",

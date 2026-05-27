@@ -3747,6 +3747,12 @@ input[type="range"]::-moz-range-thumb {
     color: var(--button-text-color) !important;
 }
 
+/* 2-button pre-subscribed state: center rather than spreading to edges */
+.ep-mobile-actions.ep-mobile-actions-sparse {
+    justify-content: center;
+    gap: 2rem;
+}
+
 .ep-mobile-no-media {
     font-size: 0.85rem;
     opacity: 0.6;
@@ -7175,6 +7181,82 @@ input[type="file"] { color: var(--text-color); font-size: 13px; }
     padding: 8px 6px; width: 100%; font-size: 13px;
 }
 .src-input input::placeholder { color: var(--text-secondary-color); }
+
+/* ============================================================
+   Mobile search compacting — TAKEOVER pattern
+   Breakpoint: 820px. Below it, the topbar shows left buttons +
+   queue + a search icon. Tapping the icon morphs the topbar row
+   into [back] [source-icon-pill] [input (grows)] [submit].
+   No backdrop, no overlay, single state transition.
+   ============================================================ */
+
+/* --- Clear (×) button inside the input pill --- */
+.src-input { position: relative; }
+.src-input-clear {
+    background: transparent; border: none; color: var(--text-secondary-color);
+    width: 26px; height: 26px; display: inline-flex; align-items: center;
+    justify-content: center; border-radius: 999px; cursor: pointer; padding: 0;
+    flex-shrink: 0;
+}
+.src-input-clear i { font-size: 14px; }
+.src-input-clear:hover { background: rgba(255,255,255,.08); color: var(--text-color); }
+
+/* --- Source picker menu (icon + label rows, used in mobile expanded) --- */
+.src-menu {
+    position: absolute; top: calc(100% + 6px); left: 0;
+    background: var(--container-background);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+    padding: 4px; min-width: 180px; z-index: 50;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.src-menu-item {
+    display: flex; align-items: center; gap: 10px;
+    background: transparent; border: none; color: var(--text-color);
+    font-family: var(--font-body); font-size: 13px; text-align: left;
+    padding: 9px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+}
+.src-menu-item i { font-size: 18px; color: var(--text-secondary-color); }
+.src-menu-item:hover { background: rgba(255,255,255,.08); }
+.src-menu-item.is-active { background: rgba(255,255,255,.10); }
+.src-menu-item.is-active i { color: var(--accent-color); }
+
+/* Source pill in icon-only mode (expanded takeover row) */
+.src-source-icon { padding: 7px 10px; gap: 4px; }
+.src-source-icon i:first-child { font-size: 18px; }
+.src-combined-caret { font-size: 12px !important; opacity: .6; }
+
+/* --- Expanded takeover topbar row --- */
+.topbar.is-expanded { padding: 0 12px; }
+.topbar-search-takeover {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; position: relative;
+}
+.topbar-search-takeover .src-input {
+    flex: 1; min-width: 0;
+    background: var(--container-background);
+    border-radius: var(--radius-full); padding: 0 10px;
+    display: flex; align-items: center;
+    max-width: none;
+}
+.topbar-search-takeover .src-input input {
+    background: transparent; border: none; outline: none;
+    color: var(--text-color); font-family: var(--font-body);
+    padding: 10px 6px; width: 100%; font-size: 14px; min-width: 0;
+}
+.topbar-search-takeover .src-input input::placeholder { color: var(--text-secondary-color); }
+.src-menu-takeover { top: calc(100% + 6px); left: 48px; right: auto; }
+
+/* Hide the fixed-position drawer icons while the search takeover is open */
+body.search-takeover-open .drawer-icon { display: none; }
+
+/* --- Narrow-viewport topbar tweaks --- */
+@media (max-width: 819px) {
+    .topbar { padding: 0 10px; }
+    .topbar-left { gap: 4px; }
+    .topbar-right { gap: 6px; }
+}
 
 /* ============================================================
    AUDIO PLAYER — bar + fullscreen expansion

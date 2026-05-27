@@ -166,7 +166,8 @@
     "no_downloaded_episodes_found": "Aucun épisode téléchargé trouvé",
     "no_episode_downloads_found": "Aucun téléchargement d'épisode trouvé",
     "search_downloaded_episodes": "Rechercher dans les épisodes téléchargés…",
-    "select": "Sélectionner"
+    "select": "Sélectionner",
+    "load_more": "Load More"
   },
   "downloads_tauri": {
     "downloaded_episodes_count": "épisodes",
@@ -374,7 +375,8 @@
     "youtube_channel_successfully_removed": "Chaîne YouTube supprimée avec succès",
     "youtube_download_limit": "Limite de téléchargement d'épisode YouTube (jours) :",
     "youtube_episode_limit_updated": "Limite d'épisodes YouTube mise à jour !",
-    "youtube_limit_description": "Ajuster la durée de rétention du flux audio YouTube lors du téléchargement pour diffusion via le serveur. Les épisodes YouTube seront supprimés ensuite pour libérer de l'espace."
+    "youtube_limit_description": "Ajuster la durée de rétention du flux audio YouTube lors du téléchargement pour diffusion via le serveur. Les épisodes YouTube seront supprimés ensuite pour libérer de l'espace.",
+    "video": "Video"
   },
   "export_settings": {
     "download_export_opml": "Télécharger/Exporter OPML",
@@ -693,7 +695,9 @@
     "no_subscribed_people_found": "Aucun abonné trouvé",
     "shows": "Émissions",
     "subscribe_to_hosts_message": "Abonnez-vous à des hôtes et invités pour voir leurs derniers épisodes ici !",
-    "subscribed_people": "Personnes abonnées"
+    "subscribed_people": "Personnes abonnées",
+    "loading_episodes": "Loading episodes...",
+    "no_recent_episodes_found": "No recent episodes found."
   },
   "person": {
     "add_podcasts_message": "Vous pouvez ajouter de nouveaux podcasts en utilisant la barre de recheche ci-dessus. Cherchez votre podcast préféré et cliquez sur le bouton plus pour l'ajouter.",
@@ -714,7 +718,8 @@
     "profile_alt": "profil",
     "subscribe": "S'abonner",
     "unknown_author": "Auteur inconnu",
-    "unsubscribe": "Se désabonner"
+    "unsubscribe": "Se désabonner",
+    "loading_podcasts": "Loading podcasts..."
   },
   "playback_settings": {
     "auto_complete_description": "Les épisodes dont il reste tant ou moins de secondes seront marqués comme lus automatiquement. Passez la valeur à 0 pour le désactiver.",

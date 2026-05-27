@@ -189,38 +189,39 @@ fn render_podcasts(
                         };
 
                         html! {
-                            <div key={podcast_key} class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
-                                <div class="flex flex-col w-auto object-cover pl-4">
+                            <div key={podcast_key} class="ep-row">
+                                <div class="ep-art-wrap" onclick={on_title_click.clone()}>
                                     <FallbackImage
-                                        src={podcast_artwork} // Direct use of saved artwork URL
-                                        onclick={on_title_click.clone()}
+                                        src={podcast_artwork}
                                         alt={format!("{}{}", i18n.t("podcasts.cover_alt_text"), podcast.podcastname.clone())}
-                                        class={"episode-image"}
+                                        class={"ep-art-img"}
                                     />
                                 </div>
-                                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                                    <p class="item_container-text episode-title font-semibold cursor-pointer" onclick={on_title_click}>
+                                <div class="ep-body">
+                                    <div class="ep-title cursor-pointer" onclick={on_title_click}>
                                         { &podcast.podcastname }
-                                    </p>
-                                    <hr class="my-2 border-t hidden md:block"/>
-                                    <div class="item-description-text hidden md:block">
-                                        <div
-                                            class={format!("item_container-text episode-description-container {}", description_class)}
-                                            onclick={toggle_expanded}
-                                            id={format!("desc-{}", podcast.podcastid)}
-                                        >
-                                            <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
-                                        </div>
                                     </div>
-                                    <p class="item_container-text">{ format!("{}{}", &i18n.t("podcasts.episode_count"), &podcast.episodecount.clone().unwrap_or_else(|| 0)) }</p>
+                                    <hr class="ep-divider" />
+                                    <div
+                                        class={format!("ep-desc {}", description_class)}
+                                        onclick={toggle_expanded}
+                                        id={format!("desc-{}", podcast.podcastid)}
+                                    >
+                                        <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
+                                    </div>
+                                    <div class="ep-meta">
+                                        <i class={if podcast.is_video { "ph ph-television" } else { "ph ph-broadcast" }}></i>
+                                        <span>{ format!("{}{}", &i18n.t("podcasts.episode_count"), &podcast.episodecount.clone().unwrap_or_else(|| 0)) }</span>
+                                    </div>
                                 </div>
-                                <button
-                                    class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"}
-                                    style="width: 60px; height: 60px;"
-                                    onclick={toggle_delete.reform(move |_| (podcast_id_loop, podcast_feed_call.clone()))}  // Pass both as a tuple
-                                >
-                                    <i class="ph ph-trash text-3xl"></i>
-                                </button>
+                                <div class="ep-actions">
+                                    <button
+                                        class="ico"
+                                        onclick={toggle_delete.reform(move |_| (podcast_id_loop, podcast_feed_call.clone()))}
+                                    >
+                                        <i class="ph ph-trash"></i>
+                                    </button>
+                                </div>
                             </div>
                         }
                     }).collect::<Html>()}
@@ -273,9 +274,9 @@ fn render_podcasts(
                                 class="podcast-grid-item relative"
                                 onclick={on_click}
                             >
-                                // Episode count badge (top-right)
+                                // Episode count badge (top-right); icon switches to TV for video podcasts
                                 <div class="absolute top-1 right-1 z-10 bg-opacity-80 bg-gray-800 text-white rounded-full px-2 py-1 text-xs font-bold">
-                                    <i class="ph ph-broadcast inline-block mr-1"></i>
+                                    <i class={format!("ph {} inline-block mr-1", if podcast.is_video { "ph-television" } else { "ph-broadcast" })}></i>
                                     {episode_count}
                                 </div>
 

@@ -65,6 +65,25 @@ pub struct DownloadedEpisodesResponse {
     pub downloaded_episodes: Vec<DownloadedEpisode>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PodcastDownloadSummary {
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub artworkurl: Option<String>,
+    pub episode_count: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PodcastDownloadSummaryResponse {
+    pub podcasts: Vec<PodcastDownloadSummary>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DownloadedEpisodesPage {
+    pub episodes: Vec<DownloadedEpisode>,
+    pub total: i64,
+}
+
 // Separate struct for podcast_episodes endpoint that matches frontend expectations
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
@@ -902,6 +921,45 @@ pub async fn download_episode_list(
     let downloaded_episodes = state.db_pool.download_episode_list(query.user_id).await?;
     
     Ok(Json(DownloadedEpisodesResponse { downloaded_episodes }))
+}
+
+// Get podcast-level download summary (no episodes, just counts per podcast)
+pub async fn get_podcast_download_summary(
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<PodcastDownloadSummaryResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+    if !check_user_access(&state, &api_key, user_id).await? {
+        return Err(AppError::forbidden("You can only get download summaries for yourself!"));
+    }
+    let podcasts = state.db_pool.get_podcast_download_summary(user_id).await?;
+    Ok(Json(PodcastDownloadSummaryResponse { podcasts }))
+}
+
+// Get paginated downloaded episodes for a specific podcast
+pub async fn get_podcast_downloads_paged(
+    Path((user_id, podcast_id)): Path<(i32, i32)>,
+    Query(params): Query<ListQueryParams>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<DownloadedEpisodesPage>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+    if !check_user_access(&state, &api_key, user_id).await? {
+        return Err(AppError::forbidden("You can only get your own downloads!"));
+    }
+    let limit = params.limit.unwrap_or(50).min(200).max(1);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let (episodes, total) = state.db_pool.get_podcast_downloads_paged(user_id, podcast_id, limit, offset).await?;
+    Ok(Json(DownloadedEpisodesPage { episodes, total }))
 }
 
 // Request models for download operations
@@ -2523,8 +2581,11 @@ pub async fn get_host_podcasts(
     // Get people URL from config
     let people_url = std::env::var("PEOPLE_API_URL").unwrap_or_else(|_| "https://people.pinepods.online".to_string());
 
-    // Make request to podpeople database
-    let client = reqwest::Client::new();
+    // Make request to podpeople database (10s timeout)
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_default();
     let response = client
         .get(&format!("{}/api/hostsearch", people_url))
         .query(&[("name", &query.hostname)])

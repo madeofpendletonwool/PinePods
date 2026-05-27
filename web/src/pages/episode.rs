@@ -626,7 +626,11 @@ pub fn epsiode() -> Html {
                         page_state.set(PageState::Ok(ep));
 
                         let mut new_url = window.location().origin().unwrap();
-                        new_url.push_str(&format!("/episode?episode_id={}", episode_id));
+                        if youtube {
+                            new_url.push_str(&format!("/episode?episode_id={}&youtube=true", episode_id));
+                        } else {
+                            new_url.push_str(&format!("/episode?episode_id={}", episode_id));
+                        }
 
                         if window.location().to_string() != new_url {
                             window

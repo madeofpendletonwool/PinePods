@@ -1549,7 +1549,7 @@ async fn export_mysql_table_schema(
     // Use SHOW CREATE TABLE for MySQL
     let query = format!("SHOW CREATE TABLE {}", table_name);
     
-    let row = sqlx::query(&query)
+    let row = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
         .fetch_optional(pool)
         .await
         .map_err(|e| format!("Schema query failed: {}", e))?;
@@ -1574,8 +1574,8 @@ async fn export_postgres_table_batch(
         r#"SELECT * FROM "{}" ORDER BY 1 LIMIT {} OFFSET {}"#,
         table_name, limit, offset
     );
-    
-    let rows = sqlx::query(&query)
+
+    let rows = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Query failed: {}", e))?;
@@ -1640,7 +1640,7 @@ async fn export_postgres_table_batch(
     Ok(output)
 }
 
-// Export MySQL table batch  
+// Export MySQL table batch
 async fn export_mysql_table_batch(
     pool: &sqlx::MySqlPool,
     table_name: &str,
@@ -1651,8 +1651,8 @@ async fn export_mysql_table_batch(
         "SELECT * FROM {} ORDER BY 1 LIMIT {} OFFSET {}",
         table_name, limit, offset
     );
-    
-    let rows = sqlx::query(&query)
+
+    let rows = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Query failed: {}", e))?;
@@ -2966,10 +2966,17 @@ pub async fn get_person_subscriptions(
     })))
 }
 
+#[derive(Deserialize)]
+pub struct PersonEpisodesQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
 // Get person episodes - matches Python api_return_person_episodes function exactly
 pub async fn get_person_episodes(
     State(state): State<AppState>,
     Path((user_id, person_id)): Path<(i32, i32)>,
+    Query(params): Query<PersonEpisodesQuery>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
@@ -2983,7 +2990,9 @@ pub async fn get_person_episodes(
         return Err(AppError::forbidden("You can only retrieve your own person episodes!"));
     }
 
-    let episodes = state.db_pool.get_person_episodes(user_id, person_id).await?;
+    let limit = params.limit.unwrap_or(50);
+    let offset = params.offset.unwrap_or(0);
+    let episodes = state.db_pool.get_person_episodes(user_id, person_id, limit, offset).await?;
     Ok(Json(serde_json::json!({
         "episodes": episodes
     })))

@@ -1760,7 +1760,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     state.selected_episode_id = Some(episode_id);
                                 });
                                 if episode_id != 0 {
-                                    history_clone.push(format!("/episode?episode_id={}", episode_id));
+                                    if props.is_youtube {
+                                        history_clone.push(format!("/episode?episode_id={}&youtube=true", episode_id));
+                                    } else {
+                                        history_clone.push(format!("/episode?episode_id={}", episode_id));
+                                    }
                                 } else {
                                     let mut new_url = "/episode".to_string();
                                     new_url.push_str("?podcast_title=");

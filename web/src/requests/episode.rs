@@ -18,19 +18,24 @@ where
 #[allow(non_snake_case)]
 pub struct Episode {
     pub podcastid: i32,
+    #[serde(alias = "feedTitle")]
     pub podcastname: String,
     #[serde(alias = "Episodetitle")]
     #[serde(alias = "title")]
     pub episodetitle: String,
     //pub description: String,
+    #[serde(alias = "feedImage")]
     pub artworkurl: String,
+    #[serde(alias = "feedAuthor")]
     pub author: String,
     pub categories: Option<HashMap<String, String>>,
     #[serde(alias = "Episodedescription")]
     #[serde(alias = "description")]
     pub episodedescription: String,
     pub episodecount: Option<i32>,
+    #[serde(alias = "feedUrl")]
     pub feedurl: String,
+    #[serde(alias = "link")]
     pub websiteurl: String,
     pub explicit: i32,
     pub userid: i32,
@@ -38,9 +43,11 @@ pub struct Episode {
     pub episodeid: i32,
     #[serde(alias = "Episodeurl")]
     #[serde(alias = "enclosure_url")]
+    #[serde(alias = "enclosureUrl")]
     pub episodeurl: String,
     #[serde(alias = "Episodeartwork")]
     #[serde(alias = "artwork")]
+    #[serde(alias = "image")]
     pub episodeartwork: String,
     #[serde(alias = "Episodepubdate")]
     #[serde(alias = "pub_date")]

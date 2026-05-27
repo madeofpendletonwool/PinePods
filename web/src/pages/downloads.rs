@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, EpisodeStatusState, ExpandedDescriptions, FilterState, NotificationState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -8,42 +8,46 @@ use crate::components::loading::Loading;
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::requests::episode::Episode;
 use crate::requests::pod_req::{
-    call_bulk_delete_downloaded_episodes, call_get_episode_downloads, call_get_podcasts,
-    BulkEpisodeActionRequest, EpisodeDownloadResponse, Podcast, PodcastResponse,
+    call_bulk_delete_downloaded_episodes, call_get_podcast_download_summary,
+    call_get_podcast_downloads_paged, BulkEpisodeActionRequest, PodcastDownloadSummary,
 };
 
 use i18nrs::yew::use_translation;
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::rc::Rc;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
-use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 
-fn group_episodes_by_podcast(episodes: Vec<Episode>) -> HashMap<i32, Vec<Episode>> {
-    let mut grouped: HashMap<i32, Vec<Episode>> = HashMap::new();
-    for episode in episodes {
-        grouped
-            .entry(episode.podcastid)
-            .or_insert_with(Vec::new)
-            .push(episode);
+const PAGE_SIZE: i64 = 50;
+
+#[derive(Clone, PartialEq)]
+struct PodcastEpisodeState {
+    episodes: Vec<Episode>,
+    offset: i64,
+    total: i64,
+    loading_more: bool,
+}
+
+impl PodcastEpisodeState {
+    fn new() -> Self {
+        Self {
+            episodes: Vec::new(),
+            offset: 0,
+            total: 0,
+            loading_more: false,
+        }
     }
-    grouped
 }
 
 #[function_component(Downloads)]
 pub fn downloads() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
-    let (ep_status, _) = use_store::<EpisodeStatusState>();
-    let (filter_state, _filter_dispatch) = use_store::<FilterState>();
-    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
+    let expanded_state: UseStateHandle<HashMap<i32, bool>> = use_state(HashMap::new);
+    let per_podcast_state: UseStateHandle<HashMap<i32, PodcastEpisodeState>> = use_state(HashMap::new);
+    let podcast_summaries: UseStateHandle<Vec<PodcastDownloadSummary>> = use_state(Vec::new);
 
-    let expanded_state = use_state(HashMap::new);
-    let show_modal = use_state(|| false);
-
-    // Capture i18n strings before they get moved
     let i18n_select = i18n.t("downloads.select").to_string();
     let i18n_cancel = i18n.t("common.cancel").to_string();
     let i18n_delete = i18n.t("common.delete").to_string();
@@ -59,16 +63,11 @@ pub fn downloads() -> Html {
         .to_string();
     let i18n_no_episode_downloads_found =
         i18n.t("downloads.no_episode_downloads_found").to_string();
+    let i18n_load_more = i18n.t("downloads.load_more").to_string();
 
-    // Filter state for episodes
     let episode_search_term = use_state(|| String::new());
     let show_completed = use_state(|| false);
     let show_in_progress = use_state(|| false);
-    let show_clonedal = show_modal.clone();
-    let show_clonedal2 = show_modal.clone();
-    let on_modal_open = Callback::from(move |_: i32| show_clonedal.set(true));
-
-    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -85,7 +84,7 @@ pub fn downloads() -> Html {
         .map(|ud| ud.server_name.clone());
     let loading = use_state(|| true);
 
-    // Fetch episodes on component mount
+    // Load podcast summaries on mount
     let loading_ep = loading.clone();
     {
         let error = error.clone();
@@ -98,10 +97,7 @@ pub fn downloads() -> Html {
             .auth_details
             .as_ref()
             .map(|ud| ud.server_name.clone());
-
-        let effect_dispatch = dispatch.clone();
-
-        // fetch_episodes(api_key.flatten(), user_id, server_name, dispatch, error, pod_req::call_get_recent_eps);
+        let podcast_summaries = podcast_summaries.clone();
 
         use_effect_with(
             (api_key.clone(), user_id.clone(), server_name.clone()),
@@ -110,54 +106,11 @@ pub fn downloads() -> Html {
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
-                    let dispatch = effect_dispatch.clone();
-
+                    let podcast_summaries = podcast_summaries.clone();
                     wasm_bindgen_futures::spawn_local(async move {
-                        match call_get_podcasts(&server_name, &api_key, &user_id).await {
-                            Ok(fetched_podcasts) => {
-                                dispatch.reduce_mut(move |state| {
-                                    state.podcast_feed_return = Some(PodcastResponse {
-                                        pods: Some(fetched_podcasts),
-                                    });
-                                });
-                            }
-                            Err(e) => web_sys::console::log_1(
-                                &format!("Unable to parse Podcasts: {:?}", &e).into(),
-                            ),
-                        }
-
-                        match call_get_episode_downloads(&server_name, &api_key, &user_id).await {
-                            Ok(mut fetched_episodes) => {
-                                let completed_episode_ids: Vec<i32> = fetched_episodes
-                                    .iter()
-                                    .filter(|ep| ep.completed)
-                                    .map(|ep| ep.episodeid)
-                                    .collect();
-                                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
-                                    state.downloaded_episodes.clear();
-                                    for ep in fetched_episodes.drain(..) {
-                                        state.downloaded_episodes.push_server(ep);
-                                    }
-                                    state.completed_episodes = Some(completed_episode_ids);
-                                });
-
-                                // Fetch local episode IDs for Tauri mode
-                                #[cfg(not(feature = "server_build"))]
-                                {
-                                    wasm_bindgen_futures::spawn_local(async move {
-                                        if let Ok(mut local_episodes) =
-                                            crate::pages::downloads_tauri::fetch_local_episodes()
-                                                .await
-                                        {
-                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
-                                                for ep in local_episodes.drain(..) {
-                                                    state.downloaded_episodes.push_local(ep);
-                                                }
-                                            });
-                                        }
-                                    });
-                                }
-
+                        match call_get_podcast_download_summary(&server_name, &api_key, &user_id).await {
+                            Ok(response) => {
+                                podcast_summaries.set(response.podcasts);
                                 loading_ep.set(false);
                             }
                             Err(e) => {
@@ -172,14 +125,12 @@ pub fn downloads() -> Html {
         );
     }
 
-    // Define the state of the application
     #[derive(Clone, PartialEq)]
     enum PageState {
         Delete,
         Normal,
     }
 
-    // Define the function to Enter Delete Mode
     let delete_mode_enable = {
         let page_state = page_state.clone();
         Callback::from(move |_: MouseEvent| {
@@ -187,7 +138,6 @@ pub fn downloads() -> Html {
         })
     };
 
-    // Define the function to Exit Delete Mode
     let delete_mode_disable = {
         let page_state = page_state.clone();
         Callback::from(move |_: MouseEvent| {
@@ -199,8 +149,6 @@ pub fn downloads() -> Html {
         let dispatch = dispatch.clone();
         Callback::from(move |episode_id: i32| {
             dispatch.reduce_mut(move |state| {
-                // If the episode is already selected, remove it
-                // If it's not selected, add it
                 if state.selected_episodes_for_deletion.contains(&episode_id) {
                     state.selected_episodes_for_deletion.remove(&episode_id);
                 } else {
@@ -216,6 +164,7 @@ pub fn downloads() -> Html {
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
+        let per_podcast_state = per_podcast_state.clone();
 
         Callback::from(move |_: MouseEvent| {
             let dispatch_cloned = dispatch.clone();
@@ -223,6 +172,7 @@ pub fn downloads() -> Html {
             let server_name_cloned = server_name.clone().unwrap();
             let api_key_cloned = api_key.clone().unwrap();
             let user_id_cloned = user_id.unwrap();
+            let per_podcast_state_cloned = per_podcast_state.clone();
 
             dispatch.reduce_mut(move |state| {
                 let selected_episode_ids: Vec<i32> = state
@@ -232,7 +182,6 @@ pub fn downloads() -> Html {
                     .collect();
                 let is_youtube = state.selected_is_youtube;
 
-                // Clear the selected episodes for deletion right away to prevent re-deletion
                 state.selected_episodes_for_deletion.clear();
 
                 if !selected_episode_ids.is_empty() {
@@ -242,7 +191,6 @@ pub fn downloads() -> Html {
                         is_youtube: Some(is_youtube),
                     };
 
-                    let dispatch_for_future = dispatch_cloned.clone();
                     wasm_bindgen_futures::spawn_local(async move {
                         match call_bulk_delete_downloaded_episodes(
                             &server_name_cloned,
@@ -252,11 +200,18 @@ pub fn downloads() -> Html {
                         .await
                         {
                             Ok(success_message) => {
-                                Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
-                                    for id in selected_episode_ids {
-                                        state.downloaded_episodes.remove_server(id);
+                                // Remove deleted episodes from per-podcast state
+                                let mut new_state = (*per_podcast_state_cloned).clone();
+                                for podcast_state in new_state.values_mut() {
+                                    podcast_state.episodes.retain(|ep| !selected_episode_ids.contains(&ep.episodeid));
+                                    podcast_state.total -= selected_episode_ids.len() as i64;
+                                    if podcast_state.total < 0 {
+                                        podcast_state.total = 0;
                                     }
-                                });
+                                    podcast_state.offset = podcast_state.episodes.len() as i64;
+                                }
+                                per_podcast_state_cloned.set(new_state);
+
                                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message = Some(success_message);
                                 });
@@ -276,16 +231,127 @@ pub fn downloads() -> Html {
         })
     };
 
-    let is_delete_mode = **page_state.borrow() == PageState::Delete; // Add this line
+    let is_delete_mode = **page_state.borrow() == PageState::Delete;
 
+    // Toggle expand and trigger lazy-load on first expand
     let toggle_pod_expanded = {
         let expanded_state = expanded_state.clone();
+        let per_podcast_state = per_podcast_state.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+
         Callback::from(move |podcast_id: i32| {
+            let currently_expanded = *expanded_state.get(&podcast_id).unwrap_or(&false);
+            let new_expanded = !currently_expanded;
+
+            // Update expansion state
             expanded_state.set({
                 let mut new_state = (*expanded_state).clone();
-                new_state.insert(podcast_id, !new_state.get(&podcast_id).unwrap_or(&false));
+                new_state.insert(podcast_id, new_expanded);
                 new_state
             });
+
+            // On first expand, load the first page of episodes
+            if new_expanded && !per_podcast_state.contains_key(&podcast_id) {
+                if let (Some(api_key), Some(user_id), Some(server_name)) =
+                    (api_key.clone(), user_id.clone(), server_name.clone())
+                {
+                    let per_podcast_state = per_podcast_state.clone();
+
+                    // Mark loading
+                    {
+                        let mut new_state = (*per_podcast_state).clone();
+                        new_state.insert(podcast_id, PodcastEpisodeState {
+                            loading_more: true,
+                            ..PodcastEpisodeState::new()
+                        });
+                        per_podcast_state.set(new_state);
+                    }
+
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match call_get_podcast_downloads_paged(&server_name, &api_key, &user_id, podcast_id, PAGE_SIZE, 0).await {
+                            Ok(page) => {
+                                let mut new_state = (*per_podcast_state).clone();
+                                new_state.insert(podcast_id, PodcastEpisodeState {
+                                    offset: page.episodes.len() as i64,
+                                    total: page.total,
+                                    episodes: page.episodes,
+                                    loading_more: false,
+                                });
+                                per_podcast_state.set(new_state);
+                            }
+                            Err(e) => {
+                                web_sys::console::log_1(&format!("Failed to load episodes: {:?}", e).into());
+                                let mut new_state = (*per_podcast_state).clone();
+                                new_state.insert(podcast_id, PodcastEpisodeState::new());
+                                per_podcast_state.set(new_state);
+                            }
+                        }
+                    });
+                }
+            }
+        })
+    };
+
+    // Load-more callback per podcast
+    let load_more = {
+        let per_podcast_state = per_podcast_state.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+
+        Callback::from(move |podcast_id: i32| {
+            if let (Some(api_key), Some(user_id), Some(server_name)) =
+                (api_key.clone(), user_id.clone(), server_name.clone())
+            {
+                let current_offset = per_podcast_state
+                    .get(&podcast_id)
+                    .map(|s| s.offset)
+                    .unwrap_or(0);
+                let is_loading = per_podcast_state
+                    .get(&podcast_id)
+                    .map(|s| s.loading_more)
+                    .unwrap_or(false);
+
+                if is_loading {
+                    return;
+                }
+
+                let per_podcast_state = per_podcast_state.clone();
+
+                // Mark loading_more
+                {
+                    let mut new_state = (*per_podcast_state).clone();
+                    if let Some(pod_state) = new_state.get_mut(&podcast_id) {
+                        pod_state.loading_more = true;
+                    }
+                    per_podcast_state.set(new_state);
+                }
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_get_podcast_downloads_paged(&server_name, &api_key, &user_id, podcast_id, PAGE_SIZE, current_offset).await {
+                        Ok(page) => {
+                            let mut new_state = (*per_podcast_state).clone();
+                            if let Some(pod_state) = new_state.get_mut(&podcast_id) {
+                                pod_state.episodes.extend(page.episodes);
+                                pod_state.offset = pod_state.episodes.len() as i64;
+                                pod_state.total = page.total;
+                                pod_state.loading_more = false;
+                            }
+                            per_podcast_state.set(new_state);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(&format!("Failed to load more episodes: {:?}", e).into());
+                            let mut new_state = (*per_podcast_state).clone();
+                            if let Some(pod_state) = new_state.get_mut(&podcast_id) {
+                                pod_state.loading_more = false;
+                            }
+                            per_podcast_state.set(new_state);
+                        }
+                    }
+                });
+            }
         })
     };
 
@@ -294,7 +360,7 @@ pub fn downloads() -> Html {
         <div class="main-container">
             <Search_nav />
             <UseScrollToTop />
-                if *loading { // If loading is true, display the loading animation
+                if *loading {
                     {
                         html! { <Loading/> }
                     }
@@ -302,12 +368,7 @@ pub fn downloads() -> Html {
                     {
                         html! {
                             <div>
-                                // Tab-style page indicator with compact action buttons
                                 <div class="relative mb-6">
-                                    // <div class="page-tab-indicator">
-                                    //     <i class="ph ph-download tab-icon"></i>
-                                    //     {"Downloads"}
-                                    // </div>
                                     <div class="flex gap-2 justify-end">
                                         {
                                             if **page_state.borrow() == PageState::Normal {
@@ -338,9 +399,7 @@ pub fn downloads() -> Html {
                                     </div>
                                 </div>
 
-                                // Modern mobile-friendly filter bar
                                 <div class="mb-6 space-y-4">
-                                    // Search bar (full width with proper rounded corners)
                                     <div class="w-full">
                                         <div class="relative">
                                             <input
@@ -360,9 +419,7 @@ pub fn downloads() -> Html {
                                         </div>
                                     </div>
 
-                                    // Filter chips (horizontal scroll on mobile)
                                     <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-                                        // Clear all filters
                                         <button
                                             onclick={
                                                 let show_completed = show_completed.clone();
@@ -380,7 +437,6 @@ pub fn downloads() -> Html {
                                             <span class="text-sm font-medium">{&i18n_clear_all}</span>
                                         </button>
 
-                                        // Completed filter chip
                                         <button
                                             onclick={let show_completed = show_completed.clone();
                                                 let show_in_progress = show_in_progress.clone();
@@ -400,7 +456,6 @@ pub fn downloads() -> Html {
                                             <span class="text-sm font-medium">{&i18n_completed}</span>
                                         </button>
 
-                                        // In progress filter chip
                                         <button
                                             onclick={let show_in_progress = show_in_progress.clone();
                                                 let show_completed = show_completed.clone();
@@ -426,95 +481,76 @@ pub fn downloads() -> Html {
                     }
 
                     {
-                        if ep_status.downloaded_episodes.len() > 0 {
-                            let render_state = post_state.clone();
+                        if !podcast_summaries.is_empty() {
                             let dispatch_cloned = dispatch.clone();
 
-                            let grouped_episodes = group_episodes_by_podcast(ep_status.downloaded_episodes.episodes().map(|e| e.clone()).collect());
-
-                            // Create filtered episodes
-                            let filtered_grouped_episodes = {
-                                let mut filtered_map: HashMap<i32, Vec<Episode>> = HashMap::new();
-
-                                for (podcast_id, episodes) in grouped_episodes.iter() {
-                                    let filtered_episodes: Vec<Episode> = episodes.iter()
-                                        .filter(|episode| {
-                                            // Search filter
-                                            let matches_search = if !episode_search_term.is_empty() {
-                                                episode.episodetitle.to_lowercase().contains(&episode_search_term.to_lowercase())
-                                            } else {
-                                                true
-                                            };
-
-                                            // Completion filter
-                                            let matches_completion = if *show_completed && *show_in_progress {
-                                                true // Both filters active = show all
-                                            } else if *show_completed {
-                                                episode.completed
-                                            } else if *show_in_progress {
-                                                !episode.completed && episode.listenduration > 0
-                                            } else {
-                                                true // No filters = show all
-                                            };
-
-                                            matches_search && matches_completion
-                                        })
-                                        .cloned()
-                                        .collect();
-
-                                    if !filtered_episodes.is_empty() {
-                                        filtered_map.insert(*podcast_id, filtered_episodes);
-                                    }
-                                }
-
-                                filtered_map
-                            };
+                            let visible_summaries: Vec<PodcastDownloadSummary> = podcast_summaries
+                                .iter()
+                                .cloned()
+                                .collect();
 
                             html! {
                                 <>
-                                    { for state.podcast_feed_return.as_ref().unwrap().pods.as_ref().unwrap().iter().filter(|podcast| {
-                                        !filter_state.favorites_only || podcast.is_favorite
-                                    }).filter_map(|podcast| {
-                                        let episodes = filtered_grouped_episodes.get(&podcast.podcastid).unwrap_or(&Vec::new()).clone();
-                                        if episodes.is_empty() {
-                                            None
-                                        } else {
-                                            let downloaded_episode_count = episodes.len();
-                                            let is_expanded = *expanded_state.get(&podcast.podcastid).unwrap_or(&false);
-                                            let toggle_expanded_closure = {
-                                                let podcast_id = podcast.podcastid;
-                                                toggle_pod_expanded.reform(move |_| podcast_id)
-                                            };
+                                    { for visible_summaries.into_iter().map(|summary| {
+                                        let podcast_id = summary.podcastid;
+                                        let is_expanded = *expanded_state.get(&podcast_id).unwrap_or(&false);
 
-                                            let render_state_cloned = render_state.clone();
-                                            let dispatch_cloned_cloned = dispatch_cloned.clone();
-                                            let audio_state_cloned = audio_state.clone();
-                                            let audio_dispatch_cloned = audio_dispatch.clone();
-                                            let on_checkbox_change_cloned = on_checkbox_change.clone();
+                                        let pod_state = per_podcast_state.get(&podcast_id).cloned();
+                                        let episodes_loaded = pod_state.as_ref().map(|s| s.episodes.clone()).unwrap_or_default();
+                                        let total = pod_state.as_ref().map(|s| s.total).unwrap_or(summary.episode_count);
+                                        let offset = pod_state.as_ref().map(|s| s.offset).unwrap_or(0);
+                                        let loading_more = pod_state.as_ref().map(|s| s.loading_more).unwrap_or(false);
 
-                                            Some(render_podcast_with_episodes(
-                                                podcast,
-                                                episodes,
-                                                downloaded_episode_count,
-                                                is_expanded,
-                                                toggle_expanded_closure,
-                                                render_state_cloned,
-                                                dispatch_cloned_cloned,
-                                                is_delete_mode,
-                                                audio_state_cloned,
-                                                desc_state.clone(),
-                                                desc_dispatch.clone(),
-                                                audio_dispatch_cloned,
-                                                on_checkbox_change_cloned,
-                                                *show_modal,
-                                                on_modal_open.clone(),
-                                                on_modal_close.clone(),
-                                            ))
-                                        }
+                                        // Apply client-side filter to loaded episodes
+                                        let filtered_episodes: Vec<Episode> = episodes_loaded.iter()
+                                            .filter(|episode| {
+                                                let matches_search = if !episode_search_term.is_empty() {
+                                                    episode.episodetitle.to_lowercase().contains(&episode_search_term.to_lowercase())
+                                                } else {
+                                                    true
+                                                };
+                                                let matches_completion = if *show_completed && *show_in_progress {
+                                                    true
+                                                } else if *show_completed {
+                                                    episode.completed
+                                                } else if *show_in_progress {
+                                                    !episode.completed && episode.listenduration > 0
+                                                } else {
+                                                    true
+                                                };
+                                                matches_search && matches_completion
+                                            })
+                                            .cloned()
+                                            .collect();
+
+                                        let toggle_expanded_closure = {
+                                            toggle_pod_expanded.reform(move |_: MouseEvent| podcast_id)
+                                        };
+
+                                        let load_more_closure = {
+                                            load_more.reform(move |_: MouseEvent| podcast_id)
+                                        };
+
+                                        let has_more = offset < total;
+                                        let on_checkbox_change_cloned = on_checkbox_change.clone();
+
+                                        render_podcast_with_episodes(
+                                            &summary,
+                                            filtered_episodes,
+                                            total,
+                                            is_expanded,
+                                            toggle_expanded_closure,
+                                            dispatch_cloned.clone(),
+                                            is_delete_mode,
+                                            on_checkbox_change_cloned,
+                                            loading_more,
+                                            has_more,
+                                            load_more_closure,
+                                            i18n_load_more.clone(),
+                                        )
                                     }) }
                                 </>
                             }
-
                         } else {
                             empty_message(
                                 &i18n_no_episode_downloads_found,
@@ -522,7 +558,6 @@ pub fn downloads() -> Html {
                             )
                         }
                     }
-
                 }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
@@ -555,25 +590,20 @@ pub fn downloads() -> Html {
 }
 
 pub fn render_podcast_with_episodes(
-    podcast: &Podcast,
+    summary: &PodcastDownloadSummary,
     episodes: Vec<Episode>,
-    downloaded_episode_count: usize,
+    total: i64,
     is_expanded: bool,
     toggle_pod_expanded: Callback<MouseEvent>,
-    state: Rc<AppState>,
     dispatch: Dispatch<AppState>,
     is_delete_mode: bool,
-    audio_state: Rc<UIState>,
-    desc_rc: Rc<ExpandedDescriptions>,
-    desc_state: Dispatch<ExpandedDescriptions>,
-    audio_dispatch: Dispatch<UIState>,
     on_checkbox_change: Callback<i32>,
-    show_modal: bool,
-    on_modal_open: Callback<i32>,
-    on_modal_close: Callback<MouseEvent>,
+    loading_more: bool,
+    has_more: bool,
+    load_more: Callback<MouseEvent>,
+    load_more_label: String,
 ) -> Html {
     let on_podcast_checkbox_change = {
-        let episodes = episodes.clone();
         let on_checkbox_change = on_checkbox_change.clone();
         let dispatch_clone = dispatch.clone();
         let episode_ids: Vec<i32> = episodes.iter().map(|ep| ep.episodeid).collect();
@@ -584,23 +614,21 @@ pub fn render_podcast_with_episodes(
                 .map(|input| input.checked())
                 .unwrap_or(false);
 
-            // Access current state during callback execution
             let selected_episodes = &dispatch_clone.get().selected_episodes_for_deletion;
 
             for episode_id in &episode_ids {
                 let is_episode_selected = selected_episodes.contains(episode_id);
                 if is_checked && !is_episode_selected {
-                    // Select episodes that aren't already selected
                     on_checkbox_change.emit(*episode_id);
                 } else if !is_checked && is_episode_selected {
-                    // Deselect episodes that are currently selected
                     on_checkbox_change.emit(*episode_id);
                 }
             }
         })
     };
+
     html! {
-        <div key={podcast.podcastid}>
+        <div key={summary.podcastid}>
             <div class="podcast-dropdown-header">
                 <div class="podcast-dropdown-content" onclick={toggle_pod_expanded}>
                     {if is_delete_mode {
@@ -618,17 +646,17 @@ pub fn render_podcast_with_episodes(
                     }}
 
                     <FallbackImage
-                        src={podcast.artworkurl.clone().unwrap()}
-                        alt={format!("Cover for {}", podcast.podcastname.clone())}
+                        src={summary.artworkurl.clone().unwrap_or_default()}
+                        alt={format!("Cover for {}", summary.podcastname.clone())}
                         class="podcast-dropdown-image"
                     />
 
                     <div class="podcast-dropdown-info">
                         <p class="podcast-dropdown-title item_container-text">
-                            { &podcast.podcastname }
+                            { &summary.podcastname }
                         </p>
                         <p class="podcast-dropdown-count item_container-text">
-                            { format!("{} Downloaded Episodes", downloaded_episode_count) }
+                            { format!("{} Downloaded Episodes", total) }
                         </p>
                     </div>
 
@@ -645,7 +673,6 @@ pub fn render_podcast_with_episodes(
                             {
                                 for episodes.into_iter().map(|episode| {
                                     let on_checkbox_change_cloned = on_checkbox_change.clone();
-
                                     html!{
                                         <EpisodeListItem
                                             episode={ episode }
@@ -656,6 +683,24 @@ pub fn render_podcast_with_episodes(
                                     }
                                 })
                             }
+                            { if loading_more {
+                                html! {
+                                    <div class="flex justify-center py-4">
+                                        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-current"></div>
+                                    </div>
+                                }
+                            } else if has_more {
+                                html! {
+                                    <div class="flex justify-center py-4">
+                                        <button class="filter-chip" onclick={load_more}>
+                                            <i class="ph ph-arrow-down text-lg"></i>
+                                            <span class="text-sm font-medium">{ &load_more_label }</span>
+                                        </button>
+                                    </div>
+                                }
+                            } else {
+                                html! {}
+                            }}
                         </div>
                     </div>
                 }

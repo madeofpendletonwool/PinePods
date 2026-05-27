@@ -17,3 +17,4 @@ sha1 = "0.10.6"
 urlencoding = "2.1.3"
 actix-cors = "0.7.1"
 chrono = { version = "0.4.42", features = ["serde"] }
+tokio = { version = "1", features = ["process"] }

@@ -95,6 +95,11 @@ impl BackgroundScheduler {
                 if let Err(e) = state.db_pool.update_playlist_episode_counts().await {
                     warn!("⚠️ Playlist episode count update failed during scheduled refresh: {}", e);
                 }
+
+                // Propagate new podcast episodes into PeopleEpisodes for subscribed people
+                if let Err(e) = state.db_pool.refresh_people_episodes_from_podcasts().await {
+                    warn!("⚠️ People episodes sync failed during scheduled refresh: {}", e);
+                }
             }
             Err(e) => {
                 error!("❌ Podcast refresh failed: {}", e);

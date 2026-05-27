@@ -166,7 +166,8 @@
     "no_downloaded_episodes_found": "Inga nedladdade avsnitt hittades",
     "no_episode_downloads_found": "Inga avsnittsnedladdningar hittades",
     "search_downloaded_episodes": "Sök bland nedladdade avsnitt...",
-    "select": "Välj"
+    "select": "Välj",
+    "load_more": "Load More"
   },
   "downloads_tauri": {
     "downloaded_episodes_count": "avsnitt",
@@ -368,7 +369,8 @@
     "youtube_channel_successfully_removed": "YouTubekanalen har tagits bort",
     "youtube_download_limit": "Nedladdningsgräns för YouTubeavsnitt (i dagar):",
     "youtube_episode_limit_updated": "Nedladdningsgränsen för YouTubeavsnitt har uppdaterats!",
-    "youtube_limit_description": "Justera hur länge ljudfiler från ett youtubeflöde sparas när det laddas ner via servern. YouTubeavsnitt kommer därefter att tas bort för att frigöra utrymme."
+    "youtube_limit_description": "Justera hur länge ljudfiler från ett youtubeflöde sparas när det laddas ner via servern. YouTubeavsnitt kommer därefter att tas bort för att frigöra utrymme.",
+    "video": "Video"
   },
   "export_settings": {
     "download_export_opml": "Exportera/ladda ner OPML",
@@ -687,7 +689,9 @@
     "no_subscribed_people_found": "",
     "shows": "",
     "subscribe_to_hosts_message": "",
-    "subscribed_people": ""
+    "subscribed_people": "",
+    "loading_episodes": "Loading episodes...",
+    "no_recent_episodes_found": "No recent episodes found."
   },
   "person": {
     "add_podcasts_message": "",
@@ -708,7 +712,8 @@
     "profile_alt": "",
     "subscribe": "",
     "unknown_author": "",
-    "unsubscribe": ""
+    "unsubscribe": "",
+    "loading_podcasts": "Loading podcasts..."
   },
   "playback_settings": {
     "auto_complete_description": "",

@@ -255,6 +255,7 @@ pub struct PodcastResponse {
     pub explicit: bool,
     pub podcastindexid: Option<i64>,
     pub is_favorite: bool,
+    pub is_video: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -274,6 +275,7 @@ pub struct PodcastExtraResponse {
     pub episodes_played: i32,
     pub oldest_episode_date: Option<String>,
     pub is_youtube: bool,
+    pub is_video: bool,
     pub is_favorite: bool,
 }
 

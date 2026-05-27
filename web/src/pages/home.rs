@@ -80,7 +80,6 @@ pub fn home() -> Html {
     let i18n_quick_links = i18n.t("home.quick_links").to_string();
     let i18n_saved = i18n.t("app_drawer.saved").to_string();
     let i18n_downloads = i18n.t("app_drawer.downloads").to_string();
-    let i18n_queue = i18n.t("app_drawer.queue").to_string();
     let i18n_history = i18n.t("app_drawer.history").to_string();
     let i18n_feed = i18n.t("app_drawer.feed").to_string();
     let i18n_podcasts = i18n.t("app_drawer.podcasts").to_string();
@@ -230,7 +229,7 @@ pub fn home() -> Html {
                             <div class="grid grid-cols-3 gap-2 md:gap-4">
                                 <QuickLink route={Route::Saved} icon="ph-star" label={i18n_saved.clone()} />
                                 <QuickLink route={Route::Downloads} icon="ph-download-simple" label={i18n_downloads.clone()} />
-                                <QuickLink route={Route::Queue} icon="ph-queue" label={i18n_queue.clone()} />
+                                <QuickLink route={Route::Playlists} icon="ph-playlist" label={i18n_smart_playlists.clone()} />
                                 <QuickLink route={Route::PodHistory} icon="ph-clock-counter-clockwise" label={i18n_history.clone()} />
                                 <QuickLink route={Route::Feed} icon="ph-bell-ringing" label={i18n_feed.clone()} />
                                 <QuickLink route={Route::Podcasts} icon="ph-microphone-stage" label={i18n_podcasts.clone()} />

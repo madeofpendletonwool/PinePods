@@ -398,11 +398,49 @@ pub async fn process_youtube_channel(
         .await
         .map_err(|e| AppError::external_error(&format!("Failed to parse Backend response: {}", e)))?;
 
+    // Self-heal: update podcast name/artwork if they were empty from a broken initial subscription
+    let channel_name_update = channel_data.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let channel_thumb_update = channel_data.get("thumbnailUrl").and_then(|v| v.as_str()).unwrap_or("");
+    if !channel_name_update.is_empty() || !channel_thumb_update.is_empty() {
+        match &state.db_pool {
+            crate::database::DatabasePool::Postgres(pool) => {
+                let _ = sqlx::query(r#"
+                    UPDATE "Podcasts"
+                    SET podcastname = CASE WHEN podcastname = '' OR podcastname IS NULL THEN $2 ELSE podcastname END,
+                        artworkurl   = CASE WHEN artworkurl  = '' OR artworkurl  IS NULL THEN $3 ELSE artworkurl  END,
+                        author       = CASE WHEN author      = '' OR author      IS NULL THEN $2 ELSE author      END
+                    WHERE podcastid = $1
+                "#)
+                .bind(podcast_id)
+                .bind(channel_name_update)
+                .bind(channel_thumb_update)
+                .execute(pool)
+                .await;
+            }
+            crate::database::DatabasePool::MySQL(pool) => {
+                let _ = sqlx::query(r#"
+                    UPDATE Podcasts
+                    SET PodcastName = CASE WHEN PodcastName = '' OR PodcastName IS NULL THEN ? ELSE PodcastName END,
+                        ArtworkURL  = CASE WHEN ArtworkURL  = '' OR ArtworkURL  IS NULL THEN ? ELSE ArtworkURL  END,
+                        Author      = CASE WHEN Author      = '' OR Author      IS NULL THEN ? ELSE Author      END
+                    WHERE PodcastID = ?
+                "#)
+                .bind(channel_name_update)
+                .bind(channel_thumb_update)
+                .bind(channel_name_update)
+                .bind(podcast_id)
+                .execute(pool)
+                .await;
+            }
+        }
+        println!("Healed podcast {} metadata: name='{}', thumbnail='{}'", podcast_id, channel_name_update, channel_thumb_update);
+    }
+
     let empty_vec = vec![];
     let recent_videos_data = channel_data.get("recentVideos")
         .and_then(|v| v.as_array())
         .unwrap_or(&empty_vec);
-    
+
     println!("Found {} total videos from Backend service", recent_videos_data.len());
 
     let mut recent_videos = Vec::new();

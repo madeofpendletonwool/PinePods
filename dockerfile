@@ -109,9 +109,16 @@ LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg wget jq mariadb-connector-c-dev
 
 
-# Download and install latest yt-dlp binary (musllinux for Alpine)
-RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name) && \
-    wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${LATEST_VERSION}/yt-dlp_musllinux" && \
+# Download and install latest yt-dlp — pick the arch-specific musl binary (no Python needed)
+RUN ARCH=$(uname -m) && \
+    LATEST=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name) && \
+    case "$ARCH" in \
+        x86_64)  YTDLP="yt-dlp_musllinux" ;; \
+        aarch64) YTDLP="yt-dlp_musllinux_aarch64" ;; \
+        armv7l)  YTDLP="yt-dlp_linux_armv7l" ;; \
+        *)       YTDLP="yt-dlp_musllinux" ;; \
+    esac && \
+    wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${LATEST}/${YTDLP}" && \
     chmod +x /usr/local/bin/yt-dlp
 
 # Download and install Horust (x86_64)
