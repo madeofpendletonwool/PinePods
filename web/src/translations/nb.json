@@ -166,7 +166,8 @@
     "no_downloaded_episodes_found": "",
     "no_episode_downloads_found": "",
     "search_downloaded_episodes": "",
-    "select": ""
+    "select": "",
+    "load_more": "Load More"
   },
   "downloads_tauri": {
     "downloaded_episodes_count": "",
@@ -368,7 +369,8 @@
     "youtube_channel_successfully_removed": "",
     "youtube_download_limit": "",
     "youtube_episode_limit_updated": "",
-    "youtube_limit_description": ""
+    "youtube_limit_description": "",
+    "video": "Video"
   },
   "export_settings": {
     "download_export_opml": "",
@@ -687,7 +689,9 @@
     "no_subscribed_people_found": "",
     "shows": "",
     "subscribe_to_hosts_message": "",
-    "subscribed_people": ""
+    "subscribed_people": "",
+    "loading_episodes": "Loading episodes...",
+    "no_recent_episodes_found": "No recent episodes found."
   },
   "person": {
     "add_podcasts_message": "",
@@ -708,7 +712,8 @@
     "profile_alt": "",
     "subscribe": "",
     "unknown_author": "",
-    "unsubscribe": ""
+    "unsubscribe": "",
+    "loading_podcasts": "Loading podcasts..."
   },
   "playback_settings": {
     "auto_complete_description": "",

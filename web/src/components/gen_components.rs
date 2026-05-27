@@ -611,7 +611,7 @@ pub fn search_bar() -> Html {
                                             onclick={select_podcast_index_mobile.clone()}
                                             aria-current={(*search_index == "podcast_index").then_some("true")}>
                                         <i class="ph ph-globe-hemisphere-west"></i>
-                                        <span>{"Podcast Index"}</span>
+                                        <span>{ &i18n_podcast_index }</span>
                                     </button>
                                     <button type="button"
                                             class={classes!("src-menu-item", (*search_index == "itunes").then_some("is-active"))}

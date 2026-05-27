@@ -63,6 +63,7 @@ pub fn downloads() -> Html {
         .to_string();
     let i18n_no_episode_downloads_found =
         i18n.t("downloads.no_episode_downloads_found").to_string();
+    let i18n_load_more = i18n.t("downloads.load_more").to_string();
 
     let episode_search_term = use_state(|| String::new());
     let show_completed = use_state(|| false);
@@ -545,6 +546,7 @@ pub fn downloads() -> Html {
                                             loading_more,
                                             has_more,
                                             load_more_closure,
+                                            i18n_load_more.clone(),
                                         )
                                     }) }
                                 </>
@@ -599,6 +601,7 @@ pub fn render_podcast_with_episodes(
     loading_more: bool,
     has_more: bool,
     load_more: Callback<MouseEvent>,
+    load_more_label: String,
 ) -> Html {
     let on_podcast_checkbox_change = {
         let on_checkbox_change = on_checkbox_change.clone();
@@ -691,7 +694,7 @@ pub fn render_podcast_with_episodes(
                                     <div class="flex justify-center py-4">
                                         <button class="filter-chip" onclick={load_more}>
                                             <i class="ph ph-arrow-down text-lg"></i>
-                                            <span class="text-sm font-medium">{"Load More"}</span>
+                                            <span class="text-sm font-medium">{ &load_more_label }</span>
                                         </button>
                                     </div>
                                 }

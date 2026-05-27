@@ -80,6 +80,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
     let i18n_error_removing_podcast = i18n.t("person.error_removing_podcast").to_string();
     let i18n_podcast_added = i18n.t("person.podcast_successfully_added").to_string();
     let i18n_error_adding_podcast = i18n.t("person.error_adding_podcast").to_string();
+    let i18n_loading_podcasts = i18n.t("person.loading_podcasts").to_string();
 
     let (app_state, dispatch) = use_store::<AppState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
@@ -756,7 +757,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                             if *page_loading {
                                 html! {
                                     <div class="flex items-center justify-center p-8">
-                                        <p class="item_container-text text-gray-400 italic">{"Loading podcasts..."}</p>
+                                        <p class="item_container-text text-gray-400 italic">{ &i18n_loading_podcasts }</p>
                                     </div>
                                 }
                             } else if let Some(podcasts) = app_state.podcast_feed_return.clone() {

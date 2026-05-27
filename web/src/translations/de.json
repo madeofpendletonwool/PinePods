@@ -166,7 +166,8 @@
     "no_downloaded_episodes_found": "Keine heruntergeladenen Episoden gefunden",
     "no_episode_downloads_found": "Keine Episodendownloads gefunden",
     "search_downloaded_episodes": "Durchsuche heruntergeladene Episoden...",
-    "select": "Auswählen"
+    "select": "Auswählen",
+    "load_more": "Load More"
   },
   "downloads_tauri": {
     "downloaded_episodes_count": "Episoden",
@@ -374,7 +375,8 @@
     "youtube_channel_successfully_removed": "YouTube Kanal erfolgreich entfernt",
     "youtube_download_limit": "Youtube Download Episoden Limit (Tage):",
     "youtube_episode_limit_updated": "YouTube Folgen Limit angepasst!",
-    "youtube_limit_description": "Passt an, wie lange Youtube Feed Audio beim Download beibehalten wird, um über den Server gestreamt zu werden. Youtube Episoden werden danach entfernt, um Speicherplatz freizugeben."
+    "youtube_limit_description": "Passt an, wie lange Youtube Feed Audio beim Download beibehalten wird, um über den Server gestreamt zu werden. Youtube Episoden werden danach entfernt, um Speicherplatz freizugeben.",
+    "video": "Video"
   },
   "export_settings": {
     "download_export_opml": "Herunterladen/Exportieren OPML",
@@ -693,7 +695,9 @@
     "no_subscribed_people_found": "Keine Abonnenten gefunden",
     "shows": "Serien",
     "subscribe_to_hosts_message": "Abonniere die Podcast Moderatoren und Gäste, dann siehst du ihre neuesten Folgen hier!",
-    "subscribed_people": "Abonnierte Benutzer"
+    "subscribed_people": "Abonnierte Benutzer",
+    "loading_episodes": "Loading episodes...",
+    "no_recent_episodes_found": "No recent episodes found."
   },
   "person": {
     "add_podcasts_message": "Du kannst neue Podcasts hinzufügen, indem du oben die Suchleiste benutzt. Suche nach deinem Lieblings-Podcast und klick auf das Plus-Zeichen, um ihn hinzuzufügen.",
@@ -714,7 +718,8 @@
     "profile_alt": "Profil",
     "subscribe": "Abonnieren",
     "unknown_author": "Unbekannter Autor",
-    "unsubscribe": "Nicht mehr abonnieren"
+    "unsubscribe": "Nicht mehr abonnieren",
+    "loading_podcasts": "Loading podcasts..."
   },
   "playback_settings": {
     "auto_complete_description": "Episoden mit dieser oder weniger Sekunden Restlaufzeit werden automatisch als abgeschlossen markiert. Auf 0 setzen, um diese Funktion zu deaktivieren.",

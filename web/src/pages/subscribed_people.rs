@@ -246,6 +246,8 @@ pub fn subscribed_people() -> Html {
         let episode_count_text = i18n.t("people_subs.episode_count").to_string();
         let shows_text = i18n.t("people_subs.shows").to_string();
         let avatar_alt_text = i18n.t("people_subs.avatar_alt").to_string();
+        let i18n_loading_episodes = i18n.t("people_subs.loading_episodes").to_string();
+        let i18n_no_recent_episodes_found = i18n.t("people_subs.no_recent_episodes_found").to_string();
         let loading_episodes = loading_episodes.clone();
 
         move || {
@@ -288,6 +290,8 @@ pub fn subscribed_people() -> Html {
                                         &episode_count_text,
                                         &shows_text,
                                         &avatar_alt_text,
+                                        &i18n_loading_episodes,
+                                        &i18n_no_recent_episodes_found,
                                     )}
                                 </div>
                             }
@@ -351,6 +355,8 @@ fn render_host_with_episodes(
     episode_count_text: &str,
     shows_text: &str,
     avatar_alt_text: &str,
+    loading_episodes_text: &str,
+    no_recent_episodes_text: &str,
 ) -> Html {
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let proxied_url = get_proxied_image_url(&server_name.clone().unwrap_or_default(), person.image.clone());
@@ -383,7 +389,7 @@ fn render_host_with_episodes(
                     <hr class="my-2 border-t hidden md:block"/>
                     {
                         if person.episode_count == 0 {
-                            html! { <p class="item_container-text text-sm italic text-gray-400">{"Loading episodes..."}</p> }
+                            html! { <p class="item_container-text text-sm italic text-gray-400">{ loading_episodes_text }</p> }
                         } else {
                             html! { <p class="item_container-text">{ format!("{}: {}", episode_count_text, person.episode_count) }</p> }
                         }
@@ -417,13 +423,13 @@ fn render_host_with_episodes(
                             html! {
                                 <div class="flex items-center gap-2 p-4">
                                     <div class="loading-animation" style="transform: scale(0.35); transform-origin: left center; height: 24px; width: 60px;"></div>
-                                    <p class="item_container-text text-sm italic text-gray-400">{"Loading episodes..."}</p>
+                                    <p class="item_container-text text-sm italic text-gray-400">{ loading_episodes_text }</p>
                                 </div>
                             }
                         } else if episodes.is_empty() {
                             html! {
                                 <p class="item_container-text text-sm italic text-gray-400 p-4">
-                                    {"No recent episodes found."}
+                                    { no_recent_episodes_text }
                                 </p>
                             }
                         } else {

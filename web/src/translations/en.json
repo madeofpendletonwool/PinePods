@@ -217,6 +217,7 @@
     "no_downloaded_episodes_description": "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download to the server and show up here!",
     "no_downloaded_episodes_found": "No Downloaded Episodes Found",
     "no_episode_downloads_found": "No Episode Downloads Found",
+    "load_more": "Load More",
     "search_downloaded_episodes": "Search downloaded episodes...",
     "select": "Select"
   },
@@ -445,6 +446,7 @@
     "youtube_channel_successfully_removed": "YouTube channel successfully removed",
     "youtube_download_limit": "Youtube Download Episode Limit (days):",
     "youtube_episode_limit_updated": "Youtube Episode Limit Updated!",
+    "video": "Video",
     "youtube_limit_description": "Adjusts how long Youtube Feed audio is retained when downloaded to be streamed via the server. Youtube episodes will be removed after to free up space."
   },
   "export_settings": {
@@ -806,6 +808,8 @@
   "people_subs": {
     "avatar_alt": "Avatar for",
     "episode_count": "Episode Count",
+    "loading_episodes": "Loading episodes...",
+    "no_recent_episodes_found": "No recent episodes found.",
     "no_subscribed_people_found": "No Subscribed People Found",
     "shows": "Shows",
     "subscribe_to_hosts_message": "Subscribe to podcast hosts and guests to see their latest episodes here!",
@@ -827,6 +831,7 @@
     "no_description_provided": "No Description Provided",
     "no_episodes_found": "No Episodes Found",
     "no_episodes_message": "This podcast strangely doesn't have any episodes. Try a more mainstream one maybe?",
+    "loading_podcasts": "Loading podcasts...",
     "no_podcasts_found": "No Podcasts Found",
     "no_podcasts_message": "This person doesn't seem to appear in any podcasts. Are you sure you got the right person?",
     "no_website_provided": "No Website Provided",

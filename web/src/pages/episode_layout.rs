@@ -497,6 +497,7 @@ pub fn episode_layout() -> Html {
     let i18n_unmerge = i18n.t("episodes_layout.unmerge").to_string();
     let i18n_select_podcasts_to_merge = i18n.t("episodes_layout.select_podcasts_to_merge").to_string();
     let i18n_hosts = i18n.t("episodes_layout.hosts").to_string();
+    let i18n_video = i18n.t("episodes_layout.video").to_string();
     let loading = use_state(|| true);
     let is_subscribing = use_state(|| false);
     let page_state = use_state(|| PageState::Hidden);
@@ -3593,7 +3594,7 @@ pub fn episode_layout() -> Html {
                                                                     html! {
                                                                         <span class="inline-flex items-center gap-1 bg-opacity-80 bg-gray-700 text-white text-xs px-1.5 py-0.5 rounded-full">
                                                                             <i class="ph ph-television"></i>
-                                                                            {"Video"}
+                                                                            { &i18n_video }
                                                                         </span>
                                                                     }
                                                                 } else { html! {} }}
@@ -3793,7 +3794,7 @@ pub fn episode_layout() -> Html {
                                                                 html! {
                                                                     <span class="inline-flex items-center gap-1 bg-opacity-80 bg-gray-700 text-white text-xs px-2 py-1 rounded-full self-center">
                                                                         <i class="ph ph-television"></i>
-                                                                        {"Video"}
+                                                                        { &i18n_video }
                                                                     </span>
                                                                 }
                                                             } else { html! {} }}
