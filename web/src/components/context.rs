@@ -168,7 +168,8 @@ pub struct EpisodeStatusState {
     pub downloaded_episodes: DownloadedEpisodeRecords,
     pub queued_episodes: Option<QueuedEpisodesResponse>,
     pub queued_episode_ids: Option<Vec<i32>>,
-    pub completed_episodes: Option<Vec<i32>>,
+    #[serde(default)]
+    pub completed_episodes: HashSet<i32>,
 }
 
 impl EpisodeStatusState {

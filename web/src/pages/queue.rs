@@ -143,7 +143,7 @@ pub fn queue() -> Html {
                                 fetched_episodes
                                     .sort_by_key(|ep| ep.queueposition.unwrap_or(i32::MAX));
 
-                                let completed_episode_ids: Vec<i32> = fetched_episodes
+                                let completed_episode_ids: std::collections::HashSet<i32> = fetched_episodes
                                     .iter()
                                     .filter(|ep| ep.completed)
                                     .map(|ep| ep.episodeid)
@@ -153,7 +153,7 @@ pub fn queue() -> Html {
                                     state.queued_episodes = Some(QueuedEpisodesResponse {
                                         episodes: fetched_episodes,
                                     });
-                                    state.completed_episodes = Some(completed_episode_ids);
+                                    state.completed_episodes = completed_episode_ids;
                                 });
 
                                 // Fetch local episode IDs for Tauri mode

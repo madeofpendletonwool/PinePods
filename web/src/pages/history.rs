@@ -128,14 +128,14 @@ pub fn history() -> Html {
                         .await
                         {
                             Ok(page) => {
-                                let completed_ids: Vec<i32> = page
+                                let completed_ids: std::collections::HashSet<i32> = page
                                     .data
                                     .iter()
                                     .filter(|ep| ep.completed)
                                     .map(|ep| ep.episodeid)
                                     .collect();
                                 Dispatch::<EpisodeStatusState>::global().reduce_mut(move |s| {
-                                    s.completed_episodes = Some(completed_ids);
+                                    s.completed_episodes = completed_ids;
                                 });
 
                                 let new_offset = page.data.len() as i64;

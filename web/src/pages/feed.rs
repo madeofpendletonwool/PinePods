@@ -109,7 +109,7 @@ pub fn feed() -> Html {
                         .await
                         {
                             Ok(page) => {
-                                let completed_episode_ids: Vec<i32> = page
+                                let completed_episode_ids: std::collections::HashSet<i32> = page
                                     .episodes
                                     .iter()
                                     .filter(|ep| ep.completed)
@@ -128,7 +128,7 @@ pub fn feed() -> Html {
                                     .map(|ep| ep.episodeid)
                                     .collect();
                                 Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
-                                    state.completed_episodes = Some(completed_episode_ids);
+                                    state.completed_episodes = completed_episode_ids;
                                     state.saved_episodes = saved_episodes;
                                     state.queued_episode_ids = Some(queued_episode_ids);
                                 });

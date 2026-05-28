@@ -1194,16 +1194,8 @@ pub fn epsiode() -> Html {
                                         Ok(_success_message) => {
                                             completion_status.set(true);
                                             Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
-                                                if let Some(completed_episodes) = state.completed_episodes.as_mut() {
-                                                    if let Some(pos) =
-                                                        completed_episodes.iter().position(|&id| id == episode_id)
-                                                    {
-                                                        completed_episodes.remove(pos);
-                                                    } else {
-                                                        completed_episodes.push(episode_id);
-                                                    }
-                                                } else {
-                                                    state.completed_episodes = Some(vec![episode_id]);
+                                                if !state.completed_episodes.remove(&episode_id) {
+                                                    state.completed_episodes.insert(episode_id);
                                                 }
                                             });
                                         }
@@ -1253,16 +1245,8 @@ pub fn epsiode() -> Html {
                                         Ok(_message) => {
                                             completion_status.set(false);
                                             Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
-                                                if let Some(completed_episodes) = state.completed_episodes.as_mut() {
-                                                    if let Some(pos) =
-                                                        completed_episodes.iter().position(|&id| id == episode_id)
-                                                    {
-                                                        completed_episodes.remove(pos);
-                                                    } else {
-                                                        completed_episodes.push(episode_id);
-                                                    }
-                                                } else {
-                                                    state.completed_episodes = Some(vec![episode_id]);
+                                                if !state.completed_episodes.remove(&episode_id) {
+                                                    state.completed_episodes.insert(episode_id);
                                                 }
                                             });
                                         }

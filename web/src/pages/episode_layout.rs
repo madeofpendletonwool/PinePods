@@ -1402,11 +1402,11 @@ pub fn episode_layout() -> Html {
                                     },
                                 )
                             });
-                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                            is_added_inner.set(false);
                             app_dispatch.reduce_mut(|state| {
+                                state.is_loading = Some(false);
                                 state.podcast_added = Some(false);
                             });
+                            is_added_inner.set(false);
 
                             if pod_feed_url_check.starts_with("https://www.youtube.com") {
                                 hist.push("/podcasts");
