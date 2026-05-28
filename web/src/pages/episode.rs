@@ -2,7 +2,7 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, EpisodeStatusState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState, PageLoadState, UIState};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{
@@ -1385,7 +1385,7 @@ pub fn epsiode() -> Html {
                                 };
 
                                 // Set loading state
-                                post_state.reduce_mut(|state| state.is_loading = Some(true));
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
 
                                 let future = async move {
                                     let result = if is_downloaded {
@@ -1405,7 +1405,7 @@ pub fn epsiode() -> Html {
                                     }
 
                                     // Clear loading state
-                                    post_state.reduce_mut(|state| state.is_loading = Some(false));
+                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                                 };
                                 wasm_bindgen_futures::spawn_local(future);
                             })

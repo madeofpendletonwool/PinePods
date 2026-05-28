@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, PageLoadState};
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{call_check_podcast, call_get_podcast_id};
 use crate::requests::search_pods::{
@@ -34,8 +34,10 @@ pub fn create_on_title_click(
     Callback::from(move |e: MouseEvent| {
         e.prevent_default(); // Prevent default anchor behavior
         dispatch.reduce_mut(|state| {
+            state.podcast_added = Some(false);
+        });
+        Dispatch::<PageLoadState>::global().reduce_mut(|state| {
             state.is_loading = Some(true);
-            state.podcast_added = Some(false); // Set podcast_added to false here
         });
         let title_wasm = podcast_title.clone();
         let server_clone = server_name.clone();
@@ -122,7 +124,7 @@ pub fn create_on_title_click(
                                             state.podcast_feed_results = Some(podcast_feed_results);
                                             state.clicked_podcast_info = Some(podcast_values);
                                         });
-                                        dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                                        Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                                         history.push("/episode_layout"); // Navigate to episode_layout
                                     }
                                     Err(e) => {
@@ -148,7 +150,7 @@ pub fn create_on_title_click(
                                     state.podcast_feed_results = Some(podcast_feed_results);
                                     state.clicked_podcast_info = Some(podcast_values);
                                 });
-                                dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                                 history.push("/episode_layout"); // Navigate to episode_layout
                             }
                             Err(_e) => {

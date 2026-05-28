@@ -368,7 +368,7 @@ pub fn login() -> Html {
         move |_| {
             let background_number = rand::rng().random_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
             effect_background_image.set(format!(
-                "static/assets/backgrounds/{}.jpg",
+                "static/assets/backgrounds/{}.webp",
                 background_number
             ));
 

@@ -1,10 +1,6 @@
 @font-face {
   font-family: "Phosphor";
-  src:
-    url("/static/fonts/phosphor/Phosphor.woff2") format("woff2"),
-    url("/static/fonts/phosphor/Phosphor.woff") format("woff"),
-    url("/static/fonts/phosphor/Phosphor.ttf") format("truetype");
-    url("/static/fonts/phosphor/Phosphor.svg#Phosphor") format("svg");
+  src: url("/static/fonts/phosphor/Phosphor.woff2") format("woff2");
   font-weight: normal;
   font-style: normal;
   font-display: block;

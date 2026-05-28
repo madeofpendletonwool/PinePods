@@ -1,6 +1,6 @@
 use anyhow::{Context, Error};
 // use futures_util::stream::StreamExt;
-use crate::components::context::{AppState, NotificationState};
+use crate::components::context::{AppState, NotificationState, PageLoadState};
 use crate::components::notification_center::TaskProgress;
 use crate::requests::episode::Episode;
 use futures::StreamExt;
@@ -3244,7 +3244,7 @@ pub async fn connect_to_episode_websocket(
                                     );
 
                                     // Reset refreshing state when complete
-                                    Dispatch::<AppState>::global().reduce_mut(|state| {
+                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                         state.is_refreshing = Some(false);
                                     });
                                     dispatch.reduce_mut(|state| {

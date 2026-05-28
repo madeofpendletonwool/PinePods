@@ -1,5 +1,5 @@
 use wasm_bindgen_test::*;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, PageLoadState};
 use crate::pages::routes::Route;
 
 wasm_bindgen_test_configure!(run_in_node_experimental);
@@ -11,7 +11,7 @@ fn test_app_compiles() {
 
 #[wasm_bindgen_test]
 fn test_basic_state() {
-    let state = AppState::default();
+    let state = PageLoadState::default();
     assert!(state.is_loading.is_none());
 }
 

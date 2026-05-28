@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, FilterState, NotificationState, UserStatsStore};
+use crate::components::context::{AppState, FilterState, NotificationState, PageLoadState, UserStatsStore};
 use crate::components::queue_panel::QueuePanel;
 use crate::components::navigation::use_back_button;
 use crate::pages::routes::Route;
@@ -8,6 +8,7 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use yew::prelude::*;
 use yew_router::prelude::Link;
+use yewdux::prelude::Dispatch;
 use yewdux::use_store;
 
 #[function_component(BackButton)]
@@ -62,6 +63,7 @@ pub fn app_drawer() -> Html {
     };
     let (state, _dispatch) = use_store::<AppState>();
     let (post_state, _post_dispatch) = use_store::<AppState>();
+    let (load_state, _) = use_store::<PageLoadState>();
     let (_, notif_dispatch) = use_store::<NotificationState>();
     let api_key = post_state
         .auth_details
@@ -135,9 +137,8 @@ pub fn app_drawer() -> Html {
             let notif_dispatch_clone = notif_dispatch_refresh.clone();
 
             // Set refreshing state before starting
-            dispatch_clone.reduce_mut(|state| {
+            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                 state.is_refreshing = Some(true);
-                state.clone()
             });
 
             spawn_local(async move {
@@ -161,9 +162,8 @@ pub fn app_drawer() -> Html {
                 }
 
                 // Reset the refreshing state after websocket completes
-                dispatch_clone.reduce_mut(|state| {
+                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                     state.is_refreshing = Some(false);
-                    state.clone()
                 });
             });
         })
@@ -365,7 +365,7 @@ pub fn app_drawer() -> Html {
                         >
                             <div class="flex flex-col items-center">
                                 {
-                                    if state.is_refreshing.unwrap_or(false) {
+                                    if load_state.is_refreshing.unwrap_or(false) {
                                         html! {
                                             <div class="flex flex-col items-center">
                                                 <i class="ph ph-hourglass-medium md:text-4xl text-4xl"></i>
@@ -405,7 +405,7 @@ pub fn app_drawer() -> Html {
                 }}
 
                 {
-                    match state.is_loading {
+                    match load_state.is_loading {
                         Some(true) => html! {
                             <div role="status" class="ml-3">
                                 <svg aria-hidden="true" class="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">

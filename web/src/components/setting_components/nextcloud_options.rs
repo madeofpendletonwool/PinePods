@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, NotificationState};
+use crate::components::context::{AppState, NotificationState, PageLoadState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::connect_to_episode_websocket;
 use crate::requests::setting_reqs::{
@@ -465,7 +465,7 @@ pub fn gpodder_advanced_options() -> Html {
                         {
                             Ok(response) => {
                                 if response.success {
-                                    dispatch_clone.reduce_mut(|state| {
+                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                         state.is_refreshing = Some(true);
                                     });
                                     Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -488,7 +488,7 @@ pub fn gpodder_advanced_options() -> Html {
                                         );
                                     }
 
-                                    dispatch_clone.reduce_mut(|state| {
+                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                         state.is_refreshing = Some(false);
                                     });
                                 } else {
@@ -1223,9 +1223,8 @@ pub fn sync_options() -> Html {
                                                     let server_name_call = server_name.clone();
                                                     let user_id_call = user_id.clone();
                                                     let api_key_call = api_key.clone();
-                                                    dispatch_clone.reduce_mut(|state| {
+                                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                                         state.is_refreshing = Some(true);
-                                                        state.clone() // Return the modified state
                                                     });
 
                                                     spawn_local(async move {
@@ -1249,9 +1248,8 @@ pub fn sync_options() -> Html {
                                                         }
 
                                                         // Stop the loading animation after the WebSocket operation is complete
-                                                        dispatch_clone.reduce_mut(|state| {
+                                                        Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                                             state.is_refreshing = Some(false);
-                                                            state.clone() // Return the modified state
                                                         });
                                                     });
 
@@ -1504,9 +1502,8 @@ pub fn sync_options() -> Html {
                                         let server_name_call = server_name.clone();
                                         let user_id_call = user_id.clone();
                                         let api_key_call = api_key.clone();
-                                        dispatch_clone.reduce_mut(|state| {
+                                        Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                             state.is_refreshing = Some(true);
-                                            state.clone() // Return the modified state
                                         });
 
                                         spawn_local(async move {
@@ -1533,9 +1530,8 @@ pub fn sync_options() -> Html {
                                             }
 
                                             // Stop the loading animation after the WebSocket operation is complete
-                                            dispatch_clone.reduce_mut(|state| {
+                                            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                                 state.is_refreshing = Some(false);
-                                                state.clone() // Return the modified state
                                             });
                                         });
                                     }

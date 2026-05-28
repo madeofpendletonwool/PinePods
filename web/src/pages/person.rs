@@ -4,7 +4,7 @@ use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::context::ExpandedDescriptions;
-use crate::components::context::{AppState, NotificationState, UIState};
+use crate::components::context::{AppState, NotificationState, PageLoadState, UIState};
 use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
@@ -314,6 +314,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                         if let Ok(pr) = person_result {
                             state.people_feed_results = Some(pr);
                         }
+                    });
+                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                         state.is_loading = Some(false);
                     });
 
@@ -335,7 +337,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         let state_callback = app_state.clone();
 
         Callback::from(move |podcast_id: i32| {
-            dispatch.reduce_mut(|state| state.is_loading = Some(true));
+            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
             let added_pod_state = added_podcasts.clone();
             let server_name_callback = server_name.clone();
             let api_key_callback = api_key.clone();
@@ -387,7 +389,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 let mut new_set = (*added_podcasts_callback).clone();
                                 new_set.remove(&podcast_id);
                                 added_podcasts_callback.set(new_set);
-                                dispatch_callback.reduce_mut(|state| {
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                     state.is_loading = Some(false);
                                 });
                                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -396,7 +398,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                dispatch_callback.reduce_mut(|state| {
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                     state.is_loading = Some(false);
                                 });
                                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -450,6 +452,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             }
                                         }
                                     }
+                                });
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                     state.is_loading = Some(false);
                                 });
                                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -462,7 +466,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                dispatch_callback.reduce_mut(|state| {
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                     state.is_loading = Some(false);
                                 });
                                 Dispatch::<NotificationState>::global().reduce_mut(|state| {

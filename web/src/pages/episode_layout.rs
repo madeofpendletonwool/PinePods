@@ -1,7 +1,7 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, NotificationState, UIState};
+use crate::components::context::{AppState, NotificationState, PageLoadState, UIState};
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::{
     format_error_message, get_default_sort_direction, get_filter_preference, set_filter_preference,
@@ -1347,7 +1347,7 @@ pub fn episode_layout() -> Html {
             let pod_title_og = pod_values.clone().unwrap().podcastname.clone();
             let pod_feed_url_og = pod_values.clone().unwrap().feedurl.clone();
             let is_youtube = pod_values.clone().unwrap().is_youtube.unwrap_or(false);
-            app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
+            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
             let is_added_inner = call_is_added.clone();
             let call_dispatch = add_dispatch.clone();
             let pod_title = pod_title_og.clone();
@@ -1403,8 +1403,10 @@ pub fn episode_layout() -> Html {
                                 )
                             });
                             app_dispatch.reduce_mut(|state| {
-                                state.is_loading = Some(false);
                                 state.podcast_added = Some(false);
+                            });
+                            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
+                                state.is_loading = Some(false);
                             });
                             is_added_inner.set(false);
 
@@ -1419,7 +1421,7 @@ pub fn episode_layout() -> Html {
                                     i18n_failed_to_remove_podcast
                                 })
                             });
-                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                         }
                         page_state.set(PageState::Hidden);
                     }
@@ -1429,7 +1431,7 @@ pub fn episode_layout() -> Html {
                             state.error_message =
                                 Some(format!("Error removing content: {:?}", formatted_error))
                         });
-                        app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                        Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                     }
                 }
             });
@@ -3252,7 +3254,7 @@ pub fn episode_layout() -> Html {
                 let pod_website_og = pod_values.clone().unwrap().websiteurl.clone();
                 let pod_explicit_og = pod_values.clone().unwrap().explicit.clone();
                 let app_dispatch = app_dispatch.clone();
-                app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
+                Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
                 let is_added_inner = is_added.clone();
                 let is_subscribing_inner = is_subscribing_toggle.clone();
                 is_subscribing_inner.set(true);
@@ -3335,6 +3337,8 @@ pub fn episode_layout() -> Html {
                                             app_dispatch.reduce_mut(move |state| {
                                                 state.podcast_feed_results = Some(result);
                                                 state.podcast_added = Some(true);
+                                            });
+                                            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                                 state.is_loading = Some(false);
                                             });
                                             episodes_loaded = true;
@@ -3359,6 +3363,8 @@ pub fn episode_layout() -> Html {
                                     // Polling exhausted or errored — mark as subscribed anyway
                                     app_dispatch.reduce_mut(|state| {
                                         state.podcast_added = Some(true);
+                                    });
+                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                         state.is_loading = Some(false);
                                     });
                                 }
@@ -3367,7 +3373,7 @@ pub fn episode_layout() -> Html {
                                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Option::from(i18n_failed_to_add_podcast)
                                 });
-                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                                 is_subscribing_inner.set(false);
                             }
                         }
@@ -3379,7 +3385,7 @@ pub fn episode_layout() -> Html {
                                     formatted_error
                                 ))
                             });
-                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                             is_subscribing_inner.set(false);
                         }
                     }
