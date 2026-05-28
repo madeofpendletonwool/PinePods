@@ -947,7 +947,8 @@
     "search_by_custom_terms": "Search by Name",
     "match_btn": "Match",
     "enter_podcast_id": "Search By Podcast Index ID",
-    "search": "Search"
+    "search": "Search",
+    "searching": "Searching..."
   },
   "podcast_layout": {
     "add_error": "Error adding podcast",
