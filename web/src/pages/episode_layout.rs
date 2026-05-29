@@ -1,7 +1,8 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState, PageLoadState, UIState};
+use crate::requests::episode::Episode;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::{
     format_error_message, get_default_sort_direction, get_filter_preference, set_filter_preference,
@@ -467,6 +468,7 @@ pub fn episode_layout() -> Html {
     let i18n_deselect_all = i18n.t("episodes_layout.deselect_all").to_string();
     let i18n_select_all = i18n.t("episodes_layout.select_all").to_string();
     let i18n_select_unplayed = i18n.t("episodes_layout.select_unplayed").to_string();
+    let i18n_select_in_progress = i18n.t("episodes_layout.select_in_progress").to_string();
     let i18n_mark_complete = i18n.t("episodes_layout.mark_complete").to_string();
     let i18n_queue_episodes = i18n.t("episodes_layout.queue_episodes").to_string();
     let i18n_download_episodes = i18n.t("episodes_layout.download_episodes").to_string();
@@ -1347,7 +1349,7 @@ pub fn episode_layout() -> Html {
             let pod_title_og = pod_values.clone().unwrap().podcastname.clone();
             let pod_feed_url_og = pod_values.clone().unwrap().feedurl.clone();
             let is_youtube = pod_values.clone().unwrap().is_youtube.unwrap_or(false);
-            app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
+            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
             let is_added_inner = call_is_added.clone();
             let call_dispatch = add_dispatch.clone();
             let pod_title = pod_title_og.clone();
@@ -1402,11 +1404,13 @@ pub fn episode_layout() -> Html {
                                     },
                                 )
                             });
-                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                            is_added_inner.set(false);
                             app_dispatch.reduce_mut(|state| {
                                 state.podcast_added = Some(false);
                             });
+                            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
+                                state.is_loading = Some(false);
+                            });
+                            is_added_inner.set(false);
 
                             if pod_feed_url_check.starts_with("https://www.youtube.com") {
                                 hist.push("/podcasts");
@@ -1419,7 +1423,7 @@ pub fn episode_layout() -> Html {
                                     i18n_failed_to_remove_podcast
                                 })
                             });
-                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                         }
                         page_state.set(PageState::Hidden);
                     }
@@ -1429,7 +1433,7 @@ pub fn episode_layout() -> Html {
                             state.error_message =
                                 Some(format!("Error removing content: {:?}", formatted_error))
                         });
-                        app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                        Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                     }
                 }
             });
@@ -3252,7 +3256,7 @@ pub fn episode_layout() -> Html {
                 let pod_website_og = pod_values.clone().unwrap().websiteurl.clone();
                 let pod_explicit_og = pod_values.clone().unwrap().explicit.clone();
                 let app_dispatch = app_dispatch.clone();
-                app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
+                Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
                 let is_added_inner = is_added.clone();
                 let is_subscribing_inner = is_subscribing_toggle.clone();
                 is_subscribing_inner.set(true);
@@ -3335,6 +3339,8 @@ pub fn episode_layout() -> Html {
                                             app_dispatch.reduce_mut(move |state| {
                                                 state.podcast_feed_results = Some(result);
                                                 state.podcast_added = Some(true);
+                                            });
+                                            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                                 state.is_loading = Some(false);
                                             });
                                             episodes_loaded = true;
@@ -3359,6 +3365,8 @@ pub fn episode_layout() -> Html {
                                     // Polling exhausted or errored — mark as subscribed anyway
                                     app_dispatch.reduce_mut(|state| {
                                         state.podcast_added = Some(true);
+                                    });
+                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                         state.is_loading = Some(false);
                                     });
                                 }
@@ -3367,7 +3375,7 @@ pub fn episode_layout() -> Html {
                                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Option::from(i18n_failed_to_add_podcast)
                                 });
-                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                                 is_subscribing_inner.set(false);
                             }
                         }
@@ -3379,7 +3387,7 @@ pub fn episode_layout() -> Html {
                                     formatted_error
                                 ))
                             });
-                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                             is_subscribing_inner.set(false);
                         }
                     }
@@ -3465,6 +3473,39 @@ pub fn episode_layout() -> Html {
         },
     );
 
+    // Sync completed/saved/queued status into EpisodeStatusState whenever episodes load.
+    {
+        let podcast_feed_results = podcast_feed_results.clone();
+        use_effect_with(podcast_feed_results, move |results| {
+            if let Some(results) = results.as_ref() {
+                let completed_episode_ids: std::collections::HashSet<i32> = results
+                    .episodes
+                    .iter()
+                    .filter(|ep| ep.completed)
+                    .map(|ep| ep.episodeid)
+                    .collect();
+                let saved_episodes: Vec<Episode> = results
+                    .episodes
+                    .iter()
+                    .filter(|ep| ep.saved)
+                    .cloned()
+                    .collect();
+                let queued_episode_ids: Vec<i32> = results
+                    .episodes
+                    .iter()
+                    .filter(|ep| ep.queued)
+                    .map(|ep| ep.episodeid)
+                    .collect();
+                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
+                    state.completed_episodes = completed_episode_ids;
+                    state.saved_episodes = saved_episodes;
+                    state.queued_episode_ids = Some(queued_episode_ids);
+                });
+            }
+            || ()
+        });
+    }
+
     // Display pagination — render only the first N episodes regardless of total loaded.
     // Window scroll listener increments display_count as the user scrolls down.
     let display_count = use_state(|| 50usize);
@@ -3507,6 +3548,19 @@ pub fn episode_layout() -> Html {
             move || drop(listener)
         });
     }
+
+    let on_episode_checkbox_change = {
+        let selected_episodes = selected_episodes.clone();
+        Callback::from(move |episode_id: i32| {
+            let mut current = (*selected_episodes).clone();
+            if current.contains(&episode_id) {
+                current.remove(&episode_id);
+            } else {
+                current.insert(episode_id);
+            }
+            selected_episodes.set(current);
+        })
+    };
 
     #[wasm_bindgen]
     extern "C" {
@@ -4211,6 +4265,24 @@ pub fn episode_layout() -> Html {
                                                             >
                                                                 {&i18n_select_unplayed}
                                                             </button>
+
+                                                            // Select In Progress Only
+                                                            <button
+                                                                onclick={
+                                                                    let filtered_episodes = filtered_episodes_clone.clone();
+                                                                    let selected_episodes = selected_episodes_clone.clone();
+                                                                    Callback::from(move |_| {
+                                                                        let in_progress_ids: HashSet<i32> = filtered_episodes.iter()
+                                                                            .filter(|ep| !ep.completed && ep.listenduration > 0)
+                                                                            .map(|ep| ep.episodeid)
+                                                                            .collect();
+                                                                        selected_episodes.set(in_progress_ids);
+                                                                    })
+                                                                }
+                                                                class="bulk-filter-button"
+                                                            >
+                                                                {&i18n_select_in_progress}
+                                                            </button>
                                                         </div>
                                                     }
                                                 } else {
@@ -4493,8 +4565,21 @@ pub fn episode_layout() -> Html {
 
                                         html! {
                                             <div class="flex-grow overflow-y-auto">
-                                                { for (*filtered_episodes).iter().take(*display_count).map(|ep| html! {
-                                                    <EpisodeListItem key={ep.episodeid} episode={ep.clone()} />
+                                                { for (*filtered_episodes).iter().take(*display_count).map(|ep| {
+                                                    let on_cb = on_episode_checkbox_change.clone();
+                                                    let ep_id = ep.episodeid;
+                                                    let is_selected = selected_episodes.contains(&ep_id);
+                                                    html! {
+                                                        <EpisodeListItem
+                                                            key={ep_id}
+                                                            episode={ep.clone()}
+                                                            is_delete_mode={*is_selecting}
+                                                            on_checkbox_change={on_cb}
+                                                            is_selected={Some(is_selected)}
+                                                            on_select_above={on_select_newer.clone()}
+                                                            on_select_below={on_select_older.clone()}
+                                                        />
+                                                    }
                                                 }) }
                                             </div>
                                         }

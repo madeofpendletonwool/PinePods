@@ -420,7 +420,7 @@ pub fn downloads() -> Html {
                 }
                 // Similar pattern for episodes
                 if let Ok(mut fetched_episodes) = fetch_local_episodes().await {
-                    let completed_episode_ids: Vec<i32> = fetched_episodes
+                    let completed_episode_ids: std::collections::HashSet<i32> = fetched_episodes
                         .iter()
                         .filter(|ep| ep.listenduration > 0)
                         .map(|ep| ep.episodeid)
@@ -430,7 +430,7 @@ pub fn downloads() -> Html {
                         for ep in fetched_episodes.drain(..) {
                             state.downloaded_episodes.push_local(ep);
                         }
-                        state.completed_episodes = Some(completed_episode_ids);
+                        state.completed_episodes = completed_episode_ids;
                     });
                 } else {
                     web_sys::console::log_1(&"Critical CATDOG mistake".into());

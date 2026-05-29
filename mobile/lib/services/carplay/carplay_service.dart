@@ -32,6 +32,7 @@ class CarPlayService {
 
   // Store tab templates for updating
   CPListTemplate? _currentTab;
+  CPListTemplate? _savedTab;
   CPTabBarTemplate? _rootTemplate;
 
   // Playback state tracking
@@ -52,14 +53,18 @@ class CarPlayService {
   void setPinepodsService(PinepodsService? service) {
     pinepodsService = service;
     log.info('PinepodsService reference set for CarPlay');
-    // Refresh content if already connected and not currently setting up
-    if (_isConnected && !_isSettingUp) {
-      _setupRootTemplate();
+    if (_isConnected) {
+      _refreshDynamicTabs();
     }
   }
 
   void _setupCarPlay() {
     log.info('Setting up CarPlay connection listener');
+
+    // Pre-set root template immediately — the plugin stores it statically so that when
+    // templateApplicationScene(_:didConnect:) fires natively it applies it right away
+    // without waiting for any round-trip through Dart.
+    _setInitialRootTemplate();
 
     _flutterCarplay.addListenerOnConnectionChange((status) async {
       log.info('CarPlay connection status: $status');
@@ -69,18 +74,77 @@ class CarPlayService {
           return;
         }
         _isConnected = true;
-        // Small delay to ensure CarPlay scene is fully ready
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (_isConnected) {
-          await _setupRootTemplate();
-          _setupNowPlayingTemplate();
-        }
+        _setupNowPlayingTemplate();
+        // Refresh dynamic tab content now that we have a live connection
+        await _refreshDynamicTabs();
       } else if (status == ConnectionStatusTypes.disconnected) {
         _isConnected = false;
         _isSettingUp = false;
-        _rootTemplate = null;
+        // Don't clear _rootTemplate — native side keeps it and re-applies on reconnect
       }
     });
+  }
+
+  void _setInitialRootTemplate() {
+    log.info('Pre-setting CarPlay root template');
+
+    _currentTab = CPListTemplate(
+      sections: [],
+      title: 'Current',
+      systemIcon: 'clock.fill',
+      emptyViewTitleVariants: ['Loading…'],
+      emptyViewSubtitleVariants: ['Episodes loading'],
+    );
+
+    _savedTab = CPListTemplate(
+      sections: [],
+      title: 'Saved',
+      systemIcon: 'bookmark.fill',
+      emptyViewTitleVariants: ['Loading…'],
+      emptyViewSubtitleVariants: ['Saved episodes loading'],
+    );
+
+    _rootTemplate = CPTabBarTemplate(
+      templates: [
+        _createNowPlayingTab(),
+        _currentTab!,
+        _savedTab!,
+        _createMoreTab(),
+      ],
+    );
+
+    FlutterCarplay.setRootTemplate(rootTemplate: _rootTemplate!, animated: false);
+    log.info('CarPlay root template pre-set successfully');
+  }
+
+  Future<void> _refreshDynamicTabs() async {
+    if (_isSettingUp) return;
+    _isSettingUp = true;
+    log.info('Refreshing CarPlay dynamic tab content');
+
+    try {
+      // Update Current tab
+      final currentItems = await _loadCurrentEpisodes();
+      if (_currentTab != null) {
+        await _flutterCarplay.updateListTemplateSections(
+          elementId: _currentTab!.uniqueId,
+          sections: currentItems.isEmpty ? [] : [CPListSection(items: currentItems)],
+        );
+      }
+
+      // Update Saved tab
+      final savedItems = await _loadSavedEpisodes();
+      if (_savedTab != null) {
+        await _flutterCarplay.updateListTemplateSections(
+          elementId: _savedTab!.uniqueId,
+          sections: savedItems.isEmpty ? [] : [CPListSection(items: savedItems)],
+        );
+      }
+    } catch (e) {
+      log.warning('Failed to refresh dynamic CarPlay tabs: $e');
+    } finally {
+      _isSettingUp = false;
+    }
   }
 
   void _setupPlaybackListener() {
@@ -188,7 +252,7 @@ class CarPlayService {
               image: episode.imageUrl,
               playbackProgress: duration > 0 ? position / duration : null,
               isPlaying: isPlaying,
-              playingIndicatorLocation: CPListItemPlayingIndicatorLocations.trailing,
+              playingIndicatorLocation: CPListItemPlayingIndicatorLocation.trailing,
             ),
             // Play/Pause - no screen refresh, just toggle
             CPListItem(
@@ -230,54 +294,6 @@ class CarPlayService {
     log.info('List Now Playing screen shown for: ${episode.title}');
   }
 
-  Future<void> _setupRootTemplate() async {
-    // Guard against concurrent setup
-    if (_isSettingUp) {
-      log.info('CarPlay setup already in progress, skipping');
-      return;
-    }
-    _isSettingUp = true;
-
-    log.info('Setting up CarPlay root template');
-
-    try {
-      // Create tabs with initial content
-      // Order: Now Playing, Current, Saved, More
-      final nowPlayingTab = _createNowPlayingTab();
-      _currentTab = await _createCurrentTab();
-      final savedTab = await _createSavedTab();
-      final moreTab = _createMoreTab();
-
-      // Create tab bar with main sections
-      // Now Playing first for quick access, then Current, Saved, and More
-      _rootTemplate = CPTabBarTemplate(
-        templates: [
-          nowPlayingTab,
-          _currentTab!,
-          savedTab,
-          moreTab,
-        ],
-      );
-
-      log.info('Setting CarPlay tab bar template');
-      FlutterCarplay.setRootTemplate(
-        rootTemplate: _rootTemplate!,
-        animated: true,
-      );
-
-      // Force update to ensure template is rendered
-      await Future.delayed(const Duration(milliseconds: 100));
-      _flutterCarplay.forceUpdateRootTemplate();
-
-      log.info('CarPlay root template set successfully');
-    } catch (e, stackTrace) {
-      log.severe('Failed to set up CarPlay root template: $e');
-      log.severe('Stack trace: $stackTrace');
-      _isSettingUp = false;
-      rethrow;
-    }
-  }
-
   // MARK: - Tab Creation
 
   CPListTemplate _createNowPlayingTab() {
@@ -297,7 +313,7 @@ class CarPlayService {
           _showNowPlayingGrid();
           complete();
         },
-        playingIndicatorLocation: CPListItemPlayingIndicatorLocations.trailing,
+        playingIndicatorLocation: CPListItemPlayingIndicatorLocation.trailing,
         isPlaying: true,
       ));
     }
@@ -336,46 +352,6 @@ class CarPlayService {
     );
   }
 
-  Future<CPListTemplate> _createCurrentTab() async {
-    log.info('Creating Current tab');
-    final items = await _loadCurrentEpisodes();
-
-    return CPListTemplate(
-      sections: items.isEmpty ? [] : [CPListSection(items: items)],
-      title: 'Current',
-      systemIcon: 'clock.fill',
-      emptyViewTitleVariants: ['No Episodes'],
-      emptyViewSubtitleVariants: ['Start playing to see episodes here'],
-    );
-  }
-
-  Future<CPListTemplate> _createSavedTab() async {
-    log.info('Creating Saved tab');
-
-    final items = <CPListItem>[];
-
-    if (pinepodsService != null && settingsService.pinepodsUserId != null) {
-      try {
-        final saved = await pinepodsService!.getSavedEpisodes(settingsService.pinepodsUserId!);
-        // Limit to 50 items for performance
-        for (final ep in saved.take(50)) {
-          items.add(_createEpisodeItem(_convertPinepodsEpisode(ep)));
-        }
-        log.info('Loaded ${items.length} saved episodes for tab');
-      } catch (e) {
-        log.warning('Failed to load saved episodes for tab: $e');
-      }
-    }
-
-    return CPListTemplate(
-      sections: items.isEmpty ? [] : [CPListSection(items: items)],
-      title: 'Saved',
-      systemIcon: 'bookmark.fill',
-      emptyViewTitleVariants: ['No Saved Episodes'],
-      emptyViewSubtitleVariants: ['Save episodes to see them here'],
-    );
-  }
-
   CPListTemplate _createMoreTab() {
     // Create the "More" submenu items
     // Now Playing and Saved are top-level tabs, so not included here
@@ -387,7 +363,7 @@ class CarPlayService {
           _showQueue();
           complete();
         },
-        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        accessoryType: CPListItemAccessoryType.disclosureIndicator,
       ),
       CPListItem(
         text: 'Downloads',
@@ -396,7 +372,7 @@ class CarPlayService {
           _showDownloads();
           complete();
         },
-        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        accessoryType: CPListItemAccessoryType.disclosureIndicator,
       ),
       CPListItem(
         text: 'History',
@@ -405,7 +381,7 @@ class CarPlayService {
           _showHistory();
           complete();
         },
-        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        accessoryType: CPListItemAccessoryType.disclosureIndicator,
       ),
       CPListItem(
         text: 'Podcasts',
@@ -414,7 +390,7 @@ class CarPlayService {
           _showPodcasts();
           complete();
         },
-        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        accessoryType: CPListItemAccessoryType.disclosureIndicator,
       ),
       CPListItem(
         text: 'Playlists',
@@ -423,7 +399,7 @@ class CarPlayService {
           _showPlaylists();
           complete();
         },
-        accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+        accessoryType: CPListItemAccessoryType.disclosureIndicator,
       ),
     ];
 
@@ -456,7 +432,7 @@ class CarPlayService {
             _showNowPlayingGrid();
             complete();
           },
-          playingIndicatorLocation: CPListItemPlayingIndicatorLocations.trailing,
+          playingIndicatorLocation: CPListItemPlayingIndicatorLocation.trailing,
         ));
         episodes.add(nowPlaying);
       }
@@ -498,6 +474,22 @@ class CarPlayService {
       log.severe('Failed to load current episodes: $e');
       return [];
     }
+  }
+
+  Future<List<CPListItem>> _loadSavedEpisodes() async {
+    final items = <CPListItem>[];
+    if (pinepodsService != null && settingsService.pinepodsUserId != null) {
+      try {
+        final saved = await pinepodsService!.getSavedEpisodes(settingsService.pinepodsUserId!);
+        for (final ep in saved.take(50)) {
+          items.add(_createEpisodeItem(_convertPinepodsEpisode(ep)));
+        }
+        log.info('Loaded ${items.length} saved episodes');
+      } catch (e) {
+        log.warning('Failed to load saved episodes: $e');
+      }
+    }
+    return items;
   }
 
   // MARK: - More Submenu Navigation
@@ -620,7 +612,7 @@ class CarPlayService {
                 _showPodcastEpisodes(podcastId, podcast.title);
                 complete();
               },
-              accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+              accessoryType: CPListItemAccessoryType.disclosureIndicator,
             ));
           } catch (e) {
             log.warning('Failed to create podcast item for ${podcast.title}: $e');
@@ -719,7 +711,7 @@ class CarPlayService {
             _showPlaylistEpisodes(playlist.playlistId.toString(), playlist.name);
             complete();
           },
-          accessoryType: CPListItemAccessoryTypes.disclosureIndicator,
+          accessoryType: CPListItemAccessoryType.disclosureIndicator,
         )).toList();
 
         await _flutterCarplay.updateListTemplateSections(
@@ -796,7 +788,7 @@ class CarPlayService {
           _playEpisode(episode);
           complete();
         },
-        playingIndicatorLocation: CPListItemPlayingIndicatorLocations.trailing,
+        playingIndicatorLocation: CPListItemPlayingIndicatorLocation.trailing,
       );
     } catch (e) {
       log.warning('Failed to create episode item for ${episode.title}: $e');

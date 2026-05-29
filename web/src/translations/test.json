@@ -132,7 +132,8 @@
     "title_za": "ZZTEST-TITLE-ZA-ZZTEST",
     "update": "",
     "username": "ZZTEST-USERNAME-ZZTEST",
-    "yes": "ZZTEST-YES-ZZTEST"
+    "yes": "ZZTEST-YES-ZZTEST",
+    "close": "Close"
   },
   "custom_feed": {
     "add_feed": "ZZTEST-ADD-FEED-ZZTEST",
@@ -736,8 +737,21 @@
     "fresh_releases_empty": "ZZTEST-FRESH-RELEASES-EMPTY-ZZTEST",
     "no_episodes_found": "ZZTEST-NO-EPISODES-FOUND-ZZTEST",
     "no_episodes_match_criteria": "ZZTEST-NO-EPISODES-MATCH-CRITERIA-ZZTEST",
+    "play_from_top": "Play from Top",
     "refresh": "",
-    "refreshing": ""
+    "refreshing": "",
+    "edit_filter_by_podcasts": "Filter by Podcasts",
+    "edit_episode_status": "Episode Status",
+    "edit_include_unplayed": "Include Unplayed",
+    "edit_include_partially_played": "Include Partially Played",
+    "edit_include_played": "Include Played",
+    "edit_min_duration": "Min Duration (min)",
+    "edit_max_duration": "Max Duration (min)",
+    "edit_min_progress": "Min Progress (%)",
+    "edit_max_progress": "Max Progress (%)",
+    "edit_time_filter_hours": "Time Filter (hours)",
+    "edit_max_episodes": "Max Episodes",
+    "edit_group_by_podcast": "Group by Podcast"
   },
   "playlists": {
     "are_you_sure_delete": "ZZTEST-ARE-YOU-SURE-DELETE-ZZTEST",

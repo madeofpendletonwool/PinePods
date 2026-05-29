@@ -1334,14 +1334,16 @@ class _PodcastCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              podcast.podcastName,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
+            Flexible(
+              child: Text(
+                podcast.podcastName,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
             ),
           ],
         ),

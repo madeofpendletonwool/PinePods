@@ -150,7 +150,8 @@
     "title_za": "Title Z-A",
     "update": "Update",
     "username": "Username",
-    "yes": "Yes"
+    "yes": "Yes",
+    "close": "Close"
   },
   "context_menu_button": {
     "delete_local_download": "Delete Local Download",
@@ -371,7 +372,6 @@
     "hide": "Hide",
     "hosts": "Hosts",
     "hiding_completed": "Hiding completed episodes",
-    "hosts": "Hosts",
     "in_progress": "In Progress",
     "invalid_html_content": "Invalid HTML content",
     "loading": "Loading...",
@@ -424,6 +424,7 @@
     "select_all": "Select All",
     "select_podcasts_to_merge": "Select Podcasts to Merge",
     "select_unplayed": "Select Unplayed",
+    "select_in_progress": "Select In Progress",
     "shortest_first": "Shortest First",
     "show_only": "Show Only",
     "showing_all_episodes": "Showing all episodes",
@@ -864,8 +865,25 @@
     "fresh_releases_empty": "No new episodes have been released in the last 24 hours. Check back later for fresh content!",
     "no_episodes_found": "No Episodes Found",
     "no_episodes_match_criteria": "No episodes match the current playlist criteria. Try adjusting the filters or add more podcasts.",
+    "edit_playlist": "Edit Playlist",
+    "edit_save": "Save Changes",
+    "edit_failed": "Failed to update playlist",
+    "edit_success": "Playlist updated successfully",
+    "play_from_top": "Play from Top",
     "refresh": "Refresh",
-    "refreshing": "Refreshing..."
+    "refreshing": "Refreshing...",
+    "edit_filter_by_podcasts": "Filter by Podcasts",
+    "edit_episode_status": "Episode Status",
+    "edit_include_unplayed": "Include Unplayed",
+    "edit_include_partially_played": "Include Partially Played",
+    "edit_include_played": "Include Played",
+    "edit_min_duration": "Min Duration (min)",
+    "edit_max_duration": "Max Duration (min)",
+    "edit_min_progress": "Min Progress (%)",
+    "edit_max_progress": "Max Progress (%)",
+    "edit_time_filter_hours": "Time Filter (hours)",
+    "edit_max_episodes": "Max Episodes",
+    "edit_group_by_podcast": "Group by Podcast"
   },
   "playlists": {
     "are_you_sure_delete": "Are you sure you want to delete",
@@ -947,7 +965,8 @@
     "search_by_custom_terms": "Search by Name",
     "match_btn": "Match",
     "enter_podcast_id": "Search By Podcast Index ID",
-    "search": "Search"
+    "search": "Search",
+    "searching": "Searching..."
   },
   "podcast_layout": {
     "add_error": "Error adding podcast",

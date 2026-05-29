@@ -8,7 +8,7 @@ use crate::requests::pod_req::call_get_episode_id;
 use crate::requests::pod_req::FetchPodcasting2DataRequest;
 use crate::requests::pod_req::{
     call_add_history, call_check_episode_in_db, call_fetch_podcasting_2_data,
-    call_get_auto_play_next_status, call_get_next_podcast_episode,
+    call_get_auto_play_next_status, call_get_next_playlist_episode, call_get_next_podcast_episode,
     call_get_play_episode_details, call_get_podcast_id_from_ep, call_get_queued_episodes,
     call_increment_listen_time, call_increment_played, call_mark_episode_completed,
     call_queue_episode, call_record_listen_duration, call_remove_queued_episode,
@@ -871,12 +871,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     });
 
     // Effect for managing queued episodes
-    use_effect_with(audio_ref.clone(), {
+    // Depends on episode_id so the closure is recreated with the correct episode ID each time
+    // a new episode starts — preventing stale captures that broke playlist continuation.
+    use_effect_with((audio_ref.clone(), episode_id), {
         let audio_dispatch = _audio_dispatch.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
-        let current_episode_id = episode_id.clone(); // Assuming this is correctly obtained elsewhere
+        let current_episode_id = episode_id;
         let audio_state = audio_state.clone();
         let audio_state_cloned = audio_state.clone();
         let offline_status = offline_status.clone();
@@ -923,8 +925,70 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         processing_flag_for_reset.set(false);
                     } else {
                         wasm_bindgen_futures::spawn_local(async move {
-                            // Check auto-play-next before the queue
                             let mut auto_play_handled = false;
+
+                            // PRIORITY 1: Playlist context auto-play
+                            // Read live state via dispatch to avoid stale snapshot from render time.
+                            // The stale `audio_state` clone was captured when the effect ran and may
+                            // have current_playlist_id = None if the effect fired before the dispatch
+                            // that sets current_playlist_id completed.
+                            let live_playlist_id = audio_dispatch.get().current_playlist_id;
+                            web_sys::console::log_1(&format!(
+                                "ended: ep={:?}, live_playlist_id={:?}",
+                                current_episode_id, live_playlist_id
+                            ).into());
+                            if let (Some(Some(api_key_val)), Some(user_id_val), Some(server_name_val)) =
+                                (api_key.clone(), user_id, server_name.clone())
+                            {
+                                if let (Some(ep_id), Some(pid)) = (current_episode_id, live_playlist_id) {
+                                    web_sys::console::log_1(&format!(
+                                        "Playlist context active (playlist {}), looking for next episode...", pid
+                                    ).into());
+                                    match call_get_next_playlist_episode(
+                                        &server_name_val,
+                                        &Some(api_key_val.clone()),
+                                        ep_id,
+                                        pid,
+                                        user_id_val,
+                                    ).await {
+                                        Ok(Some(next_episode)) => {
+                                            web_sys::console::log_1(&format!(
+                                                "Playlist auto-play: {} (ID: {})",
+                                                next_episode.episodetitle, next_episode.episodeid
+                                            ).into());
+                                            on_play_click(
+                                                next_episode,
+                                                api_key_val,
+                                                user_id_val,
+                                                server_name_val,
+                                                audio_dispatch.clone(),
+                                                audio_state.clone(),
+                                                false,
+                                                true,
+                                                Some(pid),
+                                            )
+                                            .emit(MouseEvent::new("click").unwrap());
+                                            auto_play_handled = true;
+                                        }
+                                        Ok(None) => {
+                                            web_sys::console::log_1(&"Playlist exhausted, clearing playlist context".into());
+                                            audio_dispatch.reduce_mut(|state| {
+                                                state.current_playlist_id = None;
+                                            });
+                                        }
+                                        Err(e) => {
+                                            web_sys::console::log_1(&format!("Playlist next episode error: {:?}", e).into());
+                                        }
+                                    }
+                                }
+                            }
+
+                            if auto_play_handled {
+                                processing_flag_for_reset.set(false);
+                                return;
+                            }
+
+                            // PRIORITY 2: Serial podcast auto-play
                             if let (Some(Some(api_key_val)), Some(user_id_val), Some(server_name_val)) =
                                 (api_key.clone(), user_id, server_name.clone())
                             {
@@ -965,6 +1029,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                                         audio_state.clone(),
                                                         false,
                                                         true, // skip_queue: auto-play-next episodes shouldn't be added to queue
+                                                        None,
                                                     )
                                                     .emit(MouseEvent::new("click").unwrap());
                                                     auto_play_handled = true;
@@ -1078,6 +1143,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                                             audio_state.clone(),
                                                             false,
                                                             false,
+                                                            None,
                                                         )
                                                         .emit(MouseEvent::new("click").unwrap());
                                                     } else {
@@ -1299,6 +1365,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 audio_state.clone(),
                                 false,
                                 false,
+                                None,
                             )
                             .emit(MouseEvent::new("click").unwrap());
                         } else {
@@ -1874,6 +1941,7 @@ pub fn on_play_pause(
                 audio_state.clone(),
                 is_local,
                 false,
+                None,
             )
             .emit(e);
         }
@@ -1889,12 +1957,14 @@ pub fn on_play_click(
     _audio_state: Rc<UIState>,
     is_local: bool,
     skip_queue: bool,
+    playlist_id: Option<i32>,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
         let audio_dispatch = audio_dispatch.clone();
+        let playlist_id = playlist_id;
 
         let episode_pos: f32 = 0.0;
         let check_server_name = server_name.clone();
@@ -2206,6 +2276,7 @@ pub fn on_play_click(
                                     audio_state.playback_speed = playback_speed as f64;
                                     audio_state.audio_volume = 100.0;
                                     audio_state.offline = Some(false);
+                                    audio_state.current_playlist_id = playlist_id;
                                     audio_state.currently_playing = Some(AudioPlayerProps {
                                         episode: episode.clone(),
                                         src: src.clone(),
@@ -2259,6 +2330,7 @@ pub fn on_play_click(
                     audio_state.playback_speed = 1.0;
                     audio_state.audio_volume = 100.0;
                     audio_state.offline = Some(false);
+                    audio_state.current_playlist_id = playlist_id;
                     audio_state.currently_playing = Some(AudioPlayerProps {
                         episode: episode.clone(),
                         src: src.clone(),

@@ -1,5 +1,5 @@
 use axum::{
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use std::net::SocketAddr;
@@ -233,6 +233,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/get_auto_download_status", post(handlers::podcasts::get_auto_download_status))
         .route("/get_auto_play_next_status", post(handlers::podcasts::get_auto_play_next_status))
         .route("/get_next_podcast_episode", post(handlers::podcasts::get_next_podcast_episode))
+        .route("/get_next_playlist_episode", post(handlers::podcasts::get_next_playlist_episode))
         .route("/get_feed_cutoff_days", get(handlers::podcasts::get_feed_cutoff_days))
         .route("/get_play_episode_details", post(handlers::podcasts::get_play_episode_details))
         .route("/fetch_podcasting_2_pod_data", get(handlers::podcasts::fetch_podcasting_2_pod_data))
@@ -262,6 +263,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/get_playlist_episodes", get(handlers::podcasts::get_playlist_episodes))
         .route("/create_playlist", post(handlers::playlists::create_playlist))
         .route("/delete_playlist", delete(handlers::playlists::delete_playlist))
+        .route("/update_playlist", patch(handlers::playlists::update_playlist))
         .route("/get_podcast_details", get(handlers::podcasts::get_podcast_details))
         .route("/get_podcast_details_dynamic", get(handlers::podcasts::get_podcast_details_dynamic))
         .route("/podpeople/host_podcasts", get(handlers::podcasts::get_host_podcasts))

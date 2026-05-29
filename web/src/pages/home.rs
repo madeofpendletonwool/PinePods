@@ -125,7 +125,7 @@ pub fn home() -> Html {
                                     .chain(home_data.in_progress_episodes.iter());
 
                                 // Extract episode state information
-                                let completed_episode_ids: Vec<i32> = all_episodes
+                                let completed_episode_ids: std::collections::HashSet<i32> = all_episodes
                                     .clone()
                                     .filter(|ep| ep.completed)
                                     .map(|ep| ep.episodeid)
@@ -152,7 +152,7 @@ pub fn home() -> Html {
                                     state.home_overview = Some(home_data);
                                 });
                                 Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
-                                    state.completed_episodes = Some(completed_episode_ids);
+                                    state.completed_episodes = completed_episode_ids;
                                     state.saved_episodes = saved_episodes;
                                     state.queued_episode_ids = Some(queued_episode_ids);
                                     state.downloaded_episodes.clear_server();
@@ -245,6 +245,7 @@ pub fn home() -> Html {
                                             { for home_data.in_progress_episodes.iter().take(3).map(|episode| {
                                                 html! {
                                                     <EpisodeListItem
+                                                        key={episode.episodeid}
                                                         episode={ episode.clone() }
                                                     />
                                                 }
@@ -340,6 +341,7 @@ pub fn home() -> Html {
                                     { for home_data.recent_episodes.iter().take(5).map(|episode| {
                                         html! {
                                             <EpisodeListItem
+                                                key={episode.episodeid}
                                                 episode={episode.clone()}
                                             />
                                         }

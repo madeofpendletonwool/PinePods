@@ -32,13 +32,11 @@ use yewdux::prelude::*;
 use js_sys;
 
 #[allow(dead_code)]
-#[allow(dead_code)]
 pub enum AppStateMsg {
     ExpandEpisode(String),
     CollapseEpisode(String),
-    SetLoading(bool),
-    UpdateSelectedEpisodesForDeletion(i32), // Add this line
-    DeleteSelectedEpisodes,                 // Add this line
+    UpdateSelectedEpisodesForDeletion(i32),
+    DeleteSelectedEpisodes,
 }
 
 impl Reducer<AppState> for AppStateMsg {
@@ -53,11 +51,7 @@ impl Reducer<AppState> for AppStateMsg {
             AppStateMsg::CollapseEpisode(guid) => {
                 state_mut.expanded_descriptions.remove(&guid);
             }
-            AppStateMsg::SetLoading(is_loading) => {
-                state_mut.is_loading = Option::from(is_loading);
-            }
             AppStateMsg::UpdateSelectedEpisodesForDeletion(episode_id) => {
-                // Add this block
                 state_mut.selected_episodes_for_deletion.insert(episode_id);
             }
             AppStateMsg::DeleteSelectedEpisodes => {
@@ -108,8 +102,6 @@ pub struct AppState {
     pub pods: Option<Podcast>,
     pub podcast_feed_return: Option<PodcastResponse>,
     pub podcast_feed_return_extra: Option<PodcastResponseExtra>,
-    pub is_loading: Option<bool>,
-    pub is_refreshing: Option<bool>,
     pub gravatar_url: Option<String>,
     #[serde(default)]
     pub expanded_descriptions: HashSet<String>,
@@ -168,13 +160,22 @@ pub struct EpisodeStatusState {
     pub downloaded_episodes: DownloadedEpisodeRecords,
     pub queued_episodes: Option<QueuedEpisodesResponse>,
     pub queued_episode_ids: Option<Vec<i32>>,
-    pub completed_episodes: Option<Vec<i32>>,
+    #[serde(default)]
+    pub completed_episodes: HashSet<i32>,
 }
 
 impl EpisodeStatusState {
     pub fn saved_episode_ids(&self) -> impl Iterator<Item = i32> + '_ {
         self.saved_episodes.iter().map(|e| e.episodeid)
     }
+}
+
+/// Loading state kept separate from AppState so that the ~50+ components
+/// subscribing to AppState do NOT re-render on every page navigation or fetch.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct PageLoadState {
+    pub is_loading: Option<bool>,
+    pub is_refreshing: Option<bool>,
 }
 
 /// A collection of records for episodes downloaded either locally or on the server.
@@ -405,6 +406,7 @@ pub struct UIState {
     pub is_mobile: Option<bool>,
     pub loading_episode_id: Option<i32>,
     pub queue_panel_open: bool,
+    pub current_playlist_id: Option<i32>,
 }
 
 impl UIState {
@@ -457,6 +459,20 @@ impl UIState {
     }
 
     pub fn set_media_source(&mut self, src: String, is_video: bool, dispatch: Dispatch<UIState>) {
+        // If the existing element is the wrong type (audio when we need video, or vice-versa),
+        // release it so a fresh element of the correct type gets created below.
+        let type_mismatch = matches!(
+            (&self.media_element, is_video),
+            (Some(MediaElement::Audio(_)), true) | (Some(MediaElement::Video(_)), false)
+        );
+        if type_mismatch {
+            if let Some(media) = &self.media_element {
+                let _ = media.pause();
+                media.set_src("");
+            }
+            self.media_element = None;
+        }
+
         if self.media_element.is_none() {
             self.media_element = if is_video {
                 // Create video element using DOM API

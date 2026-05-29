@@ -32,6 +32,12 @@ pub struct EpisodeListItemProps {
     pub drag_callbacks: DragCallbacks,
     #[prop_or_default]
     pub is_delete_mode: bool,
+    #[prop_or_default]
+    pub is_selected: Option<bool>,
+    #[prop_or_default]
+    pub on_select_above: Callback<i32>,
+    #[prop_or_default]
+    pub on_select_below: Callback<i32>,
 }
 
 #[function_component(EpisodeListItem)]
@@ -43,10 +49,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
     // Only subscribe to the specific fields we need for RENDERING
     let is_completed = use_selector(move |state: &EpisodeStatusState| {
-        state.completed_episodes
-            .as_ref()
-            .unwrap_or(&vec![])
-            .contains(&episode_id)
+        state.completed_episodes.contains(&episode_id)
     });
     let auth_details = use_selector(|state: &AppState| state.auth_details.clone());
     let user_details = use_selector(|state: &AppState| state.user_details.clone());
@@ -79,10 +82,10 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     /*
     Item Shape
     */
-    let is_narrow_viewport = {
-        let window = web_sys::window().expect("no global window exists");
-        window.inner_width().unwrap().as_f64().unwrap() < 500.0
-    };
+    let is_narrow_viewport = *use_memo((), |_| {
+        web_sys::window().expect("no global window exists")
+            .inner_width().unwrap().as_f64().unwrap() < 500.0
+    });
 
     // let desc_expanded = desc_state
     //     .expanded_descriptions
@@ -131,11 +134,19 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     */
     // is_current_episode and is_active_and_playing come from the play_state selector above
 
-    let formatted_pub_date = {
-        let date_format = match_date_format(date_format.as_deref());
-        let datetime = parse_date(&props.episode.episodepubdate, &user_tz);
-        format_datetime(&datetime, &hour_preference, date_format)
-    };
+    let formatted_pub_date = use_memo(
+        (
+            props.episode.episodepubdate.clone(),
+            (*user_tz).clone(),
+            (*date_format).clone(),
+            *hour_preference,
+        ),
+        |(pubdate, tz, fmt, hour)| {
+            let date_fmt = match_date_format(fmt.as_deref());
+            let datetime = parse_date(pubdate, tz);
+            format_datetime(&datetime, hour, date_fmt)
+        },
+    );
 
     let api_key = auth_details
         .as_ref()
@@ -209,6 +220,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     current_state.clone(),
                     is_local,
                     false,
+                    None,
                 )
                 .emit(e);
             }
@@ -219,7 +231,10 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     Episode Information
     */
 
-    let episode_description = sanitize_html_with_blank_target(&props.episode.episodedescription);
+    let episode_description = use_memo(
+        props.episode.episodedescription.clone(),
+        |desc| sanitize_html_with_blank_target(desc),
+    );
 
     let (_listen_duration_str, listen_duration_percentage) = {
         let lds = format_time(props.episode.listenduration);
@@ -348,7 +363,8 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
             <div
                 class={classes!(
                     "ep-row",
-                    if *is_pressing_state { "ep-row--pressing" } else { "" }
+                    if *is_pressing_state { "ep-row--pressing" } else { "" },
+                    if props.is_delete_mode { "ep-row--select" } else { "" }
                 )}
                 style={format!("user-select: {};",
                     if *is_pressing_state { "none" } else { "auto" }
@@ -381,14 +397,24 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
                 {
                     if props.is_delete_mode {
+                        let is_checked = props.is_selected.unwrap_or(*selected_for_deletion);
+                        let ep_id = props.episode.episodeid;
+                        let on_above = props.on_select_above.reform(move |_: MouseEvent| ep_id);
+                        let on_below = props.on_select_below.reform(move |_: MouseEvent| ep_id);
                         html! {
-                            <div class="flex items-center pl-2">
+                            <div class="ep-select-col">
+                                <button class="ep-range-btn" onclick={on_above} title="Select all above">
+                                    <i class="ph ph-caret-up"></i>
+                                </button>
                                 <input
                                     type="checkbox"
-                                    checked={*selected_for_deletion}
+                                    checked={is_checked}
                                     class="podcast-dropdown-checkbox h-5 w-5 rounded border-2 cursor-pointer"
                                     onchange={props.on_checkbox_change.reform(move |_| checkbox_ep)}
                                 />
+                                <button class="ep-range-btn" onclick={on_below} title="Select all below">
+                                    <i class="ph ph-caret-down"></i>
+                                </button>
                             </div>
                         }
                     } else {
@@ -422,10 +448,10 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                             })
                         }
                     >
-                        <SafeHtml html={strip_images_from_html(&episode_description)} />
+                        <SafeHtml html={strip_images_from_html(&*episode_description)} />
                     </div>
                     <div class="ep-meta">
-                        <span>{ formatted_pub_date.clone() }</span>
+                        <span>{ (*formatted_pub_date).clone() }</span>
                         {
                             if *is_completed {
                                 if is_narrow_viewport {
@@ -497,8 +523,8 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     episode_url={props.episode.episodeurl.clone()}
                     episode_artwork={props.episode.episodeartwork.clone()}
                     episode_title={props.episode.episodetitle.clone()}
-                    description={episode_description.clone()}
-                    format_release={formatted_pub_date.to_string()}
+                    description={(*episode_description).clone()}
+                    format_release={(*formatted_pub_date).clone()}
                     duration={props.episode.episodeduration}
                     on_close={on_modal_close.clone()}
                     on_show_notes={on_shownotes_click.clone()}

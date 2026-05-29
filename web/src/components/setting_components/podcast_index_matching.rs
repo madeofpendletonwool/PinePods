@@ -76,7 +76,7 @@ pub fn podcast_index_matching() -> Html {
                 let unmatched_podcasts = unmatched_podcasts.clone();
                 let ignored_podcasts = ignored_podcasts.clone();
                 let loading = loading.clone();
-                let api_key_cloned = api_key.clone().unwrap();
+                let api_key_cloned = api_key.clone().unwrap_or(None);
                 let server_name_cloned = server_name.clone();
 
                 spawn_local(async move {

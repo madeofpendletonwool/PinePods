@@ -26,8 +26,19 @@ const PAGE_SIZE: i64 = 50;
 #[function_component(Saved)]
 pub fn saved() -> Html {
     let (i18n, _) = use_translation();
-    let (state, _dispatch) = use_store::<AppState>();
     let (filter_state, _filter_dispatch) = use_store::<FilterState>();
+    let favorite_podcast_ids = use_selector(|state: &AppState| {
+        state.podcast_feed_return_extra
+            .as_ref()
+            .and_then(|pr| pr.pods.as_ref())
+            .map(|pods| {
+                pods.iter()
+                    .filter(|p| p.is_favorite)
+                    .map(|p| p.podcastid)
+                    .collect::<std::collections::HashSet<i32>>()
+            })
+            .unwrap_or_default()
+    });
 
     let api_key_sel = use_selector(|s: &AppState| {
         s.auth_details.as_ref().map(|ud| ud.api_key.clone())
@@ -119,7 +130,7 @@ pub fn saved() -> Html {
                         .await
                         {
                             Ok(page) => {
-                                let completed_ids: Vec<i32> = page
+                                let completed_ids: std::collections::HashSet<i32> = page
                                     .saved_episodes
                                     .iter()
                                     .filter(|ep| ep.completed)
@@ -128,7 +139,7 @@ pub fn saved() -> Html {
                                 let saved_eps = page.saved_episodes.clone();
                                 Dispatch::<EpisodeStatusState>::global().reduce_mut(move |s| {
                                     s.saved_episodes = saved_eps;
-                                    s.completed_episodes = Some(completed_ids);
+                                    s.completed_episodes = completed_ids;
                                 });
 
                                 #[cfg(not(feature = "server_build"))]
@@ -264,17 +275,6 @@ pub fn saved() -> Html {
         );
     }
 
-    let favorite_podcast_ids: std::collections::HashSet<i32> = state
-        .podcast_feed_return_extra
-        .as_ref()
-        .and_then(|pr| pr.pods.as_ref())
-        .map(|pods| {
-            pods.iter()
-                .filter(|p| p.is_favorite)
-                .map(|p| p.podcastid)
-                .collect()
-        })
-        .unwrap_or_default();
 
     // Client-side search filter only
     let search_term = (*episode_search_term).clone();

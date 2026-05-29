@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, EpisodeStatusState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState, PageLoadState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::pages::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
@@ -229,7 +229,7 @@ pub fn search_bar() -> Html {
             let is_submitting_clone = is_submitting.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
-                Dispatch::<AppState>::global().reduce_mut(|state| state.is_loading = Some(true));
+                Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
                 if *search_index == "youtube" {
                     match call_youtube_search(&search_value, &api_url.unwrap()).await {
                         Ok(yt_results) => {
@@ -239,13 +239,15 @@ pub fn search_bar() -> Html {
                             };
                             Dispatch::<AppState>::global().reduce_mut(|state| {
                                 state.youtube_search_results = Some(search_results);
+                            });
+                            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                 state.is_loading = Some(false);
                             });
                             history.push("/youtube_layout");
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            Dispatch::<AppState>::global().reduce_mut(|state| {
+                            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                 state.is_loading = Some(false);
                             });
                             Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -263,12 +265,12 @@ pub fn search_bar() -> Html {
                                 state.search_results = Some(search_results);
                                 state.podcast_added = Some(false);
                             });
-                            Dispatch::<AppState>::global()
+                            Dispatch::<PageLoadState>::global()
                                 .reduce_mut(|state| state.is_loading = Some(false));
                             history.push("/pod_layout");
                         }
                         Err(_) => {
-                            Dispatch::<AppState>::global()
+                            Dispatch::<PageLoadState>::global()
                                 .reduce_mut(|state| state.is_loading = Some(false));
                         }
                     }

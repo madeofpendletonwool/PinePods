@@ -102,7 +102,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         state.downloaded_episodes.is_local_download(check_episode_id)
     });
     let is_completed_sel = use_selector(move |state: &EpisodeStatusState| {
-        state.completed_episodes.as_ref().map_or(false, |eps| eps.contains(&check_episode_id))
+        state.completed_episodes.contains(&check_episode_id)
     });
     let dropdown_ref = use_node_ref();
     let button_ref = use_node_ref();
@@ -718,16 +718,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 {
                     Ok(success_message) => {
                         Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
-                            if let Some(completed_episodes) = state.completed_episodes.as_mut() {
-                                if let Some(pos) =
-                                    completed_episodes.iter().position(|&id| id == episode_id)
-                                {
-                                    completed_episodes.remove(pos);
-                                } else {
-                                    completed_episodes.push(episode_id);
-                                }
-                            } else {
-                                state.completed_episodes = Some(vec![episode_id]);
+                            if !state.completed_episodes.remove(&episode_id) {
+                                state.completed_episodes.insert(episode_id);
                             }
                         });
                         Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -773,16 +765,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 {
                     Ok(success_message) => {
                         Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
-                            if let Some(completed_episodes) = state.completed_episodes.as_mut() {
-                                if let Some(pos) =
-                                    completed_episodes.iter().position(|&id| id == episode_id)
-                                {
-                                    completed_episodes.remove(pos);
-                                } else {
-                                    completed_episodes.push(episode_id);
-                                }
-                            } else {
-                                state.completed_episodes = Some(vec![episode_id]);
+                            if !state.completed_episodes.remove(&episode_id) {
+                                state.completed_episodes.insert(episode_id);
                             }
                         });
                         Dispatch::<NotificationState>::global().reduce_mut(|state| {

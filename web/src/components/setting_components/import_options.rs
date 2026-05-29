@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, NotificationState};
+use crate::components::context::{AppState, NotificationState, PageLoadState};
 use crate::components::gen_funcs::parse_opml;
 use gloo::timers::callback::Interval;
 use wasm_bindgen::closure::Closure;
@@ -90,7 +90,7 @@ pub fn import_options() -> Html {
 
         Callback::from(move |_| {
             let dispatch_wasm_call = dispatch_wasm_conf.clone();
-            dispatch_wasm_call.reduce_mut(|state| state.is_loading = Some(true));
+            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
             let selected_podcasts: Vec<String> = (*import_pods)
                 .iter()
                 .filter(|podcast| podcast.selected)
@@ -153,7 +153,7 @@ pub fn import_options() -> Html {
                                                     {
                                                         interval.cancel();
                                                     }
-                                                    dispatch_wasm.reduce_mut(|state| {
+                                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                                         state.is_loading = Some(false)
                                                     });
                                                     Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
@@ -187,9 +187,8 @@ pub fn import_options() -> Html {
                             }
                             Err(e) => {
                                 log::error!("Failed to import OPML: {:?}", e);
-                                dispatch_wasm_call.reduce_mut(|state| {
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                     state.is_loading = Some(false);
-                                    state.clone()
                                 });
                                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message = Option::from(error_msg);

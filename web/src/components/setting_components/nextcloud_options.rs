@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, NotificationState};
+use crate::components::context::{AppState, NotificationState, PageLoadState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::connect_to_episode_websocket;
 use crate::requests::setting_reqs::{
@@ -465,7 +465,7 @@ pub fn gpodder_advanced_options() -> Html {
                         {
                             Ok(response) => {
                                 if response.success {
-                                    dispatch_clone.reduce_mut(|state| {
+                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                         state.is_refreshing = Some(true);
                                     });
                                     Dispatch::<NotificationState>::global().reduce_mut(|state| {
@@ -488,7 +488,7 @@ pub fn gpodder_advanced_options() -> Html {
                                         );
                                     }
 
-                                    dispatch_clone.reduce_mut(|state| {
+                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                         state.is_refreshing = Some(false);
                                     });
                                 } else {
@@ -1008,12 +1008,14 @@ pub fn sync_options() -> Html {
             let user_id = user_id.clone().unwrap_or_default();
 
             wasm_bindgen_futures::spawn_local(async move {
-                match call_get_nextcloud_server(
-                    &server_name.clone().unwrap(),
-                    &api_key.clone().unwrap().unwrap(),
-                    user_id,
-                )
-                .await
+                let Some(server_name_val) = server_name.clone() else {
+                    return;
+                };
+                let Some(api_key_val) = api_key.clone().flatten() else {
+                    return;
+                };
+                match call_get_nextcloud_server(&server_name_val, &api_key_val, user_id)
+                    .await
                 {
                     Ok(server) => {
                         if !server.is_empty()
@@ -1223,9 +1225,8 @@ pub fn sync_options() -> Html {
                                                     let server_name_call = server_name.clone();
                                                     let user_id_call = user_id.clone();
                                                     let api_key_call = api_key.clone();
-                                                    dispatch_clone.reduce_mut(|state| {
+                                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                                         state.is_refreshing = Some(true);
-                                                        state.clone() // Return the modified state
                                                     });
 
                                                     spawn_local(async move {
@@ -1249,9 +1250,8 @@ pub fn sync_options() -> Html {
                                                         }
 
                                                         // Stop the loading animation after the WebSocket operation is complete
-                                                        dispatch_clone.reduce_mut(|state| {
+                                                        Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                                             state.is_refreshing = Some(false);
-                                                            state.clone() // Return the modified state
                                                         });
                                                     });
 
@@ -1504,9 +1504,8 @@ pub fn sync_options() -> Html {
                                         let server_name_call = server_name.clone();
                                         let user_id_call = user_id.clone();
                                         let api_key_call = api_key.clone();
-                                        dispatch_clone.reduce_mut(|state| {
+                                        Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                             state.is_refreshing = Some(true);
-                                            state.clone() // Return the modified state
                                         });
 
                                         spawn_local(async move {
@@ -1533,9 +1532,8 @@ pub fn sync_options() -> Html {
                                             }
 
                                             // Stop the loading animation after the WebSocket operation is complete
-                                            dispatch_clone.reduce_mut(|state| {
+                                            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                                                 state.is_refreshing = Some(false);
-                                                state.clone() // Return the modified state
                                             });
                                         });
                                     }
