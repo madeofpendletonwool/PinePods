@@ -530,6 +530,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     on_show_notes={on_shownotes_click.clone()}
                     listen_duration_percentage={listen_duration_percentage}
                     is_youtube={props.episode.is_youtube}
+                    is_video={props.episode.is_video}
                 />
             }
         </div>

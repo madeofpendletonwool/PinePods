@@ -913,7 +913,8 @@
   },
   "safehtml": {
     "start_episode_first": "ZZTEST-START-EPISODE-FIRST-ZZTEST",
-    "start_episode_first_audio": "ZZTEST-START-EPISODE-FIRST-AUDIO-ZZTEST"
+    "start_episode_first_audio": "ZZTEST-START-EPISODE-FIRST-AUDIO-ZZTEST",
+    "starting_episode_for_timecode": "ZZTEST-STARTING-EPISODE-FOR-TIMECODE-ZZTEST"
   },
   "saved": {
     "clear_all": "ZZTEST-CLEAR-ALL-ZZTEST",

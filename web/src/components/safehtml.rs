@@ -1,4 +1,6 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::audio::AudioPlayerProps;
+use crate::components::context::{AppState, NotificationState, UIState};
+use crate::requests::episode::Episode;
 use i18nrs::yew::use_translation;
 use regex::Regex;
 use wasm_bindgen::prelude::*;
@@ -33,6 +35,8 @@ pub struct Props {
     pub listen_duration: Option<i32>,
     #[prop_or(None)]
     pub is_youtube: Option<bool>,
+    #[prop_or(None)]
+    pub is_video: Option<bool>,
 }
 
 // Function to convert timecode to seconds
@@ -64,6 +68,7 @@ fn process_timecodes(
     current_ep: Option<i32>,
     start_episode_first_msg: String,
     start_episode_first_audio_msg: String,
+    starting_episode_for_timecode_msg: String,
 ) -> String {
     // If the content is empty, return early
     if html_content.is_empty() {
@@ -122,6 +127,7 @@ fn process_timecodes(
         current_ep,
         start_episode_first_msg,
         start_episode_first_audio_msg,
+        starting_episode_for_timecode_msg,
     );
 
     // Return the processed HTML
@@ -142,6 +148,7 @@ fn process_node(
     currently_playing_id: Option<i32>,
     start_episode_first_msg: String,
     start_episode_first_audio_msg: String,
+    starting_episode_for_timecode_msg: String,
 ) {
     // Skip processing if node is a script, style, or already a link
     if let Some(element) = node.dyn_ref::<Element>() {
@@ -323,6 +330,22 @@ fn process_node(
                             ),
                         }
 
+                        // Episode metadata for auto-play when not currently playing
+                        if let Some(url) = &episode_props.episode_url {
+                            let _ = span.set_attribute("data-episode-url", url);
+                        }
+                        if let Some(title) = &episode_props.episode_title {
+                            let _ = span.set_attribute("data-episode-title", title);
+                        }
+                        if let Some(artwork) = &episode_props.episode_artwork {
+                            let _ = span.set_attribute("data-episode-artwork", artwork);
+                        }
+                        if let Some(dur) = &episode_props.episode_duration {
+                            let _ = span.set_attribute("data-episode-duration", &dur.to_string());
+                        }
+                        let _ = span.set_attribute("data-is-youtube", &episode_props.is_youtube.unwrap_or(false).to_string());
+                        let _ = span.set_attribute("data-is-video", &episode_props.is_video.unwrap_or(false).to_string());
+
                         match span.set_attribute("role", "button") {
                             Ok(_) => {}
                             Err(e) => {
@@ -351,25 +374,22 @@ fn process_node(
                         // Copy all episode props for the closure
                         let episode_id = episode_props.episode_id;
 
-                        // Add inline handler
-                        // Add inline handler
+                        // Add inline handler — passes the element so JS can read data-* attrs
                         let onclick_handler = if let Some(ep_id) = episode_id {
                             format!(
                                 "event.preventDefault(); \
                                  event.stopPropagation(); \
-                                 console.log('Timecode span clicked inline: {}s, episode: {}'); \
-                                 window.handleTimecodeClick && window.handleTimecodeClick({}, {}); \
+                                 window.handleTimecodeClick && window.handleTimecodeClick(event.currentTarget, {}, {}); \
                                  return false;",
-                                seconds, ep_id, seconds, ep_id
+                                seconds, ep_id
                             )
                         } else {
                             format!(
                                 "event.preventDefault(); \
                                  event.stopPropagation(); \
-                                 console.log('Timecode span clicked inline: {}s'); \
-                                 window.handleTimecodeClick && window.handleTimecodeClick({}, -1); \
+                                 window.handleTimecodeClick && window.handleTimecodeClick(event.currentTarget, {}, -1); \
                                  return false;",
-                                seconds, seconds
+                                seconds
                             )
                         };
 
@@ -380,40 +400,37 @@ fn process_node(
                             ),
                         }
 
-                        // Add global handleTimecodeClick function if it doesn't exist yet
-                        // Add global handleTimecodeClick function if it doesn't exist yet
+                        // Always overwrite handleTimecodeClick so it carries episode data
                         let function_text = r#"
-                            if (!window.handleTimecodeClick) {
-                                window.handleTimecodeClick = function(seconds, episodeId) {
-                                    // Dispatch a custom event that our Rust code can listen for
-                                    document.dispatchEvent(new CustomEvent('timecode-click', {
-                                        detail: { seconds: seconds, episodeId: episodeId },
-                                        bubbles: true,
-                                        cancelable: true
-                                    }));
-
-                                    return false;
-                                };
-
-                            }
+                            window.handleTimecodeClick = function(element, seconds, episodeId) {
+                                var url      = element ? element.getAttribute('data-episode-url')     : null;
+                                var title    = element ? element.getAttribute('data-episode-title')   : '';
+                                var artwork  = element ? element.getAttribute('data-episode-artwork') : '';
+                                var duration = element ? parseInt(element.getAttribute('data-episode-duration') || '0', 10) : 0;
+                                var isYt     = element ? element.getAttribute('data-is-youtube') === 'true' : false;
+                                var isVid    = element ? element.getAttribute('data-is-video')   === 'true' : false;
+                                document.dispatchEvent(new CustomEvent('timecode-click', {
+                                    detail: {
+                                        seconds: seconds, episodeId: episodeId,
+                                        episodeUrl: url, episodeTitle: title, episodeArtwork: artwork,
+                                        episodeDuration: duration, isYoutube: isYt, isVideo: isVid
+                                    },
+                                    bubbles: true,
+                                    cancelable: true
+                                }));
+                                return false;
+                            };
                         "#;
 
-                        // Only add the function once
-                        if js_sys::eval("typeof window.handleTimecodeClick === 'undefined'")
-                            .unwrap()
-                            .as_bool()
-                            .unwrap_or(true)
-                        {
-                            match js_sys::eval(function_text) {
-                                Ok(_) => {}
-                                Err(e) => log_error(
-                                    format!("Failed to add global function: {:?}", e).as_str(),
-                                ),
-                            }
+                        match js_sys::eval(function_text) {
+                            Ok(_) => {}
+                            Err(e) => log_error(
+                                format!("Failed to register handleTimecodeClick: {:?}", e).as_str(),
+                            ),
                         }
 
                         // Register a document-level event listener for 'timecode-click' custom events
-                        if js_sys::eval("typeof window.timecodeDelegationAdded === 'undefined'")
+                        if js_sys::eval("typeof window.timecodeV2DelegationAdded === 'undefined'")
                             .unwrap()
                             .as_bool()
                             .unwrap_or(true)
@@ -421,6 +438,7 @@ fn process_node(
                             let dispatch_clone = dispatch.clone();
                             let start_episode_first_msg_delegation = start_episode_first_msg.clone();
                             let start_episode_first_audio_msg_delegation = start_episode_first_audio_msg.clone();
+                            let starting_episode_for_timecode_msg_delegation = starting_episode_for_timecode_msg.clone();
 
                             let delegation_handler = Closure::wrap(Box::new(
                                 move |e: web_sys::CustomEvent| {
@@ -443,66 +461,107 @@ fn process_node(
                                             let seconds = seconds_f64 as i32;
                                             let event_episode_id = event_episode_id_f64 as i32;
 
-                                            web_sys::console::log_1(
-                                                &format!(
-                                                    "Handling timecode click via delegation: {}s, episode: {}",
-                                                    seconds, event_episode_id
-                                                )
-                                                .into(),
-                                            );
+                                            // Extract episode metadata for auto-play
+                                            let ep_url = js_sys::Reflect::get(&detail, &JsValue::from_str("episodeUrl")).ok().and_then(|v| v.as_string());
+                                            let ep_title = js_sys::Reflect::get(&detail, &JsValue::from_str("episodeTitle")).ok().and_then(|v| v.as_string()).unwrap_or_default();
+                                            let ep_artwork = js_sys::Reflect::get(&detail, &JsValue::from_str("episodeArtwork")).ok().and_then(|v| v.as_string()).unwrap_or_default();
+                                            let ep_duration = js_sys::Reflect::get(&detail, &JsValue::from_str("episodeDuration")).ok().and_then(|v| v.as_f64()).unwrap_or(0.0) as i32;
+                                            let ev_is_youtube = js_sys::Reflect::get(&detail, &JsValue::from_str("isYoutube")).ok().and_then(|v| v.as_bool()).unwrap_or(false);
+                                            let ev_is_video = js_sys::Reflect::get(&detail, &JsValue::from_str("isVideo")).ok().and_then(|v| v.as_bool()).unwrap_or(false);
 
-                                            // Get current playing ID from state
+                                            // Check current state
                                             let mut is_current_episode = false;
-                                            let mut has_audio_element = false;
+                                            let mut has_media = false;
 
                                             dispatch_clone.reduce_mut(|state| {
-                                                has_audio_element = state.audio_element.is_some();
+                                                has_media = state.media_element.is_some() || state.audio_element.is_some();
 
                                                 if let Some(current) = &state.currently_playing {
                                                     is_current_episode = current.episode_id == event_episode_id;
-                                                    web_sys::console::log_1(
-                                                        &format!(
-                                                            "Delegation: Comparing episode IDs: {} vs {}, match: {}",
-                                                            event_episode_id, current.episode_id, is_current_episode
-                                                        )
-                                                        .into(),
-                                                    );
                                                 }
                                             });
 
-                                            if is_current_episode && has_audio_element {
-                                                // Now use dispatch to handle the click
+                                            if is_current_episode && has_media {
+                                                // Seek in the currently playing episode
                                                 dispatch_clone.reduce_mut(|state| {
-                                                    if let Some(audio_element) = state.audio_element.as_ref() {
-                                                        web_sys::console::log_1(&format!("Found audio element, seeking to {}s", seconds).into());
-
-                                                        // Set the current time
-                                                        audio_element.set_current_time(seconds as f64);
-                                                        state.current_time_seconds = seconds as f64;
-
-                                                        // If paused, start playing
+                                                    let t = seconds as f64;
+                                                    if let Some(media) = &state.media_element {
+                                                        media.set_current_time(t);
+                                                        state.current_time_seconds = t;
                                                         if !state.audio_playing.unwrap_or(false) {
-                                                            web_sys::console::log_1(&"Starting playback".into());
-                                                            let _ = audio_element.play();
+                                                            let _ = media.play();
+                                                            state.audio_playing = Some(true);
+                                                        }
+                                                    } else if let Some(audio) = &state.audio_element {
+                                                        audio.set_current_time(t);
+                                                        state.current_time_seconds = t;
+                                                        if !state.audio_playing.unwrap_or(false) {
+                                                            let _ = audio.play();
                                                             state.audio_playing = Some(true);
                                                         }
                                                     }
                                                 });
                                             } else if !is_current_episode {
-                                                web_sys::console::log_1(
-                                                    &"Delegation: Not the current episode".into(),
-                                                );
-                                                // Alert the user
-                                                if let Some(window) = web_sys::window() {
-                                                    let _ = window.alert_with_message(&start_episode_first_msg_delegation);
+                                                if let Some(url) = ep_url {
+                                                    // Auto-play the episode from the timecode
+                                                    let dispatch_for_media = dispatch_clone.clone();
+                                                    let url_clone = url.clone();
+                                                    let ep_title_clone = ep_title.clone();
+                                                    let ep_artwork_clone = ep_artwork.clone();
+                                                    let starting_msg = starting_episode_for_timecode_msg_delegation.clone();
+                                                    dispatch_clone.reduce_mut(move |state| {
+                                                        state.audio_playing = Some(true);
+                                                        state.playback_speed = 1.0;
+                                                        state.audio_volume = 100.0;
+                                                        state.offline = Some(false);
+                                                        let ep = Episode {
+                                                            episodeid: event_episode_id,
+                                                            episodeurl: url_clone.clone(),
+                                                            episodetitle: ep_title_clone.clone(),
+                                                            episodeartwork: ep_artwork_clone.clone(),
+                                                            episodeduration: ep_duration,
+                                                            is_youtube: ev_is_youtube,
+                                                            is_video: ev_is_video,
+                                                            ..Episode::default()
+                                                        };
+                                                        state.currently_playing = Some(AudioPlayerProps {
+                                                            episode: ep,
+                                                            src: url_clone.clone(),
+                                                            title: ep_title_clone.clone(),
+                                                            description: String::new(),
+                                                            release_date: String::new(),
+                                                            artwork_url: ep_artwork_clone.clone(),
+                                                            duration: ep_duration.to_string(),
+                                                            episode_id: event_episode_id,
+                                                            duration_sec: ep_duration as f64,
+                                                            start_pos_sec: seconds as f64,
+                                                            end_pos_sec: 0.0,
+                                                            offline: false,
+                                                            is_youtube: ev_is_youtube,
+                                                            is_video: ev_is_video,
+                                                        });
+                                                        state.set_media_source(url_clone.clone(), ev_is_video, dispatch_for_media);
+                                                        if let Some(media) = &state.media_element {
+                                                            media.set_current_time(seconds as f64);
+                                                            let _ = media.play();
+                                                        }
+                                                    });
+                                                    Dispatch::<NotificationState>::global().reduce_mut(move |ns| {
+                                                        ns.info_message = Some(starting_msg);
+                                                    });
+                                                } else {
+                                                    // No URL available
+                                                    let msg = start_episode_first_msg_delegation.clone();
+                                                    Dispatch::<NotificationState>::global().reduce_mut(move |ns| {
+                                                        ns.info_message = Some(msg);
+                                                    });
                                                 }
                                             } else {
-                                                web_sys::console::error_1(
-                                                    &"No audio element available".into(),
-                                                );
-                                                if let Some(window) = web_sys::window() {
-                                                    let _ = window.alert_with_message(&start_episode_first_audio_msg_delegation);
-                                                }
+                                                // is_current_episode but no media element yet
+                                                let msg = start_episode_first_audio_msg_delegation.clone();
+                                                Dispatch::<NotificationState>::global().reduce_mut(move |ns| {
+                                                    ns.info_message = Some(msg);
+                                                });
                                             }
                                         }
                                     }
@@ -522,7 +581,7 @@ fn process_node(
 
                                         // Mark as added so we don't add it multiple times
                                         let _ =
-                                            js_sys::eval("window.timecodeDelegationAdded = true;");
+                                            js_sys::eval("window.timecodeV2DelegationAdded = true;");
                                     }
                                     Err(e) => log_error(
                                         format!(
@@ -570,40 +629,29 @@ fn process_node(
 
                             if is_current_episode {
                                 // Episode IS currently playing - seek to the timecode
-                                web_sys::console::log_1(&"Episode is current, seeking only".into());
-
                                 dispatch.reduce_mut(|state| {
-                                    if let Some(audio_element) = state.audio_element.as_ref() {
-                                        let time = start_time as f64;
-                                        web_sys::console::log_1(
-                                            &format!("Setting current time to {}", time).into(),
-                                        );
-
-                                        audio_element.set_current_time(time);
+                                    let time = start_time as f64;
+                                    if let Some(media) = &state.media_element {
+                                        media.set_current_time(time);
                                         state.current_time_seconds = time;
-
-                                        // Update formatted time display
-                                        let hours = (time / 3600.0).floor() as i32;
-                                        let minutes = ((time % 3600.0) / 60.0).floor() as i32;
-                                        let seconds = (time % 60.0).floor() as i32;
-                                        state.current_time_formatted =
-                                            format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
-
-                                        // If paused, start playing
                                         if !state.audio_playing.unwrap_or(false) {
-                                            let _ = audio_element.play();
+                                            let _ = media.play();
+                                            state.audio_playing = Some(true);
+                                        }
+                                    } else if let Some(audio) = &state.audio_element {
+                                        audio.set_current_time(time);
+                                        state.current_time_seconds = time;
+                                        if !state.audio_playing.unwrap_or(false) {
+                                            let _ = audio.play();
                                             state.audio_playing = Some(true);
                                         }
                                     }
                                 });
                             } else {
-                                // Not the current episode - show message
-                                web_sys::console::log_1(&"Not the current episode".into());
-
-                                // Alert the user
-                                if let Some(window) = web_sys::window() {
-                                    let _ = window.alert_with_message(&start_episode_first_msg_click);
-                                }
+                                let msg = start_episode_first_msg_click.clone();
+                                Dispatch::<NotificationState>::global().reduce_mut(move |ns| {
+                                    ns.info_message = Some(msg);
+                                });
                             }
 
                             // Provide visual feedback on click
@@ -749,6 +797,7 @@ fn process_node(
                 currently_playing_id,
                 start_episode_first_msg.clone(),
                 start_episode_first_audio_msg.clone(),
+                starting_episode_for_timecode_msg.clone(),
             );
         }
     }
@@ -772,6 +821,7 @@ pub fn safe_html(props: &Props) -> Html {
     // Pre-capture translation strings
     let start_episode_first_msg = i18n.t("safehtml.start_episode_first");
     let start_episode_first_audio_msg = i18n.t("safehtml.start_episode_first_audio");
+    let starting_episode_for_timecode_msg = i18n.t("safehtml.starting_episode_for_timecode");
 
     // Only get the audio_dispatch when timecode processing is enabled
     let processed_html = if props.process_timecodes && server_name.is_some() && api_key.is_some() && user_id.is_some() {
@@ -785,6 +835,7 @@ pub fn safe_html(props: &Props) -> Html {
             current_ep,
             start_episode_first_msg,
             start_episode_first_audio_msg,
+            starting_episode_for_timecode_msg,
         )
     } else {
         log_debug("Timecode processing disabled, returning original HTML");

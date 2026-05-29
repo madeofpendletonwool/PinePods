@@ -3453,10 +3453,19 @@ impl DatabasePool {
     }
 
     // Search data - matches Python search_data function (simplified version)
-    pub async fn search_data(&self, search_term: &str, user_id: i32, limit: i64, offset: i64) -> AppResult<(Vec<serde_json::Value>, i64)> {
+    pub async fn search_data(&self, search_term: &str, user_id: i32, categories: &[String], limit: i64, offset: i64) -> AppResult<(Vec<serde_json::Value>, i64)> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+                let cat_clause = if categories.is_empty() {
+                    String::new()
+                } else {
+                    let conds: Vec<String> = (0..categories.len())
+                        .map(|i| format!("LOWER(p.categories) LIKE LOWER(${})", i + 5))
+                        .collect();
+                    format!("AND ({})", conds.join(" OR "))
+                };
+
+                let sql = format!(
                     r#"SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             p.podcastid,
@@ -3499,16 +3508,24 @@ impl DatabasePool {
                           AND (LOWER(p.podcastname) LIKE LOWER($1)
                                OR LOWER(e.episodetitle) LIKE LOWER($1)
                                OR LOWER(e.episodedescription) LIKE LOWER($1))
+                          {}
                         ORDER BY p.podcastname, e.episodepubdate DESC
                     ) inner_q
-                    LIMIT $3 OFFSET $4"#
-                )
-                .bind(format!("%{}%", search_term))
-                .bind(user_id)
-                .bind(limit)
-                .bind(offset)
-                .fetch_all(pool)
-                .await?;
+                    LIMIT $3 OFFSET $4"#,
+                    cat_clause
+                );
+
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(format!("%{}%", search_term))
+                    .bind(user_id)
+                    .bind(limit)
+                    .bind(offset);
+
+                for cat in categories {
+                    q = q.bind(format!("%{}%", cat));
+                }
+
+                let rows = q.fetch_all(pool).await?;
 
                 let total: i64 = rows.first()
                     .and_then(|r| r.try_get::<i64, _>("total_count").ok())
@@ -3556,7 +3573,14 @@ impl DatabasePool {
                 Ok((results, total))
             }
             DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query(
+                let cat_clause = if categories.is_empty() {
+                    String::new()
+                } else {
+                    let conds = vec!["LOWER(p.Categories) LIKE LOWER(?)"; categories.len()];
+                    format!("AND ({})", conds.join(" OR "))
+                };
+
+                let sql = format!(
                     "SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             p.PodcastID as podcastid,
@@ -3599,22 +3623,30 @@ impl DatabasePool {
                           AND (LOWER(p.PodcastName) LIKE LOWER(?)
                                OR LOWER(e.EpisodeTitle) LIKE LOWER(?)
                                OR LOWER(e.EpisodeDescription) LIKE LOWER(?))
+                          {}
                         ORDER BY p.PodcastName, e.EpisodePubDate DESC
                     ) inner_q
-                    LIMIT ? OFFSET ?"
-                )
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(format!("%{}%", search_term))
-                .bind(format!("%{}%", search_term))
-                .bind(format!("%{}%", search_term))
-                .bind(limit)
-                .bind(offset)
-                .fetch_all(pool)
-                .await?;
+                    LIMIT ? OFFSET ?",
+                    cat_clause
+                );
+
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(format!("%{}%", search_term))
+                    .bind(format!("%{}%", search_term))
+                    .bind(format!("%{}%", search_term))
+                    .bind(limit)
+                    .bind(offset);
+
+                for cat in categories {
+                    q = q.bind(format!("%{}%", cat));
+                }
+
+                let rows = q.fetch_all(pool).await?;
 
                 let total: i64 = rows.first()
                     .and_then(|r| r.try_get::<i64, _>("total_count").ok())

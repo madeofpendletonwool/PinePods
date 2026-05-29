@@ -551,7 +551,7 @@ pub fn search_bar() -> Html {
                         <div class="src-input">
                             <input
                                 type="search"
-                                placeholder="Search\u{2026}"
+                                placeholder="Search New Shows\u{2026}"
                                 value={(*podcast_value).clone()}
                                 oninput={on_input_change.clone()}
                             />
@@ -908,6 +908,7 @@ pub struct EpisodeModalProps {
     pub on_show_notes: Callback<MouseEvent>,
     pub listen_duration_percentage: i32,
     pub is_youtube: bool,
+    pub is_video: bool,
 }
 
 #[function_component(EpisodeModal)]
@@ -964,6 +965,7 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                                 episode_duration={Some(props.duration)}
                                 episode_id={Some(props.episode_id)}
                                 is_youtube={props.is_youtube}
+                                is_video={Some(props.is_video)}
                             />
                         </div>
                     </div>

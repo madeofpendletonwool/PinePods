@@ -919,7 +919,8 @@
   },
   "safehtml": {
     "start_episode_first": "Bitte starte diese Episode, bevor du Zeitmarken benutzt.",
-    "start_episode_first_audio": "Bitte starte zuerst die Episode, bevor du Zeitmarken benutzt."
+    "start_episode_first_audio": "Bitte starte zuerst die Episode, bevor du Zeitmarken benutzt.",
+    "starting_episode_for_timecode": ""
   },
   "saved": {
     "clear_all": "Alles löschen",
