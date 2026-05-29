@@ -589,13 +589,13 @@ pub fn playlist_detail(props: &Props) -> Html {
                                     <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                         <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                                     </svg>
-                                    <span class="sr-only">{"Close"}</span>
+                                    <span class="sr-only">{&i18n.t("common.close")}</span>
                                 </button>
                             </div>
                             <div class="p-4 md:p-5">
                                 <form class="space-y-4" action="#">
                                     <div>
-                                        <label class="block mb-2 text-sm font-medium">{"Name"}</label>
+                                        <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.name")}</label>
                                         <input
                                             type="text"
                                             class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
@@ -608,7 +608,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                     </div>
 
                                     <div>
-                                        <label class="block mb-2 text-sm font-medium">{"Description"}</label>
+                                        <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.description")}</label>
                                         <textarea
                                             class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                                             value={(*edit_description).clone()}
@@ -620,7 +620,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                     </div>
 
                                     <div>
-                                        <label class="block mb-2 text-sm font-medium">{"Icon"}</label>
+                                        <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.icon")}</label>
                                         <IconSelector
                                             selected_icon={(*edit_icon_name).clone()}
                                             on_select={let edit_icon_name = edit_icon_name.clone(); Callback::from(move |new_icon| {
@@ -630,7 +630,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                     </div>
 
                                     <div>
-                                        <label class="block mb-2 text-sm font-medium">{"Filter by Podcasts"}</label>
+                                        <label class="block mb-2 text-sm font-medium">{&i18n.t("playlist_detail.edit_filter_by_podcasts")}</label>
                                         {
                                             if *edit_loading_podcasts {
                                                 html! { <Loading/> }
@@ -652,7 +652,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                     </div>
 
                                     <div>
-                                        <label class="block mb-2 text-sm font-medium">{"Episode Status"}</label>
+                                        <label class="block mb-2 text-sm font-medium">{&i18n.t("playlist_detail.edit_episode_status")}</label>
                                         <div class="space-y-2">
                                             <label class="flex items-center gap-2 cursor-pointer">
                                                 <input type="checkbox"
@@ -661,7 +661,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                                         edit_include_unplayed.set(!*edit_include_unplayed);
                                                     })}
                                                 />
-                                                <span class="text-sm">{"Include Unplayed"}</span>
+                                                <span class="text-sm">{&i18n.t("playlist_detail.edit_include_unplayed")}</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
                                                 <input type="checkbox"
@@ -670,7 +670,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                                         edit_include_partially_played.set(!*edit_include_partially_played);
                                                     })}
                                                 />
-                                                <span class="text-sm">{"Include Partially Played"}</span>
+                                                <span class="text-sm">{&i18n.t("playlist_detail.edit_include_partially_played")}</span>
                                             </label>
                                             <label class="flex items-center gap-2 cursor-pointer">
                                                 <input type="checkbox"
@@ -679,14 +679,14 @@ pub fn playlist_detail(props: &Props) -> Html {
                                                         edit_include_played.set(!*edit_include_played);
                                                     })}
                                                 />
-                                                <span class="text-sm">{"Include Played"}</span>
+                                                <span class="text-sm">{&i18n.t("playlist_detail.edit_include_played")}</span>
                                             </label>
                                         </div>
                                     </div>
 
                                     <div class="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label class="block mb-2 text-sm font-medium">{"Min Duration (min)"}</label>
+                                            <label class="block mb-2 text-sm font-medium">{&i18n.t("playlist_detail.edit_min_duration")}</label>
                                             <input
                                                 type="number"
                                                 class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
@@ -698,7 +698,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                             />
                                         </div>
                                         <div>
-                                            <label class="block mb-2 text-sm font-medium">{"Max Duration (min)"}</label>
+                                            <label class="block mb-2 text-sm font-medium">{&i18n.t("playlist_detail.edit_max_duration")}</label>
                                             <input
                                                 type="number"
                                                 class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
@@ -712,7 +712,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                     </div>
 
                                     <div>
-                                        <label class="block mb-2 text-sm font-medium">{"Sort Order"}</label>
+                                        <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.sort_order")}</label>
                                         <select
                                             class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                                             value={(*edit_sort_order).clone()}
@@ -730,7 +730,7 @@ pub fn playlist_detail(props: &Props) -> Html {
 
                                     <div class="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label class="block mb-2 text-sm font-medium">{"Min Progress (%)"}</label>
+                                            <label class="block mb-2 text-sm font-medium">{&i18n.t("playlist_detail.edit_min_progress")}</label>
                                             <input
                                                 type="number"
                                                 class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
@@ -742,7 +742,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                             />
                                         </div>
                                         <div>
-                                            <label class="block mb-2 text-sm font-medium">{"Max Progress (%)"}</label>
+                                            <label class="block mb-2 text-sm font-medium">{&i18n.t("playlist_detail.edit_max_progress")}</label>
                                             <input
                                                 type="number"
                                                 class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
@@ -757,7 +757,7 @@ pub fn playlist_detail(props: &Props) -> Html {
 
                                     <div class="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label class="block mb-2 text-sm font-medium">{"Time Filter (hours)"}</label>
+                                            <label class="block mb-2 text-sm font-medium">{&i18n.t("playlist_detail.edit_time_filter_hours")}</label>
                                             <input
                                                 type="number"
                                                 class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
@@ -769,7 +769,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                             />
                                         </div>
                                         <div>
-                                            <label class="block mb-2 text-sm font-medium">{"Max Episodes"}</label>
+                                            <label class="block mb-2 text-sm font-medium">{&i18n.t("playlist_detail.edit_max_episodes")}</label>
                                             <input
                                                 type="number"
                                                 class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
@@ -789,7 +789,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                                 edit_group_by_podcast.set(!*edit_group_by_podcast);
                                             })}
                                         />
-                                        <span class="text-sm">{"Group by Podcast"}</span>
+                                        <span class="text-sm">{&i18n.t("playlist_detail.edit_group_by_podcast")}</span>
                                     </label>
 
                                     <button

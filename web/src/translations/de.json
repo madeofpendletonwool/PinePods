@@ -132,7 +132,8 @@
     "title_za": "Titel Z-A",
     "update": "Update",
     "username": "Benutzername",
-    "yes": "Ja"
+    "yes": "Ja",
+    "close": "Close"
   },
   "custom_feed": {
     "add_feed": "Feed hinzufügen",
@@ -744,7 +745,19 @@
     "no_episodes_match_criteria": "Keine Episoden entsprechen den aktuellen Wiedergabelistenkriterien. Probiere es mit angepassten Filtern oder füge weitere Podcasts hinzu.",
     "play_from_top": "Play from Top",
     "refresh": "Aktualisieren",
-    "refreshing": "Aktualisiere..."
+    "refreshing": "Aktualisiere...",
+    "edit_filter_by_podcasts": "Filter by Podcasts",
+    "edit_episode_status": "Episode Status",
+    "edit_include_unplayed": "Include Unplayed",
+    "edit_include_partially_played": "Include Partially Played",
+    "edit_include_played": "Include Played",
+    "edit_min_duration": "Min Duration (min)",
+    "edit_max_duration": "Max Duration (min)",
+    "edit_min_progress": "Min Progress (%)",
+    "edit_max_progress": "Max Progress (%)",
+    "edit_time_filter_hours": "Time Filter (hours)",
+    "edit_max_episodes": "Max Episodes",
+    "edit_group_by_podcast": "Group by Podcast"
   },
   "playlists": {
     "are_you_sure_delete": "Bist du sicher, dass du löschen möchtest?",
