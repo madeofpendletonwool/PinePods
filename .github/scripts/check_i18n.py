@@ -45,7 +45,7 @@ _TECHNICAL_RE = re.compile(
     r'|\d+(\.\d+)?'                                # number
     r'|https?://\S+'                               # URL
     r'|/[a-zA-Z][\w/.-]*'                          # filesystem/URL path
-    r'|[a-z][\w]*(\.[a-z][\w.]*){1,}'             # dot.notation.key (i18n key pattern)
+    r'|[a-z][\w]*(\.[a-z][\w]*){1,}'               # dot.notation.key (i18n key pattern)
     r'|[MmLlHhVvCcSsQqTtAaZz][\d\s,.\-MmLlHhVvCcSsQqTtAaZz]+' # SVG path data
     r')$'
 )
