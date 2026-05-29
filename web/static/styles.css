@@ -4003,6 +4003,38 @@ input[type="range"]::-moz-range-thumb {
     background-color: var(--check-box-color, var(--text-color));
 }
 
+.ep-select-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding-left: 8px;
+}
+.ep-range-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary-color);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    padding: 0;
+    font-size: 13px;
+    opacity: 0.6;
+    transition: opacity var(--dur-fast), background var(--dur-fast);
+}
+.ep-range-btn:hover {
+    opacity: 1;
+    background: rgba(255,255,255,.08);
+}
+.ep-select-col .podcast-dropdown-checkbox {
+    margin-right: 0;
+}
+
 /* Episode list container that will be shown/hidden */
 .podcast-episodes-container {
     max-height: 0;
@@ -6749,6 +6781,9 @@ body {
     transition: transform var(--dur-fast);
     position: relative;
 }
+.ep-row--select {
+    grid-template-columns: auto 96px 1fr auto;
+}
 .ep-row:active { transform: scale(.99); }
 /* When a context menu is open inside the row, suppress the transform.
    A transform on any ancestor turns position:fixed children into
@@ -6897,6 +6932,9 @@ body {
         grid-template-columns: 72px 1fr auto;
         gap: 10px;
         padding: 10px 12px;
+    }
+    .ep-row--select {
+        grid-template-columns: auto 72px 1fr auto;
     }
     .ep-art-wrap { width: 72px; height: 72px; }
     .ep-art-img {

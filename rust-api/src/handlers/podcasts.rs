@@ -1432,6 +1432,34 @@ pub async fn get_next_podcast_episode(
     Ok(Json(episode))
 }
 
+#[derive(Deserialize)]
+pub struct NextPlaylistEpisodeRequest {
+    pub episode_id: i32,
+    pub playlist_id: i32,
+    pub user_id: i32,
+}
+
+pub async fn get_next_playlist_episode(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<NextPlaylistEpisodeRequest>,
+) -> Result<Json<Option<crate::models::QueuedEpisode>>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You can only access your own episodes."));
+    }
+
+    let episode = state.db_pool.get_next_playlist_episode(request.episode_id, request.playlist_id, request.user_id).await?;
+    Ok(Json(episode))
+}
+
 // Query parameters for get_feed_cutoff_days
 #[derive(Deserialize)]
 pub struct FeedCutoffDaysQuery {
@@ -2201,6 +2229,14 @@ pub async fn get_playlist_episodes(
     let limit = query.limit.unwrap_or(50).min(200).max(1);
     let offset = query.offset.unwrap_or(0).max(0);
 
+    // Refresh PlaylistContents on first page load so next-episode lookups stay in sync
+    // with what the user sees in the UI.
+    if offset == 0 {
+        if let Err(e) = state.db_pool.update_playlist_contents(query.playlist_id).await {
+            tracing::warn!("Failed to refresh playlist contents for {}: {}", query.playlist_id, e);
+        }
+    }
+
     // Use new dynamic playlist system
     let playlist_response = state.db_pool.get_playlist_episodes_dynamic(
         query.playlist_id,
@@ -2208,7 +2244,7 @@ pub async fn get_playlist_episodes(
         limit,
         offset,
     ).await?;
-    
+
     // Return in format expected by frontend
     Ok(Json(serde_json::to_value(playlist_response)?))
 }

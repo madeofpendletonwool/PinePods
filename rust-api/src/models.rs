@@ -190,6 +190,32 @@ pub struct DeletePlaylistResponse {
     pub detail: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdatePlaylistRequest {
+    pub user_id: i32,
+    pub playlist_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub podcast_ids: Option<Vec<i32>>,
+    pub include_unplayed: bool,
+    pub include_partially_played: bool,
+    pub include_played: bool,
+    pub play_progress_min: Option<f64>,
+    pub play_progress_max: Option<f64>,
+    pub time_filter_hours: Option<i32>,
+    pub min_duration: Option<i32>,
+    pub max_duration: Option<i32>,
+    pub sort_order: String,
+    pub group_by_podcast: bool,
+    pub max_episodes: Option<i32>,
+    pub icon_name: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UpdatePlaylistResponse {
+    pub detail: String,
+}
+
 // Search models
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchRequest {
@@ -371,6 +397,19 @@ pub struct PlaylistInfo {
     pub description: String,
     pub episode_count: i32,
     pub icon_name: String,
+    pub is_system_playlist: bool,
+    pub podcast_ids: Option<Vec<i32>>,
+    pub include_unplayed: bool,
+    pub include_partially_played: bool,
+    pub include_played: bool,
+    pub min_duration: Option<i32>,
+    pub max_duration: Option<i32>,
+    pub sort_order: String,
+    pub group_by_podcast: bool,
+    pub max_episodes: Option<i32>,
+    pub play_progress_min: Option<f64>,
+    pub play_progress_max: Option<f64>,
+    pub time_filter_hours: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

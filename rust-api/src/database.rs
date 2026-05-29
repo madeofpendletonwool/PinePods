@@ -5474,19 +5474,23 @@ impl DatabasePool {
                     }
                 }
             } else {
+                // Compare URLs without query parameters — some feeds (e.g. NPR/Podtrac) regenerate
+                // tracking params like d= and size= on every fetch, which would otherwise cause the
+                // same episode to be inserted as new on each refresh.
+                let url_base = episode.url.split('?').next().unwrap_or(&episode.url);
                 match self {
                     DatabasePool::Postgres(pool) => {
-                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodeurl = $2"#)
+                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND split_part(episodeurl, '?', 1) = $2"#)
                             .bind(podcast_id)
-                            .bind(&episode.url)
+                            .bind(url_base)
                             .fetch_optional(pool)
                             .await?;
                         row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
                     }
                     DatabasePool::MySQL(pool) => {
-                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeURL = ?")
+                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND SUBSTRING_INDEX(EpisodeURL, '?', 1) = ?")
                             .bind(podcast_id)
-                            .bind(&episode.url)
+                            .bind(url_base)
                             .fetch_optional(pool)
                             .await?;
                         row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
@@ -5644,19 +5648,20 @@ impl DatabasePool {
                     }
                 }
             } else {
+                let url_base = episode.url.split('?').next().unwrap_or(&episode.url);
                 match self {
                     DatabasePool::Postgres(pool) => {
-                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodeurl = $2"#)
+                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND split_part(episodeurl, '?', 1) = $2"#)
                             .bind(podcast_id)
-                            .bind(&episode.url)
+                            .bind(url_base)
                             .fetch_optional(pool)
                             .await?;
                         row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
                     }
                     DatabasePool::MySQL(pool) => {
-                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeURL = ?")
+                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND SUBSTRING_INDEX(EpisodeURL, '?', 1) = ?")
                             .bind(podcast_id)
-                            .bind(&episode.url)
+                            .bind(url_base)
                             .fetch_optional(pool)
                             .await?;
                         row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
@@ -9742,7 +9747,63 @@ impl DatabasePool {
         }
     }
 
-    // Get feed cutoff days - matches Python get_feed_cutoff_days function exactly  
+    pub async fn get_next_playlist_episode(&self, episode_id: i32, playlist_id: i32, user_id: i32) -> AppResult<Option<crate::models::QueuedEpisode>> {
+        // Use the same dynamic query as the playlist display so the playback order exactly
+        // matches what the user sees in the UI. PlaylistContents was previously used, but it
+        // can be stale (e.g. only refreshed on creation/podcast-refresh), causing the currently-
+        // playing episode to appear at the last position or not at all, which surfaced as
+        // "Playlist exhausted" immediately after the first episode finished.
+        //
+        // Strategy:
+        //   1. Fetch up to 500 episodes via the dynamic query (same order as UI).
+        //   2. Find the just-played episode_id in the list.
+        //   3. If found: return the next one after it.
+        //   4. If not found (episode was filtered out because it just completed):
+        //      return the first episode that isn't the current one — i.e. the next
+        //      uncompleted episode the user would see at the top of the playlist.
+        let page = self.get_playlist_episodes_dynamic(playlist_id, user_id, 500, 0).await?;
+        let episodes = page.episodes;
+
+        let to_queued = |ep: &crate::models::SavedEpisode| crate::models::QueuedEpisode {
+            episodeid: ep.episodeid,
+            episodetitle: ep.episodetitle.clone(),
+            podcastname: ep.podcastname.clone(),
+            episodepubdate: ep.episodepubdate.clone(),
+            episodedescription: ep.episodedescription.clone(),
+            episodeartwork: ep.episodeartwork.clone(),
+            episodeurl: ep.episodeurl.clone(),
+            episodeduration: ep.episodeduration,
+            listenduration: ep.listenduration,
+            queueposition: None,
+            queuedate: String::new(),
+            completed: ep.completed,
+            saved: ep.saved,
+            queued: ep.queued,
+            downloaded: ep.downloaded,
+            is_youtube: ep.is_youtube,
+            is_video: false,
+        };
+
+        // Try to find the current episode in the list.
+        if let Some(pos) = episodes.iter().position(|ep| ep.episodeid == episode_id) {
+            // Episode still in the list (not yet filtered as completed): return the next one.
+            if let Some(next_ep) = episodes.get(pos + 1) {
+                return Ok(Some(to_queued(next_ep)));
+            }
+            // Current episode was the last one — playlist exhausted.
+            return Ok(None);
+        }
+
+        // Current episode not in list (filtered out after completion): play the first
+        // remaining episode that isn't the current one.
+        if let Some(next_ep) = episodes.iter().find(|ep| ep.episodeid != episode_id) {
+            return Ok(Some(to_queued(next_ep)));
+        }
+
+        Ok(None)
+    }
+
+    // Get feed cutoff days - matches Python get_feed_cutoff_days function exactly
     pub async fn get_feed_cutoff_days(&self, podcast_id: i32, user_id: i32) -> AppResult<Option<i32>> {
         match self {
             DatabasePool::Postgres(pool) => {
@@ -25715,6 +25776,136 @@ impl DatabasePool {
         }
     }
 
+    pub async fn update_playlist(&self, _config: &crate::config::Config, playlist_data: &crate::models::UpdatePlaylistRequest) -> AppResult<()> {
+        let min_duration = playlist_data.min_duration.map(|d| d * 60);
+        let max_duration = playlist_data.max_duration.map(|d| d * 60);
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Verify ownership and not a system playlist
+                let row = sqlx::query(
+                    r#"SELECT issystemplaylist, userid FROM "Playlists" WHERE playlistid = $1"#
+                )
+                .bind(playlist_data.playlist_id)
+                .fetch_optional(pool)
+                .await?;
+
+                let row = row.ok_or_else(|| AppError::not_found("Playlist not found"))?;
+                if row.try_get::<bool, _>("issystemplaylist")? {
+                    return Err(AppError::bad_request("Cannot edit system playlists"));
+                }
+                if row.try_get::<i32, _>("userid")? != playlist_data.user_id {
+                    return Err(AppError::forbidden("Unauthorized to edit this playlist"));
+                }
+
+                let podcast_ids_array = playlist_data.podcast_ids.clone().unwrap_or_default();
+
+                sqlx::query(r#"
+                    UPDATE "Playlists" SET
+                        name = $1,
+                        description = $2,
+                        podcastids = $3,
+                        includeunplayed = $4,
+                        includepartiallyplayed = $5,
+                        includeplayed = $6,
+                        minduration = $7,
+                        maxduration = $8,
+                        sortorder = $9,
+                        groupbypodcast = $10,
+                        maxepisodes = $11,
+                        iconname = $12,
+                        playprogressmin = $13,
+                        playprogressmax = $14,
+                        timefilterhours = $15
+                    WHERE playlistid = $16
+                "#)
+                .bind(&playlist_data.name)
+                .bind(&playlist_data.description)
+                .bind(&podcast_ids_array)
+                .bind(playlist_data.include_unplayed)
+                .bind(playlist_data.include_partially_played)
+                .bind(playlist_data.include_played)
+                .bind(min_duration)
+                .bind(max_duration)
+                .bind(&playlist_data.sort_order)
+                .bind(playlist_data.group_by_podcast)
+                .bind(playlist_data.max_episodes)
+                .bind(&playlist_data.icon_name)
+                .bind(playlist_data.play_progress_min)
+                .bind(playlist_data.play_progress_max)
+                .bind(playlist_data.time_filter_hours)
+                .bind(playlist_data.playlist_id)
+                .execute(pool)
+                .await?;
+
+                self.update_playlist_contents(playlist_data.playlist_id).await?;
+                Ok(())
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(
+                    "SELECT IsSystemPlaylist, UserID FROM Playlists WHERE PlaylistID = ?"
+                )
+                .bind(playlist_data.playlist_id)
+                .fetch_optional(pool)
+                .await?;
+
+                let row = row.ok_or_else(|| AppError::not_found("Playlist not found"))?;
+                let is_system: i8 = row.try_get("IsSystemPlaylist")?;
+                if is_system != 0 {
+                    return Err(AppError::bad_request("Cannot edit system playlists"));
+                }
+                if row.try_get::<i32, _>("UserID")? != playlist_data.user_id {
+                    return Err(AppError::forbidden("Unauthorized to edit this playlist"));
+                }
+
+                let podcast_ids_json = serde_json::to_string(
+                    &playlist_data.podcast_ids.clone().unwrap_or_default()
+                )?;
+
+                sqlx::query(r#"
+                    UPDATE Playlists SET
+                        Name = ?,
+                        Description = ?,
+                        PodcastIDs = ?,
+                        IncludeUnplayed = ?,
+                        IncludePartiallyPlayed = ?,
+                        IncludePlayed = ?,
+                        MinDuration = ?,
+                        MaxDuration = ?,
+                        SortOrder = ?,
+                        GroupByPodcast = ?,
+                        MaxEpisodes = ?,
+                        IconName = ?,
+                        PlayProgressMin = ?,
+                        PlayProgressMax = ?,
+                        TimeFilterHours = ?
+                    WHERE PlaylistID = ?
+                "#)
+                .bind(&playlist_data.name)
+                .bind(&playlist_data.description)
+                .bind(&podcast_ids_json)
+                .bind(playlist_data.include_unplayed)
+                .bind(playlist_data.include_partially_played)
+                .bind(playlist_data.include_played)
+                .bind(min_duration)
+                .bind(max_duration)
+                .bind(&playlist_data.sort_order)
+                .bind(playlist_data.group_by_podcast)
+                .bind(playlist_data.max_episodes)
+                .bind(&playlist_data.icon_name)
+                .bind(playlist_data.play_progress_min)
+                .bind(playlist_data.play_progress_max)
+                .bind(playlist_data.time_filter_hours)
+                .bind(playlist_data.playlist_id)
+                .execute(pool)
+                .await?;
+
+                self.update_playlist_contents(playlist_data.playlist_id).await?;
+                Ok(())
+            }
+        }
+    }
+
     // Get user's language preference
     pub async fn get_user_language(&self, user_id: i32) -> AppResult<String> {
         match self {
@@ -26625,11 +26816,27 @@ impl DatabasePool {
                 debug!("📝 Retrieved {} episodes from dynamic query (total: {})", episodes.len(), total_count);
 
                 // Create playlist info from the playlist row we already have
+                let min_dur_secs: Option<i32> = playlist.try_get("minduration")?;
+                let max_dur_secs: Option<i32> = playlist.try_get("maxduration")?;
+                let podcast_ids: Option<Vec<i32>> = playlist.try_get("podcastids").ok();
                 let playlist_info = crate::models::PlaylistInfo {
                     name: playlist.try_get::<String, _>("name")?,
                     description: playlist.try_get::<String, _>("description")?,
                     episode_count: total_count as i32,
                     icon_name: playlist.try_get::<String, _>("iconname")?,
+                    is_system_playlist: playlist.try_get::<bool, _>("issystemplaylist")?,
+                    podcast_ids,
+                    include_unplayed: playlist.try_get::<bool, _>("includeunplayed")?,
+                    include_partially_played: playlist.try_get::<bool, _>("includepartiallyplayed")?,
+                    include_played: playlist.try_get::<bool, _>("includeplayed")?,
+                    min_duration: min_dur_secs.map(|s| s / 60),
+                    max_duration: max_dur_secs.map(|s| s / 60),
+                    sort_order: playlist.try_get::<String, _>("sortorder")?,
+                    group_by_podcast: playlist.try_get::<bool, _>("groupbypodcast")?,
+                    max_episodes: playlist.try_get::<Option<i32>, _>("maxepisodes")?,
+                    play_progress_min: playlist.try_get::<Option<f64>, _>("playprogressmin")?,
+                    play_progress_max: playlist.try_get::<Option<f64>, _>("playprogressmax")?,
+                    time_filter_hours: playlist.try_get::<Option<i32>, _>("timefilterhours")?,
                 };
 
                 Ok(crate::models::PlaylistEpisodesResponse {
@@ -26882,11 +27089,35 @@ impl DatabasePool {
                 debug!("📝 Retrieved {} episodes from MySQL dynamic query (total: {})", episodes.len(), total_count);
 
                 // Create playlist info from the MySQL playlist row we already have
+                let min_dur_secs: Option<i32> = playlist.try_get("MinDuration")?;
+                let max_dur_secs: Option<i32> = playlist.try_get("MaxDuration")?;
+                let is_system_raw: i8 = playlist.try_get("IsSystemPlaylist")?;
+                let podcast_ids_raw: Option<String> = playlist.try_get("PodcastIDs").ok().flatten();
+                let podcast_ids: Option<Vec<i32>> = podcast_ids_raw
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok());
+                let include_unplayed_raw: i8 = playlist.try_get("IncludeUnplayed")?;
+                let include_partially_raw: i8 = playlist.try_get("IncludePartiallyPlayed")?;
+                let include_played_raw: i8 = playlist.try_get("IncludePlayed")?;
+                let group_by_raw: i8 = playlist.try_get("GroupByPodcast")?;
                 let playlist_info = crate::models::PlaylistInfo {
                     name: playlist.try_get::<String, _>("Name")?,
                     description: playlist.try_get::<String, _>("Description")?,
                     episode_count: total_count as i32,
                     icon_name: playlist.try_get::<String, _>("IconName")?,
+                    is_system_playlist: is_system_raw != 0,
+                    podcast_ids,
+                    include_unplayed: include_unplayed_raw != 0,
+                    include_partially_played: include_partially_raw != 0,
+                    include_played: include_played_raw != 0,
+                    min_duration: min_dur_secs.map(|s| s / 60),
+                    max_duration: max_dur_secs.map(|s| s / 60),
+                    sort_order: playlist.try_get::<String, _>("SortOrder")?,
+                    group_by_podcast: group_by_raw != 0,
+                    max_episodes: playlist.try_get::<Option<i32>, _>("MaxEpisodes")?,
+                    play_progress_min: playlist.try_get::<Option<f64>, _>("PlayProgressMin")?,
+                    play_progress_max: playlist.try_get::<Option<f64>, _>("PlayProgressMax")?,
+                    time_filter_hours: playlist.try_get::<Option<i32>, _>("TimeFilterHours")?,
                 };
 
                 Ok(crate::models::PlaylistEpisodesResponse {
@@ -27295,4 +27526,8 @@ pub async fn create_playlist(pool: &DatabasePool, config: &Config, playlist_data
 // Standalone delete_playlist function that matches Python API
 pub async fn delete_playlist(pool: &DatabasePool, _config: &Config, playlist_data: &crate::models::DeletePlaylistRequest) -> AppResult<()> {
     pool.delete_playlist(playlist_data.user_id, playlist_data.playlist_id).await
+}
+
+pub async fn update_playlist(pool: &DatabasePool, config: &Config, playlist_data: &crate::models::UpdatePlaylistRequest) -> AppResult<()> {
+    pool.update_playlist(config, playlist_data).await
 }

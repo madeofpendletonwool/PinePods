@@ -736,6 +736,7 @@
     "fresh_releases_empty": "ZZTEST-FRESH-RELEASES-EMPTY-ZZTEST",
     "no_episodes_found": "ZZTEST-NO-EPISODES-FOUND-ZZTEST",
     "no_episodes_match_criteria": "ZZTEST-NO-EPISODES-MATCH-CRITERIA-ZZTEST",
+    "play_from_top": "Play from Top",
     "refresh": "",
     "refreshing": ""
   },

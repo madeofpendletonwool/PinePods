@@ -1008,12 +1008,14 @@ pub fn sync_options() -> Html {
             let user_id = user_id.clone().unwrap_or_default();
 
             wasm_bindgen_futures::spawn_local(async move {
-                match call_get_nextcloud_server(
-                    &server_name.clone().unwrap(),
-                    &api_key.clone().unwrap().unwrap(),
-                    user_id,
-                )
-                .await
+                let Some(server_name_val) = server_name.clone() else {
+                    return;
+                };
+                let Some(api_key_val) = api_key.clone().flatten() else {
+                    return;
+                };
+                match call_get_nextcloud_server(&server_name_val, &api_key_val, user_id)
+                    .await
                 {
                     Ok(server) => {
                         if !server.is_empty()

@@ -32,6 +32,12 @@ pub struct EpisodeListItemProps {
     pub drag_callbacks: DragCallbacks,
     #[prop_or_default]
     pub is_delete_mode: bool,
+    #[prop_or_default]
+    pub is_selected: Option<bool>,
+    #[prop_or_default]
+    pub on_select_above: Callback<i32>,
+    #[prop_or_default]
+    pub on_select_below: Callback<i32>,
 }
 
 #[function_component(EpisodeListItem)]
@@ -214,6 +220,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     current_state.clone(),
                     is_local,
                     false,
+                    None,
                 )
                 .emit(e);
             }
@@ -356,7 +363,8 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
             <div
                 class={classes!(
                     "ep-row",
-                    if *is_pressing_state { "ep-row--pressing" } else { "" }
+                    if *is_pressing_state { "ep-row--pressing" } else { "" },
+                    if props.is_delete_mode { "ep-row--select" } else { "" }
                 )}
                 style={format!("user-select: {};",
                     if *is_pressing_state { "none" } else { "auto" }
@@ -389,14 +397,24 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
                 {
                     if props.is_delete_mode {
+                        let is_checked = props.is_selected.unwrap_or(*selected_for_deletion);
+                        let ep_id = props.episode.episodeid;
+                        let on_above = props.on_select_above.reform(move |_: MouseEvent| ep_id);
+                        let on_below = props.on_select_below.reform(move |_: MouseEvent| ep_id);
                         html! {
-                            <div class="flex items-center pl-2">
+                            <div class="ep-select-col">
+                                <button class="ep-range-btn" onclick={on_above} title="Select all above">
+                                    <i class="ph ph-caret-up"></i>
+                                </button>
                                 <input
                                     type="checkbox"
-                                    checked={*selected_for_deletion}
+                                    checked={is_checked}
                                     class="podcast-dropdown-checkbox h-5 w-5 rounded border-2 cursor-pointer"
                                     onchange={props.on_checkbox_change.reform(move |_| checkbox_ep)}
                                 />
+                                <button class="ep-range-btn" onclick={on_below} title="Select all below">
+                                    <i class="ph ph-caret-down"></i>
+                                </button>
                             </div>
                         }
                     } else {

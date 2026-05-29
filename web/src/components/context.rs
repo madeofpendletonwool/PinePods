@@ -406,6 +406,7 @@ pub struct UIState {
     pub is_mobile: Option<bool>,
     pub loading_episode_id: Option<i32>,
     pub queue_panel_open: bool,
+    pub current_playlist_id: Option<i32>,
 }
 
 impl UIState {
@@ -458,6 +459,20 @@ impl UIState {
     }
 
     pub fn set_media_source(&mut self, src: String, is_video: bool, dispatch: Dispatch<UIState>) {
+        // If the existing element is the wrong type (audio when we need video, or vice-versa),
+        // release it so a fresh element of the correct type gets created below.
+        let type_mismatch = matches!(
+            (&self.media_element, is_video),
+            (Some(MediaElement::Audio(_)), true) | (Some(MediaElement::Video(_)), false)
+        );
+        if type_mismatch {
+            if let Some(media) = &self.media_element {
+                let _ = media.pause();
+                media.set_src("");
+            }
+            self.media_element = None;
+        }
+
         if self.media_element.is_none() {
             self.media_element = if is_video {
                 // Create video element using DOM API

@@ -742,6 +742,7 @@
     "fresh_releases_empty": "Aucun épisode n'a été publié dans les dernières 24 heures. Revenez plus tard pour du contenu frais !",
     "no_episodes_found": "Aucun épisode trouvé",
     "no_episodes_match_criteria": "Aucun épisode ne correspond aux critères actuels de la liste de lecture. Essayez d'ajuster les filtres ou d'ajouter plus de podcasts.",
+    "play_from_top": "Play from Top",
     "refresh": "Rafraîchir",
     "refreshing": "Rafraîchissement…"
   },
