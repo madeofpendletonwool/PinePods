@@ -195,6 +195,26 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let current_time_local = use_state(|| 0.0);
     let current_time_formatted_local = use_state(|| String::from("00:00:00"));
 
+    // Mark body so pages can add bottom padding to avoid player overlap
+    use_effect_with((), |_| {
+        if let Some(window) = web_sys::window() {
+            if let Some(document) = window.document() {
+                if let Some(body) = document.body() {
+                    body.class_list().add_1("audio-player-active").ok();
+                }
+            }
+        }
+        || {
+            if let Some(window) = web_sys::window() {
+                if let Some(document) = window.document() {
+                    if let Some(body) = document.body() {
+                        body.class_list().remove_1("audio-player-active").ok();
+                    }
+                }
+            }
+        }
+    });
+
     // Mount video element into the DOM when fullscreen and video is playing
     {
         let video_container_ref = video_container_ref.clone();
@@ -1872,6 +1892,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             on_show_notes={nav_to_episode}
                             listen_duration_percentage={listen_duration_percentage as i32}
                             is_youtube={props.is_youtube}
+                            is_video={props.is_video}
                         />
                     }
                 } else {

@@ -635,6 +635,8 @@ pub struct PodcastDetailsResponse {
 pub struct SearchRequest {
     pub search_term: String,
     pub user_id: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub categories: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]

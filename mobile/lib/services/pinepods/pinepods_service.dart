@@ -1987,6 +1987,7 @@ class PinepodsService {
     String searchTerm, {
     int limit = 50,
     int offset = 0,
+    List<String>? categories,
   }) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
@@ -2001,10 +2002,18 @@ class PinepodsService {
     print('Making API call to: $url');
 
     try {
+      final body = <String, dynamic>{
+        'search_term': searchTerm,
+        'user_id': userId,
+      };
+      if (categories != null && categories.isNotEmpty) {
+        body['categories'] = categories;
+      }
+
       final response = await http.post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
-        body: jsonEncode({'search_term': searchTerm, 'user_id': userId}),
+        body: jsonEncode(body),
       );
 
       if (response.statusCode == 200) {

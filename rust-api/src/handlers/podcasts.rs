@@ -1891,6 +1891,8 @@ pub async fn get_pinepods_version(
 pub struct SearchDataRequest {
     pub search_term: String,
     pub user_id: i32,
+    #[serde(default)]
+    pub categories: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Default)]
@@ -1923,7 +1925,13 @@ pub async fn search_data(
     let offset = params.offset.unwrap_or(0).max(0);
 
     let (result, total) = state.db_pool
-        .search_data(&request.search_term, request.user_id, limit, offset)
+        .search_data(
+            &request.search_term,
+            request.user_id,
+            request.categories.as_deref().unwrap_or(&[]),
+            limit,
+            offset,
+        )
         .await?;
 
     Ok(Json(SearchDataResponse { data: result, total }))

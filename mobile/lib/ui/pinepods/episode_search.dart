@@ -1,22 +1,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
-import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/services/search_history_service.dart';
-import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/widgets/paginated_episode_list.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 
-/// Episode search page for finding episodes in user's subscriptions
-/// 
-/// This page allows users to search through episodes in their subscribed podcasts
-/// with debounced search input and animated loading states.
+enum _StatusFilter { all, unplayed, inProgress, saved, downloaded }
+
 class EpisodeSearchPage extends StatefulWidget {
   const EpisodeSearchPage({Key? key}) : super(key: key);
 
@@ -30,21 +27,30 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   Timer? _debounceTimer;
-  
+
   List<SearchEpisodeResult> _searchResults = [];
   List<String> _searchHistory = [];
   bool _isLoading = false;
   bool _hasSearched = false;
-  bool _showHistory = false;
   String? _errorMessage;
   String _currentQuery = '';
+
+  // Category state
+  List<String> _selectedCategories = [];
+  List<String> _availableCategories = [];
+
+  // Discovery surface
+  List<HomePodcast> _mostPlayed = [];
+  bool _discoveryLoaded = false;
+
+  // Status filter (local, no API round-trip)
+  _StatusFilter _activeStatusFilter = _StatusFilter.all;
 
   // Pagination state
   int _searchTotal = 0;
   int _searchOffset = 0;
   bool _isLoadingMore = false;
 
-  // Use global audio service instead of creating local instance
   int? _contextMenuEpisodeIndex;
 
   // Animation controllers
@@ -58,10 +64,10 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
     super.initState();
     _setupAnimations();
     _setupSearch();
+    _loadDiscoveryData();
   }
 
   void _setupAnimations() {
-    // Fade animation for results
     _fadeAnimationController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
@@ -74,7 +80,6 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
       curve: Curves.easeInOut,
     ));
 
-    // Slide animation for search bar
     _slideAnimationController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -104,6 +109,29 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
     _loadSearchHistory();
   }
 
+  Future<void> _loadDiscoveryData() async {
+    if (_discoveryLoaded) return;
+    final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    final userId = settings.pinepodsUserId;
+    if (userId == null) return;
+
+    try {
+      final podData = await _pinepodsService.getUserPodcastsWithCategories(userId);
+      final catMap = podData['categories'] as Map<int, List<String>>? ?? {};
+      final allCats = catMap.values.expand((c) => c).toSet().toList()..sort();
+
+      final overview = await _pinepodsService.getHomeOverview(userId);
+
+      if (mounted) {
+        setState(() {
+          _availableCategories = allCats;
+          _mostPlayed = overview.topPodcasts;
+          _discoveryLoaded = true;
+        });
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadSearchHistory() async {
     final history = await _searchHistoryService.getEpisodeSearchHistory();
     if (mounted) {
@@ -123,6 +151,40 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
     await _loadSearchHistory();
   }
 
+  void _toggleCategory(String cat) {
+    setState(() {
+      if (_selectedCategories.contains(cat)) {
+        _selectedCategories.remove(cat);
+      } else {
+        _selectedCategories.add(cat);
+      }
+    });
+    final query = _searchController.text.trim();
+    _currentQuery = '';
+    if (query.isNotEmpty || _selectedCategories.isNotEmpty) {
+      _performSearch(query);
+    } else {
+      _clearResults();
+    }
+  }
+
+  List<SearchEpisodeResult> get _visibleResults {
+    return _searchResults.where((r) {
+      switch (_activeStatusFilter) {
+        case _StatusFilter.all:
+          return true;
+        case _StatusFilter.unplayed:
+          return !r.completed && (r.listenDuration ?? 0) == 0;
+        case _StatusFilter.inProgress:
+          return (r.listenDuration ?? 0) > 0 && !r.completed;
+        case _StatusFilter.saved:
+          return r.saved;
+        case _StatusFilter.downloaded:
+          return r.downloaded;
+      }
+    }).toList();
+  }
+
   PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
 
   Future<void> _playEpisode(PinepodsEpisode episode) async {
@@ -138,7 +200,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
 
     try {
       await _audioService!.playPinepodsEpisode(pinepodsEpisode: episode);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -191,7 +253,6 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
 
       if (success && mounted) {
         _showSnackBar('Episode saved', Colors.green);
-        // Update local state
         setState(() {
           _searchResults[episodeIndex] = SearchEpisodeResult(
             podcastId: _searchResults[episodeIndex].podcastId,
@@ -213,7 +274,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
             episodeUrl: _searchResults[episodeIndex].episodeUrl,
             episodeDuration: _searchResults[episodeIndex].episodeDuration,
             completed: _searchResults[episodeIndex].completed,
-            saved: true, // We just saved it
+            saved: true,
             queued: _searchResults[episodeIndex].queued,
             downloaded: _searchResults[episodeIndex].downloaded,
             isYoutube: _searchResults[episodeIndex].isYoutube,
@@ -263,19 +324,16 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   Future<void> _downloadEpisode(int episodeIndex) async {
     final episode = _searchResults[episodeIndex].toPinepodsEpisode();
     _showSnackBar('Download started for ${episode.episodeTitle}', Colors.blue);
-    // Note: Actual download implementation would depend on download service integration
   }
 
   Future<void> _deleteEpisode(int episodeIndex) async {
     final episode = _searchResults[episodeIndex].toPinepodsEpisode();
     _showSnackBar('Delete requested for ${episode.episodeTitle}', Colors.orange);
-    // Note: Actual delete implementation would depend on download service integration
   }
 
   Future<void> _localDownloadEpisode(int episodeIndex) async {
     final episode = _searchResults[episodeIndex].toPinepodsEpisode();
     _showSnackBar('Local download started for ${episode.episodeTitle}', Colors.blue);
-    // Note: Actual local download implementation would depend on download service integration
   }
 
   Future<void> _toggleQueueEpisode(int episodeIndex) async {
@@ -296,7 +354,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
           userId,
           episode.isYoutube,
         );
-        
+
         if (success && mounted) {
           _showSnackBar('Episode removed from queue', Colors.orange);
         }
@@ -306,7 +364,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
           userId,
           episode.isYoutube,
         );
-        
+
         if (success && mounted) {
           _showSnackBar('Episode added to queue', Colors.green);
         }
@@ -336,7 +394,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
           userId,
           episode.isYoutube,
         );
-        
+
         if (success && mounted) {
           _showSnackBar('Episode marked as incomplete', Colors.orange);
         }
@@ -346,7 +404,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
           userId,
           episode.isYoutube,
         );
-        
+
         if (success && mounted) {
           _showSnackBar('Episode marked as complete', Colors.green);
         }
@@ -372,21 +430,19 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
 
   void _onSearchChanged() {
     final query = _searchController.text.trim();
-    
-    setState(() {
-      _showHistory = query.isEmpty && _searchHistory.isNotEmpty;
-    });
-    
-    if (_debounceTimer?.isActive ?? false) {
-      _debounceTimer!.cancel();
-    }
 
+    _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      if (query.isNotEmpty && query != _currentQuery) {
+      if (query.isEmpty) {
+        if (_selectedCategories.isNotEmpty) {
+          _currentQuery = '';
+          _performSearch('');
+        } else {
+          _clearResults();
+        }
+      } else if (query != _currentQuery) {
         _currentQuery = query;
         _performSearch(query);
-      } else if (query.isEmpty) {
-        _clearResults();
       }
     });
   }
@@ -395,14 +451,13 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
     setState(() {
       _isLoading = true;
       _errorMessage = null;
-      _showHistory = false;
     });
 
-    // Save search term to history
-    await _searchHistoryService.addEpisodeSearchTerm(query);
-    await _loadSearchHistory();
+    if (query.isNotEmpty) {
+      await _searchHistoryService.addEpisodeSearchTerm(query);
+      await _loadSearchHistory();
+    }
 
-    // Animate search bar to top
     _slideAnimationController.forward();
 
     try {
@@ -410,11 +465,13 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
       final settings = settingsBloc.currentSettings;
       final userId = settings.pinepodsUserId;
 
-      if (userId == null) {
-        throw Exception('Not logged in');
-      }
+      if (userId == null) throw Exception('Not logged in');
 
-      final page = await _pinepodsService.searchEpisodes(userId, query, limit: 50, offset: 0);
+      final page = await _pinepodsService.searchEpisodes(
+        userId, query,
+        limit: 50, offset: 0,
+        categories: _selectedCategories.isEmpty ? null : List.from(_selectedCategories),
+      );
 
       setState(() {
         _searchResults = page.results;
@@ -424,7 +481,6 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
         _hasSearched = true;
       });
 
-      // Animate results in
       _fadeAnimationController.forward();
     } catch (e) {
       setState(() {
@@ -449,7 +505,9 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
 
     try {
       final page = await _pinepodsService.searchEpisodes(
-        userId, _currentQuery, limit: 50, offset: _searchOffset,
+        userId, _currentQuery,
+        limit: 50, offset: _searchOffset,
+        categories: _selectedCategories.isEmpty ? null : List.from(_selectedCategories),
       );
       setState(() {
         _searchResults.addAll(page.results);
@@ -468,7 +526,8 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
       _hasSearched = false;
       _errorMessage = null;
       _currentQuery = '';
-      _showHistory = _searchHistory.isNotEmpty;
+      _selectedCategories = [];
+      _activeStatusFilter = _StatusFilter.all;
       _searchTotal = 0;
       _searchOffset = 0;
     });
@@ -476,7 +535,21 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
     _slideAnimationController.reverse();
   }
 
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          color: Theme.of(context).primaryColor,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
   Widget _buildSearchBar() {
+    final showClear = _searchController.text.isNotEmpty || _selectedCategories.isNotEmpty;
     return SlideTransition(
       position: _slideAnimation,
       child: Container(
@@ -503,9 +576,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
               focusNode: _focusNode,
               style: Theme.of(context).textTheme.bodyLarge,
               onTap: () {
-                setState(() {
-                  _showHistory = _searchController.text.isEmpty && _searchHistory.isNotEmpty;
-                });
+                setState(() {});
               },
               decoration: InputDecoration(
                 hintText: 'Search for episodes...',
@@ -516,7 +587,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
                   Icons.search,
                   color: Theme.of(context).primaryColor,
                 ),
-                suffixIcon: _searchController.text.isNotEmpty
+                suffixIcon: showClear
                     ? IconButton(
                         icon: Icon(
                           Icons.clear,
@@ -542,6 +613,127 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
     );
   }
 
+  Widget _buildActiveCategories() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: _selectedCategories.map((cat) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Chip(
+            avatar: const Icon(Icons.label_outline, size: 14),
+            label: Text(cat),
+            deleteIcon: const Icon(Icons.close, size: 14),
+            onDeleted: () => _toggleCategory(cat),
+            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+            labelStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
+          ),
+        )).toList(),
+      ),
+    );
+  }
+
+  Widget _buildStatusFilterChips() {
+    final chips = <(_StatusFilter, String, IconData?)>[
+      (_StatusFilter.all, 'All', null),
+      (_StatusFilter.unplayed, 'Unplayed', Icons.circle_outlined),
+      (_StatusFilter.inProgress, 'In Progress', Icons.hourglass_empty),
+      (_StatusFilter.saved, 'Saved', Icons.star_border),
+      (_StatusFilter.downloaded, 'Downloaded', Icons.download_outlined),
+    ];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: chips.map((c) {
+          final (filter, label, icon) = c;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              avatar: icon != null ? Icon(icon, size: 14) : null,
+              label: Text(label),
+              selected: _activeStatusFilter == filter,
+              onSelected: (_) => setState(() => _activeStatusFilter = filter),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildPodcastTile(HomePodcast pod) {
+    return Container(
+      width: 100,
+      margin: const EdgeInsets.only(right: 12),
+      child: Column(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              pod.artworkUrl ?? '',
+              width: 90,
+              height: 90,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                width: 90,
+                height: 90,
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                child: const Icon(Icons.podcasts),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            pod.podcastName,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDiscoverySurface() {
+    final topPodcasts = _mostPlayed.take(8).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_searchHistory.isNotEmpty) _buildSearchHistory(),
+        if (topPodcasts.isNotEmpty) ...[
+          _buildSectionHeader('Most Played in Your Library'),
+          SizedBox(
+            height: 140,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: topPodcasts.length,
+              itemBuilder: (context, index) => _buildPodcastTile(topPodcasts[index]),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (_availableCategories.isNotEmpty) ...[
+          _buildSectionHeader('Browse by Category'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _availableCategories.map((cat) => FilterChip(
+                label: Text(cat),
+                selected: _selectedCategories.contains(cat),
+                onSelected: (_) => _toggleCategory(cat),
+              )).toList(),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ],
+    );
+  }
+
   Widget _buildLoadingIndicator() {
     return Container(
       padding: const EdgeInsets.all(64),
@@ -562,38 +754,6 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   }
 
   Widget _buildEmptyState() {
-    if (!_hasSearched) {
-      return Container(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.search,
-              size: 64,
-              color: Theme.of(context).primaryColor.withOpacity(0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Search Your Episodes',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Theme.of(context).primaryColor,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Find episodes from your subscribed podcasts',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).hintColor,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-
     return Container(
       padding: const EdgeInsets.all(32),
       child: Column(
@@ -611,7 +771,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
           ),
           const SizedBox(height: 8),
           Text(
-            'Try adjusting your search terms',
+            'Try adjusting your search terms or categories',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).hintColor,
             ),
@@ -648,7 +808,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () {
-              if (_currentQuery.isNotEmpty) {
+              if (_currentQuery.isNotEmpty || _selectedCategories.isNotEmpty) {
                 _performSearch(_currentQuery);
               }
             },
@@ -660,7 +820,8 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   }
 
   Widget _buildResults() {
-    final episodes = _searchResults.map((result) => result.toPinepodsEpisode()).toList();
+    final visible = _visibleResults;
+    final episodes = visible.map((result) => result.toPinepodsEpisode()).toList();
     final hasMore = _searchOffset < _searchTotal;
 
     return FadeTransition(
@@ -723,20 +884,19 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
                 ),
               ),
               const Spacer(),
-              if (_searchHistory.isNotEmpty)
-                TextButton(
-                  onPressed: () async {
-                    await _searchHistoryService.clearEpisodeSearchHistory();
-                    await _loadSearchHistory();
-                  },
-                  child: Text(
-                    'Clear All',
-                    style: TextStyle(
-                      color: Theme.of(context).hintColor,
-                      fontSize: 12,
-                    ),
+              TextButton(
+                onPressed: () async {
+                  await _searchHistoryService.clearEpisodeSearchHistory();
+                  await _loadSearchHistory();
+                },
+                child: Text(
+                  'Clear All',
+                  style: TextStyle(
+                    color: Theme.of(context).hintColor,
+                    fontSize: 12,
                   ),
                 ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -773,9 +933,8 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
 
   @override
   Widget build(BuildContext context) {
-    // Show context menu as a modal overlay if needed
     if (_contextMenuEpisodeIndex != null) {
-      final episodeIndex = _contextMenuEpisodeIndex!; // Store locally to avoid null issues
+      final episodeIndex = _contextMenuEpisodeIndex!;
       final episode = _searchResults[episodeIndex].toPinepodsEpisode();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         showDialog(
@@ -791,7 +950,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
               Navigator.of(context).pop();
               _removeSavedEpisode(episodeIndex);
             },
-            onDownload: episode.downloaded 
+            onDownload: episode.downloaded
               ? () {
                   Navigator.of(context).pop();
                   _deleteEpisode(episodeIndex);
@@ -819,33 +978,33 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
           ),
         );
       });
-      // Reset the context menu index after storing it locally
       _contextMenuEpisodeIndex = null;
     }
+
+    final showDiscovery = _currentQuery.isEmpty && _selectedCategories.isEmpty && !_hasSearched;
+    final showFilterBar = _hasSearched || _selectedCategories.isNotEmpty;
 
     return SliverFillRemaining(
       child: GestureDetector(
         onTap: () {
-          // Dismiss keyboard when tapping outside
           FocusScope.of(context).unfocus();
         },
         child: Column(
           children: [
             _buildSearchBar(),
+            if (_selectedCategories.isNotEmpty) _buildActiveCategories(),
+            if (showFilterBar) _buildStatusFilterChips(),
             Expanded(
               child: SingleChildScrollView(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: _showHistory
-                      ? _buildSearchHistory()
-                      : _isLoading
-                          ? _buildLoadingIndicator()
-                          : _errorMessage != null
-                              ? _buildErrorState()
-                              : _searchResults.isEmpty
-                                  ? _buildEmptyState()
-                                  : _buildResults(),
-                ),
+                child: showDiscovery
+                    ? _buildDiscoverySurface()
+                    : _isLoading
+                        ? _buildLoadingIndicator()
+                        : _errorMessage != null
+                            ? _buildErrorState()
+                            : _visibleResults.isEmpty
+                                ? _buildEmptyState()
+                                : _buildResults(),
               ),
             ),
           ],

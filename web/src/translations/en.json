@@ -1067,7 +1067,8 @@
   },
   "safehtml": {
     "start_episode_first": "Please start playing this episode before using timecodes.",
-    "start_episode_first_audio": "Please start playing the episode first before using timecodes."
+    "start_episode_first_audio": "Please start playing the episode first before using timecodes.",
+    "starting_episode_for_timecode": "Starting episode at timecode..."
   },
   "saved": {
     "clear_all": "Clear All",
@@ -1090,7 +1091,26 @@
     "search": "Search",
     "search_for_podcast_episode_description": "Search for a podcast, episode, or description",
     "search_podcasts": "Search podcasts...",
-    "try_different_search": "Perhaps try again, but search for something slightly different :/"
+    "try_different_search": "Perhaps try again, but search for something slightly different :/",
+    "title": "Search your library",
+    "subtitle": "Episode titles, show notes, and descriptions — across everything you subscribe to.",
+    "filters": "Filters",
+    "filter_by_status": "Filter by status",
+    "filter_all": "All",
+    "filter_unplayed": "Unplayed",
+    "filter_in_progress": "In Progress",
+    "filter_saved": "Saved",
+    "filter_downloaded": "Downloaded",
+    "recent_searches": "Recent searches",
+    "clear_all": "Clear all",
+    "most_played": "Most played in your library",
+    "browse_by_category": "Browse by category",
+    "see_all": "See all",
+    "sort_relevance": "Sort: Relevance",
+    "no_matches_header": "Nothing in your library matches that",
+    "no_matches_body": "Try a different term, clear the status filter, or search new shows from the top bar.",
+    "mobile_placeholder": "Search your library…",
+    "desktop_placeholder": "Search episodes, shows, show notes…"
   },
   "search_new": {
     "search_new": "Search New"

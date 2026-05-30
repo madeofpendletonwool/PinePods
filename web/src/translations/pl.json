@@ -913,7 +913,8 @@
   },
   "safehtml": {
     "start_episode_first": "",
-    "start_episode_first_audio": ""
+    "start_episode_first_audio": "",
+    "starting_episode_for_timecode": ""
   },
   "saved": {
     "clear_all": "",

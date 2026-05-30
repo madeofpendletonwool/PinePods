@@ -1781,6 +1781,7 @@ pub fn epsiode() -> Html {
                                                 episode_duration={episode.episodeduration}
                                                 episode_id={Some(episode.episodeid)}
                                                 is_youtube={episode.is_youtube}
+                                                is_video={Some(episode.is_video)}
                                             />
                                         </div>
                                     </div>
@@ -2002,6 +2003,7 @@ pub fn epsiode() -> Html {
                                             episode_duration={episode.episodeduration}
                                             episode_id={Some(episode.episodeid)}
                                             is_youtube={episode.is_youtube}
+                                            is_video={Some(episode.is_video)}
                                         />
                                     </div>
                                     </div>

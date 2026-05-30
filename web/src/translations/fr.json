@@ -919,7 +919,8 @@
   },
   "safehtml": {
     "start_episode_first": "Merci de commencer la lecture de cet épisode avant d'utiliser les codes temporels.",
-    "start_episode_first_audio": "Merci de commencer la lecture de l'épisode avant d'utiliser les codes temporels."
+    "start_episode_first_audio": "Merci de commencer la lecture de l'épisode avant d'utiliser les codes temporels.",
+    "starting_episode_for_timecode": ""
   },
   "saved": {
     "clear_all": "Tout enlever",
