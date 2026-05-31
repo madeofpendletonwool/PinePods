@@ -1,7 +1,7 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, EpisodeStatusState, NotificationState, PageLoadState, UIState};
+use crate::components::context::{AppState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
 use crate::requests::episode::Episode;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::{
@@ -166,30 +166,6 @@ fn get_rss_base_url() -> String {
         "{}/rss",
         current_url.split('/').take(3).collect::<Vec<_>>().join("/")
     )
-}
-
-#[allow(dead_code)]
-pub enum AppStateMsg {
-    ExpandEpisode(String),
-    CollapseEpisode(String),
-}
-
-impl Reducer<AppState> for AppStateMsg {
-    fn apply(self, mut state: Rc<AppState>) -> Rc<AppState> {
-        let state_mut = Rc::make_mut(&mut state);
-
-        match self {
-            AppStateMsg::ExpandEpisode(guid) => {
-                state_mut.expanded_descriptions.insert(guid);
-            }
-            AppStateMsg::CollapseEpisode(guid) => {
-                state_mut.expanded_descriptions.remove(&guid);
-            }
-        }
-
-        // Return the Rc itself, not a reference to it
-        state
-    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -368,9 +344,11 @@ pub fn episode_layout() -> Html {
     let (i18n, _) = use_translation();
     let is_added = use_state(|| false);
     let (search_state, _search_dispatch) = use_store::<AppState>();
+    let (search_data, _) = use_store::<SearchState>();
     let (state, _dispatch) = use_store::<UIState>();
-    let podcast_feed_results = search_state.podcast_feed_results.clone();
-    let clicked_podcast_info = search_state.clicked_podcast_info.clone();
+    let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
+    let podcast_feed_results = search_data.podcast_feed_results.clone();
+    let clicked_podcast_info = podcast_state.clicked_podcast_info.clone();
 
     // Capture i18n strings before they get moved - this is a large component with many strings
     let i18n_youtube_channel_successfully_removed = i18n
@@ -538,7 +516,7 @@ pub fn episode_layout() -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
-    let podcast_added = search_state.podcast_added.unwrap_or_default();
+    let podcast_added = podcast_state.podcast_added.unwrap_or_default();
     let pod_url = use_state(|| String::new());
     let new_category = use_state(|| String::new());
 
@@ -659,7 +637,6 @@ pub fn episode_layout() -> Html {
         let user_id = effect_user_id.clone();
         let api_key = effect_api_key.clone();
         let server_name = server_name.clone();
-        let click_dispatch = _search_dispatch.clone();
         let click_history = history.clone();
         let pod_load_url = pod_url.clone();
         let pod_loading_ep = loading.clone();
@@ -741,7 +718,6 @@ pub fn episode_layout() -> Html {
 
                                 // Execute the same process as when a podcast is clicked
                                 let on_title_click = create_on_title_click(
-                                    click_dispatch,
                                     server_name,
                                     Some(Some(api_key.clone().unwrap())),
                                     &click_history,
@@ -821,7 +797,7 @@ pub fn episode_layout() -> Html {
         );
     }
 
-    let podcast_info = search_state.clicked_podcast_info.clone();
+    let podcast_info = podcast_state.clicked_podcast_info.clone();
     let load_link = loading.clone();
 
     use_effect_with(podcast_info.clone(), {
@@ -960,6 +936,7 @@ pub fn episode_layout() -> Html {
     // Update sort direction when podcast_id changes to load per-podcast preferences
     {
         let episode_sort_direction = episode_sort_direction.clone();
+        let completed_filter_state = completed_filter_state.clone();
         let podcast_id_clone = podcast_id.clone();
         use_effect_with(podcast_id_clone, move |podcast_id| {
             if **podcast_id > 0 {
@@ -975,6 +952,15 @@ pub fn episode_layout() -> Html {
                     _ => Some(EpisodeSortDirection::NewestFirst), // Default to newest first
                 };
                 episode_sort_direction.set(new_direction);
+
+                let completed_key = format!("podcast_{}_completed_filter", **podcast_id);
+                let saved_completed = get_filter_preference(&completed_key);
+                let new_completed_filter = match saved_completed.as_deref() {
+                    Some("show_only") => CompletedFilter::ShowOnly,
+                    Some("hide") => CompletedFilter::Hide,
+                    _ => CompletedFilter::ShowAll,
+                };
+                completed_filter_state.set(new_completed_filter);
             }
             || ()
         });
@@ -998,23 +984,21 @@ pub fn episode_layout() -> Html {
         let feed_cutoff_days = feed_cutoff_days.clone();
         let feed_cutoff_days_input = feed_cutoff_days_input.clone();
         let audio_dispatch = _dispatch.clone();
-        let click_state = search_state.clone();
+        let click_feed_results = search_data.podcast_feed_results.clone();
 
         use_effect_with(
             (
-                click_state.podcast_feed_results.clone(),
+                click_feed_results.clone(),
                 effect_added.clone(),
             ),
             move |_| {
-                let episode_name = click_state
-                    .podcast_feed_results
+                let episode_name = click_feed_results
                     .as_ref()
                     .and_then(|r| r.episodes.get(0))
                     .and_then(|ep| Some(ep.episodetitle.clone()))
                     .unwrap_or_default();
 
-                let episode_url = click_state
-                    .podcast_feed_results
+                let episode_url = click_feed_results
                     .as_ref()
                     .and_then(|results| results.episodes.get(0))
                     .and_then(|episode| Some(episode.episodeurl.clone()))
@@ -1404,7 +1388,7 @@ pub fn episode_layout() -> Html {
                                     },
                                 )
                             });
-                            app_dispatch.reduce_mut(|state| {
+                            Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
                                 state.podcast_added = Some(false);
                             });
                             Dispatch::<PageLoadState>::global().reduce_mut(|state| {
@@ -1443,24 +1427,23 @@ pub fn episode_layout() -> Html {
     let download_server_name = server_name.clone();
     let download_api_key = api_key.clone();
     let download_dispatch = _search_dispatch.clone();
-    let app_state = search_state.clone();
+    let download_feed_results = search_data.podcast_feed_results.clone();
 
     let download_all_click = {
         let call_dispatch = download_dispatch.clone();
         let server_name_copy = download_server_name.clone();
         let api_key_copy = download_api_key.clone();
         let user_id_copy = user_id.clone();
-        let search_call_state = app_state.clone();
+        let feed_results_copy = download_feed_results.clone();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             let server_name = server_name_copy.clone();
             let api_key = api_key_copy.clone();
-            let search_state = search_call_state.clone();
+            let feed_results = feed_results_copy.clone();
             let call_down_dispatch = call_dispatch.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                let episode_id = match search_state
-                    .podcast_feed_results
+                let episode_id = match feed_results
                     .as_ref()
                     .and_then(|results| results.episodes.get(0))
                     .and_then(|episode| Some(episode.episodeid))
@@ -1471,8 +1454,7 @@ pub fn episode_layout() -> Html {
                         return;
                     }
                 };
-                let is_youtube = match search_state
-                    .podcast_feed_results
+                let is_youtube = match feed_results
                     .as_ref()
                     .and_then(|results| results.episodes.get(0))
                     .and_then(|episode| Some(episode.is_youtube))
@@ -2098,7 +2080,7 @@ pub fn episode_layout() -> Html {
                 // Match on the awaited response
                 match response {
                     Ok(_) => {
-                        app_dispatch.reduce_mut(|state| {
+                        Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
                             if let Some(ref mut podcast_info) = state.clicked_podcast_info {
                                 if let Some(ref mut categories) = podcast_info.categories {
                                     // Add the new category to the HashMap
@@ -2161,7 +2143,7 @@ pub fn episode_layout() -> Html {
                         call_remove_category(&server_name, &api_key, &request_data).await;
                     match response {
                         Ok(_) => {
-                            app_dispatch.reduce_mut(|state| {
+                            Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
                                 if let Some(ref mut podcast_info) = state.clicked_podcast_info {
                                     if let Some(ref mut categories) = podcast_info.categories {
                                         // Filter the HashMap and collect back into HashMap
@@ -3315,8 +3297,8 @@ pub fn episode_layout() -> Html {
                                 callback_podcast_id.set(call_podcast_id);
 
                                 let episode_id = Some(response_body.first_episode_id);
-                                app_dispatch.reduce_mut(|state| {
-                                    state.selected_episode_id = episode_id;
+                                Dispatch::<EpisodeNavigationState>::global().reduce_mut(move |s| {
+                                    s.selected_episode_id = episode_id;
                                 });
 
                                 // The backend ingests episodes asynchronously after returning success,
@@ -3336,8 +3318,10 @@ pub fn episode_layout() -> Html {
                                     .await
                                     {
                                         Ok(result) if !result.episodes.is_empty() => {
-                                            app_dispatch.reduce_mut(move |state| {
+                                            Dispatch::<SearchState>::global().reduce_mut(move |state| {
                                                 state.podcast_feed_results = Some(result);
+                                            });
+                                            Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
                                                 state.podcast_added = Some(true);
                                             });
                                             Dispatch::<PageLoadState>::global().reduce_mut(|state| {
@@ -3363,7 +3347,7 @@ pub fn episode_layout() -> Html {
 
                                 if !episodes_loaded {
                                     // Polling exhausted or errored — mark as subscribed anyway
-                                    app_dispatch.reduce_mut(|state| {
+                                    Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
                                         state.podcast_added = Some(true);
                                     });
                                     Dispatch::<PageLoadState>::global().reduce_mut(|state| {
@@ -3625,7 +3609,7 @@ pub fn episode_layout() -> Html {
                                             })
                                         };
                                         let sanitized_description = sanitize_html(&podcast_info.description);
-                                        let is_video_podcast = search_state.podcast_feed_results
+                                        let is_video_podcast = search_data.podcast_feed_results
                                             .as_ref()
                                             .map(|r| r.episodes.iter().any(|e| e.is_video))
                                             .unwrap_or(false);
@@ -3666,7 +3650,7 @@ pub fn episode_layout() -> Html {
                                                     </div>
 
                                                     // ── Icon action bar ──
-                                                    <div class={if search_state.podcast_added.unwrap_or(false) { "ep-mobile-actions" } else { "ep-mobile-actions ep-mobile-actions-sparse" }}>
+                                                    <div class={if podcast_state.podcast_added.unwrap_or(false) { "ep-mobile-actions" } else { "ep-mobile-actions ep-mobile-actions-sparse" }}>
                                                         // Subscribe / unsubscribe — always shown
                                                         <button onclick={toggle_podcast} title="Add or remove podcast" class="ep-mobile-action-btn ep-mobile-action-play">
                                                             { button_content }
@@ -3683,7 +3667,7 @@ pub fn episode_layout() -> Html {
                                                             { website_icon }
                                                         </button>
                                                         // Subscribed-only actions
-                                                        { if search_state.podcast_added.unwrap_or(false) {
+                                                        { if podcast_state.podcast_added.unwrap_or(false) {
                                                             html! {
                                                                 <>
                                                                 <button onclick={toggle_download} title="Download all episodes" class="ep-mobile-action-btn">
@@ -3853,7 +3837,7 @@ pub fn episode_layout() -> Html {
                                                                 }
                                                             } else { html! {} }}
                                                             {
-                                                                if search_state.podcast_added.unwrap_or(false) {
+                                                                if podcast_state.podcast_added.unwrap_or(false) {
                                                                     html! {
                                                                         <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
                                                                             { download_all }
@@ -3867,7 +3851,7 @@ pub fn episode_layout() -> Html {
                                                                 { button_content }
                                                             </button>
                                                             {
-                                                                if search_state.podcast_added.unwrap_or(false) {
+                                                                if podcast_state.podcast_added.unwrap_or(false) {
                                                                     html! {
                                                                         <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
                                                                             { setting_content }
@@ -3920,7 +3904,7 @@ pub fn episode_layout() -> Html {
                                                             }
                                                         }
                                                         {
-                                                            if search_state.podcast_added.unwrap_or(false) {
+                                                            if podcast_state.podcast_added.unwrap_or(false) {
                                                                 html! {
                                                                     <button
                                                                         onclick={
@@ -4121,10 +4105,15 @@ pub fn episode_layout() -> Html {
                                                         let show_in_progress = show_in_progress.clone();
                                                         let episode_search_term = episode_search_term.clone();
                                                         let completed_filter_state = completed_filter_state.clone();
+                                                        let podcast_id_clone = podcast_id.clone();
                                                         Callback::from(move |_| {
                                                             completed_filter_state.set(CompletedFilter::ShowAll);
                                                             show_in_progress.set(false);
                                                             episode_search_term.set(String::new());
+                                                            if *podcast_id_clone > 0 {
+                                                                let completed_key = format!("podcast_{}_completed_filter", *podcast_id_clone);
+                                                                set_filter_preference(&completed_key, "show_all");
+                                                            }
                                                         })
                                                     }
                                                     class="filter-chip"
@@ -4137,12 +4126,23 @@ pub fn episode_layout() -> Html {
                                                 <button
                                                     onclick={
                                                         let completed_filter_state = completed_filter_state.clone();
+                                                        let podcast_id_clone = podcast_id.clone();
                                                         Callback::from(move |_| {
-                                                            completed_filter_state.set(match *completed_filter_state {
+                                                            let new_filter = match *completed_filter_state {
                                                                 CompletedFilter::ShowAll => CompletedFilter::ShowOnly,
                                                                 CompletedFilter::ShowOnly => CompletedFilter::Hide,
                                                                 CompletedFilter::Hide => CompletedFilter::ShowAll,
-                                                            });
+                                                            };
+                                                            if *podcast_id_clone > 0 {
+                                                                let completed_key = format!("podcast_{}_completed_filter", *podcast_id_clone);
+                                                                let value = match new_filter {
+                                                                    CompletedFilter::ShowOnly => "show_only",
+                                                                    CompletedFilter::Hide => "hide",
+                                                                    CompletedFilter::ShowAll => "show_all",
+                                                                };
+                                                                set_filter_preference(&completed_key, value);
+                                                            }
+                                                            completed_filter_state.set(new_filter);
                                                         })
                                                     }
                                                     title={completed_title.clone()}
@@ -4302,13 +4302,12 @@ pub fn episode_layout() -> Html {
                                         let user_id_value = user_id.unwrap_or(0);
 
                                         html! {
-                                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                                                <div class="flex items-center justify-between">
-                                                    <div class="text-sm text-blue-800 flex items-center">
-                                                        <i class="ph ph-check-circle text-lg mr-2"></i>
-                                                        {format!("{} episode{} selected", selected_count, if selected_count == 1 { "" } else { "s" })}
-                                                    </div>
-                                                    <div class="flex gap-2 flex-wrap">
+                                            <div class="bulk-actions-bar">
+                                                <div class="bulk-actions-bar__count">
+                                                    <i class="ph ph-check-circle"></i>
+                                                    {format!("{} episode{} selected", selected_count, if selected_count == 1 { "" } else { "s" })}
+                                                </div>
+                                                <div class="bulk-actions-bar__actions">
                                                         // Mark Complete button
                                                         <button
                                                             onclick={
@@ -4349,8 +4348,9 @@ pub fn episode_layout() -> Html {
                                                                     });
                                                                 })
                                                             }
-                                                            class="bulk-action-success"
+                                                            class="btn btn-secondary"
                                                         >
+                                                            <i class="ph ph-check-circle"></i>
                                                             {&i18n_mark_complete}
                                                         </button>
 
@@ -4394,8 +4394,9 @@ pub fn episode_layout() -> Html {
                                                                     });
                                                                 })
                                                             }
-                                                            class="bulk-action-primary"
+                                                            class="btn btn-secondary"
                                                         >
+                                                            <i class="ph ph-star"></i>
                                                             {&i18n.t("episodes_layout.save")}
                                                         </button>
 
@@ -4439,8 +4440,9 @@ pub fn episode_layout() -> Html {
                                                                     });
                                                                 })
                                                             }
-                                                            class="px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md"
+                                                            class="btn btn-secondary"
                                                         >
+                                                            <i class="ph ph-list-plus"></i>
                                                             {&i18n_queue_episodes}
                                                         </button>
 
@@ -4484,11 +4486,11 @@ pub fn episode_layout() -> Html {
                                                                     });
                                                                 })
                                                             }
-                                                            class="px-3 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded-md"
+                                                            class="btn btn-secondary"
                                                         >
+                                                            <i class="ph ph-download-simple"></i>
                                                             {&i18n_download_episodes}
                                                         </button>
-                                                    </div>
                                                 </div>
                                             </div>
                                         }

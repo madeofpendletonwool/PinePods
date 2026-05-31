@@ -99,6 +99,8 @@ abstract class AudioPlayerService {
 
   void sleep(Sleep sleep);
 
+  void setPlaylistContext(int? playlistId);
+
   Episode? nowPlaying;
 
   /// Event listeners

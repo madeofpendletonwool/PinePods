@@ -1,7 +1,7 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, ExpandedDescriptions, FilterState, NotificationState, UIState};
+use crate::components::context::{AppState, ExpandedDescriptions, FilterState, NotificationState, PodcastFeedState, UIState, UserPreferencesState};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::safehtml::SafeHtml;
@@ -36,8 +36,8 @@ enum AppStateMsg {
     RemovePodcast(i32), // Add this line
 }
 
-impl Reducer<AppState> for AppStateMsg {
-    fn apply(self, mut state: Rc<AppState>) -> Rc<AppState> {
+impl Reducer<PodcastFeedState> for AppStateMsg {
+    fn apply(self, mut state: Rc<PodcastFeedState>) -> Rc<PodcastFeedState> {
         let state_mut = Rc::make_mut(&mut state);
 
         match self {
@@ -64,7 +64,7 @@ impl Reducer<AppState> for AppStateMsg {
 
 #[allow(dead_code)]
 fn render_layout_toggle(
-    dispatch: Dispatch<AppState>,
+    dispatch: Dispatch<UserPreferencesState>,
     current_layout: Option<PodcastLayout>,
     i18n: &i18nrs::I18n,
 ) -> Html {
@@ -137,7 +137,6 @@ fn render_podcasts(
                         let podcast_key = format!("podcast-{}-{}", podcast.podcastid, podcast.podcastname);
 
                         let on_title_click = create_on_title_click(
-                            dispatch_clone.clone(),
                             server_name_iter,
                             api_key_iter,
                             &history_clone,
@@ -242,7 +241,6 @@ fn render_podcasts(
                             .unwrap_or_else(|| String::from("/static/assets/favicon.png"));
 
                         let on_click = create_on_title_click(
-                            dispatch.clone(),
                             server_name.clone().unwrap(),
                             api_key.clone(),
                             history,
@@ -319,6 +317,8 @@ fn render_podcasts(
 pub fn podcasts() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
+    let (prefs_state, prefs_dispatch) = use_store::<UserPreferencesState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let (filter_state, filter_dispatch) = use_store::<FilterState>();
@@ -365,7 +365,7 @@ pub fn podcasts() -> Html {
     // filter selections
     let selected_category = use_state(|| None as Option<String>);
 
-    let dispatch_layout = dispatch.clone();
+    let dispatch_layout = prefs_dispatch.clone();
     use_effect_with((), move |_| {
         dispatch_layout.reduce_mut(|state| {
             if state.podcast_layout.is_none() {
@@ -408,7 +408,7 @@ pub fn podcasts() -> Html {
                         {
                             Ok(fetched_podcasts) => {
                                 let fetch_casts = fetched_podcasts.clone();
-                                dispatch.reduce_mut(move |state| {
+                                Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                                     state.podcast_feed_return_extra = Some(PodcastResponseExtra {
                                         pods: Some(fetch_casts),
                                     });
@@ -529,7 +529,7 @@ pub fn podcasts() -> Html {
                     match result {
                         Ok(success) => {
                             if success {
-                                dispatch_call.apply(AppStateMsg::RemovePodcast(pid));
+                                Dispatch::<PodcastFeedState>::global().apply(AppStateMsg::RemovePodcast(pid));
                                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Some(if url.starts_with("https://www.youtube.com") {
@@ -634,7 +634,7 @@ pub fn podcasts() -> Html {
                     .await
                     {
                         Ok(_) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
                                 if let Some(ref mut extra) = state.podcast_feed_return_extra {
                                     if let Some(ref mut pods) = extra.pods {
                                         for pod in pods.iter_mut() {
@@ -731,7 +731,7 @@ pub fn podcasts() -> Html {
                         Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg);
                         });
-                        dispatch_call.reduce_mut(move |state| {
+                        Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                             if let Some(ref mut podcast_response) = state.podcast_feed_return_extra
                             {
                                 if let Some(ref mut pods) = podcast_response.pods {
@@ -799,7 +799,7 @@ pub fn podcasts() -> Html {
                         Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg);
                         });
-                        dispatch_call.reduce_mut(move |state| {
+                        Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                             if let Some(ref mut podcast_response) = state.podcast_feed_return_extra
                             {
                                 if let Some(ref mut pods) = podcast_response.pods {
@@ -907,7 +907,7 @@ pub fn podcasts() -> Html {
 
     let filtered_pods = use_memo(
         (
-            state.podcast_feed_return_extra.clone(),
+            podcast_state.podcast_feed_return_extra.clone(),
             selected_category.clone(),
             search_term.clone(),
             sort_direction.clone(),
@@ -1071,7 +1071,7 @@ pub fn podcasts() -> Html {
                                         <i class="ph ph-plus-circle text-lg"></i>
                                         <span class="text-sm font-medium">{&i18n_custom_feed}</span>
                                     </button>
-                                    {render_layout_toggle(dispatch.clone(), state.podcast_layout.clone(), &i18n)}
+                                    {render_layout_toggle(prefs_dispatch.clone(), prefs_state.podcast_layout.clone(), &i18n)}
                                 </div>
                             </div>
 
@@ -1178,7 +1178,7 @@ pub fn podcasts() -> Html {
 
 
             {
-                if let Some(podcasts) = state.podcast_feed_return_extra.clone() {
+                if let Some(podcasts) = podcast_state.podcast_feed_return_extra.clone() {
                     let int_podcasts = podcasts.clone();
                     if let Some(_pods) = int_podcasts.pods.clone() {
                         if filtered_pods.is_empty() {
@@ -1187,10 +1187,10 @@ pub fn podcasts() -> Html {
                                 &i18n.t("podcasts.no_podcasts_found_description")
                             )
                         } else {
-                            // render_podcasts(&filtered_pods, state.podcast_layout.clone(), dispatch.clone(), &history)
+                            // render_podcasts(&filtered_pods, prefs_state.podcast_layout.clone(), dispatch.clone(), &history)
                             render_podcasts(
                                 &filtered_pods,
-                                state.podcast_layout.clone(),
+                                prefs_state.podcast_layout.clone(),
                                 dispatch.clone(),
                                 &history,
                                 api_key.clone(),

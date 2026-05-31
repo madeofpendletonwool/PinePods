@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, FilterState, NotificationState, PageLoadState, UserStatsStore};
+use crate::components::context::{AppState, FilterState, NotificationState, PageLoadState, UserPreferencesState, UserStatsStore};
 use crate::components::queue_panel::QueuePanel;
 use crate::components::navigation::use_back_button;
 use crate::pages::routes::Route;
@@ -63,6 +63,7 @@ pub fn app_drawer() -> Html {
     };
     let (state, _dispatch) = use_store::<AppState>();
     let (post_state, _post_dispatch) = use_store::<AppState>();
+    let (prefs_state, _) = use_store::<UserPreferencesState>();
     let (load_state, _) = use_store::<PageLoadState>();
     let (_, notif_dispatch) = use_store::<NotificationState>();
     let api_key = post_state
@@ -238,7 +239,7 @@ pub fn app_drawer() -> Html {
                 <div onclick={toggle_drawer.clone()} style="padding: 0 8px 4px;">
                     <Link<Route> to={Route::UserStats} classes="sb-item">
                         <img
-                            src={state.gravatar_url.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
+                            src={prefs_state.gravatar_url.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
                             class="sb-avatar"
                             alt="User avatar"
                         />

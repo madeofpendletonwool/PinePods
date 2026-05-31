@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
-use crate::components::context::{AppState, EpisodeStatusState, FilterState};
+use crate::components::context::{AppState, EpisodeStatusState, FilterState, PodcastFeedState};
 use crate::components::context_menu_button::PageType;
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{
@@ -27,7 +27,7 @@ const PAGE_SIZE: i64 = 50;
 pub fn saved() -> Html {
     let (i18n, _) = use_translation();
     let (filter_state, _filter_dispatch) = use_store::<FilterState>();
-    let favorite_podcast_ids = use_selector(|state: &AppState| {
+    let favorite_podcast_ids = use_selector(|state: &PodcastFeedState| {
         state.podcast_feed_return_extra
             .as_ref()
             .and_then(|pr| pr.pods.as_ref())

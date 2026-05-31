@@ -1,5 +1,5 @@
 // navigation.rs
-use crate::components::context::{AppState, NotificationState};
+use crate::components::context::{AppState, NotificationState, UserPreferencesState};
 use crate::components::gen_funcs::generate_gravatar_url;
 use crate::components::loading::Loading;
 use crate::requests::login_requests::{
@@ -108,10 +108,11 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
                                                                         state.server_details =
                                                                             server_details
                                                                                 .server_details;
-                                                                        state.gravatar_url =
-                                                                            Some(gravatar_url);
                                                                     },
                                                                 );
+                                                                Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
+                                                                    state.gravatar_url = Some(gravatar_url);
+                                                                });
 
                                                                 if let Some(window) =
                                                                     web_sys::window()
@@ -160,7 +161,7 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
                                                                     )
                                                                     .await
                                                                 {
-                                                                    dispatch_clone.reduce_mut(move |state| {
+                                                                    Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
                                                                         state.user_tz = Some(tz_response.timezone);
                                                                         state.hour_preference = Some(tz_response.hour_pref);
                                                                         state.date_format = Some(tz_response.date_format);

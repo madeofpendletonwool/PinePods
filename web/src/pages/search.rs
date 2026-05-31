@@ -1,12 +1,17 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, FilterState, UIState};
+use crate::components::context::{AppState, FilterState, NotificationState, UIState};
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_time;
 use crate::requests::episode::Episode;
-use crate::requests::pod_req::{call_get_home_overview, call_get_podcasts_extra, HomePodcast};
+use crate::requests::pod_req::{
+    call_bulk_download_episodes, call_bulk_mark_episodes_completed, call_bulk_queue_episodes,
+    call_bulk_save_episodes, call_get_home_overview, call_get_podcasts_extra,
+    BulkEpisodeActionRequest, HomePodcast,
+};
+use yewdux::dispatch::Dispatch;
 use crate::requests::search_pods::{call_search_database_paged, SearchRequest};
 use gloo_events::EventListener;
 use gloo_timers::future::TimeoutFuture;
@@ -133,6 +138,8 @@ pub fn search(_props: &SearchProps) -> Html {
     let input_focused = use_state(|| false);
     let is_mobile = use_state(|| false);
     let selected_categories = use_state(|| Vec::<String>::new());
+    let is_selecting = use_state(|| false);
+    let selected_episodes_set = use_state(|| HashSet::<i32>::new());
 
     // BrowserHistory for podcast tile clicks
     let history = BrowserHistory::new();
@@ -229,6 +236,8 @@ pub fn search(_props: &SearchProps) -> Html {
         let offset_ks = offset.clone();
         let active_filter_ks = active_filter.clone();
         let selected_categories_ks = selected_categories.clone();
+        let is_selecting_ks = is_selecting.clone();
+        let selected_episodes_set_ks = selected_episodes_set.clone();
 
         use_effect_with((), move |_| {
             let cb = Closure::<dyn Fn(web_sys::KeyboardEvent)>::wrap(Box::new(
@@ -253,6 +262,8 @@ pub fn search(_props: &SearchProps) -> Html {
                         offset_ks.set(0);
                         active_filter_ks.set(FilterChip::All);
                         selected_categories_ks.set(vec![]);
+                        is_selecting_ks.set(false);
+                        selected_episodes_set_ks.set(HashSet::new());
                         if let Some(el) = input_ref_ks.cast::<HtmlInputElement>() {
                             let _ = el.focus();
                         }
@@ -285,6 +296,105 @@ pub fn search(_props: &SearchProps) -> Html {
         .iter()
         .filter(|ep| filter_episode(ep, &*active_filter))
         .collect();
+
+    // ── Select mode callbacks ──────────────────────────────────────────────
+    let visible_ep_ids: Vec<i32> = visible_episodes.iter().map(|ep| ep.episodeid).collect();
+
+    let toggle_select = {
+        let is_selecting = is_selecting.clone();
+        let selected_episodes_set = selected_episodes_set.clone();
+        Callback::from(move |_: MouseEvent| {
+            if *is_selecting {
+                selected_episodes_set.set(HashSet::new());
+            }
+            is_selecting.set(!*is_selecting);
+        })
+    };
+
+    let on_episode_checkbox = {
+        let selected_episodes_set = selected_episodes_set.clone();
+        Callback::from(move |ep_id: i32| {
+            let mut current = (*selected_episodes_set).clone();
+            if current.contains(&ep_id) {
+                current.remove(&ep_id);
+            } else {
+                current.insert(ep_id);
+            }
+            selected_episodes_set.set(current);
+        })
+    };
+
+    let on_select_above = {
+        let selected_episodes_set = selected_episodes_set.clone();
+        let ids = visible_ep_ids.clone();
+        Callback::from(move |cutoff_id: i32| {
+            if let Some(pos) = ids.iter().position(|&id| id == cutoff_id) {
+                let to_add: HashSet<i32> = ids[..=pos].iter().cloned().collect();
+                let mut current = (*selected_episodes_set).clone();
+                current.extend(to_add);
+                selected_episodes_set.set(current);
+            }
+        })
+    };
+
+    let on_select_below = {
+        let selected_episodes_set = selected_episodes_set.clone();
+        let ids = visible_ep_ids.clone();
+        Callback::from(move |cutoff_id: i32| {
+            if let Some(pos) = ids.iter().position(|&id| id == cutoff_id) {
+                let to_add: HashSet<i32> = ids[pos..].iter().cloned().collect();
+                let mut current = (*selected_episodes_set).clone();
+                current.extend(to_add);
+                selected_episodes_set.set(current);
+            }
+        })
+    };
+
+    let on_select_all = {
+        let selected_episodes_set = selected_episodes_set.clone();
+        let ids = visible_ep_ids.clone();
+        Callback::from(move |_: MouseEvent| {
+            let all: HashSet<i32> = ids.iter().cloned().collect();
+            let current = (*selected_episodes_set).clone();
+            if current.len() == all.len() && all.iter().all(|id| current.contains(id)) {
+                selected_episodes_set.set(HashSet::new());
+            } else {
+                selected_episodes_set.set(all);
+            }
+        })
+    };
+
+    let on_select_unplayed = {
+        let selected_episodes_set = selected_episodes_set.clone();
+        let ep_data: Vec<(i32, bool)> = visible_episodes
+            .iter()
+            .map(|ep| (ep.episodeid, !ep.completed && ep.listenduration == 0))
+            .collect();
+        Callback::from(move |_: MouseEvent| {
+            let ids: HashSet<i32> = ep_data
+                .iter()
+                .filter(|(_, unplayed)| *unplayed)
+                .map(|(id, _)| *id)
+                .collect();
+            selected_episodes_set.set(ids);
+        })
+    };
+
+    let on_select_in_progress = {
+        let selected_episodes_set = selected_episodes_set.clone();
+        let ep_data: Vec<(i32, bool)> = visible_episodes
+            .iter()
+            .map(|ep| (ep.episodeid, ep.listenduration > 0 && !ep.completed))
+            .collect();
+        Callback::from(move |_: MouseEvent| {
+            let ids: HashSet<i32> = ep_data
+                .iter()
+                .filter(|(_, in_prog)| *in_prog)
+                .map(|(id, _)| *id)
+                .collect();
+            selected_episodes_set.set(ids);
+        })
+    };
 
     // ── fire_search: low-level executor, accepts (term, cats) explicitly ────
     let fire_search = {
@@ -438,6 +548,8 @@ pub fn search(_props: &SearchProps) -> Html {
         let active_filter = active_filter.clone();
         let selected_categories = selected_categories.clone();
         let input_ref = input_ref.clone();
+        let is_selecting = is_selecting.clone();
+        let selected_episodes_set = selected_episodes_set.clone();
         Callback::from(move |_: MouseEvent| {
             query.set(String::new());
             current_term.set(String::new());
@@ -446,6 +558,8 @@ pub fn search(_props: &SearchProps) -> Html {
             offset.set(0);
             active_filter.set(FilterChip::All);
             selected_categories.set(vec![]);
+            is_selecting.set(false);
+            selected_episodes_set.set(HashSet::new());
             if let Some(el) = input_ref.cast::<HtmlInputElement>() {
                 let _ = el.focus();
             }
@@ -627,6 +741,16 @@ pub fn search(_props: &SearchProps) -> Html {
         Callback::from(move |chip: FilterChip| active_filter.set(chip))
     };
 
+    // ── Pre-computed values for select mode UI ───────────────────────────────
+    let sel_all_ids: HashSet<i32> = visible_ep_ids.iter().cloned().collect();
+    let sel_cur = (*selected_episodes_set).clone();
+    let sel_all_selected = !sel_all_ids.is_empty()
+        && sel_cur.len() == sel_all_ids.len()
+        && sel_all_ids.iter().all(|id| sel_cur.contains(id));
+    let sel_count = sel_cur.len();
+    let sel_ids: Vec<i32> = sel_cur.iter().cloned().collect();
+    let sel_user_id = user_id.unwrap_or(0);
+
     // ── HTML ─────────────────────────────────────────────────────────────────
     html! {
         <>
@@ -672,6 +796,15 @@ pub fn search(_props: &SearchProps) -> Html {
 
                 <div class="sp-chips">
                     { render_chips(&set_filter) }
+                    if is_collapsed && !visible_episodes.is_empty() {
+                        <button
+                            class={classes!("sp-chip", (*is_selecting).then_some("is-active"))}
+                            onclick={toggle_select.clone()}
+                        >
+                            <i class={if *is_selecting { "ph ph-x-square" } else { "ph ph-check-square" }}></i>
+                            <span>{ if *is_selecting { "Exit Select" } else { "Select" } }</span>
+                        </button>
+                    }
                 </div>
 
                 if !(*selected_categories).is_empty() {
@@ -764,7 +897,6 @@ pub fn search(_props: &SearchProps) -> Html {
                                 let history_tile = history.clone();
                                 let dispatch_tile = dispatch.clone();
                                 let on_click = create_on_title_click(
-                                    dispatch_tile,
                                     server_tile,
                                     api_key_tile,
                                     &history_tile,
@@ -866,6 +998,185 @@ pub fn search(_props: &SearchProps) -> Html {
                         }
                     </div>
 
+                    // Smart selection row
+                    if *is_selecting && !visible_episodes.is_empty() {
+                        <div class="sp-select-controls">
+                            <button class="bulk-select-button" onclick={on_select_all.clone()}>
+                                { if sel_all_selected { "Deselect All" } else { "Select All" } }
+                            </button>
+                            <button class="bulk-filter-button" onclick={on_select_unplayed.clone()}>
+                                { "Select Unplayed" }
+                            </button>
+                            <button class="bulk-filter-button" onclick={on_select_in_progress.clone()}>
+                                { "Select In Progress" }
+                            </button>
+                        </div>
+                    }
+
+                    // Bulk actions toolbar
+                    if *is_selecting && !selected_episodes_set.is_empty() {
+                        <div class="bulk-actions-bar">
+                            <div class="bulk-actions-bar__count">
+                                <i class="ph ph-check-circle"></i>
+                                { format!("{} episode{} selected", sel_count, if sel_count == 1 { "" } else { "s" }) }
+                            </div>
+                            <div class="bulk-actions-bar__actions">
+                                <button
+                                    onclick={
+                                        let sel_ids = sel_ids.clone();
+                                        let api_key = api_key.clone();
+                                        let server_name = server_name.clone();
+                                        let selected_episodes_set = selected_episodes_set.clone();
+                                        Callback::from(move |_| {
+                                            let sel_ids = sel_ids.clone();
+                                            let api_key = api_key.clone();
+                                            let server_name = server_name.clone();
+                                            let selected_episodes_set = selected_episodes_set.clone();
+                                            spawn_local(async move {
+                                                let request = BulkEpisodeActionRequest {
+                                                    episode_ids: sel_ids,
+                                                    user_id: sel_user_id,
+                                                    is_youtube: None,
+                                                };
+                                                match call_bulk_mark_episodes_completed(
+                                                    &server_name.unwrap_or_default(),
+                                                    &api_key.flatten(),
+                                                    &request,
+                                                ).await {
+                                                    Ok(msg) => {
+                                                        Dispatch::<NotificationState>::global().reduce_mut(|s| s.info_message = Some(msg));
+                                                        selected_episodes_set.set(HashSet::new());
+                                                    }
+                                                    Err(e) => {
+                                                        Dispatch::<NotificationState>::global().reduce_mut(|s| s.error_message = Some(format!("Error: {}", e)));
+                                                    }
+                                                }
+                                            });
+                                        })
+                                    }
+                                    class="btn btn-secondary"
+                                >
+                                    <i class="ph ph-check-circle"></i>
+                                    { "Mark Complete" }
+                                </button>
+                                <button
+                                    onclick={
+                                        let sel_ids = sel_ids.clone();
+                                        let api_key = api_key.clone();
+                                        let server_name = server_name.clone();
+                                        let selected_episodes_set = selected_episodes_set.clone();
+                                        Callback::from(move |_| {
+                                            let sel_ids = sel_ids.clone();
+                                            let api_key = api_key.clone();
+                                            let server_name = server_name.clone();
+                                            let selected_episodes_set = selected_episodes_set.clone();
+                                            spawn_local(async move {
+                                                let request = BulkEpisodeActionRequest {
+                                                    episode_ids: sel_ids,
+                                                    user_id: sel_user_id,
+                                                    is_youtube: None,
+                                                };
+                                                match call_bulk_save_episodes(
+                                                    &server_name.unwrap_or_default(),
+                                                    &api_key.flatten(),
+                                                    &request,
+                                                ).await {
+                                                    Ok(msg) => {
+                                                        Dispatch::<NotificationState>::global().reduce_mut(|s| s.info_message = Some(msg));
+                                                        selected_episodes_set.set(HashSet::new());
+                                                    }
+                                                    Err(e) => {
+                                                        Dispatch::<NotificationState>::global().reduce_mut(|s| s.error_message = Some(format!("Error: {}", e)));
+                                                    }
+                                                }
+                                            });
+                                        })
+                                    }
+                                    class="btn btn-secondary"
+                                >
+                                    <i class="ph ph-star"></i>
+                                    { "Save" }
+                                </button>
+                                <button
+                                    onclick={
+                                        let sel_ids = sel_ids.clone();
+                                        let api_key = api_key.clone();
+                                        let server_name = server_name.clone();
+                                        let selected_episodes_set = selected_episodes_set.clone();
+                                        Callback::from(move |_| {
+                                            let sel_ids = sel_ids.clone();
+                                            let api_key = api_key.clone();
+                                            let server_name = server_name.clone();
+                                            let selected_episodes_set = selected_episodes_set.clone();
+                                            spawn_local(async move {
+                                                let request = BulkEpisodeActionRequest {
+                                                    episode_ids: sel_ids,
+                                                    user_id: sel_user_id,
+                                                    is_youtube: None,
+                                                };
+                                                match call_bulk_queue_episodes(
+                                                    &server_name.unwrap_or_default(),
+                                                    &api_key.flatten(),
+                                                    &request,
+                                                ).await {
+                                                    Ok(msg) => {
+                                                        Dispatch::<NotificationState>::global().reduce_mut(|s| s.info_message = Some(msg));
+                                                        selected_episodes_set.set(HashSet::new());
+                                                    }
+                                                    Err(e) => {
+                                                        Dispatch::<NotificationState>::global().reduce_mut(|s| s.error_message = Some(format!("Error: {}", e)));
+                                                    }
+                                                }
+                                            });
+                                        })
+                                    }
+                                    class="btn btn-secondary"
+                                >
+                                    <i class="ph ph-list-plus"></i>
+                                    { "Queue" }
+                                </button>
+                                <button
+                                    onclick={
+                                        let sel_ids = sel_ids.clone();
+                                        let api_key = api_key.clone();
+                                        let server_name = server_name.clone();
+                                        let selected_episodes_set = selected_episodes_set.clone();
+                                        Callback::from(move |_| {
+                                            let sel_ids = sel_ids.clone();
+                                            let api_key = api_key.clone();
+                                            let server_name = server_name.clone();
+                                            let selected_episodes_set = selected_episodes_set.clone();
+                                            spawn_local(async move {
+                                                let request = BulkEpisodeActionRequest {
+                                                    episode_ids: sel_ids,
+                                                    user_id: sel_user_id,
+                                                    is_youtube: None,
+                                                };
+                                                match call_bulk_download_episodes(
+                                                    &server_name.unwrap_or_default(),
+                                                    &api_key.flatten(),
+                                                    &request,
+                                                ).await {
+                                                    Ok(msg) => {
+                                                        Dispatch::<NotificationState>::global().reduce_mut(|s| s.info_message = Some(msg));
+                                                        selected_episodes_set.set(HashSet::new());
+                                                    }
+                                                    Err(e) => {
+                                                        Dispatch::<NotificationState>::global().reduce_mut(|s| s.error_message = Some(format!("Error: {}", e)));
+                                                    }
+                                                }
+                                            });
+                                        })
+                                    }
+                                    class="btn btn-secondary"
+                                >
+                                    <i class="ph ph-download-simple"></i>
+                                    { "Download" }
+                                </button>
+                            </div>
+                        </div>
+                    }
+
                     // No results empty state
                     if visible_episodes.is_empty() && !*loading_more {
                         <div class="sp-noresults">
@@ -883,6 +1194,11 @@ pub fn search(_props: &SearchProps) -> Html {
                                     <EpisodeListItem
                                         key={episode.episodeid}
                                         episode={(*episode).clone()}
+                                        is_delete_mode={*is_selecting}
+                                        is_selected={Some((*selected_episodes_set).contains(&episode.episodeid))}
+                                        on_checkbox_change={on_episode_checkbox.clone()}
+                                        on_select_above={on_select_above.clone()}
+                                        on_select_below={on_select_below.clone()}
                                     />
                                 }
                             }) }

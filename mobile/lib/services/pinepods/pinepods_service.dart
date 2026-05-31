@@ -2182,6 +2182,51 @@ class PinepodsService {
     }
   }
 
+  Future<PinepodsEpisode?> getNextPlaylistEpisode(
+      int episodeId, int playlistId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/get_next_playlist_episode');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode(
+            {'episode_id': episodeId, 'playlist_id': playlistId, 'user_id': userId}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data == null) return null;
+
+        return PinepodsEpisode(
+          podcastName: data['podcastname'] ?? '',
+          episodeTitle: data['episodetitle'] ?? '',
+          episodePubDate: data['episodepubdate'] ?? '',
+          episodeDescription: data['episodedescription'] ?? '',
+          episodeArtwork: data['episodeartwork'] ?? '',
+          episodeUrl: data['episodeurl'] ?? '',
+          episodeDuration: data['episodeduration'] ?? 0,
+          listenDuration: data['listenduration'] ?? 0,
+          episodeId: data['episodeid'] ?? 0,
+          completed: data['completed'] ?? false,
+          saved: data['saved'] ?? false,
+          queued: data['queued'] ?? false,
+          downloaded: data['downloaded'] ?? false,
+          isYoutube: data['is_youtube'] ?? false,
+        );
+      } else {
+        return null;
+      }
+    } catch (e) {
+      print('Error getting next playlist episode: $e');
+      return null;
+    }
+  }
+
   Future<int?> getPodcastIdFromEpisodeId(int episodeId, int userId) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');

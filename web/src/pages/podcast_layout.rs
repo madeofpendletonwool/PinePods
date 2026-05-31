@@ -1,7 +1,7 @@
 use crate::components::click_events::create_on_title_click;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, NotificationState, PodcastState, UIState};
+use crate::components::context::{AppState, NotificationState, PodcastState, SearchState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req::{
@@ -62,7 +62,8 @@ pub fn pod_layout() -> Html {
     let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
-    let search_results = state.search_results.clone();
+    let (search_state, _) = use_store::<SearchState>();
+    let search_results = search_state.search_results.clone();
 
     // Track window width to apply responsive columns
     let columns = use_state(|| 2); // Default to 2 columns
@@ -393,7 +394,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         });
         if let (Some(server), Some(uid)) = (server_name.clone(), user_id) {
             create_on_title_click(
-                dispatch.clone(),
                 server,
                 api_key.clone(),
                 &history,

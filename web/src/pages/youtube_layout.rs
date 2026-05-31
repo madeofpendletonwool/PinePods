@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, NotificationState, UIState};
+use crate::components::context::{AppState, NotificationState, SearchState, UIState};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{
@@ -25,6 +25,7 @@ pub fn youtube_layout() -> Html {
     let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
+    let (search_state, _) = use_store::<SearchState>();
 
     // Track window width to apply responsive columns
     let columns = use_state(|| 2); // Default to 2 columns
@@ -84,7 +85,7 @@ pub fn youtube_layout() -> Html {
                 <UseScrollToTop />
                 <h1 class="item_container-text text-2xl font-bold my-6 text-center">{youtube_channels_title}</h1>
                 {
-                    if let Some(results) = &state.youtube_search_results {
+                    if let Some(results) = &search_state.youtube_search_results {
                         // Deduplicate channels based on channel_id
                         let unique_channels: Vec<_> = results.channels
                             .iter()

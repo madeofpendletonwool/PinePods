@@ -1,5 +1,5 @@
 use crate::components::audio::on_play_click;
-use crate::components::context::{AppState, EpisodeStatusState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, PodcastFeedState, UIState, UserPreferencesState};
 use crate::components::gen_components::{on_shownotes_click, EpisodeModal, FallbackImage};
 
 use crate::components::context_menu_button::{ContextMenuButton, PageType};
@@ -53,13 +53,13 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     });
     let auth_details = use_selector(|state: &AppState| state.auth_details.clone());
     let user_details = use_selector(|state: &AppState| state.user_details.clone());
-    let date_format = use_selector(|state: &AppState| state.date_format.clone());
-    let user_tz = use_selector(|state: &AppState| state.user_tz.clone());
-    let hour_preference = use_selector(|state: &AppState| state.hour_preference);
+    let date_format = use_selector(|state: &UserPreferencesState| state.date_format.clone());
+    let user_tz = use_selector(|state: &UserPreferencesState| state.user_tz.clone());
+    let hour_preference = use_selector(|state: &UserPreferencesState| state.hour_preference);
     let selected_for_deletion = use_selector(move |state: &AppState| {
         state.selected_episodes_for_deletion.contains(&episode_id)
     });
-    let podcast_added = use_selector(|state: &AppState| state.podcast_added);
+    let podcast_added = use_selector(|state: &PodcastFeedState| state.podcast_added);
     let is_downloaded_server = use_selector(move |state: &EpisodeStatusState| {
         state.downloaded_episodes.is_server_download(episode_id)
     });

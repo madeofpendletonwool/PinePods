@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
-use crate::components::context::{AppState, EpisodeStatusState, FilterState};
+use crate::components::context::{AppState, EpisodeStatusState, FilterState, PodcastFeedState};
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::{
@@ -24,6 +24,7 @@ const PAGE_SIZE: i64 = 50;
 pub fn history() -> Html {
     let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
+    let (podcast_state, _) = use_store::<PodcastFeedState>();
     let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
     let i18n_history = i18n.t("history.history").to_string();
@@ -255,7 +256,7 @@ pub fn history() -> Html {
         );
     }
 
-    let favorite_podcast_ids: std::collections::HashSet<i32> = state
+    let favorite_podcast_ids: std::collections::HashSet<i32> = podcast_state
         .podcast_feed_return_extra
         .as_ref()
         .and_then(|pr| pr.pods.as_ref())

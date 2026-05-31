@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeNavigationState, NotificationState, UIState};
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -180,7 +180,7 @@ pub fn downloads() -> Html {
                     .iter()
                     .cloned()
                     .collect();
-                let is_youtube = state.selected_is_youtube;
+                let is_youtube = Dispatch::<EpisodeNavigationState>::global().get().selected_is_youtube;
 
                 state.selected_episodes_for_deletion.clear();
 

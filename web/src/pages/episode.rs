@@ -2,7 +2,7 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, EpisodeStatusState, NotificationState, PageLoadState, UIState};
+use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PageLoadState, UIState, UserPreferencesState};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{
@@ -67,17 +67,20 @@ async fn fallback_to_podcast_parsing(
                     let ep_url = episode_url_clone.clone();
                     let aud_url = audio_url_clone.clone();
                     let podcast_title = podcast_title_clone.clone();
+                    let ep_for_detail = ep.clone();
 
-                    dispatch.reduce_mut(move |state| {
-                        state.fetched_episode = Some(ep.clone());
-                        state.selected_episode_id = Some(episode_id);
-                        state.selected_episode_url = Some(ep_url.clone());
-                        state.selected_episode_audio_url = Some(aud_url.clone());
-                        state.selected_podcast_title = Some(podcast_title.clone());
+                    Dispatch::<EpisodeNavigationState>::global().reduce_mut(move |s| {
+                        s.selected_episode_id = Some(episode_id);
+                        s.selected_episode_url = Some(ep_url.clone());
+                        s.selected_episode_audio_url = Some(aud_url.clone());
+                        s.selected_podcast_title = Some(podcast_title.clone());
+                    });
+                    Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
+                        s.fetched_episode = Some(ep_for_detail);
                     });
 
                     // Handle podcast 2.0 data if needed
-                    if let Some(episode_id) = ui_state.selected_episode_id {
+                    if let Some(episode_id) = Dispatch::<EpisodeNavigationState>::global().get().selected_episode_id {
                         let chap_request = FetchPodcasting2DataRequest {
                             episode_id,
                             user_id: user_id,
@@ -439,6 +442,8 @@ enum PageState {
 pub fn epsiode() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (episode_detail_state, _) = use_store::<EpisodeDetailState>();
+    let (prefs_state, _) = use_store::<UserPreferencesState>();
 
     // let error = use_state(|| None);
     let shared_url = use_state(|| Option::<String>::None);
@@ -682,13 +687,16 @@ pub fn epsiode() -> Html {
                                 let ep_url = episode_url.clone();
                                 let aud_url = audio_url.clone();
                                 let podcast_title = title.clone();
+                                let ep_for_detail = ep.clone();
 
-                                dispatch.reduce_mut(move |state| {
-                                    state.fetched_episode = Some(ep.clone());
-                                    state.selected_episode_id = Some(0);
-                                    state.selected_episode_url = Some(ep_url.to_string());
-                                    state.selected_episode_audio_url = Some(aud_url.to_string());
-                                    state.selected_podcast_title = Some(podcast_title.to_string());
+                                Dispatch::<EpisodeNavigationState>::global().reduce_mut(move |s| {
+                                    s.selected_episode_id = Some(0);
+                                    s.selected_episode_url = Some(ep_url.to_string());
+                                    s.selected_episode_audio_url = Some(aud_url.to_string());
+                                    s.selected_podcast_title = Some(podcast_title.to_string());
+                                });
+                                Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
+                                    s.fetched_episode = Some(ep_for_detail);
                                 });
 
                                 // Update the URL with the parameters
@@ -1412,10 +1420,10 @@ pub fn epsiode() -> Html {
                             })
                         };
 
-                        let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
-                        let date_format = match_date_format(state.date_format.as_deref());
+                        let datetime = parse_date(&episode.episodepubdate, &prefs_state.user_tz);
+                        let date_format = match_date_format(prefs_state.date_format.as_deref());
                         let format_duration = format_time(episode.episodeduration);
-                        let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+                        let format_release = format!("{}", format_datetime(&datetime, &prefs_state.hour_preference, date_format));
 
                         let on_title_click = {
                             let dispatch = dispatch.clone();
@@ -1478,7 +1486,6 @@ pub fn epsiode() -> Html {
                                     match result {
                                         Ok(details) => {
                                             let final_click_action = create_on_title_click(
-                                                dispatch.clone(),
                                                 server_name.unwrap(),
                                                 api_key,
                                                 &history,
@@ -1730,16 +1737,15 @@ pub fn epsiode() -> Html {
                                         if let Some(transcript) = &audio_state.episode_page_transcript {
                                             if !transcript.is_empty() {
                                                 let transcript_clone = transcript.clone();
-                                                let dispatch_open = dispatch.clone();
-                                                let dispatch_close = dispatch.clone();
                                                 html! {
                                                     <>
                                                     <div class="ep-mobile-transcript">
                                                         <button
                                                             onclick={Callback::from(move |_| {
-                                                                dispatch_open.reduce_mut(|state| {
-                                                                    state.show_transcript_modal = Some(true);
-                                                                    state.current_transcripts = Some(transcript_clone.clone());
+                                                                let tc = transcript_clone.clone();
+                                                                Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
+                                                                    s.show_transcript_modal = Some(true);
+                                                                    s.current_transcripts = Some(tc);
                                                                 });
                                                             })}
                                                             class="ep-mobile-transcript-btn font-bold"
@@ -1748,14 +1754,14 @@ pub fn epsiode() -> Html {
                                                             { &i18n_view_transcript }
                                                         </button>
                                                     </div>
-                                                    if let Some(show_modal) = state.show_transcript_modal {
+                                                    if let Some(show_modal) = episode_detail_state.show_transcript_modal {
                                                         if show_modal {
                                                             <TranscriptModal
-                                                                transcripts={state.current_transcripts.clone().unwrap_or_default()}
+                                                                transcripts={episode_detail_state.current_transcripts.clone().unwrap_or_default()}
                                                                 server_name={server_name.clone().unwrap_or_default()}
                                                                 api_key={api_key.clone().unwrap().unwrap_or_default()}
                                                                 onclose={Callback::from(move |_| {
-                                                                    dispatch_close.reduce_mut(|s| {
+                                                                    Dispatch::<EpisodeDetailState>::global().reduce_mut(|s| {
                                                                         s.show_transcript_modal = Some(false);
                                                                     });
                                                                 })}
@@ -1820,16 +1826,15 @@ pub fn epsiode() -> Html {
                                                 if let Some(transcript) = &audio_state.episode_page_transcript {
                                                     if !transcript.is_empty() {
                                                         let transcript_clone = transcript.clone();
-                                                        let dispatch = dispatch.clone();
-                                                        let dispatch_call = dispatch.clone();
                                                         html! {
                                                             <>
                                                             <div class="header-info pb-2 pt-2">
                                                                 <button
                                                                     onclick={Callback::from(move |_| {
-                                                                        dispatch_call.reduce_mut(|state| {
-                                                                            state.show_transcript_modal = Some(true);
-                                                                            state.current_transcripts = Some(transcript_clone.clone());
+                                                                        let tc = transcript_clone.clone();
+                                                                        Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
+                                                                            s.show_transcript_modal = Some(true);
+                                                                            s.current_transcripts = Some(tc);
                                                                         });
                                                                     })}
                                                                     title={i18n_transcript.clone()}
@@ -1839,15 +1844,15 @@ pub fn epsiode() -> Html {
                                                                 </button>
                                                             </div>
 
-                                                            if let Some(show_modal) = state.show_transcript_modal {
+                                                            if let Some(show_modal) = episode_detail_state.show_transcript_modal {
                                                                 if show_modal {
                                                                     <TranscriptModal
-                                                                        transcripts={state.current_transcripts.clone().unwrap_or_default()}
+                                                                        transcripts={episode_detail_state.current_transcripts.clone().unwrap_or_default()}
                                                                         server_name={server_name.unwrap_or_default()}
                                                                         api_key={api_key.unwrap().unwrap_or_default()}
                                                                         onclose={Callback::from(move |_| {
-                                                                            dispatch.reduce_mut(|state| {
-                                                                                state.show_transcript_modal = Some(false);
+                                                                            Dispatch::<EpisodeDetailState>::global().reduce_mut(|s| {
+                                                                                s.show_transcript_modal = Some(false);
                                                                             });
                                                                         })}
                                                                     />

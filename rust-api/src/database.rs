@@ -3238,7 +3238,7 @@ impl DatabasePool {
 
                 // Listening personality badge (avg hour of day)
                 let personality_row = sqlx::query(r#"
-                    SELECT AVG(EXTRACT(HOUR FROM listendate)) AS avg_hour
+                    SELECT AVG(EXTRACT(HOUR FROM listendate))::float8 AS avg_hour
                     FROM "UserEpisodeHistory"
                     WHERE userid = $1 AND listendate IS NOT NULL
                 "#).bind(user_id).fetch_one(pool).await?;

@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, PageLoadState};
+use crate::components::context::{PageLoadState, PodcastFeedState, SearchState};
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{call_check_podcast, call_get_podcast_id};
 use crate::requests::search_pods::{
@@ -11,7 +11,6 @@ use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*; // or wherever your Dispatch type is defined
 
 pub fn create_on_title_click(
-    dispatch: Dispatch<AppState>,
     server_name: String,
     api_key: Option<Option<String>>,
     history: &BrowserHistory,
@@ -33,7 +32,7 @@ pub fn create_on_title_click(
     let history = history.clone();
     Callback::from(move |e: MouseEvent| {
         e.prevent_default(); // Prevent default anchor behavior
-        dispatch.reduce_mut(|state| {
+        Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
             state.podcast_added = Some(false);
         });
         Dispatch::<PageLoadState>::global().reduce_mut(|state| {
@@ -68,7 +67,6 @@ pub fn create_on_title_click(
             is_youtube: Some(is_youtube),
         };
 
-        let dispatch = dispatch.clone();
         let history = history.clone(); // Clone again for use inside async block
         wasm_bindgen_futures::spawn_local(async move {
             match call_check_podcast(
@@ -119,9 +117,11 @@ pub fn create_on_title_click(
                                         for episode in &mut podcast_feed_results.episodes {
                                             episode.is_youtube = is_youtube;
                                         }
-                                        dispatch.reduce_mut(move |state| {
-                                            state.podcast_added = Some(true);
+                                        Dispatch::<SearchState>::global().reduce_mut(move |state| {
                                             state.podcast_feed_results = Some(podcast_feed_results);
+                                        });
+                                        Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
+                                            state.podcast_added = Some(true);
                                             state.clicked_podcast_info = Some(podcast_values);
                                         });
                                         Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
@@ -145,9 +145,11 @@ pub fn create_on_title_click(
                             .await
                         {
                             Ok(podcast_feed_results) => {
-                                dispatch.reduce_mut(move |state| {
-                                    state.podcast_added = Some(false);
+                                Dispatch::<SearchState>::global().reduce_mut(move |state| {
                                     state.podcast_feed_results = Some(podcast_feed_results);
+                                });
+                                Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
+                                    state.podcast_added = Some(false);
                                     state.clicked_podcast_info = Some(podcast_values);
                                 });
                                 Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));

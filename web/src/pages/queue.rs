@@ -6,12 +6,11 @@ use crate::components::gen_components::{
 use crate::components::loading::Loading;
 
 use crate::components::audio_player_bar::AudioPlayerBar;
-use crate::components::context::{AppState, EpisodeStatusState, FilterState};
+use crate::components::context::{AppState, EpisodeStatusState, FilterState, PodcastFeedState};
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
-use crate::pages::episode_layout::AppStateMsg;
 use crate::requests::episode::Episode;
 
 use crate::components::virtual_list::DragCallbacks;
@@ -85,6 +84,7 @@ fn stop_auto_scroll(interval_id: i32) {
 pub fn queue() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
     let (ep_status, _ep_dispatch) = use_store::<EpisodeStatusState>();
     let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
@@ -126,7 +126,7 @@ pub fn queue() -> Html {
                         let user_id_pods = user_id.clone();
                         wasm_bindgen_futures::spawn_local(async move {
                             if let Ok(fetched_pods) = pod_req::call_get_podcasts_extra(&server_name_pods, &api_key_pods, &user_id_pods).await {
-                                dispatch_pods.reduce_mut(move |state| {
+                                Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                                     state.podcast_feed_return_extra = Some(PodcastResponseExtra {
                                         pods: Some(fetched_pods),
                                     });
@@ -214,7 +214,7 @@ pub fn queue() -> Html {
 
                     {
                         if let Some(queued_eps) = ep_status.queued_episodes.clone() {
-                            let favorite_podcast_ids: std::collections::HashSet<i32> = state
+                            let favorite_podcast_ids: std::collections::HashSet<i32> = podcast_state
                                 .podcast_feed_return_extra
                                 .as_ref()
                                 .and_then(|pr| pr.pods.as_ref())

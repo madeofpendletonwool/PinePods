@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
-use crate::components::context::{AppState, EpisodeStatusState, FilterState};
+use crate::components::context::{AppState, EpisodeStatusState, FilterState, PodcastFeedState};
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -38,7 +38,7 @@ pub fn feed() -> Html {
     let server_name_sel = use_selector(|state: &AppState| {
         state.auth_details.as_ref().map(|ud| ud.server_name.clone())
     });
-    let podcast_feed_extra = use_selector(|state: &AppState| {
+    let podcast_feed_extra = use_selector(|state: &PodcastFeedState| {
         state.podcast_feed_return_extra.clone()
     });
     let api_key = (*api_key_sel).clone();
@@ -83,7 +83,7 @@ pub fn feed() -> Html {
                             )
                             .await
                             {
-                                Dispatch::<AppState>::global().reduce_mut(move |state| {
+                                Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                                     state.podcast_feed_return_extra = Some(PodcastResponseExtra {
                                         pods: Some(fetched_pods),
                                     });

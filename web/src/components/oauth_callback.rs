@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, UserPreferencesState};
 use crate::requests::login_requests::{
     call_first_login_done, call_get_api_config, call_get_time_info, call_get_user_details,
     call_get_user_id, call_setup_timezone_info, call_verify_key, LoginServerRequest, TimeZoneInfo,
@@ -168,7 +168,7 @@ pub fn oauth_callback() -> Html {
                                 {
                                     Ok(success) => {
                                         if success.success {
-                                            call_dispatch.reduce_mut(move |state| {
+                                            Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
                                                 state.user_tz = Some(timezone_info.timezone);
                                                 state.hour_preference = Some(
                                                     timezone_info.hour_pref.try_into().unwrap(),
@@ -284,8 +284,10 @@ pub fn oauth_callback() -> Html {
                                                             state.auth_details = Some(auth_details);
                                                             state.server_details =
                                                                 Some(server_details); // Store server details
-                                                            state.gravatar_url = Some(gravatar_url);
                                                             state.store_app_state();
+                                                        });
+                                                        Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
+                                                            state.gravatar_url = Some(gravatar_url);
                                                         });
 
                                                         // Rest of the flow...
@@ -340,7 +342,7 @@ pub fn oauth_callback() -> Html {
                                                                         )
                                                                         .await
                                                                     {
-                                                                        dispatch.reduce_mut(move |state| {
+                                                                        Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
                                                                             state.user_tz =
                                                                                 Some(tz_response.timezone);
                                                                             state.hour_preference =

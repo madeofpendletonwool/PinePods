@@ -39,12 +39,18 @@ class PinepodsAudioService {
   }) : _onPauseCallback = onPauseCallback,
        _onStopCallback = onStopCallback;
 
+  void setPlaylistContext(int? playlistId) {
+    _audioPlayerService.setPlaylistContext(playlistId);
+  }
+
   /// Play a PinePods episode with full server integration
   Future<void> playPinepodsEpisode({
     required PinepodsEpisode pinepodsEpisode,
     bool resume = true,
     bool skipQueue = false,
+    int? playlistId,
   }) async {
+    _audioPlayerService.setPlaylistContext(playlistId);
     try {
       final settings = _settingsBloc.currentSettings;
       final userId = settings.pinepodsUserId;

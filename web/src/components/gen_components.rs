@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, EpisodeStatusState, NotificationState, PageLoadState, UIState};
+use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::pages::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
@@ -237,7 +237,7 @@ pub fn search_bar() -> Html {
                                 channels: yt_results.results,
                                 videos: Vec::new(),
                             };
-                            Dispatch::<AppState>::global().reduce_mut(|state| {
+                            Dispatch::<SearchState>::global().reduce_mut(|state| {
                                 state.youtube_search_results = Some(search_results);
                             });
                             Dispatch::<PageLoadState>::global().reduce_mut(|state| {
@@ -261,8 +261,10 @@ pub fn search_bar() -> Html {
                         .await
                     {
                         Ok(search_results) => {
-                            Dispatch::<AppState>::global().reduce_mut(move |state| {
+                            Dispatch::<SearchState>::global().reduce_mut(move |state| {
                                 state.search_results = Some(search_results);
+                            });
+                            Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
                                 state.podcast_added = Some(false);
                             });
                             Dispatch::<PageLoadState>::global()
@@ -880,14 +882,16 @@ pub fn on_shownotes_click(
 
                 history_clone.push(new_url);
 
-                dispatch_clone.reduce_mut(move |state| {
-                    state.selected_episode_id = Some(episode_id);
-                    state.selected_episode_url = Some(show_notes);
-                    state.selected_episode_audio_url = Some(ep_aud);
-                    state.selected_podcast_title = Some(pod_title);
-                    state.person_episode = Some(person_episode);
-                    state.selected_is_youtube = is_youtube;
-                    state.fetched_episode = None;
+                Dispatch::<EpisodeNavigationState>::global().reduce_mut(move |s| {
+                    s.selected_episode_id = Some(episode_id);
+                    s.selected_episode_url = Some(show_notes);
+                    s.selected_episode_audio_url = Some(ep_aud);
+                    s.selected_podcast_title = Some(pod_title);
+                    s.selected_is_youtube = is_youtube;
+                });
+                Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
+                    s.person_episode = Some(person_episode);
+                    s.fetched_episode = None;
                 });
             }
         });
