@@ -9,7 +9,7 @@ use crate::components::gen_funcs::{
 };
 use crate::components::host_component::HostDropdown;
 use crate::components::loading::Loading;
-use crate::components::episode_list_item::EpisodeListItem;
+use crate::components::episode_list_view::EpisodeListView;
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_bulk_download_episodes,
@@ -44,9 +44,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
-use js_sys::Array;
 use wasm_bindgen::JsCast;
-use web_sys::{IntersectionObserver, IntersectionObserverEntry, IntersectionObserverInit};
 use gloo_timers::future::TimeoutFuture;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::Element;
@@ -490,7 +488,6 @@ pub fn episode_layout() -> Html {
     let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
     let loading_more = use_state(|| false);
-    let sentinel_ref = use_node_ref();
     let notification_status = use_state(|| false);
     let favorite_status = use_state(|| false);
     let feed_cutoff_days = use_state(|| 0);
@@ -3369,7 +3366,7 @@ pub fn episode_layout() -> Html {
     // podcast change → full rebuild; on backend append (length grew) → process only the new
     // tail. The backend already returns rows in NewestFirst order, so for the default sort
     // (and "no sort selected") an append is a literal Vec::extend with no re-sort.
-    let filtered_episodes = use_state(|| Vec::<Episode>::new());
+    let filtered_episodes = use_state(|| Rc::new(Vec::<Episode>::new()));
     let processed_episode_count = use_state(|| 0usize);
     let prev_filter_params: Rc<std::cell::RefCell<Option<(String, CompletedFilter, bool, Option<EpisodeSortDirection>)>>> =
         use_mut_ref(|| None);
@@ -3449,23 +3446,23 @@ pub fn episode_layout() -> Html {
                         // shrank below what we'd previously processed.
                         let mut all = filter_slice(&results.episodes);
                         sort_vec(&mut all);
-                        filtered_episodes.set(all);
+                        filtered_episodes.set(Rc::new(all));
                         processed_episode_count.set(total);
                     } else if total > already_processed {
                         // Append-only: filter just the new tail, extend current displayed list.
                         let new_filtered = filter_slice(&results.episodes[already_processed..]);
-                        let mut current: Vec<Episode> = (*filtered_episodes).clone();
+                        let mut current: Vec<Episode> = (**filtered_episodes).clone();
                         current.extend(new_filtered);
                         if !backend_order_compatible {
                             // User picked a non-default sort; the merged tail isn't ordered.
                             sort_vec(&mut current);
                         }
-                        filtered_episodes.set(current);
+                        filtered_episodes.set(Rc::new(current));
                         processed_episode_count.set(total);
                     }
                 } else {
-                    if !(*filtered_episodes).is_empty() {
-                        filtered_episodes.set(Vec::new());
+                    if !filtered_episodes.is_empty() {
+                        filtered_episodes.set(Rc::new(Vec::new()));
                     }
                     if *processed_episode_count != 0 {
                         processed_episode_count.set(0);
@@ -3536,209 +3533,76 @@ pub fn episode_layout() -> Html {
         });
     }
 
-    // Display pagination — render only the first N episodes regardless of total loaded.
-    let display_count = use_state(|| 15usize);
-    // Tracks which podcast_id has already had its ramp-up run so we don't re-ramp on
-    // every backend append (which also changes filtered_episodes.len()).
-    let last_ramped_podcast_id = use_state(|| 0i32);
-
-    // Reset display_count only when the user changes search/sort/filter — not when backend
-    // appends more episodes (which would snap the list back to 15 and cause the disappear bug).
-    {
-        let display_count = display_count.clone();
-        use_effect_with(
-            (
-                episode_search_term.clone(),
-                episode_sort_direction.clone(),
-                completed_filter_state.clone(),
-                show_in_progress.clone(),
-            ),
-            move |_| {
-                display_count.set(15);
-                || ()
-            },
-        );
-    }
-
-    // Pre-render ramp: fire once per podcast AFTER filtered_episodes is populated (i.e. after
-    // sort preferences and filters have been applied and the reset effect has already run).
-    // Reveals episodes 30 then 50 asynchronously so each render is non-blocking.
-    {
-        let display_count = display_count.clone();
-        let last_ramped_podcast_id = last_ramped_podcast_id.clone();
-        let podcast_id_ramp = podcast_id.clone();
-        let filtered_episodes = filtered_episodes.clone();
-        use_effect_with(
-            (*podcast_id_ramp, (*filtered_episodes).len()),
-            move |(pid, len)| {
-                if *pid > 0 && *len > 0 && *pid != *last_ramped_podcast_id {
-                    last_ramped_podcast_id.set(*pid);
-                    let display_count = display_count.clone();
-                    spawn_local(async move {
-                        TimeoutFuture::new(0).await;
-                        if *display_count < 30 { display_count.set(30); }
-                        TimeoutFuture::new(0).await;
-                        if *display_count < 50 { display_count.set(50); }
-                    });
-                }
-                || ()
-            },
-        );
-    }
-
-    // Combined IntersectionObserver: handles both display pagination and backend fetching.
-    // When sentinel comes into view:
-    //   - If local episodes remain to show → increment display_count (instant, no spinner).
-    //   - If all local episodes shown but backend has more → fetch next page (shows spinner).
-    // Effect deps do NOT include filtered_episodes.len() deliberately: when backend data
-    // arrives and filtered_episodes grows, we do NOT recreate the observer or auto-fire
-    // display_count. The existing callback reads *current* filtered_episodes via deref, so
-    // the next time the user scrolls to the sentinel it sees the correct new total.
-    // This prevents the scroll-position jump that occurs when the auto-fire inserts new
-    // episodes into the DOM before the current viewport.
-    {
-        let display_count = display_count.clone();
+    // Load-more handler: EpisodeListView owns the sentinel, observer, display_count, and
+    // initial ramp. This callback only fires when the view has run out of locally-buffered
+    // episodes AND backend_can_load_more is true. The two `TimeoutFuture::new(0).await` yields
+    // let the spinner paint before the work and let new cards paint after, keeping the page
+    // responsive during the fetch.
+    //
+    // SearchState and PodcastFeedState are read via `Dispatch::get()` inside the body so the
+    // offset reflects the latest already-loaded count. The Rc<State> snapshots captured by the
+    // outer closure would be stale on every fire after the first append — that was the
+    // offset=0 bug in the first pass of this migration.
+    let on_load_more = {
         let loading_more = loading_more.clone();
-        let filtered_episodes = filtered_episodes.clone();
-        let search_data = search_data.clone();
-        let podcast_state = podcast_state.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
-        let sentinel_ref = sentinel_ref.clone();
-
-        use_effect_with(
-            (sentinel_ref.clone(), *display_count),
-            move |(sentinel_ref, _)| {
-                let sentinel_el = match sentinel_ref.cast::<web_sys::Element>() {
-                    Some(el) => el,
-                    None => return Box::new(|| ()) as Box<dyn FnOnce()>,
-                };
-
-                let display_count = display_count.clone();
-                let loading_more = loading_more.clone();
-                let filtered_episodes = filtered_episodes.clone();
-                let loaded = search_data
-                    .podcast_feed_results
-                    .as_ref()
-                    .map(|r| r.episodes.len() as i64)
-                    .unwrap_or(0);
-                let backend_total = search_data
-                    .podcast_feed_results
-                    .as_ref()
-                    .map(|r| r.total)
-                    .unwrap_or(0);
-                let podcast_id_val = podcast_state
-                    .clicked_podcast_info
-                    .as_ref()
-                    .map(|i| i.podcastid)
-                    .unwrap_or(0);
-                let server_name = server_name.clone();
-                let api_key = api_key.clone();
-                let user_id = user_id.clone();
-
-                let callback = Closure::<dyn Fn(Array)>::wrap(Box::new(move |entries: Array| {
-                    let entry: IntersectionObserverEntry = entries.get(0).unchecked_into();
-                    if !entry.is_intersecting() || *loading_more {
-                        return;
-                    }
-
-                    let current = *display_count;
-                    let total_local = (*filtered_episodes).len();
-
-                    if current < total_local {
-                        // Single atomic bump: now that existing cards skip their function body
-                        // on parent re-render (memoized callbacks) and per-mount cost is way
-                        // down, the +15/+30/+50 ramp isn't earning its complexity — and the
-                        // staggering was the direct cause of the "sometimes 1, sometimes 15,
-                        // sometimes 50" inconsistency.
-                        let target = (current + 50).min(total_local);
-                        display_count.set(target);
-                        return;
-                    }
-
-                    // All locally loaded episodes are visible — check if backend has more.
-                    if loaded > 0 && loaded < backend_total {
-                        if let (Some(api_key_inner), Some(server_inner), Some(uid)) =
-                            (api_key.as_ref(), server_name.as_ref(), user_id)
-                        {
-                            if let Some(key_str) = api_key_inner.as_deref() {
-                                let key = key_str.to_string();
-                                let server = server_inner.clone();
-                                let loading_more = loading_more.clone();
-                                let display_count_bump = display_count.clone();
-                                loading_more.set(true);
-                                wasm_bindgen_futures::spawn_local(async move {
-                                    match call_get_podcast_episodes(
-                                        &server,
-                                        &Some(key),
-                                        &uid,
-                                        &podcast_id_val,
-                                        Some(50),
-                                        Some(loaded),
-                                    )
-                                    .await
-                                    {
-                                        Ok(result) => {
-                                            // Yield once so the browser can paint the
-                                            // loading_more spinner state from above before we
-                                            // start the expensive state mutation + render.
-                                            TimeoutFuture::new(0).await;
-                                            Dispatch::<SearchState>::global().reduce_mut(|state| {
-                                                if let Some(ref mut existing) =
-                                                    state.podcast_feed_results
-                                                {
-                                                    existing.episodes.extend(result.episodes);
-                                                    existing.total = result.total;
-                                                }
-                                            });
-                                            // Yield again so Yew can run the
-                                            // filtered_episodes append effect and paint the
-                                            // current frame before we kick the IntersectionObserver
-                                            // effect via display_count_bump.
-                                            TimeoutFuture::new(0).await;
-                                        }
-                                        Err(e) => {
-                                            web_sys::console::log_1(
-                                                &format!("Error loading more episodes: {}", e)
-                                                    .into(),
-                                            );
-                                        }
-                                    }
-                                    // Clear spinner before bumping display_count so the re-created
-                                    // observer doesn't hit the loading_more guard on its first fire.
-                                    loading_more.set(false);
-                                    // Bump display_count to force the IntersectionObserver effect
-                                    // to re-run and capture the freshly-updated filtered_episodes
-                                    // state. Without this the callback holds a stale handle and
-                                    // can't see the newly-appended episodes.
-                                    display_count_bump.set(*display_count_bump + 1);
-                                });
+        use_callback((), move |_: (), _| {
+            if *loading_more {
+                return;
+            }
+            let search_state = Dispatch::<SearchState>::global().get();
+            let podcast_state = Dispatch::<PodcastFeedState>::global().get();
+            let loaded = search_state
+                .podcast_feed_results
+                .as_ref()
+                .map(|r| r.episodes.len() as i64)
+                .unwrap_or(0);
+            let podcast_id_val = podcast_state
+                .clicked_podcast_info
+                .as_ref()
+                .map(|i| i.podcastid)
+                .unwrap_or(0);
+            let Some(api_key_inner) = api_key.as_ref() else { return; };
+            let Some(server_inner) = server_name.as_ref() else { return; };
+            let Some(uid) = user_id else { return; };
+            let Some(key_str) = api_key_inner.as_deref() else { return; };
+            let key = key_str.to_string();
+            let server = server_inner.clone();
+            loading_more.set(true);
+            let loading_more = loading_more.clone();
+            spawn_local(async move {
+                match call_get_podcast_episodes(
+                    &server,
+                    &Some(key),
+                    &uid,
+                    &podcast_id_val,
+                    Some(50),
+                    Some(loaded),
+                )
+                .await
+                {
+                    Ok(result) => {
+                        TimeoutFuture::new(0).await;
+                        Dispatch::<SearchState>::global().reduce_mut(|state| {
+                            if let Some(ref mut existing) = state.podcast_feed_results {
+                                existing.episodes.extend(result.episodes);
+                                existing.total = result.total;
                             }
-                        }
+                        });
+                        TimeoutFuture::new(0).await;
                     }
-                }));
-
-                let mut opts = IntersectionObserverInit::new();
-                // Generous root_margin so the load-more (display bump or backend fetch) fires
-                // when the sentinel is ~1.5 viewports below the visible area — i.e. once the
-                // user is roughly 3/4 of the way through the loaded list. Overlaps network
-                // latency with the user's remaining scroll instead of waiting until they hit
-                // the bottom.
-                opts.root_margin("1500px");
-                let observer =
-                    IntersectionObserver::new_with_options(callback.as_ref().unchecked_ref(), &opts)
-                        .expect("IntersectionObserver creation failed");
-                observer.observe(&sentinel_el);
-                callback.forget();
-
-                let observer_clone = observer.clone();
-                Box::new(move || {
-                    observer_clone.disconnect();
-                }) as Box<dyn FnOnce()>
-            },
-        );
-    }
+                    Err(e) => {
+                        web_sys::console::log_1(
+                            &format!("Error loading more episodes: {}", e).into(),
+                        );
+                    }
+                }
+                loading_more.set(false);
+            });
+        })
+    };
 
     // Stable callbacks via use_callback with `()` deps: the Callback object is reused across
     // every parent render. Critical because EpisodeListItem props include these callbacks —
@@ -4782,33 +4646,61 @@ pub fn episode_layout() -> Html {
                                         // on_select_older / on_select_newer hoisted to
                                         // use_callback at the top of the function (stable
                                         // identity across renders).
+
+                                        // Key encodes the filter signature so a sort / completed-filter /
+                                        // in-progress / podcast switch remounts the view and re-runs the
+                                        // ramp. Search term is deliberately omitted — including it would
+                                        // remount on every keystroke.
+                                        let sort_code = match *episode_sort_direction {
+                                            Some(EpisodeSortDirection::NewestFirst) => "n",
+                                            Some(EpisodeSortDirection::OldestFirst) => "o",
+                                            Some(EpisodeSortDirection::ShortestFirst) => "s",
+                                            Some(EpisodeSortDirection::LongestFirst) => "l",
+                                            Some(EpisodeSortDirection::TitleAZ) => "a",
+                                            Some(EpisodeSortDirection::TitleZA) => "z",
+                                            None => "_",
+                                        };
+                                        let filter_code = match *completed_filter_state {
+                                            CompletedFilter::ShowAll => "a",
+                                            CompletedFilter::ShowOnly => "c",
+                                            CompletedFilter::Hide => "h",
+                                        };
+                                        let view_key = format!(
+                                            "elv-{}-{}-{}-{}",
+                                            *podcast_id, sort_code, filter_code, *show_in_progress
+                                        );
+
+                                        let loaded_count = search_data
+                                            .podcast_feed_results
+                                            .as_ref()
+                                            .map(|r| r.episodes.len() as i64)
+                                            .unwrap_or(0);
+                                        let backend_total = search_data
+                                            .podcast_feed_results
+                                            .as_ref()
+                                            .map(|r| r.total)
+                                            .unwrap_or(0);
+                                        let backend_can_load_more =
+                                            loaded_count > 0 && loaded_count < backend_total;
+                                        let episodes_rc: Rc<Vec<Episode>> = (*filtered_episodes).clone();
+                                        let selected_eps_rc: Rc<HashSet<i32>> =
+                                            Rc::new((*selected_episodes).clone());
+
                                         html! {
-                                            <>
                                             <div class="flex-grow overflow-y-auto">
-                                                { for (*filtered_episodes).iter().take(*display_count).map(|ep| {
-                                                    let on_cb = on_episode_checkbox_change.clone();
-                                                    let ep_id = ep.episodeid;
-                                                    let is_selected = selected_episodes.contains(&ep_id);
-                                                    html! {
-                                                        <EpisodeListItem
-                                                            key={ep_id}
-                                                            episode={ep.clone()}
-                                                            is_delete_mode={*is_selecting}
-                                                            on_checkbox_change={on_cb}
-                                                            is_selected={Some(is_selected)}
-                                                            on_select_above={on_select_newer.clone()}
-                                                            on_select_below={on_select_older.clone()}
-                                                        />
-                                                    }
-                                                }) }
-                                                <div ref={sentinel_ref.clone()} style="height: 1px; overflow-anchor: none;" />
+                                                <EpisodeListView
+                                                    key={view_key}
+                                                    episodes={episodes_rc}
+                                                    backend_can_load_more={backend_can_load_more}
+                                                    loading_more={*loading_more}
+                                                    on_load_more={on_load_more.clone()}
+                                                    is_delete_mode={*is_selecting}
+                                                    on_checkbox_change={on_episode_checkbox_change.clone()}
+                                                    on_select_above={on_select_newer.clone()}
+                                                    on_select_below={on_select_older.clone()}
+                                                    selected_episodes={selected_eps_rc}
+                                                />
                                             </div>
-                                            if *loading_more {
-                                                <div style="position: fixed; bottom: 1.5rem; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; z-index: 50;">
-                                                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-current"></div>
-                                                </div>
-                                            }
-                                            </>
                                         }
                                     } else {
                                         html! {
