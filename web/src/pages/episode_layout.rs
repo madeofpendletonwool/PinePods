@@ -44,8 +44,9 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
-use gloo::events::EventListener;
+use js_sys::Array;
 use wasm_bindgen::JsCast;
+use web_sys::{IntersectionObserver, IntersectionObserverEntry, IntersectionObserverInit};
 use gloo_timers::future::TimeoutFuture;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::Element;
@@ -488,6 +489,8 @@ pub fn episode_layout() -> Html {
 
     let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
+    let loading_more = use_state(|| false);
+    let sentinel_ref = use_node_ref();
     let notification_status = use_state(|| false);
     let favorite_status = use_state(|| false);
     let feed_cutoff_days = use_state(|| 0);
@@ -933,10 +936,15 @@ pub fn episode_layout() -> Html {
         );
     }
 
+    // Tracks how many episodes have been synced into EpisodeStatusState so appends only
+    // process new episodes instead of rebuilding the entire completed/saved/queued sets.
+    let synced_episode_count = use_state(|| 0usize);
+
     // Update sort direction when podcast_id changes to load per-podcast preferences
     {
         let episode_sort_direction = episode_sort_direction.clone();
         let completed_filter_state = completed_filter_state.clone();
+        let synced_episode_count = synced_episode_count.clone();
         let podcast_id_clone = podcast_id.clone();
         use_effect_with(podcast_id_clone, move |podcast_id| {
             if **podcast_id > 0 {
@@ -961,6 +969,7 @@ pub fn episode_layout() -> Html {
                     _ => CompletedFilter::ShowAll,
                 };
                 completed_filter_state.set(new_completed_filter);
+                synced_episode_count.set(0);
             }
             || ()
         });
@@ -985,12 +994,10 @@ pub fn episode_layout() -> Html {
         let feed_cutoff_days_input = feed_cutoff_days_input.clone();
         let audio_dispatch = _dispatch.clone();
         let click_feed_results = search_data.podcast_feed_results.clone();
+        let clicked_podcast_info_effect = podcast_state.clicked_podcast_info.clone();
 
         use_effect_with(
-            (
-                click_feed_results.clone(),
-                effect_added.clone(),
-            ),
+            (*podcast_id, *effect_added),
             move |_| {
                 let episode_name = click_feed_results
                     .as_ref()
@@ -1017,154 +1024,128 @@ pub fn episode_layout() -> Html {
                     let episode_url = episode_url;
                     let user_id = user_id.unwrap();
 
-                    if !episode_name.is_empty() && !episode_url.is_empty() {
+                    // Use podcast_id from clicked_podcast_info when available so we can skip
+                    // the call_get_podcast_id_from_ep_name round-trip for subscribed podcasts.
+                    let known_podcast_id = clicked_podcast_info_effect
+                        .as_ref()
+                        .map(|info| info.podcastid)
+                        .filter(|&id| id > 0);
+
+                    // Proceed if we have a known podcast id OR a valid first-episode URL to look it up
+                    if known_podcast_id.is_some()
+                        || (!episode_name.is_empty() && !episode_url.is_empty())
+                    {
                         wasm_bindgen_futures::spawn_local(async move {
                             if let (Some(api_key), Some(server_name)) =
                                 (api_key.as_ref(), server_name.as_ref())
                             {
-                                match call_get_podcast_id_from_ep_name(
-                                    &server_name,
-                                    &api_key,
-                                    episode_name,
-                                    episode_url,
-                                    user_id,
-                                )
-                                .await
+                                // Resolve the podcast_id: either already known or look it up.
+                                let id = if let Some(id) = known_podcast_id {
+                                    podcast_id.set(id);
+                                    id
+                                } else {
+                                    match call_get_podcast_id_from_ep_name(
+                                        &server_name,
+                                        &api_key,
+                                        episode_name,
+                                        episode_url,
+                                        user_id,
+                                    )
+                                    .await
+                                    {
+                                        Ok(id) => {
+                                            podcast_id.set(id);
+                                            id
+                                        }
+                                        Err(e) => {
+                                            web_sys::console::log_1(
+                                                &format!(
+                                                    "Error getting podcast id from ep name: {}",
+                                                    e
+                                                )
+                                                .into(),
+                                            );
+                                            return;
+                                        }
+                                    }
+                                };
                                 {
-                                    Ok(id) => {
-                                        podcast_id.set(id);
-
-                                        match call_get_auto_download_status(
-                                            &server_name,
-                                            user_id,
-                                            &Some(api_key.clone().unwrap()),
-                                            id,
-                                        )
-                                        .await
-                                        {
-                                            Ok(status) => {
-                                                download_status.set(status);
-                                            }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!(
-                                                        "Error getting auto-download status: {}",
-                                                        e
-                                                    )
-                                                    .into(),
-                                                );
-                                            }
-                                        }
-                                        match call_get_auto_play_next_status(
-                                            &server_name,
-                                            user_id,
-                                            &Some(api_key.clone().unwrap()),
-                                            id,
-                                        )
-                                        .await
-                                        {
-                                            Ok(status) => {
-                                                auto_play_next_status.set(status);
-                                            }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!(
-                                                        "Error getting auto-play-next status: {}",
-                                                        e
-                                                    )
-                                                    .into(),
-                                                );
-                                            }
-                                        }
-                                        match call_get_feed_cutoff_days(
-                                            &server_name,
-                                            &Some(api_key.clone().unwrap()),
-                                            id,
-                                            user_id,
-                                        )
-                                        .await
-                                        {
-                                            Ok(days) => {
-                                                feed_cutoff_days.set(days);
-                                                feed_cutoff_days_input.set(days.to_string());
-                                            }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!(
-                                                        "Error getting feed cutoff days: {}",
-                                                        e
-                                                    )
-                                                    .into(),
-                                                );
-                                            }
-                                        }
-                                        let (notif_result, fav_result) = futures::join!(
+                                        // Unlock page immediately — episodes already in SearchState.
+                                        loading_ep.set(false);
+                                        // Fetch all podcast settings in parallel.
+                                        let key_opt = Some(api_key.clone().unwrap());
+                                        let key_str = api_key.clone().unwrap();
+                                        let server = server_name.clone();
+                                        let (auto_dl_result, auto_play_result, cutoff_result, notif_result, fav_result, play_details_result) = futures::join!(
+                                            call_get_auto_download_status(
+                                                &server,
+                                                user_id,
+                                                &key_opt,
+                                                id,
+                                            ),
+                                            call_get_auto_play_next_status(
+                                                &server,
+                                                user_id,
+                                                &key_opt,
+                                                id,
+                                            ),
+                                            call_get_feed_cutoff_days(
+                                                &server,
+                                                &key_opt,
+                                                id,
+                                                user_id,
+                                            ),
                                             call_get_podcast_notifications_status(
-                                                server_name.clone(),
-                                                api_key.clone().unwrap(),
+                                                server.clone(),
+                                                key_str.clone(),
                                                 user_id,
                                                 id,
                                             ),
                                             call_get_podcast_favorite_status(
-                                                server_name.clone(),
-                                                api_key.clone().unwrap(),
+                                                server.clone(),
+                                                key_str.clone(),
                                                 user_id,
                                                 id,
                                             ),
+                                            call_get_play_episode_details(
+                                                &server,
+                                                &key_opt,
+                                                user_id,
+                                                id,
+                                                false,
+                                            ),
                                         );
+                                        match auto_dl_result {
+                                            Ok(status) => { download_status.set(status); }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting auto-download status: {}", e).into()); }
+                                        }
+                                        match auto_play_result {
+                                            Ok(status) => { auto_play_next_status.set(status); }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting auto-play-next status: {}", e).into()); }
+                                        }
+                                        match cutoff_result {
+                                            Ok(days) => {
+                                                feed_cutoff_days.set(days);
+                                                feed_cutoff_days_input.set(days.to_string());
+                                            }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting feed cutoff days: {}", e).into()); }
+                                        }
                                         match notif_result {
-                                            Ok(status) => {
-                                                notification_effect.set(status);
-                                            }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!(
-                                                        "Error getting notification status: {}",
-                                                        e
-                                                    )
-                                                    .into(),
-                                                );
-                                            }
+                                            Ok(status) => { notification_effect.set(status); }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting notification status: {}", e).into()); }
                                         }
                                         match fav_result {
-                                            Ok(status) => {
-                                                favorite_effect.set(status);
-                                            }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!(
-                                                        "Error getting favorite status: {}",
-                                                        e
-                                                    )
-                                                    .into(),
-                                                );
-                                            }
+                                            Ok(status) => { favorite_effect.set(status); }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting favorite status: {}", e).into()); }
                                         }
-                                        match call_get_play_episode_details(
-                                            &server_name,
-                                            &Some(api_key.clone().unwrap()),
-                                            user_id,
-                                            id,    // podcast_id
-                                            false, // is_youtube (probably false for most podcasts, adjust if needed)
-                                        )
-                                        .await
-                                        {
+                                        match play_details_result {
                                             Ok((speed, start, end)) => {
                                                 effect_start_skip.set(start);
                                                 effect_end_skip.set(end);
                                                 effect_playback_speed.set(speed as f64);
                                             }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!(
-                                                        "Error getting auto-skip times: {}",
-                                                        e
-                                                    )
-                                                    .into(),
-                                                );
-                                            }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting auto-skip times: {}", e).into()); }
                                         }
-                                        loading_ep.set(false);
                                         let chap_request = FetchPodcasting2PodDataRequest {
                                             podcast_id: id,
                                             user_id,
@@ -1197,12 +1178,6 @@ pub fn episode_layout() -> Html {
                                             }
                                         }
                                     }
-                                    Err(e) => {
-                                        web_sys::console::log_1(
-                                            &format!("Error getting podcast ID: {}", e).into(),
-                                        );
-                                    }
-                                }
                             }
                         });
                     }
@@ -3314,6 +3289,8 @@ pub fn episode_layout() -> Html {
                                         &api_key_wasm,
                                         &user_id_wasm,
                                         &call_podcast_id,
+                                        Some(50),
+                                        Some(0),
                                     )
                                     .await
                                     {
@@ -3387,161 +3364,438 @@ pub fn episode_layout() -> Html {
         Hide,
     }
 
-    let filtered_episodes = use_memo(
-        (
-            podcast_feed_results.clone(),
-            episode_search_term.clone(),
-            episode_sort_direction.clone(),
-            completed_filter_state.clone(), // Changed from show_completed
-            show_in_progress.clone(),
-        ),
-        |(episodes, search, sort_dir, _show_completed, show_in_progress)| {
-            if let Some(results) = episodes {
-                let mut filtered = results
-                    .episodes
-                    .iter()
-                    .filter(|episode| {
-                        // Search filter
-                        let matches_search = if !search.is_empty() {
-                            episode
-                                .episodetitle
-                                .to_lowercase()
-                                .contains(&search.to_lowercase())
-                                || episode
-                                    .episodedescription
-                                    .to_lowercase()
-                                    .contains(&search.to_lowercase())
-                        } else {
-                            true
-                        };
+    // Filtered/sorted episode list held as page-local state so backend appends don't trigger
+    // a full clone+sort of the entire loaded list. The effect below maintains it: on filter or
+    // podcast change → full rebuild; on backend append (length grew) → process only the new
+    // tail. The backend already returns rows in NewestFirst order, so for the default sort
+    // (and "no sort selected") an append is a literal Vec::extend with no re-sort.
+    let filtered_episodes = use_state(|| Vec::<Episode>::new());
+    let processed_episode_count = use_state(|| 0usize);
+    let prev_filter_params: Rc<std::cell::RefCell<Option<(String, CompletedFilter, bool, Option<EpisodeSortDirection>)>>> =
+        use_mut_ref(|| None);
 
-                        // Status filter
-                        let matches_status = if **show_in_progress {
-                            !episode.completed && episode.listenduration > 0
-                        } else {
-                            match *completed_filter_state {
-                                CompletedFilter::ShowOnly => episode.completed,
-                                CompletedFilter::Hide => !episode.completed,
-                                CompletedFilter::ShowAll => true,
-                            }
-                        };
-
-                        matches_search && matches_status
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>();
-
-                // Sort logic
-                if let Some(direction) = (*sort_dir).as_ref() {
-                    filtered.sort_by(|a, b| match direction {
-                        EpisodeSortDirection::NewestFirst => {
-                            b.episodepubdate.cmp(&a.episodepubdate)
-                        }
-                        EpisodeSortDirection::OldestFirst => {
-                            a.episodepubdate.cmp(&b.episodepubdate)
-                        }
-                        EpisodeSortDirection::ShortestFirst => {
-                            a.episodepubdate.cmp(&b.episodepubdate)
-                        }
-                        EpisodeSortDirection::LongestFirst => {
-                            b.episodepubdate.cmp(&a.episodepubdate)
-                        }
-                        EpisodeSortDirection::TitleAZ => a.episodetitle.cmp(&b.episodetitle),
-                        EpisodeSortDirection::TitleZA => b.episodetitle.cmp(&a.episodetitle),
-                    });
-                }
-                filtered
-            } else {
-                vec![]
-            }
-        },
+    let current_filter_params = (
+        (*episode_search_term).clone(),
+        (*completed_filter_state).clone(),
+        *show_in_progress,
+        (*episode_sort_direction).clone(),
     );
 
+    {
+        let filtered_episodes = filtered_episodes.clone();
+        let processed_episode_count = processed_episode_count.clone();
+        let prev_filter_params = prev_filter_params.clone();
+        use_effect_with(
+            (podcast_feed_results.clone(), current_filter_params.clone()),
+            move |(pfr, fp)| {
+                let filters_changed = {
+                    let mut prev = prev_filter_params.borrow_mut();
+                    let changed = prev.as_ref() != Some(fp);
+                    *prev = Some(fp.clone());
+                    changed
+                };
+
+                let (search, completed_filter, show_in_progress_val, sort_dir) = fp.clone();
+                let search_lc = if search.is_empty() { String::new() } else { search.to_lowercase() };
+
+                let filter_slice = |slice: &[Episode]| -> Vec<Episode> {
+                    slice
+                        .iter()
+                        .filter(|ep| {
+                            let matches_search = if search_lc.is_empty() {
+                                true
+                            } else {
+                                ep.episodetitle.to_lowercase().contains(&search_lc)
+                                    || ep.episodedescription.to_lowercase().contains(&search_lc)
+                            };
+                            let matches_status = if show_in_progress_val {
+                                !ep.completed && ep.listenduration > 0
+                            } else {
+                                match completed_filter {
+                                    CompletedFilter::ShowOnly => ep.completed,
+                                    CompletedFilter::Hide => !ep.completed,
+                                    CompletedFilter::ShowAll => true,
+                                }
+                            };
+                            matches_search && matches_status
+                        })
+                        .cloned()
+                        .collect()
+                };
+
+                let sort_vec = |v: &mut Vec<Episode>| {
+                    if let Some(dir) = &sort_dir {
+                        v.sort_by(|a, b| match dir {
+                            EpisodeSortDirection::NewestFirst => b.episodepubdate.cmp(&a.episodepubdate),
+                            EpisodeSortDirection::OldestFirst => a.episodepubdate.cmp(&b.episodepubdate),
+                            EpisodeSortDirection::ShortestFirst => a.episodepubdate.cmp(&b.episodepubdate),
+                            EpisodeSortDirection::LongestFirst => b.episodepubdate.cmp(&a.episodepubdate),
+                            EpisodeSortDirection::TitleAZ => a.episodetitle.cmp(&b.episodetitle),
+                            EpisodeSortDirection::TitleZA => b.episodetitle.cmp(&a.episodetitle),
+                        });
+                    }
+                };
+
+                if let Some(results) = pfr.as_ref() {
+                    let total = results.episodes.len();
+                    let already_processed = *processed_episode_count;
+                    let backend_order_compatible = matches!(
+                        sort_dir,
+                        None | Some(EpisodeSortDirection::NewestFirst)
+                    );
+
+                    if filters_changed || total < already_processed {
+                        // Full recompute: filters changed OR podcast switched and the raw list
+                        // shrank below what we'd previously processed.
+                        let mut all = filter_slice(&results.episodes);
+                        sort_vec(&mut all);
+                        filtered_episodes.set(all);
+                        processed_episode_count.set(total);
+                    } else if total > already_processed {
+                        // Append-only: filter just the new tail, extend current displayed list.
+                        let new_filtered = filter_slice(&results.episodes[already_processed..]);
+                        let mut current: Vec<Episode> = (*filtered_episodes).clone();
+                        current.extend(new_filtered);
+                        if !backend_order_compatible {
+                            // User picked a non-default sort; the merged tail isn't ordered.
+                            sort_vec(&mut current);
+                        }
+                        filtered_episodes.set(current);
+                        processed_episode_count.set(total);
+                    }
+                } else {
+                    if !(*filtered_episodes).is_empty() {
+                        filtered_episodes.set(Vec::new());
+                    }
+                    if *processed_episode_count != 0 {
+                        processed_episode_count.set(0);
+                    }
+                }
+                || ()
+            },
+        );
+    }
+
     // Sync completed/saved/queued status into EpisodeStatusState whenever episodes load.
+    // On initial load (already_synced == 0) or podcast change (total < already_synced): full
+    // replace. On append: only extend with new episodes so existing cards skip re-evaluation.
     {
         let podcast_feed_results = podcast_feed_results.clone();
+        let synced_episode_count = synced_episode_count.clone();
         use_effect_with(podcast_feed_results, move |results| {
             if let Some(results) = results.as_ref() {
-                let completed_episode_ids: std::collections::HashSet<i32> = results
-                    .episodes
-                    .iter()
-                    .filter(|ep| ep.completed)
-                    .map(|ep| ep.episodeid)
-                    .collect();
-                let saved_episodes: Vec<Episode> = results
-                    .episodes
-                    .iter()
-                    .filter(|ep| ep.saved)
-                    .cloned()
-                    .collect();
-                let queued_episode_ids: Vec<i32> = results
-                    .episodes
-                    .iter()
-                    .filter(|ep| ep.queued)
-                    .map(|ep| ep.episodeid)
-                    .collect();
-                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
-                    state.completed_episodes = completed_episode_ids;
-                    state.saved_episodes = saved_episodes;
-                    state.queued_episode_ids = Some(queued_episode_ids);
-                });
+                let all_episodes = &results.episodes;
+                let already_synced = *synced_episode_count;
+                let total_now = all_episodes.len();
+
+                // If total_now < already_synced the podcast changed — treat as initial.
+                let is_initial = already_synced == 0 || total_now < already_synced;
+
+                if total_now != already_synced {
+                    let new_episodes: &[Episode] = if is_initial {
+                        &all_episodes[..]
+                    } else {
+                        &all_episodes[already_synced..]
+                    };
+
+                    let new_completed: std::collections::HashSet<i32> = new_episodes
+                        .iter()
+                        .filter(|ep| ep.completed)
+                        .map(|ep| ep.episodeid)
+                        .collect();
+                    let new_saved: Vec<Episode> = new_episodes
+                        .iter()
+                        .filter(|ep| ep.saved)
+                        .cloned()
+                        .collect();
+                    let new_queued: Vec<i32> = new_episodes
+                        .iter()
+                        .filter(|ep| ep.queued)
+                        .map(|ep| ep.episodeid)
+                        .collect();
+
+                    Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
+                        if is_initial {
+                            state.completed_episodes = new_completed;
+                            state.saved_episodes = new_saved;
+                            state.queued_episode_ids = Some(new_queued);
+                        } else {
+                            state.completed_episodes.extend(new_completed);
+                            state.saved_episodes.extend(new_saved);
+                            if let Some(ref mut q) = state.queued_episode_ids {
+                                q.extend(new_queued);
+                            } else {
+                                state.queued_episode_ids = Some(new_queued);
+                            }
+                        }
+                    });
+                    synced_episode_count.set(total_now);
+                }
             }
             || ()
         });
     }
 
     // Display pagination — render only the first N episodes regardless of total loaded.
-    // Window scroll listener increments display_count as the user scrolls down.
-    let display_count = use_state(|| 50usize);
+    let display_count = use_state(|| 15usize);
+    // Tracks which podcast_id has already had its ramp-up run so we don't re-ramp on
+    // every backend append (which also changes filtered_episodes.len()).
+    let last_ramped_podcast_id = use_state(|| 0i32);
 
-    // Reset display_count whenever the filtered list changes (search/sort/filter changed).
+    // Reset display_count only when the user changes search/sort/filter — not when backend
+    // appends more episodes (which would snap the list back to 15 and cause the disappear bug).
     {
         let display_count = display_count.clone();
-        use_effect_with(filtered_episodes.clone(), move |_| {
-            display_count.set(50);
-            || ()
-        });
+        use_effect_with(
+            (
+                episode_search_term.clone(),
+                episode_sort_direction.clone(),
+                completed_filter_state.clone(),
+                show_in_progress.clone(),
+            ),
+            move |_| {
+                display_count.set(15);
+                || ()
+            },
+        );
     }
 
-    // Window scroll listener: fires when user nears the bottom of the page, shows 50 more.
-    // main-container has no fixed height so the window scrolls, not any inner div.
+    // Pre-render ramp: fire once per podcast AFTER filtered_episodes is populated (i.e. after
+    // sort preferences and filters have been applied and the reset effect has already run).
+    // Reveals episodes 30 then 50 asynchronously so each render is non-blocking.
     {
         let display_count = display_count.clone();
+        let last_ramped_podcast_id = last_ramped_podcast_id.clone();
+        let podcast_id_ramp = podcast_id.clone();
         let filtered_episodes = filtered_episodes.clone();
-        use_effect_with(filtered_episodes.clone(), move |filtered_episodes| {
-            let total = filtered_episodes.len();
-            let display_count = display_count.clone();
-            let window = web_sys::window().unwrap();
-            let target: &web_sys::EventTarget = window.unchecked_ref();
-            let listener = EventListener::new(target, "scroll", move |_| {
-                let win = web_sys::window().unwrap();
-                let doc = win.document().unwrap();
-                let scroll_y = win.scroll_y().unwrap_or(0.0);
-                let inner_h = win.inner_height().unwrap().as_f64().unwrap_or(800.0);
-                let doc_h = doc
-                    .document_element()
-                    .map(|el| el.scroll_height() as f64)
-                    .unwrap_or(f64::MAX);
-                if scroll_y + inner_h + 400.0 >= doc_h {
-                    let current = *display_count;
-                    if current < total {
-                        display_count.set((current + 50).min(total));
-                    }
+        use_effect_with(
+            (*podcast_id_ramp, (*filtered_episodes).len()),
+            move |(pid, len)| {
+                if *pid > 0 && *len > 0 && *pid != *last_ramped_podcast_id {
+                    last_ramped_podcast_id.set(*pid);
+                    let display_count = display_count.clone();
+                    spawn_local(async move {
+                        TimeoutFuture::new(0).await;
+                        if *display_count < 30 { display_count.set(30); }
+                        TimeoutFuture::new(0).await;
+                        if *display_count < 50 { display_count.set(50); }
+                    });
                 }
-            });
-            move || drop(listener)
-        });
+                || ()
+            },
+        );
     }
 
+    // Combined IntersectionObserver: handles both display pagination and backend fetching.
+    // When sentinel comes into view:
+    //   - If local episodes remain to show → increment display_count (instant, no spinner).
+    //   - If all local episodes shown but backend has more → fetch next page (shows spinner).
+    // Effect deps do NOT include filtered_episodes.len() deliberately: when backend data
+    // arrives and filtered_episodes grows, we do NOT recreate the observer or auto-fire
+    // display_count. The existing callback reads *current* filtered_episodes via deref, so
+    // the next time the user scrolls to the sentinel it sees the correct new total.
+    // This prevents the scroll-position jump that occurs when the auto-fire inserts new
+    // episodes into the DOM before the current viewport.
+    {
+        let display_count = display_count.clone();
+        let loading_more = loading_more.clone();
+        let filtered_episodes = filtered_episodes.clone();
+        let search_data = search_data.clone();
+        let podcast_state = podcast_state.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let sentinel_ref = sentinel_ref.clone();
+
+        use_effect_with(
+            (sentinel_ref.clone(), *display_count),
+            move |(sentinel_ref, _)| {
+                let sentinel_el = match sentinel_ref.cast::<web_sys::Element>() {
+                    Some(el) => el,
+                    None => return Box::new(|| ()) as Box<dyn FnOnce()>,
+                };
+
+                let display_count = display_count.clone();
+                let loading_more = loading_more.clone();
+                let filtered_episodes = filtered_episodes.clone();
+                let loaded = search_data
+                    .podcast_feed_results
+                    .as_ref()
+                    .map(|r| r.episodes.len() as i64)
+                    .unwrap_or(0);
+                let backend_total = search_data
+                    .podcast_feed_results
+                    .as_ref()
+                    .map(|r| r.total)
+                    .unwrap_or(0);
+                let podcast_id_val = podcast_state
+                    .clicked_podcast_info
+                    .as_ref()
+                    .map(|i| i.podcastid)
+                    .unwrap_or(0);
+                let server_name = server_name.clone();
+                let api_key = api_key.clone();
+                let user_id = user_id.clone();
+
+                let callback = Closure::<dyn Fn(Array)>::wrap(Box::new(move |entries: Array| {
+                    let entry: IntersectionObserverEntry = entries.get(0).unchecked_into();
+                    if !entry.is_intersecting() || *loading_more {
+                        return;
+                    }
+
+                    let current = *display_count;
+                    let total_local = (*filtered_episodes).len();
+
+                    if current < total_local {
+                        // Single atomic bump: now that existing cards skip their function body
+                        // on parent re-render (memoized callbacks) and per-mount cost is way
+                        // down, the +15/+30/+50 ramp isn't earning its complexity — and the
+                        // staggering was the direct cause of the "sometimes 1, sometimes 15,
+                        // sometimes 50" inconsistency.
+                        let target = (current + 50).min(total_local);
+                        display_count.set(target);
+                        return;
+                    }
+
+                    // All locally loaded episodes are visible — check if backend has more.
+                    if loaded > 0 && loaded < backend_total {
+                        if let (Some(api_key_inner), Some(server_inner), Some(uid)) =
+                            (api_key.as_ref(), server_name.as_ref(), user_id)
+                        {
+                            if let Some(key_str) = api_key_inner.as_deref() {
+                                let key = key_str.to_string();
+                                let server = server_inner.clone();
+                                let loading_more = loading_more.clone();
+                                let display_count_bump = display_count.clone();
+                                loading_more.set(true);
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    match call_get_podcast_episodes(
+                                        &server,
+                                        &Some(key),
+                                        &uid,
+                                        &podcast_id_val,
+                                        Some(50),
+                                        Some(loaded),
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) => {
+                                            // Yield once so the browser can paint the
+                                            // loading_more spinner state from above before we
+                                            // start the expensive state mutation + render.
+                                            TimeoutFuture::new(0).await;
+                                            Dispatch::<SearchState>::global().reduce_mut(|state| {
+                                                if let Some(ref mut existing) =
+                                                    state.podcast_feed_results
+                                                {
+                                                    existing.episodes.extend(result.episodes);
+                                                    existing.total = result.total;
+                                                }
+                                            });
+                                            // Yield again so Yew can run the
+                                            // filtered_episodes append effect and paint the
+                                            // current frame before we kick the IntersectionObserver
+                                            // effect via display_count_bump.
+                                            TimeoutFuture::new(0).await;
+                                        }
+                                        Err(e) => {
+                                            web_sys::console::log_1(
+                                                &format!("Error loading more episodes: {}", e)
+                                                    .into(),
+                                            );
+                                        }
+                                    }
+                                    // Clear spinner before bumping display_count so the re-created
+                                    // observer doesn't hit the loading_more guard on its first fire.
+                                    loading_more.set(false);
+                                    // Bump display_count to force the IntersectionObserver effect
+                                    // to re-run and capture the freshly-updated filtered_episodes
+                                    // state. Without this the callback holds a stale handle and
+                                    // can't see the newly-appended episodes.
+                                    display_count_bump.set(*display_count_bump + 1);
+                                });
+                            }
+                        }
+                    }
+                }));
+
+                let mut opts = IntersectionObserverInit::new();
+                // Generous root_margin so the load-more (display bump or backend fetch) fires
+                // when the sentinel is ~1.5 viewports below the visible area — i.e. once the
+                // user is roughly 3/4 of the way through the loaded list. Overlaps network
+                // latency with the user's remaining scroll instead of waiting until they hit
+                // the bottom.
+                opts.root_margin("1500px");
+                let observer =
+                    IntersectionObserver::new_with_options(callback.as_ref().unchecked_ref(), &opts)
+                        .expect("IntersectionObserver creation failed");
+                observer.observe(&sentinel_el);
+                callback.forget();
+
+                let observer_clone = observer.clone();
+                Box::new(move || {
+                    observer_clone.disconnect();
+                }) as Box<dyn FnOnce()>
+            },
+        );
+    }
+
+    // Stable callbacks via use_callback with `()` deps: the Callback object is reused across
+    // every parent render. Critical because EpisodeListItem props include these callbacks —
+    // if they were fresh `Callback::from(...)` per render, every already-mounted card would
+    // fail PartialEq and re-run its function body on every parent re-render (display_count
+    // bump, backend append, anything). With use_callback the captured UseStateHandle deref
+    // still gives the *current* state value when the callback fires, so behaviour is
+    // unchanged — only the identity is stabilised.
     let on_episode_checkbox_change = {
         let selected_episodes = selected_episodes.clone();
-        Callback::from(move |episode_id: i32| {
+        use_callback((), move |episode_id: i32, _| {
             let mut current = (*selected_episodes).clone();
             if current.contains(&episode_id) {
                 current.remove(&episode_id);
             } else {
                 current.insert(episode_id);
             }
+            selected_episodes.set(current);
+        })
+    };
+
+    let on_select_older = {
+        let filtered_episodes = filtered_episodes.clone();
+        let selected_episodes = selected_episodes.clone();
+        use_callback((), move |cutoff_episode_id: i32, _| {
+            let episodes = &*filtered_episodes;
+            let cutoff_index = episodes
+                .iter()
+                .position(|ep| ep.episodeid == cutoff_episode_id)
+                .unwrap_or(0);
+            let older_ids: HashSet<i32> = episodes
+                .iter()
+                .skip(cutoff_index)
+                .map(|ep| ep.episodeid)
+                .collect();
+            let mut current = (*selected_episodes).clone();
+            current.extend(older_ids);
+            selected_episodes.set(current);
+        })
+    };
+
+    let on_select_newer = {
+        let filtered_episodes = filtered_episodes.clone();
+        let selected_episodes = selected_episodes.clone();
+        use_callback((), move |cutoff_episode_id: i32, _| {
+            let episodes = &*filtered_episodes;
+            let cutoff_index = episodes
+                .iter()
+                .position(|ep| ep.episodeid == cutoff_episode_id)
+                .unwrap_or(0);
+            let newer_ids: HashSet<i32> = episodes
+                .iter()
+                .take(cutoff_index + 1)
+                .map(|ep| ep.episodeid)
+                .collect();
+            let mut current = (*selected_episodes).clone();
+            current.extend(newer_ids);
             selected_episodes.set(current);
         })
     };
@@ -4525,47 +4779,11 @@ pub fn episode_layout() -> Html {
                                             });
                                         });
 
-                                        // Select all older episodes callback
-                                        let filtered_episodes_older = filtered_episodes.clone();
-                                        let selected_episodes_older = selected_episodes.clone();
-                                        let on_select_older = Callback::from(move |cutoff_episode_id: i32| {
-                                            let cutoff_index = filtered_episodes_older.iter()
-                                                .position(|ep| ep.episodeid == cutoff_episode_id)
-                                                .unwrap_or(0);
-
-                                            let older_ids: HashSet<i32> = filtered_episodes_older.iter()
-                                                .skip(cutoff_index) // Include the cutoff episode and all after it (older in reverse chronological order)
-                                                .map(|ep| ep.episodeid)
-                                                .collect();
-
-                                            selected_episodes_older.set({
-                                                let mut current = (*selected_episodes_older).clone();
-                                                current.extend(older_ids);
-                                                current
-                                            });
-                                        });
-
-                                        // Select all newer episodes callback
-                                        let filtered_episodes_newer = filtered_episodes.clone();
-                                        let selected_episodes_newer = selected_episodes.clone();
-                                        let on_select_newer = Callback::from(move |cutoff_episode_id: i32| {
-                                            let cutoff_index = filtered_episodes_newer.iter()
-                                                .position(|ep| ep.episodeid == cutoff_episode_id)
-                                                .unwrap_or(0);
-
-                                            let newer_ids: HashSet<i32> = filtered_episodes_newer.iter()
-                                                .take(cutoff_index + 1) // Include episodes before the cutoff (newer in reverse chronological order)
-                                                .map(|ep| ep.episodeid)
-                                                .collect();
-
-                                            selected_episodes_newer.set({
-                                                let mut current = (*selected_episodes_newer).clone();
-                                                current.extend(newer_ids);
-                                                current
-                                            });
-                                        });
-
+                                        // on_select_older / on_select_newer hoisted to
+                                        // use_callback at the top of the function (stable
+                                        // identity across renders).
                                         html! {
+                                            <>
                                             <div class="flex-grow overflow-y-auto">
                                                 { for (*filtered_episodes).iter().take(*display_count).map(|ep| {
                                                     let on_cb = on_episode_checkbox_change.clone();
@@ -4583,7 +4801,14 @@ pub fn episode_layout() -> Html {
                                                         />
                                                     }
                                                 }) }
+                                                <div ref={sentinel_ref.clone()} style="height: 1px; overflow-anchor: none;" />
                                             </div>
+                                            if *loading_more {
+                                                <div style="position: fixed; bottom: 1.5rem; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; z-index: 50;">
+                                                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-current"></div>
+                                                </div>
+                                            }
+                                            </>
                                         }
                                     } else {
                                         html! {

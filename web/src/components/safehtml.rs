@@ -3,11 +3,33 @@ use crate::components::context::{AppState, NotificationState, UIState};
 use crate::requests::episode::Episode;
 use i18nrs::yew::use_translation;
 use regex::Regex;
+use std::sync::OnceLock;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlElement, Node};
 use yew::prelude::*;
 use yewdux::prelude::*;
+
+static TIMECODE_REGEXES: OnceLock<Vec<Regex>> = OnceLock::new();
+
+fn get_timecode_regexes() -> &'static Vec<Regex> {
+    TIMECODE_REGEXES.get_or_init(|| {
+        [
+            r"\((\d{1,2}):(\d{2}):(\d{2})\)",
+            r"\[(\d{1,2}):(\d{2}):(\d{2})\]",
+            r"\((\d{1,2}):(\d{2})\)",
+            r"\[(\d{1,2}):(\d{2})\]",
+            r"\b(\d{1,2}):(\d{2}):(\d{2})\b",
+            r"\b(\d{1,2}):(\d{2})\b",
+            r"(\d{1,2})h\s*(\d{1,2})m\s*(\d{1,2})s",
+            r"(\d{1,2})h\s*(\d{1,2})m",
+            r"(\d{1,2})m\s*(\d{1,2})s",
+        ]
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect()
+    })
+}
 
 // Original SafeHtml component properties
 #[derive(Properties, PartialEq)]
@@ -95,29 +117,10 @@ fn process_timecodes(
 
     temp_div.set_inner_html(html_content);
 
-    // Define regex patterns for different timecode formats that are compatible with WASM
-    // Avoid using lookbehind/lookahead assertions which aren't supported
-    let patterns = vec![
-        // (00:00:00) or [00:00:00] - full format with parentheses/brackets
-        r"\((\d{1,2}):(\d{2}):(\d{2})\)",
-        r"\[(\d{1,2}):(\d{2}):(\d{2})\]",
-        // (00:00) or [00:00] - minutes:seconds with parentheses/brackets
-        r"\((\d{1,2}):(\d{2})\)",
-        r"\[(\d{1,2}):(\d{2})\]",
-        // 00:00:00 - full format without parentheses/brackets (use word boundaries instead)
-        r"\b(\d{1,2}):(\d{2}):(\d{2})\b",
-        // 00:00 - minutes:seconds without parentheses/brackets
-        r"\b(\d{1,2}):(\d{2})\b",
-        // 1h 23m 45s or 1h23m45s format
-        r"(\d{1,2})h\s*(\d{1,2})m\s*(\d{1,2})s",
-        r"(\d{1,2})h\s*(\d{1,2})m",
-        r"(\d{1,2})m\s*(\d{1,2})s",
-    ];
-
     // Process all text nodes recursively
     process_node(
         &temp_div,
-        &patterns,
+        get_timecode_regexes(),
         &document,
         &audio_dispatch,
         episode_props,
@@ -138,7 +141,7 @@ fn process_timecodes(
 // Helper function to process nodes recursively with error handling
 fn process_node(
     node: &Node,
-    patterns: &Vec<&str>,
+    patterns: &[Regex],
     document: &web_sys::Document,
     audio_dispatch: &Dispatch<UIState>,
     episode_props: &Props,
@@ -164,20 +167,8 @@ fn process_node(
             let mut has_timecode = false;
             let mut replacements = vec![];
 
-            // Try each pattern
-            for &pattern in patterns {
-                // Use safely compiled regex
-                let regex = match Regex::new(pattern) {
-                    Ok(r) => r,
-                    Err(e) => {
-                        log_error(
-                            format!("Failed to compile regex pattern {}: {:?}", pattern, e)
-                                .as_str(),
-                        );
-                        continue; // Skip this pattern if it fails to compile
-                    }
-                };
-
+            // Try each pre-compiled pattern
+            for (idx, regex) in patterns.iter().enumerate() {
                 if regex.is_match(&text) {
                     for cap in regex.captures_iter(&text) {
                         let full_match = match cap.get(0) {
@@ -220,49 +211,25 @@ fn process_node(
                             continue;
                         }
 
-                        // Extract time components based on the pattern
-                        let (hours, minutes, seconds) = if pattern
-                            == r"\((\d{1,2}):(\d{2}):(\d{2})\)"
-                            || pattern == r"\[(\d{1,2}):(\d{2}):(\d{2})\]"
-                            || pattern == r"\b(\d{1,2}):(\d{2}):(\d{2})\b"
-                        {
-                            // Full format with hours, minutes, seconds
-                            let hrs = cap.get(1).map(|m| m.as_str());
-                            let mins = cap.get(2).map(|m| m.as_str()).unwrap_or("0");
-                            let secs = cap.get(3).map(|m| m.as_str());
-
-                            (hrs, mins, secs)
-                        } else if pattern == r"\((\d{1,2}):(\d{2})\)"
-                            || pattern == r"\[(\d{1,2}):(\d{2})\]"
-                            || pattern == r"\b(\d{1,2}):(\d{2})\b"
-                        {
-                            // Format with just minutes and seconds
-                            let mins = cap.get(1).map(|m| m.as_str()).unwrap_or("0");
-                            let secs = cap.get(2).map(|m| m.as_str());
-
-                            (None, mins, secs)
-                        } else if pattern == r"(\d{1,2})h\s*(\d{1,2})m\s*(\d{1,2})s" {
-                            // 1h 23m 45s format
-                            let hrs = cap.get(1).map(|m| m.as_str());
-                            let mins = cap.get(2).map(|m| m.as_str()).unwrap_or("0");
-                            let secs = cap.get(3).map(|m| m.as_str());
-
-                            (hrs, mins, secs)
-                        } else if pattern == r"(\d{1,2})h\s*(\d{1,2})m" {
-                            // 1h 23m format
-                            let hrs = cap.get(1).map(|m| m.as_str());
-                            let mins = cap.get(2).map(|m| m.as_str()).unwrap_or("0");
-
-                            (hrs, mins, None)
-                        } else if pattern == r"(\d{1,2})m\s*(\d{1,2})s" {
-                            // 23m 45s format
-                            let mins = cap.get(1).map(|m| m.as_str()).unwrap_or("0");
-                            let secs = cap.get(2).map(|m| m.as_str());
-
-                            (None, mins, secs)
-                        } else {
-                            // Fallback (shouldn't happen with our patterns)
-                            (None, "0", None)
+                        // Extract time components — dispatch by index matching get_timecode_regexes order:
+                        // 0,1,4,6 → h:m:s   2,3,5,8 → m:s   7 → h:m
+                        let (hours, minutes, seconds) = match idx {
+                            0 | 1 | 4 | 6 => {
+                                let hrs = cap.get(1).map(|m| m.as_str());
+                                let mins = cap.get(2).map(|m| m.as_str()).unwrap_or("0");
+                                let secs = cap.get(3).map(|m| m.as_str());
+                                (hrs, mins, secs)
+                            }
+                            7 => {
+                                let hrs = cap.get(1).map(|m| m.as_str());
+                                let mins = cap.get(2).map(|m| m.as_str()).unwrap_or("0");
+                                (hrs, mins, None)
+                            }
+                            _ => {
+                                let mins = cap.get(1).map(|m| m.as_str()).unwrap_or("0");
+                                let secs = cap.get(2).map(|m| m.as_str());
+                                (None, mins, secs)
+                            }
                         };
 
                         let total_seconds = timecode_to_seconds(hours, minutes, seconds);
@@ -801,6 +768,29 @@ fn process_node(
             );
         }
     }
+}
+
+// Hook-free HTML renderer for the common "just display this sanitized HTML" case.
+// Use this instead of `SafeHtml` when you do NOT need timecode processing — it skips the
+// four hook registrations (use_translation / use_store / use_selector / use_dispatch) that
+// SafeHtml installs unconditionally. Critical for hot lists (EpisodeListItem renders ~50+
+// of these per page, where the SafeHtml hook overhead is significant).
+//
+// Props are PartialEq so Yew will skip re-rendering when the html string is unchanged —
+// meaning no new <div> allocation when the parent re-renders with the same content.
+#[derive(Properties, PartialEq)]
+pub struct RawHtmlProps {
+    pub html: String,
+}
+
+#[function_component(RawHtml)]
+pub fn raw_html(props: &RawHtmlProps) -> Html {
+    let div = match gloo_utils::document().create_element("div") {
+        Ok(el) => el,
+        Err(_) => gloo_utils::document().create_element("span").unwrap(),
+    };
+    div.set_inner_html(&props.html);
+    Html::VRef(div.into())
 }
 
 // Also update the SafeHtml component to add logging

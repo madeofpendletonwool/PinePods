@@ -4356,3 +4356,37 @@ def migration_041_create_custom_themes_table(conn, db_type: str):
         logger.error(f"Error creating CustomThemes table: {e}")
         conn.rollback()
         raise
+
+
+@register_migration("042", "add_episode_pagination_composite_indexes", "Add composite (PodcastID, EpisodePubDate) indexes so per-podcast paginated scans are index-only", requires=["001"])
+def migration_042_add_episode_pagination_composite_indexes(conn, db_type: str):
+    """The episode_layout pagination query orders by EpisodePubDate DESC and filters by
+    PodcastID. With only single-column indexes Postgres/MySQL must scan and sort. A composite
+    (PodcastID, EpisodePubDate DESC) makes it an index-only scan and is the difference between
+    sub-100ms and multi-second response times on large podcasts."""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting episode pagination composite indexes migration")
+
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+
+        safe_add_index(
+            cursor, db_type,
+            f'CREATE INDEX idx_episodes_podcastid_pubdate ON {table_prefix}Episodes{table_suffix}(PodcastID, EpisodePubDate DESC)',
+            'idx_episodes_podcastid_pubdate'
+        )
+        safe_add_index(
+            cursor, db_type,
+            f'CREATE INDEX idx_youtubevideos_podcastid_publishedat ON {table_prefix}YouTubeVideos{table_suffix}(PodcastID, PublishedAt DESC)',
+            'idx_youtubevideos_podcastid_publishedat'
+        )
+
+        logger.info("Episode pagination composite indexes migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in episode pagination composite indexes migration: {e}")
+        raise
+    finally:
+        cursor.close()

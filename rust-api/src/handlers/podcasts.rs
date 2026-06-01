@@ -117,6 +117,7 @@ pub struct PodcastEpisode {
 #[derive(Serialize)]
 pub struct PodcastEpisodesResponse {
     pub episodes: Vec<PodcastEpisode>,
+    pub total: i64,
 }
 
 #[derive(Serialize)]
@@ -1154,6 +1155,8 @@ pub async fn download_status(
 pub struct PodcastEpisodesQuery {
     pub user_id: i32,
     pub podcast_id: i32,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 // Get episodes for a specific podcast - matches Python podcast_episodes endpoint
@@ -1175,10 +1178,12 @@ pub async fn podcast_episodes(
         return Err(AppError::forbidden("You can only return episodes of your own!"));
     }
 
-    // Get podcast episodes from database 
-    let episodes = state.db_pool.return_podcast_episodes_capitalized(query.user_id, query.podcast_id).await?;
-    
-    Ok(Json(PodcastEpisodesResponse { episodes }))
+    // Get podcast episodes from database
+    let (episodes, total) = state.db_pool
+        .return_podcast_episodes_capitalized(query.user_id, query.podcast_id, query.limit, query.offset)
+        .await?;
+
+    Ok(Json(PodcastEpisodesResponse { episodes, total }))
 }
 
 // Query parameters for get_podcast_id_from_ep_name

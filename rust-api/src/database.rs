@@ -9973,18 +9973,69 @@ impl DatabasePool {
         }
     }
 
-    // Get podcast episodes with capitalized field names for frontend compatibility
-    pub async fn return_podcast_episodes_capitalized(&self, user_id: i32, podcast_id: i32) -> AppResult<Vec<crate::handlers::podcasts::PodcastEpisode>> {
+    // Get podcast episodes with capitalized field names for frontend compatibility.
+    //
+    // Pagination strategy: each UNION branch carries 5-6 LEFT JOINs, so the cost is dominated
+    // by how many rows the joins fire on. We resolve merged podcast IDs in a tiny up-front
+    // query, then push LIMIT (offset + limit) INSIDE each branch so the joins only run on the
+    // rows that can possibly contribute to the final page. The outer ORDER BY...LIMIT/OFFSET
+    // produces the correctly-merged page from the two pre-sorted streams. Total count is a
+    // separate cheap query (two COUNT(*) on the indexed PodcastID column, no joins).
+    pub async fn return_podcast_episodes_capitalized(&self, user_id: i32, podcast_id: i32, limit: Option<i64>, offset: Option<i64>) -> AppResult<(Vec<crate::handlers::podcasts::PodcastEpisode>, i64)> {
         match self {
             DatabasePool::Postgres(pool) => {
+                let lim: i64 = limit.unwrap_or(i64::MAX);
+                let off: i64 = offset.unwrap_or(0);
+                // Per-branch cap: each branch must keep at least (offset + limit) rows so the
+                // outer ORDER BY can correctly interleave them. saturating_add avoids overflow
+                // when limit is i64::MAX (the "give me everything" caller path).
+                let per_branch_limit: i64 = lim.saturating_add(off);
+
+                // Resolve the full set of podcast IDs (primary + merged) up front so the main
+                // query is just `podcastid = ANY($2)` instead of the per-row JSON unpacking the
+                // original query did.
+                let mut podcast_ids: Vec<i32> = vec![podcast_id];
+                let merged_row = sqlx::query(
+                    r#"SELECT mergedpodcastids FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#
+                )
+                .bind(podcast_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+                if let Some(row) = merged_row {
+                    if let Ok(Some(merged_json)) = row.try_get::<Option<String>, _>("mergedpodcastids") {
+                        if let Ok(parsed) = serde_json::from_str::<Vec<i32>>(&merged_json) {
+                            for id in parsed {
+                                if !podcast_ids.contains(&id) {
+                                    podcast_ids.push(id);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Total count across both branches. No joins; the PodcastID single-column
+                // indexes (idx_episodes_podcastid / idx_youtubevideos_podcastid) make this
+                // an index-only scan.
+                let total: i64 = sqlx::query_scalar(
+                    r#"SELECT
+                        (SELECT COUNT(*) FROM "Episodes" WHERE podcastid = ANY($1))
+                      + (SELECT COUNT(*) FROM "YouTubeVideos" WHERE podcastid = ANY($1))
+                    "#
+                )
+                .bind(&podcast_ids)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+
                 let rows = sqlx::query(
                     r#"SELECT * FROM (
-                        SELECT
+                        (SELECT
                             "Podcasts".podcastname as podcastname,
                             "Episodes".episodetitle as "Episodetitle",
                             "Episodes".episodepubdate as "Episodepubdate",
                             "Episodes".episodedescription as "Episodedescription",
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "Episodes".episodeartwork
@@ -10015,23 +10066,18 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedEpisodes" ON
                             "Episodes".episodeid = "DownloadedEpisodes".episodeid
                             AND "DownloadedEpisodes".userid = $1
-                        WHERE "Podcasts".userid = $1 AND (
-                            "Podcasts".podcastid = $2 OR
-                            "Podcasts".podcastid IN (
-                                SELECT jsonb_array_elements_text(COALESCE(mergedpodcastids::jsonb, '[]'::jsonb))::int
-                                FROM "Podcasts" p2
-                                WHERE p2.podcastid = $2 AND p2.userid = $1
-                            )
-                        )
+                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2)
+                        ORDER BY "Episodes".episodepubdate DESC
+                        LIMIT $3)
 
                         UNION ALL
 
-                        SELECT
+                        (SELECT
                             "Podcasts".podcastname as podcastname,
                             "YouTubeVideos".videotitle as "Episodetitle",
                             "YouTubeVideos".publishedat as "Episodepubdate",
                             "YouTubeVideos".videodescription as "Episodedescription",
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "YouTubeVideos".thumbnailurl
@@ -10059,19 +10105,18 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedVideos" ON
                             "YouTubeVideos".videoid = "DownloadedVideos".videoid
                             AND "DownloadedVideos".userid = $1
-                        WHERE "Podcasts".userid = $1 AND (
-                            "Podcasts".podcastid = $2 OR
-                            "Podcasts".podcastid IN (
-                                SELECT jsonb_array_elements_text(COALESCE(mergedpodcastids::jsonb, '[]'::jsonb))::int
-                                FROM "Podcasts" p2
-                                WHERE p2.podcastid = $2 AND p2.userid = $1
-                            )
-                        )
+                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2)
+                        ORDER BY "YouTubeVideos".publishedat DESC
+                        LIMIT $3)
                     ) combined
-                    ORDER BY "Episodepubdate" DESC"#
+                    ORDER BY "Episodepubdate" DESC
+                    LIMIT $4 OFFSET $5"#
                 )
                 .bind(user_id)
-                .bind(podcast_id)
+                .bind(&podcast_ids)
+                .bind(per_branch_limit)
+                .bind(lim)
+                .bind(off)
                 .fetch_all(pool)
                 .await?;
 
@@ -10079,7 +10124,7 @@ impl DatabasePool {
                 for row in rows {
                     let naive_date = row.try_get::<chrono::NaiveDateTime, _>("Episodepubdate")?;
                     let episodepubdate = naive_date.format("%Y-%m-%dT%H:%M:%S").to_string();
-                    
+
                     episodes.push(crate::handlers::podcasts::PodcastEpisode {
                         podcastname: row.try_get("podcastname")?,
                         episodetitle: row.try_get("Episodetitle")?,
@@ -10099,12 +10144,61 @@ impl DatabasePool {
                     });
                 }
 
-                Ok(episodes)
+                Ok((episodes, total))
             }
             DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query(
+                let lim: i64 = limit.unwrap_or(i64::MAX);
+                let off: i64 = offset.unwrap_or(0);
+                let per_branch_limit: i64 = lim.saturating_add(off);
+
+                // Resolve podcast IDs (primary + merged) up front so the main query is just
+                // `PodcastID IN (?, ?, ...)` instead of MySQL's JSON-extract-with-numbers join.
+                let mut podcast_ids: Vec<i32> = vec![podcast_id];
+                let merged_row = sqlx::query(
+                    "SELECT MergedPodcastIDs FROM Podcasts WHERE PodcastID = ? AND UserID = ?"
+                )
+                .bind(podcast_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+                if let Some(row) = merged_row {
+                    if let Ok(Some(merged_json)) = row.try_get::<Option<String>, _>("MergedPodcastIDs") {
+                        if let Ok(parsed) = serde_json::from_str::<Vec<i32>>(&merged_json) {
+                            for id in parsed {
+                                if !podcast_ids.contains(&id) {
+                                    podcast_ids.push(id);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // MySQL doesn't have an ANY($1) form for sqlx — build a `(?, ?, ...)` placeholder
+                // string sized to the resolved list and bind each ID below.
+                let id_placeholders = vec!["?"; podcast_ids.len()].join(",");
+
+                // Total count: separate cheap query, no joins. Uses idx_episodes_podcastid /
+                // idx_youtubevideos_podcastid for index-only scans on each branch.
+                let count_sql = format!(
+                    "SELECT
+                        (SELECT COUNT(*) FROM Episodes WHERE PodcastID IN ({ph}))
+                      + (SELECT COUNT(*) FROM YouTubeVideos WHERE PodcastID IN ({ph})) AS total_count",
+                    ph = id_placeholders
+                );
+                // SAFETY: count_sql contains only static SQL plus a programmatically generated
+                // `?,?,...` placeholder string sized to podcast_ids.len(). No user input is
+                // interpolated; the IDs themselves are bound below.
+                let mut count_q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(count_sql.as_str()));
+                for id in &podcast_ids { count_q = count_q.bind(*id); }
+                for id in &podcast_ids { count_q = count_q.bind(*id); }
+                let total: i64 = count_q.fetch_one(pool).await.unwrap_or(0);
+
+                // Main query: LIMIT pushed inside each branch so joins only fire on the rows
+                // that can possibly contribute to the final page. The outer ORDER BY merges
+                // the two pre-sorted streams.
+                let rows_sql = format!(
                     "SELECT * FROM (
-                        SELECT
+                        (SELECT
                             Podcasts.PodcastName as podcastname,
                             Episodes.EpisodeTitle as Episodetitle,
                             Episodes.EpisodePubDate as Episodepubdate,
@@ -10140,24 +10234,18 @@ impl DatabasePool {
                         LEFT JOIN DownloadedEpisodes ON
                             Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                             AND DownloadedEpisodes.UserID = ?
-                        WHERE Podcasts.UserID = ? AND (
-                            Podcasts.PodcastID = ? OR
-                            Podcasts.PodcastID IN (
-                                SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) AS UNSIGNED)
-                                FROM (SELECT 0 as n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) numbers
-                                INNER JOIN Podcasts p2 ON p2.PodcastID = ? AND p2.UserID = ?
-                                WHERE JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) IS NOT NULL
-                            )
-                        )
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph})
+                        ORDER BY Episodes.EpisodePubDate DESC
+                        LIMIT ?)
 
                         UNION ALL
 
-                        SELECT
+                        (SELECT
                             Podcasts.PodcastName as podcastname,
                             YouTubeVideos.VideoTitle as Episodetitle,
                             YouTubeVideos.PublishedAt as Episodepubdate,
                             YouTubeVideos.VideoDescription as Episodedescription,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 ELSE YouTubeVideos.ThumbnailURL
@@ -10185,41 +10273,36 @@ impl DatabasePool {
                         LEFT JOIN DownloadedVideos ON
                             YouTubeVideos.VideoID = DownloadedVideos.VideoID
                             AND DownloadedVideos.UserID = ?
-                        WHERE Podcasts.UserID = ? AND (
-                            Podcasts.PodcastID = ? OR
-                            Podcasts.PodcastID IN (
-                                SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) AS UNSIGNED)
-                                FROM (SELECT 0 as n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) numbers
-                                INNER JOIN Podcasts p2 ON p2.PodcastID = ? AND p2.UserID = ?
-                                WHERE JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) IS NOT NULL
-                            )
-                        )
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph})
+                        ORDER BY YouTubeVideos.PublishedAt DESC
+                        LIMIT ?)
                     ) combined
-                    ORDER BY Episodepubdate DESC"
-                )
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(podcast_id)
-                .bind(podcast_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(podcast_id)
-                .bind(podcast_id)
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
+                    ORDER BY Episodepubdate DESC
+                    LIMIT ? OFFSET ?",
+                    ph = id_placeholders
+                );
+
+                // SAFETY: rows_sql is static SQL plus a programmatically generated
+                // `?,?,...` placeholder string. No user input is interpolated.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(rows_sql.as_str()));
+                // Episodes branch: 5x UserID joins + IN list + per-branch LIMIT.
+                q = q.bind(user_id).bind(user_id).bind(user_id).bind(user_id).bind(user_id);
+                for id in &podcast_ids { q = q.bind(*id); }
+                q = q.bind(per_branch_limit);
+                // YouTubeVideos branch: 4x UserID joins + IN list + per-branch LIMIT.
+                q = q.bind(user_id).bind(user_id).bind(user_id).bind(user_id);
+                for id in &podcast_ids { q = q.bind(*id); }
+                q = q.bind(per_branch_limit);
+                // Outer LIMIT/OFFSET.
+                q = q.bind(lim).bind(off);
+
+                let rows = q.fetch_all(pool).await?;
 
                 let mut episodes = Vec::new();
                 for row in rows {
                     let datetime = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("Episodepubdate")?;
                     let episodepubdate = datetime.format("%Y-%m-%dT%H:%M:%S").to_string();
-                    
+
                     episodes.push(crate::handlers::podcasts::PodcastEpisode {
                         podcastname: row.try_get("podcastname")?,
                         episodetitle: row.try_get("Episodetitle")?,
@@ -10239,7 +10322,7 @@ impl DatabasePool {
                     });
                 }
 
-                Ok(episodes)
+                Ok((episodes, total))
             }
         }
     }

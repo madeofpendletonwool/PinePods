@@ -130,57 +130,39 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
                                                                             .ok();
                                                                     }
 
-                                                                    // Get theme
-                                                                    if let Ok(Some(local_storage)) =
-                                                                        window.local_storage()
-                                                                    {
-                                                                        if let Ok(theme) =
-                                                                            call_get_theme(
-                                                                                server_name.clone(),
-                                                                                api_key.clone(),
-                                                                                &user_id,
-                                                                            )
-                                                                            .await
-                                                                        {
-                                                                            crate::components::setting_components::theme_options::changeTheme(&theme);
-                                                                            local_storage
-                                                                                .set_item(
-                                                                                    "selected_theme",
-                                                                                    &theme,
-                                                                                )
-                                                                                .ok();
+                                                                    // Grab local storage handle for theme storage
+                                                                    let local_storage_opt = window.local_storage().ok().flatten();
+
+                                                                    // Run theme / timezone / unmatched-podcasts fetches in parallel
+                                                                    let (theme_result, tz_result, unmatched_result) = futures::join!(
+                                                                        call_get_theme(server_name.clone(), api_key.clone(), &user_id),
+                                                                        call_get_time_info(server_name.clone(), api_key.clone(), &user_id),
+                                                                        call_get_unmatched_podcasts(server_name, api_key, user_id),
+                                                                    );
+
+                                                                    if let Ok(theme) = theme_result {
+                                                                        crate::components::setting_components::theme_options::changeTheme(&theme);
+                                                                        if let Some(ref local_storage) = local_storage_opt {
+                                                                            local_storage.set_item("selected_theme", &theme).ok();
                                                                         }
                                                                     }
-                                                                }
 
-                                                                if let Ok(tz_response) =
-                                                                    call_get_time_info(
-                                                                        server_name.clone(),
-                                                                        api_key.clone(),
-                                                                        &user_id,
-                                                                    )
-                                                                    .await
-                                                                {
-                                                                    Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
-                                                                        state.user_tz = Some(tz_response.timezone);
-                                                                        state.hour_preference = Some(tz_response.hour_pref);
-                                                                        state.date_format = Some(tz_response.date_format);
-                                                                    });
-                                                                }
-
-                                                                // Check for unmatched podcasts and show notification
-                                                                let dispatch_unmatched = dispatch_clone.clone();
-                                                                if let Ok(unmatched_response) = call_get_unmatched_podcasts(
-                                                                        server_name,
-                                                                        api_key,
-                                                                        user_id,
-                                                                    ).await {
-                                                                    if !unmatched_response.podcasts.is_empty() {
-                                                                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                                                            state.info_message = Some(
-                                                                                format!("{}", i18n_unmatched_podcasts_notification.replace("{count}", &unmatched_response.podcasts.len().to_string()))
-                                                                            );
+                                                                    if let Ok(tz_response) = tz_result {
+                                                                        Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
+                                                                            state.user_tz = Some(tz_response.timezone);
+                                                                            state.hour_preference = Some(tz_response.hour_pref);
+                                                                            state.date_format = Some(tz_response.date_format);
                                                                         });
+                                                                    }
+
+                                                                    if let Ok(unmatched_response) = unmatched_result {
+                                                                        if !unmatched_response.podcasts.is_empty() {
+                                                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                                                                state.info_message = Some(
+                                                                                    format!("{}", i18n_unmatched_podcasts_notification.replace("{count}", &unmatched_response.podcasts.len().to_string()))
+                                                                                );
+                                                                            });
+                                                                        }
                                                                     }
                                                                 }
                                                             }
