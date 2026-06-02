@@ -1,19 +1,19 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::context::{AppState, EpisodeStatusState, FilterState, PodcastFeedState};
-use crate::components::episode_list_item::EpisodeListItem;
+use crate::components::episode_list_view::EpisodeListView;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
+use crate::components::virtual_list::ScrollSource;
 use crate::components::gen_funcs::{
     get_default_sort_direction, get_filter_preference, set_filter_preference,
 };
 use crate::components::loading::Loading;
 use crate::requests::episode::Episode;
 use crate::requests::pod_req;
+use gloo_timers::future::TimeoutFuture;
 use i18nrs::yew::use_translation;
-use js_sys::Array;
-use wasm_bindgen::prelude::Closure;
-use wasm_bindgen::JsCast;
-use web_sys::{IntersectionObserver, IntersectionObserverEntry, IntersectionObserverInit};
+use std::rc::Rc;
+use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yewdux::prelude::*;
@@ -55,12 +55,12 @@ pub fn history() -> Html {
     let user_id = (*user_id_sel).clone();
     let server_name = (*server_name_sel).clone();
 
-    let episodes = use_state(|| Vec::<Episode>::new());
+    let episodes = use_state(|| Rc::new(Vec::<Episode>::new()));
     let total = use_state(|| 0i64);
     let offset = use_state(|| 0i64);
     let loading = use_state(|| true);
     let loading_more = use_state(|| false);
-    let sentinel_ref = use_node_ref();
+    let scroll_ref = use_node_ref();
 
     let episode_search_term = use_state(|| String::new());
 
@@ -109,7 +109,7 @@ pub fn history() -> Html {
                     let sort_str = (*sort_value).clone();
                     let filter_str = (*filter_value).clone();
 
-                    episodes.set(Vec::new());
+                    episodes.set(Rc::new(Vec::new()));
                     offset.set(0);
                     total.set(0);
                     loading.set(true);
@@ -142,7 +142,7 @@ pub fn history() -> Html {
                                 let new_offset = page.data.len() as i64;
                                 total.set(page.total);
                                 offset.set(new_offset);
-                                episodes.set(page.data);
+                                episodes.set(Rc::new(page.data));
                                 loading.set(false);
                             }
                             Err(_) => {
@@ -156,105 +156,65 @@ pub fn history() -> Html {
         );
     }
 
-    // IntersectionObserver: load next page when sentinel comes into view
-    {
+    // Load-more handler. EpisodeListView owns the sentinel/observer/display-count/ramp; this
+    // callback fires only when the view runs out of buffered episodes and the parent reports
+    // `backend_can_load_more`. Sort and filter values are read fresh on every fire.
+    let on_load_more = {
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
         let episodes = episodes.clone();
         let total = total.clone();
         let offset = offset.clone();
         let loading_more = loading_more.clone();
-        let api_key = api_key.clone();
-        let user_id = user_id.clone();
-        let server_name = server_name.clone();
-        let sentinel_ref = sentinel_ref.clone();
         let sort_value = sort_value.clone();
         let filter_value = filter_value.clone();
-
-        use_effect_with(
-            (sentinel_ref.clone(), *offset, *total),
-            move |(sentinel_ref, _, _)| {
-                let sentinel_el = match sentinel_ref.cast::<web_sys::Element>() {
-                    Some(el) => el,
-                    None => return Box::new(|| ()) as Box<dyn FnOnce()>,
-                };
-
-                let episodes = episodes.clone();
-                let total = total.clone();
-                let offset = offset.clone();
-                let loading_more = loading_more.clone();
-                let api_key = api_key.clone();
-                let user_id = user_id.clone();
-                let server_name = server_name.clone();
-                let sort_value = sort_value.clone();
-                let filter_value = filter_value.clone();
-
-                let callback = Closure::<dyn Fn(Array)>::wrap(Box::new(move |entries: Array| {
-                    let entry: IntersectionObserverEntry = entries.get(0).unchecked_into();
-                    if !entry.is_intersecting() {
-                        return;
-                    }
-                    let current_offset = *offset;
-                    let current_total = *total;
-                    if *loading_more || current_offset >= current_total {
-                        return;
-                    }
-
-                    let episodes = episodes.clone();
-                    let total = total.clone();
-                    let offset = offset.clone();
-                    let loading_more = loading_more.clone();
-                    let api_key = api_key.clone();
-                    let user_id = user_id.clone();
-                    let server_name = server_name.clone();
-                    let sort_str = (*sort_value).clone();
-                    let filter_str = (*filter_value).clone();
-
-                    if let (Some(api_key), Some(user_id), Some(server_name)) =
-                        (api_key.clone(), user_id.clone(), server_name.clone())
-                    {
-                        loading_more.set(true);
-                        wasm_bindgen_futures::spawn_local(async move {
-                            let (sort_by, sort_order) = sort_to_params(&sort_str);
-                            if let Ok(page) = pod_req::call_get_user_history_paged(
-                                &server_name,
-                                &api_key,
-                                &user_id,
-                                PAGE_SIZE,
-                                current_offset,
-                                sort_by,
-                                sort_order,
-                                &filter_str,
-                            )
-                            .await
-                            {
-                                let new_offset = current_offset + page.data.len() as i64;
-                                total.set(page.total);
-                                offset.set(new_offset);
-                                episodes.set({
-                                    let mut all = (*episodes).clone();
-                                    all.extend(page.data);
-                                    all
-                                });
-                            }
-                            loading_more.set(false);
-                        });
-                    }
-                }));
-
-                let mut opts = IntersectionObserverInit::new();
-                opts.root_margin("200px");
-                let observer =
-                    IntersectionObserver::new_with_options(callback.as_ref().unchecked_ref(), &opts)
-                        .expect("IntersectionObserver creation failed");
-                observer.observe(&sentinel_el);
-                callback.forget();
-
-                let observer_clone = observer.clone();
-                Box::new(move || {
-                    observer_clone.disconnect();
-                }) as Box<dyn FnOnce()>
-            },
-        );
-    }
+        use_callback((), move |_: (), _| {
+            if *loading_more {
+                return;
+            }
+            let current_offset = *offset;
+            let current_total = *total;
+            if current_offset >= current_total {
+                return;
+            }
+            let Some(api_key) = api_key.clone() else { return; };
+            let Some(user_id) = user_id.clone() else { return; };
+            let Some(server_name) = server_name.clone() else { return; };
+            let sort_str = (*sort_value).clone();
+            let filter_str = (*filter_value).clone();
+            loading_more.set(true);
+            let episodes = episodes.clone();
+            let total = total.clone();
+            let offset = offset.clone();
+            let loading_more = loading_more.clone();
+            spawn_local(async move {
+                let (sort_by, sort_order) = sort_to_params(&sort_str);
+                if let Ok(page) = pod_req::call_get_user_history_paged(
+                    &server_name,
+                    &api_key,
+                    &user_id,
+                    PAGE_SIZE,
+                    current_offset,
+                    sort_by,
+                    sort_order,
+                    &filter_str,
+                )
+                .await
+                {
+                    TimeoutFuture::new(0).await;
+                    let new_offset = current_offset + page.data.len() as i64;
+                    let mut all = (**episodes).clone();
+                    all.extend(page.data);
+                    total.set(page.total);
+                    offset.set(new_offset);
+                    episodes.set(Rc::new(all));
+                    TimeoutFuture::new(0).await;
+                }
+                loading_more.set(false);
+            });
+        })
+    };
 
     let favorite_podcast_ids: std::collections::HashSet<i32> = podcast_state
         .podcast_feed_return_extra
@@ -269,21 +229,32 @@ pub fn history() -> Html {
         .unwrap_or_default();
 
     let search_term = (*episode_search_term).clone();
-    let display_episodes: Vec<Episode> = (*episodes)
-        .iter()
-        .filter(|ep| {
-            if filter_state.favorites_only && !favorite_podcast_ids.contains(&ep.podcastid) {
-                return false;
-            }
-            if search_term.is_empty() {
-                return true;
-            }
-            let term = search_term.to_lowercase();
-            ep.episodetitle.to_lowercase().contains(&term)
-                || ep.episodedescription.to_lowercase().contains(&term)
-        })
-        .cloned()
-        .collect();
+    let has_client_filter = !search_term.is_empty()
+        || (filter_state.favorites_only && !favorite_podcast_ids.is_empty());
+    let display_episodes_rc: Rc<Vec<Episode>> = if has_client_filter {
+        let term = search_term.to_lowercase();
+        Rc::new(
+            (*episodes)
+                .iter()
+                .filter(|ep| {
+                    if filter_state.favorites_only && !favorite_podcast_ids.contains(&ep.podcastid)
+                    {
+                        return false;
+                    }
+                    if term.is_empty() {
+                        return true;
+                    }
+                    ep.episodetitle.to_lowercase().contains(&term)
+                        || ep.episodedescription.to_lowercase().contains(&term)
+                })
+                .cloned()
+                .collect(),
+        )
+    } else {
+        (*episodes).clone()
+    };
+    let display_empty = display_episodes_rc.is_empty();
+    let backend_can_load_more = *offset < *total;
 
     html! {
         <>
@@ -404,21 +375,21 @@ pub fn history() -> Html {
                             </div>
 
                             {
-                                if display_episodes.is_empty() {
+                                if display_empty {
                                     empty_message(
                                         &i18n_no_episode_history_found,
                                         &i18n_no_episode_history_description
                                     )
                                 } else {
                                     html! {
-                                        <div class="flex-grow overflow-y-auto">
-                                            { for display_episodes.iter().map(|ep| html! {
-                                                <EpisodeListItem key={ep.episodeid} episode={ep.clone()} />
-                                            }) }
-                                            <div ref={sentinel_ref.clone()} style="height: 1px;" />
-                                            if *loading_more {
-                                                <Loading />
-                                            }
+                                        <div ref={scroll_ref.clone()} class="flex-grow overflow-y-auto">
+                                            <EpisodeListView
+                                                episodes={display_episodes_rc}
+                                                backend_can_load_more={backend_can_load_more}
+                                                loading_more={*loading_more}
+                                                on_load_more={on_load_more.clone()}
+                                                scroll_source={ScrollSource::Container(scroll_ref.clone())}
+                                            />
                                         </div>
                                     }
                                 }

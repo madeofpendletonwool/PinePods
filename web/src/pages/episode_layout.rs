@@ -10,6 +10,7 @@ use crate::components::gen_funcs::{
 use crate::components::host_component::HostDropdown;
 use crate::components::loading::Loading;
 use crate::components::episode_list_view::EpisodeListView;
+use crate::components::virtual_list::ScrollSource;
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_bulk_download_episodes,
@@ -342,6 +343,7 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
 pub fn episode_layout() -> Html {
     let (i18n, _) = use_translation();
     let is_added = use_state(|| false);
+    let scroll_ref = use_node_ref();
     let (search_state, _search_dispatch) = use_store::<AppState>();
     let (search_data, _) = use_store::<SearchState>();
     let (state, _dispatch) = use_store::<UIState>();
@@ -481,12 +483,21 @@ pub fn episode_layout() -> Html {
     let is_subscribing = use_state(|| false);
     let page_state = use_state(|| PageState::Hidden);
     let episode_search_term = use_state(|| String::new());
+    // Debounced view of episode_search_term. Search keystrokes update `episode_search_term`
+    // for input responsiveness; a 300 ms timer copies it into `debounced_search_term`, which
+    // the backend-reload effect actually watches. Avoids one HTTP request per keystroke.
+    let debounced_search_term = use_state(|| String::new());
 
     // Initialize sort direction - will be updated when podcast_id changes
     let episode_sort_direction = use_state(|| Some(EpisodeSortDirection::NewestFirst));
 
     let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
+    // Set to Some(podcast_id) by the localStorage-load effect after it applies the per-podcast
+    // sort/filter prefs. The reload effect gates on this matching the current podcast_id, so we
+    // don't fire a backend fetch with stale sort/filter from the previous podcast.
+    let prefs_loaded_for_podcast = use_state(|| None::<i32>);
+    let reload_offset = use_state(|| 0i64);
     let loading_more = use_state(|| false);
     let notification_status = use_state(|| false);
     let favorite_status = use_state(|| false);
@@ -942,6 +953,7 @@ pub fn episode_layout() -> Html {
         let episode_sort_direction = episode_sort_direction.clone();
         let completed_filter_state = completed_filter_state.clone();
         let synced_episode_count = synced_episode_count.clone();
+        let prefs_loaded_for_podcast = prefs_loaded_for_podcast.clone();
         let podcast_id_clone = podcast_id.clone();
         use_effect_with(podcast_id_clone, move |podcast_id| {
             if **podcast_id > 0 {
@@ -967,6 +979,11 @@ pub fn episode_layout() -> Html {
                 };
                 completed_filter_state.set(new_completed_filter);
                 synced_episode_count.set(0);
+                // Signal the backend-reload effect that prefs for this podcast are loaded so
+                // it can fetch with the right sort/filter. Without this gate, the reload effect
+                // would fire once with the previous podcast's sort and then again after the
+                // pref load — two requests, one with stale params.
+                prefs_loaded_for_podcast.set(Some(**podcast_id));
             }
             || ()
         });
@@ -3288,6 +3305,10 @@ pub fn episode_layout() -> Html {
                                         &call_podcast_id,
                                         Some(50),
                                         Some(0),
+                                        None,
+                                        None,
+                                        None,
+                                        None,
                                     )
                                     .await
                                     {
@@ -3361,114 +3382,148 @@ pub fn episode_layout() -> Html {
         Hide,
     }
 
-    // Filtered/sorted episode list held as page-local state so backend appends don't trigger
-    // a full clone+sort of the entire loaded list. The effect below maintains it: on filter or
-    // podcast change → full rebuild; on backend append (length grew) → process only the new
-    // tail. The backend already returns rows in NewestFirst order, so for the default sort
-    // (and "no sort selected") an append is a literal Vec::extend with no re-sort.
+    // Sort/search/filter run on the backend now — the effect below just keeps `filtered_episodes`
+    // in sync with `podcast_feed_results.episodes`. Pre-existing consumers (select_older,
+    // select_newer, EpisodeListView, etc.) read from `filtered_episodes`, so we maintain it
+    // as a thin pass-through Rc instead of restructuring every call site.
     let filtered_episodes = use_state(|| Rc::new(Vec::<Episode>::new()));
     let processed_episode_count = use_state(|| 0usize);
-    let prev_filter_params: Rc<std::cell::RefCell<Option<(String, CompletedFilter, bool, Option<EpisodeSortDirection>)>>> =
-        use_mut_ref(|| None);
-
-    let current_filter_params = (
-        (*episode_search_term).clone(),
-        (*completed_filter_state).clone(),
-        *show_in_progress,
-        (*episode_sort_direction).clone(),
-    );
 
     {
         let filtered_episodes = filtered_episodes.clone();
         let processed_episode_count = processed_episode_count.clone();
-        let prev_filter_params = prev_filter_params.clone();
-        use_effect_with(
-            (podcast_feed_results.clone(), current_filter_params.clone()),
-            move |(pfr, fp)| {
-                let filters_changed = {
-                    let mut prev = prev_filter_params.borrow_mut();
-                    let changed = prev.as_ref() != Some(fp);
-                    *prev = Some(fp.clone());
-                    changed
-                };
-
-                let (search, completed_filter, show_in_progress_val, sort_dir) = fp.clone();
-                let search_lc = if search.is_empty() { String::new() } else { search.to_lowercase() };
-
-                let filter_slice = |slice: &[Episode]| -> Vec<Episode> {
-                    slice
-                        .iter()
-                        .filter(|ep| {
-                            let matches_search = if search_lc.is_empty() {
-                                true
-                            } else {
-                                ep.episodetitle.to_lowercase().contains(&search_lc)
-                                    || ep.episodedescription.to_lowercase().contains(&search_lc)
-                            };
-                            let matches_status = if show_in_progress_val {
-                                !ep.completed && ep.listenduration > 0
-                            } else {
-                                match completed_filter {
-                                    CompletedFilter::ShowOnly => ep.completed,
-                                    CompletedFilter::Hide => !ep.completed,
-                                    CompletedFilter::ShowAll => true,
-                                }
-                            };
-                            matches_search && matches_status
-                        })
-                        .cloned()
-                        .collect()
-                };
-
-                let sort_vec = |v: &mut Vec<Episode>| {
-                    if let Some(dir) = &sort_dir {
-                        v.sort_by(|a, b| match dir {
-                            EpisodeSortDirection::NewestFirst => b.episodepubdate.cmp(&a.episodepubdate),
-                            EpisodeSortDirection::OldestFirst => a.episodepubdate.cmp(&b.episodepubdate),
-                            EpisodeSortDirection::ShortestFirst => a.episodepubdate.cmp(&b.episodepubdate),
-                            EpisodeSortDirection::LongestFirst => b.episodepubdate.cmp(&a.episodepubdate),
-                            EpisodeSortDirection::TitleAZ => a.episodetitle.cmp(&b.episodetitle),
-                            EpisodeSortDirection::TitleZA => b.episodetitle.cmp(&a.episodetitle),
-                        });
-                    }
-                };
-
-                if let Some(results) = pfr.as_ref() {
-                    let total = results.episodes.len();
-                    let already_processed = *processed_episode_count;
-                    let backend_order_compatible = matches!(
-                        sort_dir,
-                        None | Some(EpisodeSortDirection::NewestFirst)
-                    );
-
-                    if filters_changed || total < already_processed {
-                        // Full recompute: filters changed OR podcast switched and the raw list
-                        // shrank below what we'd previously processed.
-                        let mut all = filter_slice(&results.episodes);
-                        sort_vec(&mut all);
-                        filtered_episodes.set(Rc::new(all));
-                        processed_episode_count.set(total);
-                    } else if total > already_processed {
-                        // Append-only: filter just the new tail, extend current displayed list.
-                        let new_filtered = filter_slice(&results.episodes[already_processed..]);
-                        let mut current: Vec<Episode> = (**filtered_episodes).clone();
-                        current.extend(new_filtered);
-                        if !backend_order_compatible {
-                            // User picked a non-default sort; the merged tail isn't ordered.
-                            sort_vec(&mut current);
-                        }
-                        filtered_episodes.set(Rc::new(current));
-                        processed_episode_count.set(total);
-                    }
-                } else {
-                    if !filtered_episodes.is_empty() {
-                        filtered_episodes.set(Rc::new(Vec::new()));
-                    }
-                    if *processed_episode_count != 0 {
-                        processed_episode_count.set(0);
-                    }
+        use_effect_with(podcast_feed_results.clone(), move |pfr| {
+            if let Some(results) = pfr.as_ref() {
+                // Always replace — backend already filtered/sorted, so the order is canonical.
+                filtered_episodes.set(Rc::new(results.episodes.clone()));
+                processed_episode_count.set(results.episodes.len());
+            } else {
+                if !filtered_episodes.is_empty() {
+                    filtered_episodes.set(Rc::new(Vec::new()));
                 }
-                || ()
+                if *processed_episode_count != 0 {
+                    processed_episode_count.set(0);
+                }
+            }
+            || ()
+        });
+    }
+
+    // Map the frontend's EpisodeSortDirection enum to the backend's (sort_by, sort_order) pair.
+    fn sort_to_params(dir: &Option<EpisodeSortDirection>) -> (&'static str, &'static str) {
+        match dir {
+            Some(EpisodeSortDirection::OldestFirst)   => ("date", "asc"),
+            Some(EpisodeSortDirection::ShortestFirst) => ("duration", "asc"),
+            Some(EpisodeSortDirection::LongestFirst)  => ("duration", "desc"),
+            Some(EpisodeSortDirection::TitleAZ)       => ("title", "asc"),
+            Some(EpisodeSortDirection::TitleZA)       => ("title", "desc"),
+            _                                         => ("date", "desc"),
+        }
+    }
+    // The frontend has 4 filter states (3-way completed × show_in_progress toggle); collapse
+    // to the backend's "all" | "completed" | "incomplete" | "in_progress" vocabulary.
+    fn completed_to_filter(c: &CompletedFilter, show_in_progress: bool) -> &'static str {
+        if show_in_progress { return "in_progress"; }
+        match c {
+            CompletedFilter::ShowOnly => "completed",
+            CompletedFilter::Hide     => "incomplete",
+            CompletedFilter::ShowAll  => "all",
+        }
+    }
+
+    // Debounce the raw search input: a 300 ms timer copies `episode_search_term` into
+    // `debounced_search_term`, and only the latter feeds the backend-reload effect. Otherwise
+    // every keystroke would fire its own HTTP request.
+    {
+        let debounced_search_term = debounced_search_term.clone();
+        let term = (*episode_search_term).clone();
+        use_effect_with(term.clone(), move |t| {
+            let t = t.clone();
+            let debounced = debounced_search_term.clone();
+            let timeout = gloo_timers::callback::Timeout::new(300, move || {
+                debounced.set(t);
+            });
+            // Cancel the pending timer if the user types again before it fires.
+            move || drop(timeout)
+        });
+    }
+
+    // Backend reload: fetch from offset 0 with current sort/search/filter whenever any of those
+    // (or podcast_id / auth) changes. Gated on `prefs_loaded_for_podcast == Some(podcast_id)`
+    // so we don't fire mid-mount with stale per-podcast prefs from the previous page.
+    {
+        let api_key_dep = api_key.clone();
+        let user_id_dep = user_id;
+        let server_name_dep = server_name.clone();
+        let podcast_id_dep = *podcast_id;
+        let sort_dep = (*episode_sort_direction).clone();
+        let completed_dep = (*completed_filter_state).clone();
+        let show_in_progress_dep = *show_in_progress;
+        let search_dep = (*debounced_search_term).clone();
+        let prefs_loaded_dep = *prefs_loaded_for_podcast;
+        let synced_episode_count_eff = synced_episode_count.clone();
+
+        use_effect_with(
+            (
+                api_key_dep,
+                user_id_dep,
+                server_name_dep,
+                podcast_id_dep,
+                sort_dep,
+                completed_dep,
+                show_in_progress_dep,
+                search_dep,
+                prefs_loaded_dep,
+            ),
+            move |(api_key, user_id, server_name, pid, sort, completed, show_ip, search, prefs_loaded)| {
+                if *pid <= 0 || Some(*pid) != *prefs_loaded {
+                    return Box::new(|| ()) as Box<dyn FnOnce()>;
+                }
+                let (Some(api_key_outer), Some(uid), Some(server_inner)) =
+                    (api_key.clone(), *user_id, server_name.clone())
+                else {
+                    return Box::new(|| ()) as Box<dyn FnOnce()>;
+                };
+                let Some(api_key_str) = api_key_outer.as_deref().map(|s| s.to_string()) else {
+                    return Box::new(|| ()) as Box<dyn FnOnce()>;
+                };
+                let (sort_by, sort_order) = sort_to_params(sort);
+                let filter_str = completed_to_filter(completed, *show_ip);
+                let search_str = search.clone();
+                let pid_inner = *pid;
+                let synced_episode_count_eff = synced_episode_count_eff.clone();
+                spawn_local(async move {
+                    match call_get_podcast_episodes(
+                        &server_inner,
+                        &Some(api_key_str),
+                        &uid,
+                        &pid_inner,
+                        Some(50),
+                        Some(0),
+                        Some(sort_by),
+                        Some(sort_order),
+                        Some(&search_str),
+                        Some(filter_str),
+                    )
+                    .await
+                    {
+                        Ok(result) => {
+                            Dispatch::<SearchState>::global().reduce_mut(|state| {
+                                state.podcast_feed_results = Some(result);
+                            });
+                            // Reset the status-sync counter so the saved/completed/queued sync
+                            // effect rebuilds against the new result set rather than treating
+                            // it as an append.
+                            synced_episode_count_eff.set(0);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error reloading podcast episodes: {}", e).into(),
+                            );
+                        }
+                    }
+                });
+                Box::new(|| ()) as Box<dyn FnOnce()>
             },
         );
     }
@@ -3548,6 +3603,10 @@ pub fn episode_layout() -> Html {
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
+        let episode_sort_direction = episode_sort_direction.clone();
+        let completed_filter_state = completed_filter_state.clone();
+        let show_in_progress = show_in_progress.clone();
+        let debounced_search_term = debounced_search_term.clone();
         use_callback((), move |_: (), _| {
             if *loading_more {
                 return;
@@ -3570,6 +3629,11 @@ pub fn episode_layout() -> Html {
             let Some(key_str) = api_key_inner.as_deref() else { return; };
             let key = key_str.to_string();
             let server = server_inner.clone();
+            // Read sort/filter/search at fire time so a sort/filter change between renders
+            // doesn't get clobbered by a stale snapshot from when the callback was created.
+            let (sort_by, sort_order) = sort_to_params(&*episode_sort_direction);
+            let filter_str = completed_to_filter(&*completed_filter_state, *show_in_progress);
+            let search_str = (*debounced_search_term).clone();
             loading_more.set(true);
             let loading_more = loading_more.clone();
             spawn_local(async move {
@@ -3580,6 +3644,10 @@ pub fn episode_layout() -> Html {
                     &podcast_id_val,
                     Some(50),
                     Some(loaded),
+                    Some(sort_by),
+                    Some(sort_order),
+                    Some(&search_str),
+                    Some(filter_str),
                 )
                 .await
                 {
@@ -4687,7 +4755,7 @@ pub fn episode_layout() -> Html {
                                             Rc::new((*selected_episodes).clone());
 
                                         html! {
-                                            <div class="flex-grow overflow-y-auto">
+                                            <div ref={scroll_ref.clone()} class="flex-grow overflow-y-auto">
                                                 <EpisodeListView
                                                     key={view_key}
                                                     episodes={episodes_rc}
@@ -4699,6 +4767,7 @@ pub fn episode_layout() -> Html {
                                                     on_select_above={on_select_newer.clone()}
                                                     on_select_below={on_select_older.clone()}
                                                     selected_episodes={selected_eps_rc}
+                                                    scroll_source={ScrollSource::Container(scroll_ref.clone())}
                                                 />
                                             </div>
                                         }

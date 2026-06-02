@@ -106,16 +106,29 @@ class MobileDownloadService extends DownloadService {
             }
           }
 
-          // Some podcasts use the same file name for each episode. If we have a
-          // season and/or episode number provided by iTunes we can use that. We
-          // will also append the filename with the publication date if available.
-          var pubDate = '';
+          // Build a human-readable filename from the episode title + pub date so
+          // that OS download notifications (which use the filename as their title)
+          // show something meaningful instead of the raw URL segment.
+          final ext = filename!.toLowerCase().endsWith('.m4a') ? '.m4a' : '.mp3';
 
+          var safeTitle = (episode.title ?? '')
+              .toLowerCase()
+              .replaceAll(RegExp(r'[^a-z0-9\s-]'), '')
+              .trim()
+              .replaceAll(RegExp(r'\s+'), '-')
+              .replaceAll(RegExp(r'-{2,}'), '-');
+          if (safeTitle.length > 60) safeTitle = safeTitle.substring(0, 60);
+          safeTitle = safeTitle.replaceAll(RegExp(r'-+$'), '');
+          if (safeTitle.isEmpty) safeTitle = 'episode';
+
+          var pubDatePrefix = '';
           if (episode.publicationDate != null) {
-            pubDate = '${episode.publicationDate!.millisecondsSinceEpoch ~/ 1000}-';
+            final d = episode.publicationDate!;
+            pubDatePrefix =
+                '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}-';
           }
 
-          filename = '$season$epno$pubDate$filename';
+          filename = '$season$epno$pubDatePrefix$safeTitle$ext';
 
           log.fine('Download episode (${episode.title}) $filename to $downloadPath/$filename');
 

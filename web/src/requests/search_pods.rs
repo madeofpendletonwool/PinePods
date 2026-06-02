@@ -430,6 +430,10 @@ pub async fn call_get_podcast_episodes(
     podcast_id: &i32,
     limit: Option<i64>,
     offset: Option<i64>,
+    sort_by: Option<&str>,
+    sort_order: Option<&str>,
+    search: Option<&str>,
+    filter: Option<&str>,
 ) -> Result<PodcastFeedResult, anyhow::Error> {
     let mut url = format!(
         "{}/api/data/podcast_episodes?user_id={}&podcast_id={}",
@@ -437,6 +441,20 @@ pub async fn call_get_podcast_episodes(
     );
     if let (Some(l), Some(o)) = (limit, offset) {
         url.push_str(&format!("&limit={}&offset={}", l, o));
+    }
+    if let Some(s) = sort_by {
+        url.push_str(&format!("&sort_by={}", s));
+    }
+    if let Some(o) = sort_order {
+        url.push_str(&format!("&sort_order={}", o));
+    }
+    if let Some(s) = search {
+        if !s.is_empty() {
+            url.push_str(&format!("&search={}", urlencoding::encode(s)));
+        }
+    }
+    if let Some(f) = filter {
+        url.push_str(&format!("&filter={}", f));
     }
     let api_key_ref = api_key
         .as_deref()

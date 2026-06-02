@@ -1,200 +1,277 @@
-use crate::components::context_menu_button::PageType;
-use crate::components::episode_list_item::EpisodeListItem;
+//! Pure windowing for an episode list. Bounds DOM cost by viewport regardless of list length.
+//!
+//! ## What this is (and isn't)
+//!
+//! `VirtualList` is dumb. It takes a `Rc<Vec<Episode>>`, a `render_item` callback, and a scroll
+//! source. It renders a top spacer, a windowed slice of items, and a bottom spacer. It does NOT
+//! own the IntersectionObserver, the load-more sentinel, the spinner overlay, selection state,
+//! or anything Episode-specific beyond the prop type — Episode-specific chrome lives in
+//! [`EpisodeListView`](crate::components::episode_list_view). The split keeps the windowing
+//! math testable in isolation.
+//!
+//! ## Scroll source
+//!
+//! Two modes, chosen by the parent page:
+//!
+//! - [`ScrollSource::Window`] — read scroll from `window.scrollY` (via the list root's
+//!   `getBoundingClientRect`). Use this for inline lists embedded inside a longer page
+//!   that the document itself scrolls (e.g. `person`, `subscribed_people`, `downloads`).
+//! - [`ScrollSource::Container(node_ref)`] — read scroll from a specific container element's
+//!   `scrollTop`. Use this when the parent renders the list inside a
+//!   `flex-grow overflow-y-auto` div (every paginated page: `episode_layout`, `feed`,
+//!   `saved`, `history`, `playlist_detail`, `search`).
+//!
+//! We intentionally do NOT auto-detect by walking up the DOM looking for an overflow ancestor
+//! — too magical, breaks silently when CSS is reorganized.
+//!
+//! ## Item height table (load-bearing)
+//!
+//! The window math needs to know how tall each card renders at the current viewport width.
+//! Variable item heights / per-item `ResizeObserver` measurement are out of scope; we use three
+//! fixed breakpoint heights, measured once on mount and re-measured on `resize`:
+//!
+//! | Width            | Card | + `mb-4` | Total |
+//! |------------------|------|----------|-------|
+//! | ≤ 530px (mobile) | 122  | 16       | 138   |
+//! | ≤ 768px (tablet) | 150  | 16       | 166   |
+//! | > 768px (desktop)| 221  | 16       | 237   |
+//!
+//! **These are coupled to [`EpisodeListItem`](crate::components::episode_list_item)'s CSS.**
+//! If that component's per-breakpoint container height (or its outer `mb-4` margin) changes,
+//! update [`default_item_height`] in lockstep. Symptom of skew: spacer math under- or
+//! over-allocates, so cards appear floating above/below where the scrollbar expects them, and
+//! the window slides off-axis with scroll.
+//!
+//! A page that needs a different item size can pass `item_height_fn` to override the table.
+//! [`EpisodeListView`] doesn't expose this — it's a VirtualList-internal escape hatch.
+//!
+//! ## Known limitations (documented; do not call these bugs)
+//!
+//! - **No per-item measurement.** A card whose description is expanded grows beyond the fixed
+//!   height; the spacer math doesn't know, so the cards below it shift by a few px until the
+//!   description collapses again. Acceptable for now.
+//! - **No scroll position restoration across page navigation.**
+//! - **No smooth scroll-to-episode for deep linking.**
+
 use crate::requests::episode::Episode;
-use gloo::events::EventListener;
-use i18nrs::yew::use_translation;
+use gloo_events::EventListener;
+use std::cell::RefCell;
+use std::rc::Rc;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::{window, Element, HtmlElement};
 use yew::prelude::*;
-use yew::Properties;
-use yew::{function_component, html, use_effect_with, use_node_ref, Callback, Html};
-use yewdux::prelude::*;
 
-// Helper function to calculate responsive item height - MUST be synchronous and accurate
-#[allow(dead_code)]
-fn calculate_item_height(window_width: f64) -> f64 {
-    // CRITICAL: Must match the exact height that episodes render at, including margin
-    // Episodes render at container_height + mb-4 margin (16px)
-    let height = if window_width <= 530.0 {
-        122.0 + 16.0 // Mobile: episode container 122px + mb-4 margin
+/// Where to read scroll position from. Pages opt into [`Container`](Self::Container) explicitly.
+#[derive(Clone, PartialEq)]
+pub enum ScrollSource {
+    /// Read scroll from `window.scrollY`. The list's position within the document is computed
+    /// via `getBoundingClientRect`, so this works correctly even when the list is one of many
+    /// sections on a longer page.
+    Window,
+    /// Read scroll from a specific scroll container's `scrollTop`. The container's
+    /// `clientHeight` is the viewport. Pass the same `NodeRef` you attached to the
+    /// `overflow-y-auto` div.
+    Container(NodeRef),
+}
+
+impl Default for ScrollSource {
+    fn default() -> Self {
+        Self::Window
+    }
+}
+
+/// Default item-height table. See module docs for the coupling to `EpisodeListItem` CSS.
+fn default_item_height(window_width: f64) -> f64 {
+    if window_width <= 530.0 {
+        122.0 + 16.0
     } else if window_width <= 768.0 {
-        150.0 + 16.0 // Tablet: episode container 150px + mb-4 margin
+        150.0 + 16.0
     } else {
-        221.0 + 16.0 // Desktop: episode container 221px + mb-4 margin
-    };
-
-    web_sys::console::log_1(
-        &format!(
-            "FEED HEIGHT CALC: width={}, calculated_height={}",
-            window_width, height
-        )
-        .into(),
-    );
-
-    height
-}
-
-/// Any required callbacks for drag interactions. Field can be None if no callback is required.
-/// If no fields are set, dragging for this VirtualList will be disabled
-#[derive(Properties, PartialEq, Clone, Default)]
-pub struct DragCallbacks {
-    pub ondragstart: Option<Callback<DragEvent>>,
-    pub ondragenter: Option<Callback<DragEvent>>,
-    pub ondragover: Option<Callback<DragEvent>>,
-    pub ondrop: Option<Callback<DragEvent>>,
-}
-
-impl DragCallbacks {
-    /// Item is draggable if any callback field is set
-    pub fn draggable(&self) -> bool {
-        return self.ondragstart.is_some()
-            || self.ondragenter.is_some()
-            || self.ondragover.is_some()
-            || self.ondrop.is_some();
+        221.0 + 16.0
     }
 }
 
 #[derive(Properties, PartialEq)]
 pub struct VirtualListProps {
-    pub episodes: Vec<Episode>,
-    #[prop_or(PageType::Default)]
-    pub page_type: PageType,
+    pub episodes: Rc<Vec<Episode>>,
+    /// Builds the html for one card. Called once per item in the visible window per render.
+    /// The parent should build this via `use_callback` with stable deps — a fresh
+    /// `Callback::from(...)` per render would break `EpisodeListItem`'s PartialEq and force
+    /// every visible card to re-run its body on every parent re-render.
+    pub render_item: Callback<(Episode, usize), Html>,
+    #[prop_or(ScrollSource::Window)]
+    pub scroll_source: ScrollSource,
+    /// Optional override of the default breakpoint table. `f64 → f64` (window inner width to
+    /// item height in px). Defaults to [`default_item_height`].
     #[prop_or_default]
-    pub drag_callbacks: DragCallbacks,
+    pub item_height_fn: Option<Callback<f64, f64>>,
+    #[prop_or(3)]
+    pub buffer_items: usize,
+}
+
+/// Read the current scroll position relative to the list's top, in pixels. Returns 0 when the
+/// list is below the viewport / container top (not yet scrolled to).
+fn read_scroll_position(source: &ScrollSource, root: &NodeRef) -> f64 {
+    let root_el = match root.cast::<Element>() {
+        Some(el) => el,
+        None => return 0.0,
+    };
+    match source {
+        ScrollSource::Window => (-root_el.get_bounding_client_rect().top()).max(0.0),
+        ScrollSource::Container(nr) => match nr.cast::<Element>() {
+            Some(cont) => {
+                let c_top = cont.get_bounding_client_rect().top();
+                let r_top = root_el.get_bounding_client_rect().top();
+                (c_top - r_top).max(0.0)
+            }
+            None => 0.0,
+        },
+    }
+}
+
+/// Read the current viewport height — window inner height in `Window` mode, container's
+/// `clientHeight` in `Container` mode.
+fn read_viewport_height(source: &ScrollSource) -> f64 {
+    let win = window().expect("no global window");
+    match source {
+        ScrollSource::Window => win.inner_height().unwrap().as_f64().unwrap_or(0.0),
+        ScrollSource::Container(nr) => match nr.cast::<Element>() {
+            Some(el) => el.client_height() as f64,
+            None => win.inner_height().unwrap().as_f64().unwrap_or(0.0),
+        },
+    }
 }
 
 #[function_component(VirtualList)]
 pub fn virtual_list(props: &VirtualListProps) -> Html {
-    let scroll_pos = use_state(|| 0.0);
-    let container_ref = use_node_ref();
-    let container_height = use_state(|| 0.0);
-    let item_height = use_state(|| 234.0); // Default item height
-    let force_update = use_state(|| 0);
+    let scroll_top = use_state(|| 0.0_f64);
+    let viewport_height = use_state(|| 0.0_f64);
+    let item_height = use_state(|| 138.0_f64);
+    let root_ref = use_node_ref();
 
-    // Effect to set initial container height, item height, and listen for window resize
+    // Mount + resize: measure viewport height and item height. The first render uses the
+    // initial state defaults; this effect fires after the first paint and triggers a re-render
+    // with correct values. A one-frame glitch is acceptable — the spacers still compute to
+    // something sensible.
     {
-        let container_height = container_height.clone();
+        let viewport_height = viewport_height.clone();
         let item_height = item_height.clone();
-        let force_update = force_update.clone();
-
-        use_effect_with((), move |_| {
-            let window = window().expect("no global `window` exists");
-            let window_clone = window.clone();
-
-            let update_sizes = Callback::from(move |_| {
-                let height = window_clone.inner_height().unwrap().as_f64().unwrap();
-                container_height.set(height - 100.0);
-
-                let width = window_clone.inner_width().unwrap().as_f64().unwrap();
-                let new_item_height = calculate_item_height(width);
-
-                item_height.set(new_item_height);
-                force_update.set(*force_update + 1);
-            });
-
-            update_sizes.emit(());
-
-            let listener = EventListener::new(&window, "resize", move |_| {
-                update_sizes.emit(());
-            });
-
-            move || drop(listener)
-        });
+        let scroll_source = props.scroll_source.clone();
+        let item_height_fn = props.item_height_fn.clone();
+        use_effect_with(
+            (props.scroll_source.clone(), props.item_height_fn.clone()),
+            move |_| {
+                let win = window().expect("no global window");
+                let measure: Rc<dyn Fn()> = {
+                    let viewport_height = viewport_height.clone();
+                    let item_height = item_height.clone();
+                    let scroll_source = scroll_source.clone();
+                    let item_height_fn = item_height_fn.clone();
+                    let win = win.clone();
+                    Rc::new(move || {
+                        let width = win.inner_width().unwrap().as_f64().unwrap_or(0.0);
+                        let new_item_h = match &item_height_fn {
+                            Some(cb) => cb.emit(width),
+                            None => default_item_height(width),
+                        };
+                        item_height.set(new_item_h.max(1.0));
+                        viewport_height.set(read_viewport_height(&scroll_source));
+                    })
+                };
+                measure();
+                let listener = {
+                    let measure = measure.clone();
+                    EventListener::new(&win, "resize", move |_| measure())
+                };
+                move || drop(listener)
+            },
+        );
     }
 
-    // Effect for scroll handling - prevent feedback loop with debouncing
+    // Mount + scroll listener (RAF-coalesced). Reads scroll position from the source on each
+    // animation frame, at most once per paint. Skips the `is_updating` dance from the prior
+    // implementation — that was working around a feedback loop caused by un-coalesced events
+    // re-firing within the same frame; RAF coalescing solves it directly.
     {
-        let scroll_pos = scroll_pos.clone();
-        let container_ref = container_ref.clone();
-        use_effect_with(container_ref.clone(), move |container_ref| {
-            if let Some(container) = container_ref.cast::<HtmlElement>() {
-                let scroll_pos_clone = scroll_pos.clone();
-                let is_updating = std::rc::Rc::new(std::cell::RefCell::new(false));
+        let scroll_top = scroll_top.clone();
+        let scroll_source = props.scroll_source.clone();
+        let root_ref = root_ref.clone();
+        use_effect_with(
+            (props.scroll_source.clone(), root_ref.clone()),
+            move |_| {
+                let win = window().expect("no global window");
+                let raf_scheduled: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
 
-                let scroll_listener = EventListener::new(&container, "scroll", move |event| {
-                    // Prevent re-entrant calls that cause feedback loops
-                    if *is_updating.borrow() {
-                        return;
-                    }
-
-                    if let Some(target) = event.target() {
-                        if let Ok(element) = target.dyn_into::<Element>() {
-                            let new_scroll_top = element.scroll_top() as f64;
-                            let old_scroll_top = *scroll_pos_clone;
-
-                            // Always update scroll position for smoothest scrolling
-                            if new_scroll_top != old_scroll_top {
-                                *is_updating.borrow_mut() = true;
-
-                                // Use requestAnimationFrame to batch updates and prevent feedback
-                                let scroll_pos_clone2 = scroll_pos_clone.clone();
-                                let is_updating_clone = is_updating.clone();
-                                let callback =
-                                    wasm_bindgen::closure::Closure::wrap(Box::new(move || {
-                                        scroll_pos_clone2.set(new_scroll_top);
-                                        *is_updating_clone.borrow_mut() = false;
-                                    })
-                                        as Box<dyn FnMut()>);
-
-                                web_sys::window()
-                                    .unwrap()
-                                    .request_animation_frame(callback.as_ref().unchecked_ref())
-                                    .unwrap();
-                                callback.forget();
-                            }
+                let on_scroll: Rc<dyn Fn()> = {
+                    let scroll_top = scroll_top.clone();
+                    let scroll_source = scroll_source.clone();
+                    let root_ref = root_ref.clone();
+                    let raf_scheduled = raf_scheduled.clone();
+                    let win = win.clone();
+                    Rc::new(move || {
+                        if *raf_scheduled.borrow() {
+                            return;
                         }
-                    }
-                });
+                        *raf_scheduled.borrow_mut() = true;
+                        let scroll_top = scroll_top.clone();
+                        let scroll_source = scroll_source.clone();
+                        let root_ref = root_ref.clone();
+                        let raf_scheduled = raf_scheduled.clone();
+                        let cb = Closure::once_into_js(move || {
+                            *raf_scheduled.borrow_mut() = false;
+                            scroll_top.set(read_scroll_position(&scroll_source, &root_ref));
+                        });
+                        let _ = win.request_animation_frame(cb.as_ref().unchecked_ref());
+                    })
+                };
 
-                Box::new(move || {
-                    drop(scroll_listener);
-                }) as Box<dyn FnOnce()>
-            } else {
-                Box::new(|| {}) as Box<dyn FnOnce()>
-            }
-        });
+                // Attach to window or container depending on scroll source. The container
+                // element may not be cast-able yet on first effect run if the parent hasn't
+                // commited the ref — fall back to window in that case (harmless, the effect
+                // re-runs if scroll_source / root_ref changes).
+                let container_el = match &scroll_source {
+                    ScrollSource::Container(nr) => nr.cast::<HtmlElement>(),
+                    ScrollSource::Window => None,
+                };
+                let listener = match container_el.as_ref() {
+                    Some(el) => {
+                        let on_scroll = on_scroll.clone();
+                        EventListener::new(el, "scroll", move |_| on_scroll())
+                    }
+                    None => {
+                        let on_scroll = on_scroll.clone();
+                        EventListener::new(&win, "scroll", move |_| on_scroll())
+                    }
+                };
+
+                move || drop(listener)
+            },
+        );
     }
 
-    let start_index = (*scroll_pos / *item_height).floor() as usize;
-    let visible_count = ((*container_height / *item_height).ceil() as usize) + 1;
+    let item_h = (*item_height).max(1.0);
+    let total = props.episodes.len();
+    let buffer = props.buffer_items;
 
-    // Add buffer episodes above and below for smooth scrolling
-    let buffer_size = 2; // Render 2 extra episodes above and below
-    let buffered_start = start_index.saturating_sub(buffer_size);
-    let buffered_end = (start_index + visible_count + buffer_size).min(props.episodes.len());
+    let start_unbuffered = (*scroll_top / item_h).floor().max(0.0) as usize;
+    let start = start_unbuffered.saturating_sub(buffer);
+    let end_unbuffered =
+        ((*scroll_top + *viewport_height) / item_h).ceil().max(0.0) as usize + buffer;
+    let end = end_unbuffered.min(total).max(start);
 
-    let visible_episodes = (buffered_start..buffered_end)
-        .map(|index| {
-            let episode = props.episodes[index].clone();
-            html! {
-                <EpisodeListItem
-                    key={format!("{}-{}", episode.episodeid, *force_update)}
-                    episode={episode.clone()}
-                    page_type={props.page_type.clone()}
-                    drag_callbacks={ props.drag_callbacks.clone() }
-                />
-            }
-        })
+    let top_h = (start as f64) * item_h;
+    let bot_h = ((total - end) as f64) * item_h;
+
+    let items_html = (start..end)
+        .map(|i| props.render_item.emit((props.episodes[i].clone(), i)))
         .collect::<Html>();
 
-    let total_height = props.episodes.len() as f64 * *item_height;
-    let offset_y = buffered_start as f64 * *item_height;
-
     html! {
-        <div ref={container_ref}
-             class="virtual-list-container flex-grow overflow-y-auto"
-             style="height: calc(100vh - 100px); -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;"
-        >
-            // Top spacer to push content down without using transforms
-            <div style={format!("height: {}px; flex-shrink: 0;", offset_y)}></div>
-
-            // Visible episodes
-            <div>
-                { visible_episodes }
-            </div>
-
-            // Bottom spacer to maintain total height
-            <div style={format!("height: {}px; flex-shrink: 0;", total_height - offset_y - (buffered_end - buffered_start) as f64 * *item_height)}></div>
+        <div ref={root_ref}>
+            <div style={format!("height: {}px;", top_h)} />
+            { items_html }
+            <div style={format!("height: {}px;", bot_h)} />
         </div>
     }
 }

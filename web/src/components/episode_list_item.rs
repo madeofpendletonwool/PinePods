@@ -8,15 +8,35 @@ use crate::components::gen_funcs::{
 };
 use crate::components::gen_funcs::{format_time, strip_images_from_html};
 use crate::components::safehtml::RawHtml;
-use crate::components::virtual_list::DragCallbacks;
 use crate::requests::episode::Episode;
 use i18nrs::yew::use_translation;
 use yew_router::history::{BrowserHistory, History};
 use wasm_bindgen::prelude::*;
-use web_sys::MouseEvent;
+use web_sys::{DragEvent, MouseEvent};
 use yew::prelude::*;
 use yew::Callback;
 use yewdux::prelude::*;
+
+/// Drag interaction callbacks used by [`EpisodeListItem`] (currently only the queue page wires
+/// these up for drag-to-reorder). All fields are optional; if none are set, the card is not
+/// draggable.
+#[derive(Properties, PartialEq, Clone, Default)]
+pub struct DragCallbacks {
+    pub ondragstart: Option<Callback<DragEvent>>,
+    pub ondragenter: Option<Callback<DragEvent>>,
+    pub ondragover: Option<Callback<DragEvent>>,
+    pub ondrop: Option<Callback<DragEvent>>,
+}
+
+impl DragCallbacks {
+    /// Item is draggable if any callback field is set
+    pub fn draggable(&self) -> bool {
+        self.ondragstart.is_some()
+            || self.ondragenter.is_some()
+            || self.ondragover.is_some()
+            || self.ondrop.is_some()
+    }
+}
 
 #[allow(dead_code)]
 #[derive(Properties, PartialEq, Clone)]

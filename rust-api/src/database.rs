@@ -9981,7 +9981,31 @@ impl DatabasePool {
     // rows that can possibly contribute to the final page. The outer ORDER BY...LIMIT/OFFSET
     // produces the correctly-merged page from the two pre-sorted streams. Total count is a
     // separate cheap query (two COUNT(*) on the indexed PodcastID column, no joins).
-    pub async fn return_podcast_episodes_capitalized(&self, user_id: i32, podcast_id: i32, limit: Option<i64>, offset: Option<i64>) -> AppResult<(Vec<crate::handlers::podcasts::PodcastEpisode>, i64)> {
+    pub async fn return_podcast_episodes_capitalized(
+        &self,
+        user_id: i32,
+        podcast_id: i32,
+        limit: Option<i64>,
+        offset: Option<i64>,
+        sort_by: &str,
+        sort_order: &str,
+        search: &str,
+        filter: &str,
+    ) -> AppResult<(Vec<crate::handlers::podcasts::PodcastEpisode>, i64)> {
+        // Validate sort column/direction to prevent SQL injection (only fixed string literals
+        // are ever spliced into the query — the actual user input is bound as a parameter).
+        let pg_order_col = match sort_by {
+            "duration" => "\"Episodeduration\"",
+            "title"    => "\"Episodetitle\"",
+            _          => "\"Episodepubdate\"", // "date" or unknown
+        };
+        let my_order_col = match sort_by {
+            "duration" => "Episodeduration",
+            "title"    => "Episodetitle",
+            _          => "Episodepubdate",
+        };
+        let order_dir = if sort_order == "asc" { "ASC" } else { "DESC" };
+        let has_search = !search.is_empty();
         match self {
             DatabasePool::Postgres(pool) => {
                 let lim: i64 = limit.unwrap_or(i64::MAX);
@@ -10014,22 +10038,31 @@ impl DatabasePool {
                     }
                 }
 
-                // Total count across both branches. No joins; the PodcastID single-column
-                // indexes (idx_episodes_podcastid / idx_youtubevideos_podcastid) make this
-                // an index-only scan.
-                let total: i64 = sqlx::query_scalar(
-                    r#"SELECT
-                        (SELECT COUNT(*) FROM "Episodes" WHERE podcastid = ANY($1))
-                      + (SELECT COUNT(*) FROM "YouTubeVideos" WHERE podcastid = ANY($1))
-                    "#
-                )
-                .bind(&podcast_ids)
-                .fetch_one(pool)
-                .await
-                .unwrap_or(0);
+                let filter_clause = match filter {
+                    "completed"   => " WHERE \"Completed\" = TRUE",
+                    "in_progress" => " WHERE \"Completed\" = FALSE AND \"Listenduration\" IS NOT NULL AND \"Listenduration\" > 0",
+                    "incomplete"  => " WHERE \"Completed\" = FALSE",
+                    _             => "",
+                };
+                let ep_search_clause = if has_search {
+                    " AND (\"Episodes\".episodetitle ILIKE $3 OR \"Episodes\".episodedescription ILIKE $3)"
+                } else { "" };
+                let yt_search_clause = if has_search {
+                    " AND (\"YouTubeVideos\".videotitle ILIKE $3 OR \"YouTubeVideos\".videodescription ILIKE $3)"
+                } else { "" };
+                let search_pattern = if has_search {
+                    format!("%{}%", search)
+                } else { String::new() };
 
-                let rows = sqlx::query(
-                    r#"SELECT * FROM (
+                // Bind positions shift when a search pattern is present (it takes $3).
+                let (pb_lim_pos, outer_lim_pos, outer_off_pos) = if has_search {
+                    ("$4", "$5", "$6")
+                } else {
+                    ("$3", "$4", "$5")
+                };
+
+                let rows_sql = format!(
+                    r#"SELECT *, COUNT(*) OVER() AS total_count FROM (
                         (SELECT
                             "Podcasts".podcastname as podcastname,
                             "Episodes".episodetitle as "Episodetitle",
@@ -10066,9 +10099,9 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedEpisodes" ON
                             "Episodes".episodeid = "DownloadedEpisodes".episodeid
                             AND "DownloadedEpisodes".userid = $1
-                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2)
+                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){ep_search_clause}
                         ORDER BY "Episodes".episodepubdate DESC
-                        LIMIT $3)
+                        LIMIT {pb_lim_pos})
 
                         UNION ALL
 
@@ -10105,20 +10138,41 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedVideos" ON
                             "YouTubeVideos".videoid = "DownloadedVideos".videoid
                             AND "DownloadedVideos".userid = $1
-                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2)
+                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){yt_search_clause}
                         ORDER BY "YouTubeVideos".publishedat DESC
-                        LIMIT $3)
-                    ) combined
-                    ORDER BY "Episodepubdate" DESC
-                    LIMIT $4 OFFSET $5"#
-                )
-                .bind(user_id)
-                .bind(&podcast_ids)
-                .bind(per_branch_limit)
-                .bind(lim)
-                .bind(off)
-                .fetch_all(pool)
-                .await?;
+                        LIMIT {pb_lim_pos})
+                    ) combined{filter_clause}
+                    ORDER BY {pg_order_col} {order_dir} NULLS LAST
+                    LIMIT {outer_lim_pos} OFFSET {outer_off_pos}"#,
+                    ep_search_clause = ep_search_clause,
+                    yt_search_clause = yt_search_clause,
+                    pb_lim_pos = pb_lim_pos,
+                    pg_order_col = pg_order_col,
+                    order_dir = order_dir,
+                    filter_clause = filter_clause,
+                    outer_lim_pos = outer_lim_pos,
+                    outer_off_pos = outer_off_pos,
+                );
+
+                // SAFETY: rows_sql is built from static literals plus the validated
+                // sort_by/sort_order/filter/has_search dispatch above. User-supplied search text
+                // is bound as $3, never interpolated.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(rows_sql.as_str()))
+                    .bind(user_id)
+                    .bind(&podcast_ids);
+                if has_search {
+                    q = q.bind(search_pattern.clone());
+                }
+                let rows = q
+                    .bind(per_branch_limit)
+                    .bind(lim)
+                    .bind(off)
+                    .fetch_all(pool)
+                    .await?;
+
+                let total: i64 = rows.first()
+                    .and_then(|r| r.try_get::<i64, _>("total_count").ok())
+                    .unwrap_or(0);
 
                 let mut episodes = Vec::new();
                 for row in rows {
@@ -10177,27 +10231,27 @@ impl DatabasePool {
                 // string sized to the resolved list and bind each ID below.
                 let id_placeholders = vec!["?"; podcast_ids.len()].join(",");
 
-                // Total count: separate cheap query, no joins. Uses idx_episodes_podcastid /
-                // idx_youtubevideos_podcastid for index-only scans on each branch.
-                let count_sql = format!(
-                    "SELECT
-                        (SELECT COUNT(*) FROM Episodes WHERE PodcastID IN ({ph}))
-                      + (SELECT COUNT(*) FROM YouTubeVideos WHERE PodcastID IN ({ph})) AS total_count",
-                    ph = id_placeholders
-                );
-                // SAFETY: count_sql contains only static SQL plus a programmatically generated
-                // `?,?,...` placeholder string sized to podcast_ids.len(). No user input is
-                // interpolated; the IDs themselves are bound below.
-                let mut count_q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(count_sql.as_str()));
-                for id in &podcast_ids { count_q = count_q.bind(*id); }
-                for id in &podcast_ids { count_q = count_q.bind(*id); }
-                let total: i64 = count_q.fetch_one(pool).await.unwrap_or(0);
+                let mysql_filter = match filter {
+                    "completed"   => " WHERE Completed = 1",
+                    "in_progress" => " WHERE Completed = 0 AND Listenduration IS NOT NULL AND Listenduration > 0",
+                    "incomplete"  => " WHERE Completed = 0",
+                    _             => "",
+                };
+                let ep_search_clause = if has_search {
+                    " AND (Episodes.EpisodeTitle LIKE ? OR Episodes.EpisodeDescription LIKE ?)"
+                } else { "" };
+                let yt_search_clause = if has_search {
+                    " AND (YouTubeVideos.VideoTitle LIKE ? OR YouTubeVideos.VideoDescription LIKE ?)"
+                } else { "" };
+                let search_pattern = if has_search {
+                    format!("%{}%", search)
+                } else { String::new() };
 
                 // Main query: LIMIT pushed inside each branch so joins only fire on the rows
                 // that can possibly contribute to the final page. The outer ORDER BY merges
-                // the two pre-sorted streams.
+                // the two pre-sorted streams. COUNT(*) OVER() gives the filtered total.
                 let rows_sql = format!(
-                    "SELECT * FROM (
+                    "SELECT *, COUNT(*) OVER() AS total_count FROM (
                         (SELECT
                             Podcasts.PodcastName as podcastname,
                             Episodes.EpisodeTitle as Episodetitle,
@@ -10234,7 +10288,7 @@ impl DatabasePool {
                         LEFT JOIN DownloadedEpisodes ON
                             Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                             AND DownloadedEpisodes.UserID = ?
-                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph})
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){ep_search_clause}
                         ORDER BY Episodes.EpisodePubDate DESC
                         LIMIT ?)
 
@@ -10273,30 +10327,46 @@ impl DatabasePool {
                         LEFT JOIN DownloadedVideos ON
                             YouTubeVideos.VideoID = DownloadedVideos.VideoID
                             AND DownloadedVideos.UserID = ?
-                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph})
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){yt_search_clause}
                         ORDER BY YouTubeVideos.PublishedAt DESC
                         LIMIT ?)
-                    ) combined
-                    ORDER BY Episodepubdate DESC
+                    ) combined{mysql_filter}
+                    ORDER BY {my_order_col} {order_dir}
                     LIMIT ? OFFSET ?",
-                    ph = id_placeholders
+                    ph = id_placeholders,
+                    ep_search_clause = ep_search_clause,
+                    yt_search_clause = yt_search_clause,
+                    mysql_filter = mysql_filter,
+                    my_order_col = my_order_col,
+                    order_dir = order_dir,
                 );
 
-                // SAFETY: rows_sql is static SQL plus a programmatically generated
-                // `?,?,...` placeholder string. No user input is interpolated.
+                // SAFETY: rows_sql is static SQL plus the programmatically generated `?,?,...`
+                // placeholder string and validated sort_by/sort_order/filter/has_search splices.
+                // The user-supplied search text is bound as a parameter, never interpolated.
                 let mut q = sqlx::query(sqlx::AssertSqlSafe(rows_sql.as_str()));
-                // Episodes branch: 5x UserID joins + IN list + per-branch LIMIT.
+                // Episodes branch: 5x UserID joins + IN list + (optional 2x search) + per-branch LIMIT.
                 q = q.bind(user_id).bind(user_id).bind(user_id).bind(user_id).bind(user_id);
                 for id in &podcast_ids { q = q.bind(*id); }
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
                 q = q.bind(per_branch_limit);
-                // YouTubeVideos branch: 4x UserID joins + IN list + per-branch LIMIT.
+                // YouTubeVideos branch: 4x UserID joins + IN list + (optional 2x search) + per-branch LIMIT.
                 q = q.bind(user_id).bind(user_id).bind(user_id).bind(user_id);
                 for id in &podcast_ids { q = q.bind(*id); }
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
                 q = q.bind(per_branch_limit);
                 // Outer LIMIT/OFFSET.
                 q = q.bind(lim).bind(off);
 
                 let rows = q.fetch_all(pool).await?;
+
+                let total: i64 = rows.first()
+                    .and_then(|r| r.try_get::<i64, _>("total_count").ok())
+                    .unwrap_or(0);
 
                 let mut episodes = Vec::new();
                 for row in rows {

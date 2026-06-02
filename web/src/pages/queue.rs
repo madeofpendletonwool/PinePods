@@ -7,13 +7,12 @@ use crate::components::loading::Loading;
 
 use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::context::{AppState, EpisodeStatusState, FilterState, PodcastFeedState};
-use crate::components::episode_list_item::EpisodeListItem;
+use crate::components::episode_list_item::{DragCallbacks, EpisodeListItem};
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::requests::episode::Episode;
 
-use crate::components::virtual_list::DragCallbacks;
 use crate::requests::pod_req::{self, PodcastResponseExtra, QueuedEpisodesResponse};
 use gloo_events::EventListener;
 use gloo_utils::document;

@@ -1,7 +1,7 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::context::{AppState, ExpandedDescriptions};
-use crate::components::episode_list_item::EpisodeListItem;
+use crate::components::episode_list_view::EpisodeListView;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
 use crate::requests::episode::Episode;
@@ -433,13 +433,21 @@ fn render_host_with_episodes(
                                 </p>
                             }
                         } else {
+                            // All-at-once fetch per person, embedded inside a larger "list of
+                            // people". `disable_sentinel` so the IO observer inside this
+                            // dropdown doesn't fire when the user is scrolling *past* this
+                            // person to reach the next one. With windowing, even a host with
+                            // hundreds of episodes mounts at viewport-bound cost — no ramp
+                            // override needed.
+                            let episodes_rc: Rc<Vec<Episode>> = Rc::new(episodes.clone());
                             html! {
-                                <>
-                                { for episodes.iter().map(|ep| html! {
-                                    // Use episodeurl as key to avoid -1 ID collisions for system-podcast episodes
-                                    <EpisodeListItem key={ep.episodeurl.clone()} episode={ep.clone()} />
-                                }) }
-                                </>
+                                <EpisodeListView
+                                    key={format!("person-eps-{}", person.personid)}
+                                    episodes={episodes_rc}
+                                    backend_can_load_more={false}
+                                    loading_more={false}
+                                    disable_sentinel={true}
+                                />
                             }
                         }}
                     </div>

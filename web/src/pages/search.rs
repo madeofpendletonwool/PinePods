@@ -2,7 +2,7 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, FilterState, NotificationState, UIState};
-use crate::components::episode_list_item::EpisodeListItem;
+use crate::components::episode_list_view::EpisodeListView;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_time;
 use crate::requests::episode::Episode;
@@ -16,13 +16,12 @@ use crate::requests::search_pods::{call_search_database_paged, SearchRequest};
 use gloo_events::EventListener;
 use gloo_timers::future::TimeoutFuture;
 use i18nrs::yew::use_translation;
-use js_sys::Array;
 use std::collections::HashSet;
+use std::rc::Rc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use web_sys::HtmlInputElement;
-use web_sys::{IntersectionObserver, IntersectionObserverEntry, IntersectionObserverInit};
 use yew::prelude::*;
 use yew::{function_component, html, use_node_ref, AttrValue, Callback, Html, Properties};
 use yew_router::history::{BrowserHistory, History};
@@ -31,7 +30,7 @@ use wasm_bindgen::closure::Closure;
 
 const PAGE_SIZE: i64 = 50;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 enum FilterChip {
     All,
     Unplayed,
@@ -120,10 +119,9 @@ pub fn search(_props: &SearchProps) -> Html {
         .map(|ud| ud.server_name.clone());
 
     let input_ref = use_node_ref();
-    let sentinel_ref = use_node_ref();
 
     // Pagination / search results (keep existing logic)
-    let episodes = use_state(|| Vec::<Episode>::new());
+    let episodes = use_state(|| Rc::new(Vec::<Episode>::new()));
     let total = use_state(|| 0i64);
     let offset = use_state(|| 0i64);
     let loading_more = use_state(|| false);
@@ -257,7 +255,7 @@ pub fn search(_props: &SearchProps) -> Html {
                     } else if e.key() == "Escape" && (!(*query_ks).is_empty() || !(*selected_categories_ks).is_empty()) {
                         query_ks.set(String::new());
                         current_term_ks.set(String::new());
-                        episodes_ks.set(vec![]);
+                        episodes_ks.set(Rc::new(Vec::new()));
                         total_ks.set(0);
                         offset_ks.set(0);
                         active_filter_ks.set(FilterChip::All);
@@ -281,25 +279,34 @@ pub fn search(_props: &SearchProps) -> Html {
         });
     }
 
-    // ── Chip counts (computed from loaded episodes) ────────────────────────
-    let eps_ref = &*episodes;
+    // ── Chip counts (computed from all loaded episodes, regardless of active filter) ─────
     let chip_counts = [
-        eps_ref.len(),
-        eps_ref.iter().filter(|e| !e.completed && e.listenduration == 0).count(),
-        eps_ref.iter().filter(|e| e.listenduration > 0 && !e.completed).count(),
-        eps_ref.iter().filter(|e| e.saved).count(),
-        eps_ref.iter().filter(|e| e.downloaded).count(),
+        (*episodes).len(),
+        (*episodes).iter().filter(|e| !e.completed && e.listenduration == 0).count(),
+        (*episodes).iter().filter(|e| e.listenduration > 0 && !e.completed).count(),
+        (*episodes).iter().filter(|e| e.saved).count(),
+        (*episodes).iter().filter(|e| e.downloaded).count(),
     ];
 
-    // Visible episodes after status filter
-    let visible_episodes: Vec<&Episode> = eps_ref
-        .iter()
-        .filter(|ep| filter_episode(ep, &*active_filter))
-        .collect();
+    // Visible episodes after the FilterChip filter. When the chip is "All", skip the clone
+    // and just hand the parent's Rc straight through; otherwise allocate a filtered Vec.
+    let display_episodes_rc: Rc<Vec<Episode>> = if *active_filter == FilterChip::All {
+        (*episodes).clone()
+    } else {
+        let filter = (*active_filter).clone();
+        Rc::new(
+            (*episodes)
+                .iter()
+                .filter(|ep| filter_episode(ep, &filter))
+                .cloned()
+                .collect(),
+        )
+    };
+    let visible_count = display_episodes_rc.len();
+    let visible_empty = visible_count == 0;
+    let visible_ep_ids: Vec<i32> = display_episodes_rc.iter().map(|ep| ep.episodeid).collect();
 
     // ── Select mode callbacks ──────────────────────────────────────────────
-    let visible_ep_ids: Vec<i32> = visible_episodes.iter().map(|ep| ep.episodeid).collect();
-
     let toggle_select = {
         let is_selecting = is_selecting.clone();
         let selected_episodes_set = selected_episodes_set.clone();
@@ -311,9 +318,12 @@ pub fn search(_props: &SearchProps) -> Html {
         })
     };
 
+    // on_episode_checkbox / on_select_above / on_select_below pass into EpisodeListItem via
+    // EpisodeListView, so their identity has to be stable across renders or every already-
+    // mounted card will fail PartialEq and re-run its function body.
     let on_episode_checkbox = {
         let selected_episodes_set = selected_episodes_set.clone();
-        Callback::from(move |ep_id: i32| {
+        use_callback((), move |ep_id: i32, _| {
             let mut current = (*selected_episodes_set).clone();
             if current.contains(&ep_id) {
                 current.remove(&ep_id);
@@ -326,8 +336,15 @@ pub fn search(_props: &SearchProps) -> Html {
 
     let on_select_above = {
         let selected_episodes_set = selected_episodes_set.clone();
-        let ids = visible_ep_ids.clone();
-        Callback::from(move |cutoff_id: i32| {
+        let episodes_handle = episodes.clone();
+        let active_filter_handle = active_filter.clone();
+        use_callback((), move |cutoff_id: i32, _| {
+            let filter = (*active_filter_handle).clone();
+            let ids: Vec<i32> = (*episodes_handle)
+                .iter()
+                .filter(|ep| filter_episode(ep, &filter))
+                .map(|ep| ep.episodeid)
+                .collect();
             if let Some(pos) = ids.iter().position(|&id| id == cutoff_id) {
                 let to_add: HashSet<i32> = ids[..=pos].iter().cloned().collect();
                 let mut current = (*selected_episodes_set).clone();
@@ -339,8 +356,15 @@ pub fn search(_props: &SearchProps) -> Html {
 
     let on_select_below = {
         let selected_episodes_set = selected_episodes_set.clone();
-        let ids = visible_ep_ids.clone();
-        Callback::from(move |cutoff_id: i32| {
+        let episodes_handle = episodes.clone();
+        let active_filter_handle = active_filter.clone();
+        use_callback((), move |cutoff_id: i32, _| {
+            let filter = (*active_filter_handle).clone();
+            let ids: Vec<i32> = (*episodes_handle)
+                .iter()
+                .filter(|ep| filter_episode(ep, &filter))
+                .map(|ep| ep.episodeid)
+                .collect();
             if let Some(pos) = ids.iter().position(|&id| id == cutoff_id) {
                 let to_add: HashSet<i32> = ids[pos..].iter().cloned().collect();
                 let mut current = (*selected_episodes_set).clone();
@@ -366,7 +390,7 @@ pub fn search(_props: &SearchProps) -> Html {
 
     let on_select_unplayed = {
         let selected_episodes_set = selected_episodes_set.clone();
-        let ep_data: Vec<(i32, bool)> = visible_episodes
+        let ep_data: Vec<(i32, bool)> = display_episodes_rc
             .iter()
             .map(|ep| (ep.episodeid, !ep.completed && ep.listenduration == 0))
             .collect();
@@ -382,7 +406,7 @@ pub fn search(_props: &SearchProps) -> Html {
 
     let on_select_in_progress = {
         let selected_episodes_set = selected_episodes_set.clone();
-        let ep_data: Vec<(i32, bool)> = visible_episodes
+        let ep_data: Vec<(i32, bool)> = display_episodes_rc
             .iter()
             .map(|ep| (ep.episodeid, ep.listenduration > 0 && !ep.completed))
             .collect();
@@ -409,7 +433,7 @@ pub fn search(_props: &SearchProps) -> Html {
 
         Callback::from(move |(term, cats): (String, Vec<String>)| {
             current_term.set(term.clone());
-            episodes.set(vec![]);
+            episodes.set(Rc::new(Vec::new()));
             total.set(0);
             offset.set(0);
             loading_more.set(true);
@@ -438,7 +462,7 @@ pub fn search(_props: &SearchProps) -> Html {
                             if *current_term != term_clone { return; }
                             total.set(page.total);
                             offset.set(page.data.len() as i64);
-                            episodes.set(page.data);
+                            episodes.set(Rc::new(page.data));
                         }
                         Err(e) => {
                             web_sys::console::log_1(&format!("Search error: {:?}", e).into());
@@ -494,7 +518,7 @@ pub fn search(_props: &SearchProps) -> Html {
             if value.trim().is_empty() {
                 query.set(String::new());
                 if (*selected_categories_check).is_empty() {
-                    episodes.set(vec![]);
+                    episodes.set(Rc::new(Vec::new()));
                     total.set(0);
                     offset.set(0);
                     current_term.set(String::new());
@@ -553,7 +577,7 @@ pub fn search(_props: &SearchProps) -> Html {
         Callback::from(move |_: MouseEvent| {
             query.set(String::new());
             current_term.set(String::new());
-            episodes.set(vec![]);
+            episodes.set(Rc::new(Vec::new()));
             total.set(0);
             offset.set(0);
             active_filter.set(FilterChip::All);
@@ -566,110 +590,76 @@ pub fn search(_props: &SearchProps) -> Html {
         })
     };
 
-    // ── IntersectionObserver for infinite scroll ───────────────────────────
-    {
+    // Load-more handler. EpisodeListView owns the sentinel/observer/display-count/ramp; this
+    // callback fires only when the view runs out of buffered episodes and the parent reports
+    // `backend_can_load_more`. Snapshot current_term at entry so a stale fetch result that
+    // returns after the user has changed the query gets dropped before mutating state.
+    let on_load_more = {
         let episodes = episodes.clone();
         let total = total.clone();
         let offset = offset.clone();
         let loading_more = loading_more.clone();
         let current_term = current_term.clone();
-        let sentinel_ref = sentinel_ref.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
-        let selected_categories_obs = selected_categories.clone();
-
-        use_effect_with(
-            (sentinel_ref.clone(), *offset, *total, (*current_term).clone()),
-            move |(sentinel_ref, _, _, _)| {
-                let sentinel_el = match sentinel_ref.cast::<web_sys::Element>() {
-                    Some(el) => el,
-                    None => return Box::new(|| ()) as Box<dyn FnOnce()>,
+        let selected_categories_lm = selected_categories.clone();
+        use_callback((), move |_: (), _| {
+            if *loading_more {
+                return;
+            }
+            let current_offset = *offset;
+            let current_total = *total;
+            if current_offset >= current_total {
+                return;
+            }
+            let search_term = (*current_term).clone();
+            let cats_snap = (*selected_categories_lm).clone();
+            if search_term.is_empty() && cats_snap.is_empty() {
+                return;
+            }
+            let Some(server) = server_name.clone() else { return; };
+            let Some(ak) = api_key.clone().flatten() else { return; };
+            let Some(uid) = user_id else { return; };
+            loading_more.set(true);
+            let episodes = episodes.clone();
+            let total = total.clone();
+            let offset = offset.clone();
+            let loading_more = loading_more.clone();
+            let current_term_for_check = current_term.clone();
+            let term_snap = search_term.clone();
+            spawn_local(async move {
+                let req = SearchRequest {
+                    search_term: term_snap.clone(),
+                    user_id: uid,
+                    categories: if cats_snap.is_empty() { None } else { Some(cats_snap) },
                 };
-
-                let episodes = episodes.clone();
-                let total = total.clone();
-                let offset = offset.clone();
-                let loading_more = loading_more.clone();
-                let current_term = current_term.clone();
-                let api_key = api_key.clone();
-                let user_id = user_id.clone();
-                let server_name = server_name.clone();
-                let current_cats = selected_categories_obs.clone();
-
-                let callback =
-                    Closure::<dyn Fn(Array)>::wrap(Box::new(move |entries: Array| {
-                        let entry: IntersectionObserverEntry =
-                            entries.get(0).unchecked_into();
-                        if !entry.is_intersecting() { return; }
-
-                        let current_offset = *offset;
-                        let current_total = *total;
-                        if *loading_more || current_offset >= current_total { return; }
-
-                        let search_term = (*current_term).clone();
-                        let cats_snap = (*current_cats).clone();
-                        if search_term.is_empty() && cats_snap.is_empty() { return; }
-
-                        let episodes = episodes.clone();
-                        let total = total.clone();
-                        let offset = offset.clone();
-                        let loading_more = loading_more.clone();
-                        let current_term = current_term.clone();
-                        let api_key = api_key.clone();
-                        let user_id = user_id.clone();
-                        let server_name = server_name.clone();
-
-                        loading_more.set(true);
-                        wasm_bindgen_futures::spawn_local(async move {
-                            if let (Some(server), Some(ak), Some(uid)) =
-                                (server_name, api_key.flatten(), user_id)
-                            {
-                                let req = SearchRequest {
-                                    search_term: search_term.clone(),
-                                    user_id: uid,
-                                    categories: if cats_snap.is_empty() { None } else { Some(cats_snap) },
-                                };
-                                if let Ok(page) = call_search_database_paged(
-                                    &server,
-                                    &Some(ak),
-                                    &req,
-                                    PAGE_SIZE,
-                                    current_offset,
-                                )
-                                .await
-                                {
-                                    if *current_term != search_term {
-                                        loading_more.set(false);
-                                        return;
-                                    }
-                                    offset.set(current_offset + page.data.len() as i64);
-                                    total.set(page.total);
-                                    episodes.set({
-                                        let mut all = (*episodes).clone();
-                                        all.extend(page.data);
-                                        all
-                                    });
-                                }
-                            }
-                            loading_more.set(false);
-                        });
-                    }));
-
-                let mut opts = IntersectionObserverInit::new();
-                opts.root_margin("200px");
-                let observer = IntersectionObserver::new_with_options(
-                    callback.as_ref().unchecked_ref(),
-                    &opts,
+                if let Ok(page) = call_search_database_paged(
+                    &server,
+                    &Some(ak),
+                    &req,
+                    PAGE_SIZE,
+                    current_offset,
                 )
-                .expect("IntersectionObserver creation failed");
-                observer.observe(&sentinel_el);
-                callback.forget();
-
-                Box::new(move || observer.disconnect()) as Box<dyn FnOnce()>
-            },
-        );
-    }
+                .await
+                {
+                    if *current_term_for_check != term_snap {
+                        loading_more.set(false);
+                        return;
+                    }
+                    TimeoutFuture::new(0).await;
+                    let added = page.data.len() as i64;
+                    let mut all = (**episodes).clone();
+                    all.extend(page.data);
+                    offset.set(current_offset + added);
+                    total.set(page.total);
+                    episodes.set(Rc::new(all));
+                    TimeoutFuture::new(0).await;
+                }
+                loading_more.set(false);
+            });
+        })
+    };
 
     // ── Category toggle callback ───────────────────────────────────────────
     let on_cat_toggle = {
@@ -796,7 +786,7 @@ pub fn search(_props: &SearchProps) -> Html {
 
                 <div class="sp-chips">
                     { render_chips(&set_filter) }
-                    if is_collapsed && !visible_episodes.is_empty() {
+                    if is_collapsed && !visible_empty {
                         <button
                             class={classes!("sp-chip", (*is_selecting).then_some("is-active"))}
                             onclick={toggle_select.clone()}
@@ -975,22 +965,22 @@ pub fn search(_props: &SearchProps) -> Html {
                         <h3 style="text-transform: none; letter-spacing: 0;">
                             <span class="sp-results-count">
                                 {
-                                    if *loading_more && visible_episodes.is_empty() {
+                                    if *loading_more && visible_empty {
                                         "Searching…".to_string()
-                                    } else if visible_episodes.is_empty() {
+                                    } else if visible_empty {
                                         i18n.t("search.no_matches_header")
                                     } else {
                                         format!(
                                             "{} {} \"{}\"",
-                                            visible_episodes.len(),
-                                            if visible_episodes.len() == 1 { "match for" } else { "matches for" },
+                                            visible_count,
+                                            if visible_count == 1 { "match for" } else { "matches for" },
                                             *current_term
                                         )
                                     }
                                 }
                             </span>
                         </h3>
-                        if !*is_mobile && !visible_episodes.is_empty() {
+                        if !*is_mobile && !visible_empty {
                             <a>
                                 <i class="ph ph-funnel-simple"></i>
                                 { i18n.t("search.sort_relevance") }
@@ -999,7 +989,7 @@ pub fn search(_props: &SearchProps) -> Html {
                     </div>
 
                     // Smart selection row
-                    if *is_selecting && !visible_episodes.is_empty() {
+                    if *is_selecting && !visible_empty {
                         <div class="sp-select-controls">
                             <button class="bulk-select-button" onclick={on_select_all.clone()}>
                                 { if sel_all_selected { "Deselect All" } else { "Select All" } }
@@ -1178,7 +1168,7 @@ pub fn search(_props: &SearchProps) -> Html {
                     }
 
                     // No results empty state
-                    if visible_episodes.is_empty() && !*loading_more {
+                    if visible_empty && !*loading_more {
                         <div class="sp-noresults">
                             <i class="ph ph-binoculars"></i>
                             <h4>{ i18n.t("search.no_matches_header") }</h4>
@@ -1186,34 +1176,31 @@ pub fn search(_props: &SearchProps) -> Html {
                         </div>
                     }
 
-                    // Result rows
-                    if !visible_episodes.is_empty() {
+                    // Result rows. Key encodes current_term + categories + active filter so
+                    // a fresh search or category toggle remounts the view and re-runs the
+                    // initial ramp from display_count = 15.
+                    if !visible_empty {
                         <div class="search-results-container">
-                            { for visible_episodes.iter().map(|episode| {
-                                html! {
-                                    <EpisodeListItem
-                                        key={episode.episodeid}
-                                        episode={(*episode).clone()}
-                                        is_delete_mode={*is_selecting}
-                                        is_selected={Some((*selected_episodes_set).contains(&episode.episodeid))}
-                                        on_checkbox_change={on_episode_checkbox.clone()}
-                                        on_select_above={on_select_above.clone()}
-                                        on_select_below={on_select_below.clone()}
-                                    />
-                                }
-                            }) }
+                            <EpisodeListView
+                                key={format!(
+                                    "search|{}|{}|{:?}",
+                                    *current_term,
+                                    (*selected_categories).join(","),
+                                    *active_filter
+                                )}
+                                episodes={display_episodes_rc.clone()}
+                                backend_can_load_more={*offset < *total}
+                                loading_more={*loading_more}
+                                on_load_more={on_load_more.clone()}
+                                is_delete_mode={*is_selecting}
+                                on_checkbox_change={on_episode_checkbox.clone()}
+                                on_select_above={on_select_above.clone()}
+                                on_select_below={on_select_below.clone()}
+                                selected_episodes={Rc::new((*selected_episodes_set).clone())}
+                            />
                         </div>
                     }
 
-                    // Infinite scroll sentinel
-                    <div ref={sentinel_ref.clone()} style="height: 1px;" />
-
-                    if *loading_more {
-                        <div class="sp-loading">
-                            <div class="sp-spinner"></div>
-                            <span>{ "Loading more…" }</span>
-                        </div>
-                    }
                 }
             </div>
 

@@ -2,7 +2,7 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::episode_list_item::EpisodeListItem;
+use crate::components::episode_list_view::EpisodeListView;
 use crate::components::context::ExpandedDescriptions;
 use crate::components::context::{AppState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
 use crate::components::gen_components::on_shownotes_click;
@@ -28,6 +28,7 @@ use base64::{engine::general_purpose, Engine as _};
 use i18nrs::yew::use_translation;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::rc::Rc;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -950,12 +951,20 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                     </div>
                                 }
                             } else {
+                                // External-API result set — all-at-once fetch, no pagination.
+                                // EpisodeListView still earns its keep: display_count ramp keeps
+                                // the initial render light when a person has appeared in many
+                                // episodes, and the IO sentinel reveals more cards as the user
+                                // scrolls. backend_can_load_more=false disables the load-more
+                                // emission so the (default) no-op on_load_more never fires.
+                                let episodes_rc: Rc<Vec<_>> = Rc::new(results.items.clone());
                                 html! {
-                                    <>
-                                    { for results.items.iter().map(|ep| html! {
-                                        <EpisodeListItem key={ep.episodeurl.clone()} episode={ep.clone()} />
-                                    })}
-                                    </>
+                                    <EpisodeListView
+                                        key={format!("person-{}", name)}
+                                        episodes={episodes_rc}
+                                        backend_can_load_more={false}
+                                        loading_more={false}
+                                    />
                                 }
                             }
                         } else {

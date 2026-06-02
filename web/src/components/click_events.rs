@@ -88,8 +88,19 @@ pub fn create_on_title_click(
                     call_get_youtube_episodes(&server_clone, &api_clone, &user_id, &podcast_id)
                         .await
                 } else {
-                    call_get_podcast_episodes(&server_clone, &api_clone, &user_id, &podcast_id, Some(50), Some(0))
-                        .await
+                    call_get_podcast_episodes(
+                        &server_clone,
+                        &api_clone,
+                        &user_id,
+                        &podcast_id,
+                        Some(50),
+                        Some(0),
+                        None,
+                        None,
+                        None,
+                        None,
+                    )
+                    .await
                 };
 
                 match fetch_result {
@@ -153,6 +164,10 @@ pub fn create_on_title_click(
                                             &db_podcast_id,
                                             Some(50),
                                             Some(0),
+                                            None,
+                                            None,
+                                            None,
+                                            None,
                                         )
                                         .await
                                     };
