@@ -39,7 +39,6 @@ fn is_blocked_v4(v4: Ipv4Addr) -> bool {
         || v4.is_unspecified()  // 0.0.0.0
         || v4.is_broadcast()    // 255.255.255.255
         || v4.is_documentation()
-        || v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 64 // 100.64.0.0/10 CGNAT
         || v4.octets()[0] >= 240 // 240.0.0.0/4 reserved
 }
 
