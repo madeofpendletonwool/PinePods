@@ -6900,11 +6900,26 @@ impl DatabasePool {
     // This is a fallback for when RSS feeds don't include duration or file size
     async fn estimate_duration_from_audio_url_async(&self, audio_url: &str) -> Option<i32> {
         println!("Attempting to estimate duration from audio URL: {}", audio_url);
-        
-        // Build HTTP client with timeout to avoid hanging
+
+        // SSRF guard: audio_url is the attacker-controlled RSS <enclosure url>.
+        // Reject loopback/private/link-local/reserved destinations before any
+        // server-side request (incl. redirect hops).
+        if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(audio_url).await {
+            println!("Refusing to estimate duration for unsafe URL: {}", reason);
+            return None;
+        }
+
+        // Build HTTP client with timeout to avoid hanging. Redirects are
+        // re-validated so a public URL cannot 30x into the internal network.
         let client = match reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .timeout(std::time::Duration::from_secs(10)) // Short timeout
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                match crate::services::url_guard::ensure_safe_public_url(attempt.url().as_str()) {
+                    Ok(()) => attempt.follow(),
+                    Err(_) => attempt.stop(),
+                }
+            }))
             .build()
         {
             Ok(client) => client,
