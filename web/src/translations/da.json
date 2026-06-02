@@ -156,7 +156,7 @@
     "feed_url_placeholder": "https://bedstepodcast.dk/feed.xml",
     "password_optional": "Kodeord (valgfrigt)",
     "podcast_successfully_added": "Podcasten er blevet tilføjet",
-    "username_optional": ""
+    "username_optional": "Brugernavn (valgfrit)"
   },
   "date_formats": {
     "dmy": "",
@@ -468,6 +468,11 @@
     "import_tip": "",
     "import_verification_text": "",
     "opml_import_completed": ""
+  },
+  "local_podcast": {
+    "add_button": "Tilføj lokal podcast",
+    "artwork_label": "Kunstværk (valgfrit)",
+    "author_placeholder": "Forfatter (valgfrit)"
   },
   "login": {
     "account_created_successfully": "",
