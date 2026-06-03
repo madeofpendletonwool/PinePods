@@ -222,7 +222,7 @@ pub fn startpage() -> Html {
                                     }
                                 }).collect::<Html>()}
                             </select>
-                            <button onclick={on_submit} class="btn btn-primary">
+                            <button onclick={on_submit} class="btn btn-secondary" style="padding:6px 12px;">
                                 {i18n.t("start_page_options.apply_start_page")}
                             </button>
                         </>

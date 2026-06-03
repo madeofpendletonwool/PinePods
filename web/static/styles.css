@@ -7978,6 +7978,10 @@ body.search-takeover-open .drawer-icon { display: none; }
     margin-bottom: 1rem;
 }
 
+.insights-row-2col {
+    grid-template-columns: 1fr 1fr;
+}
+
 .chart-card {
     background-color: var(--container-background);
     border: 1px solid var(--border-color);
@@ -8086,6 +8090,7 @@ body.search-takeover-open .drawer-icon { display: none; }
 
 @media (max-width: 768px) {
     .insights-row { grid-template-columns: 1fr; }
+    .insights-row-2col { grid-template-columns: 1fr; }
 }
 
 /* ── Search Page (sp-*) ─────────────────────────────────────────────────────

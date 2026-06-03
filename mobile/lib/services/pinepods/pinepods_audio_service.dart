@@ -93,11 +93,11 @@ class PinepodsAudioService {
       // Convert PinepodsEpisode to Episode for the audio player
       final episode = _convertToEpisode(pinepodsEpisode, playDetails, podcast2Data);
 
-      // Set playback speed
-      await _audioPlayerService.setPlaybackSpeed(playDetails.playbackSpeed);
-
       // Start playing with the existing audio service
       await _audioPlayerService.playEpisode(episode: episode, resume: resume);
+
+      // Apply server-side speed after episode starts — overrides any locally stored speed
+      await _audioPlayerService.setPlaybackSpeed(playDetails.playbackSpeed);
 
       // Handle skip intro if enabled and episode just started
       if (playDetails.startSkip > 0 && !resume) {

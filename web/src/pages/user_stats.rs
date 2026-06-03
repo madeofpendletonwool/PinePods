@@ -283,7 +283,7 @@ pub fn user_stats() -> Html {
                     let longest_ep_html = if let Some(ep) = &ext.longest_episode {
                         let dur_str = format_time(ep.episodeduration);
                         html! {
-                            <div class="stats-card" style="margin-bottom: 1rem;">
+                            <div class="stats-card">
                                 <i class="ph ph-trophy stats-icon"></i>
                                 <p class="stats-label">{i18n.t("user_stats.longest_episode")}</p>
                                 <span class="longest-ep-title">{&ep.episodetitle}</span>
@@ -337,7 +337,7 @@ pub fn user_stats() -> Html {
 
                             <div class="insights-row">
                                 <div class="stats-card">
-                                    <i class={badge_label.1} aria-hidden="true" class="badge-icon stats-icon"></i>
+                                    <i class={classes!(badge_label.1, "stats-icon")} aria-hidden="true"></i>
                                     <p class="stats-value badge-name">{badge_label.0}</p>
                                     <p class="stats-label">{i18n.t("user_stats.listening_badge")}</p>
                                 </div>
@@ -355,7 +355,7 @@ pub fn user_stats() -> Html {
                                 </div>
                             </div>
 
-                            <div class="insights-row" style="grid-template-columns: 1fr 1fr;">
+                            <div class="insights-row insights-row-2col">
                                 <div class="stats-card">
                                     <i class="ph ph-hard-drive stats-icon"></i>
                                     <p class="stats-value">{ &ext.total_downloaded_formatted }</p>

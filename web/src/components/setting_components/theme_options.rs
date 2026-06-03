@@ -348,7 +348,7 @@ pub fn theme(props: &ThemeOptionsProps) -> Html {
                     </div>
 
                     if hidden_count > 0 {
-                        <button class="theme-show-more-btn" onclick={on_toggle_expand}>
+                        <button class="btn btn-secondary" style="width:100%; padding:6px 12px;" onclick={on_toggle_expand}>
                             if *expanded {
                                 <i class="ph ph-caret-up"></i>
                                 { &i18n_show_fewer }
