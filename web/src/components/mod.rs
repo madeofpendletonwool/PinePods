@@ -3,6 +3,7 @@ pub(crate) mod audio_player_bar;
 pub(crate) mod app_drawer;
 pub(crate) mod context_menu_button;
 pub(crate) mod episode_list_item;
+pub(crate) mod episode_list_view;
 pub(crate) mod host_component;
 pub(crate) mod loading;
 pub mod misc_func;

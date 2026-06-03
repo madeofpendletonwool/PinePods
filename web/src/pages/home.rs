@@ -2,7 +2,7 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, EpisodeStatusState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, HomePageState, PlaylistDataState, UIState};
 use crate::components::context_menu_button::ContextMenuButton;
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::on_shownotes_click;
@@ -69,6 +69,8 @@ fn playlist_card(props: &PlaylistCardProps) -> Html {
 pub fn home() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (home_state, home_dispatch) = use_store::<HomePageState>();
+    let (playlist_state, playlist_dispatch) = use_store::<PlaylistDataState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
     let history = BrowserHistory::new();
@@ -97,7 +99,7 @@ pub fn home() -> Html {
     let i18n_no_website_provided = i18n.t("home.no_website_provided").to_string();
 
     // Fetch home overview data
-    let effect_dispatch = dispatch.clone();
+    let effect_dispatch = home_dispatch.clone();
     {
         let loading = loading.clone();
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -180,7 +182,7 @@ pub fn home() -> Html {
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-        let dispatch = dispatch.clone();
+        let playlist_dispatch = playlist_dispatch.clone();
 
         use_effect_with(
             (api_key.clone(), user_id.clone(), server_name.clone()),
@@ -193,7 +195,7 @@ pub fn home() -> Html {
                             .await
                         {
                             Ok(playlist_response) => {
-                                dispatch.reduce_mut(move |state| {
+                                playlist_dispatch.reduce_mut(move |state| {
                                     state.playlists = Some(playlist_response.playlists);
                                 });
                             }
@@ -221,7 +223,7 @@ pub fn home() -> Html {
                     html! { <Loading/> }
                 }
             } else {
-                if let Some(home_data) = &state.home_overview {
+                if let Some(home_data) = &home_state.home_overview {
                     <div class="space-y-8">
                         // Quick Links Section
                         <div class="section-container">
@@ -269,7 +271,6 @@ pub fn home() -> Html {
                                 let dispatch_clone = dispatch.clone();
 
                                 let on_title_click = create_on_title_click(
-                                    dispatch_clone,
                                     server_name_clone.unwrap_or_default(),
                                     api_key_clone,
                                     &history_clone,
@@ -307,7 +308,7 @@ pub fn home() -> Html {
 
                         <div class="section-container">
                             <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_smart_playlists}</h2>
-                            if let Some(playlists) = &state.playlists {
+                            if let Some(playlists) = &playlist_state.playlists {
                                 <div class="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                     {
                                         playlists.iter().map(|playlist| {

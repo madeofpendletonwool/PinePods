@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, NotificationState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState, UserPreferencesState};
 use crate::components::gen_components::{AdminSetupData, FirstAdminModal};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{encode_password, validate_user_input, ValidationError};
@@ -305,9 +305,10 @@ pub fn login() -> Html {
                                                                             state.user_details = wasm_app_state.user_details;
                                                                             state.auth_details = Some(wasm_auth_details.clone());
                                                                             state.server_details = server_details.server_details;
-                                                                            state.gravatar_url = Some(gravatar_url);
-
                                                                         });
+                                                                            Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
+                                                                                state.gravatar_url = Some(gravatar_url);
+                                                                            });
                                                                             // let mut error_message = app_state.error_message;
                                                                             // Retrieve the originally requested route, if any
                                                                             let session_storage = window.session_storage().unwrap().unwrap();
@@ -343,7 +344,7 @@ pub fn login() -> Html {
                                                                             wasm_bindgen_futures::spawn_local(async move {
                                                                             match call_get_time_info(time_server, time_api, &wasm_user_id).await{
                                                                                 Ok(tz_response) => {
-                                                                                    effect_displatch.reduce_mut(move |state| {
+                                                                                    Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
                                                                                         state.user_tz = Some(tz_response.timezone);
                                                                                         state.hour_preference = Some(tz_response.hour_pref);
                                                                                         state.date_format = Some(tz_response.date_format);
@@ -532,9 +533,10 @@ pub fn login() -> Html {
                             state.user_details = Some(user_details);
                             state.auth_details = Some(login_request);
                             state.server_details = Some(server_details);
-                            state.gravatar_url = Some(gravatar_url); // Store the Gravatar URL
-
                             state.store_app_state();
+                        });
+                        Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
+                            state.gravatar_url = Some(gravatar_url);
                         });
 
                         // Extract server_name, api_key, and user_id
@@ -607,7 +609,7 @@ pub fn login() -> Html {
                                                     .await
                                                     {
                                                         Ok(tz_response) => {
-                                                            dispatch.reduce_mut(move |state| {
+                                                            Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
                                                                 state.user_tz =
                                                                     Some(tz_response.timezone);
                                                                 state.hour_preference =
@@ -1614,9 +1616,10 @@ pub fn login() -> Html {
                             state.user_details = Some(user_details);
                             state.auth_details = Some(login_request);
                             state.server_details = Some(server_details);
-                            state.gravatar_url = Some(gravatar_url);
-
                             state.store_app_state();
+                        });
+                        Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
+                            state.gravatar_url = Some(gravatar_url);
                         });
 
                         page_state.set(PageState::Default);
@@ -1655,7 +1658,7 @@ pub fn login() -> Html {
                         wasm_bindgen_futures::spawn_local(async move {
                             match call_get_time_info(time_server, time_api, &user_id).await {
                                 Ok(tz_response) => {
-                                    dispatch.reduce_mut(move |state| {
+                                    Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
                                         state.user_tz = Some(tz_response.timezone);
                                         state.hour_preference = Some(tz_response.hour_pref);
                                         state.date_format = Some(tz_response.date_format);
@@ -2187,9 +2190,10 @@ pub fn login() -> Html {
                             state.user_details = Some(user_details);
                             state.auth_details = Some(login_request);
                             state.server_details = Some(server_details);
-                            state.gravatar_url = Some(gravatar_url); // Store the Gravatar URL
-
                             state.store_app_state();
+                        });
+                        Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
+                            state.gravatar_url = Some(gravatar_url);
                         });
 
                         // Extract server_name, api_key, and user_id
@@ -2261,7 +2265,7 @@ pub fn login() -> Html {
                                                     .await
                                                     {
                                                         Ok(tz_response) => {
-                                                            dispatch.reduce_mut(move |state| {
+                                                            Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
                                                                 state.user_tz =
                                                                     Some(tz_response.timezone);
                                                                 state.hour_preference =
@@ -2778,7 +2782,7 @@ pub fn login() -> Html {
                                 .await
                                 {
                                     Ok(tz_response) => {
-                                        dispatch.reduce_mut(move |state| {
+                                        Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
                                             state.user_tz = Some(tz_response.timezone);
                                             state.hour_preference = Some(tz_response.hour_pref);
                                             state.date_format = Some(tz_response.date_format);

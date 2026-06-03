@@ -686,6 +686,25 @@ class PinepodsService {
     }
   }
 
+  Future<List<DownloadTask>> getDownloadActivity(int userId) async {
+    if (_server == null || _apiKey == null) return [];
+    final url = Uri.parse('$_server/api/tasks/user/$userId');
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as List;
+        return data
+            .cast<Map<String, dynamic>>()
+            .map(DownloadTask.fromJson)
+            .where((t) => t.taskType == 'download_episode' || t.taskType == 'podcast_download' || t.taskType == 'download_all_episodes')
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   // Delete downloaded episode from server
   Future<bool> deleteEpisode(int episodeId, int userId, bool isYoutube) async {
     if (_server == null || _apiKey == null) {
@@ -2182,6 +2201,51 @@ class PinepodsService {
     }
   }
 
+  Future<PinepodsEpisode?> getNextPlaylistEpisode(
+      int episodeId, int playlistId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/get_next_playlist_episode');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode(
+            {'episode_id': episodeId, 'playlist_id': playlistId, 'user_id': userId}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data == null) return null;
+
+        return PinepodsEpisode(
+          podcastName: data['podcastname'] ?? '',
+          episodeTitle: data['episodetitle'] ?? '',
+          episodePubDate: data['episodepubdate'] ?? '',
+          episodeDescription: data['episodedescription'] ?? '',
+          episodeArtwork: data['episodeartwork'] ?? '',
+          episodeUrl: data['episodeurl'] ?? '',
+          episodeDuration: data['episodeduration'] ?? 0,
+          listenDuration: data['listenduration'] ?? 0,
+          episodeId: data['episodeid'] ?? 0,
+          completed: data['completed'] ?? false,
+          saved: data['saved'] ?? false,
+          queued: data['queued'] ?? false,
+          downloaded: data['downloaded'] ?? false,
+          isYoutube: data['is_youtube'] ?? false,
+        );
+      } else {
+        return null;
+      }
+    } catch (e) {
+      print('Error getting next playlist episode: $e');
+      return null;
+    }
+  }
+
   Future<int?> getPodcastIdFromEpisodeId(int episodeId, int userId) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
@@ -2585,4 +2649,56 @@ class SearchResultPage {
   final int total;
 
   SearchResultPage({required this.results, required this.total});
+}
+
+class DownloadTask {
+  final String id;
+  final String taskType;
+  final String status;
+  final double progress;
+  final String? message;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final Map<String, dynamic>? result;
+  final String? episodeTitle;
+  final String? podcastName;
+
+  DownloadTask({
+    required this.id,
+    required this.taskType,
+    required this.status,
+    required this.progress,
+    this.message,
+    required this.createdAt,
+    required this.updatedAt,
+    this.result,
+    this.episodeTitle,
+    this.podcastName,
+  });
+
+  factory DownloadTask.fromJson(Map<String, dynamic> json) {
+    return DownloadTask(
+      id: json['id'] as String,
+      taskType: json['task_type'] as String,
+      status: json['status'] as String,
+      progress: (json['progress'] as num).toDouble(),
+      message: json['message'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      updatedAt: DateTime.parse(json['updated_at'] as String),
+      result: json['result'] as Map<String, dynamic>?,
+      episodeTitle: json['episode_title'] as String?,
+      podcastName: json['podcast_name'] as String?,
+    );
+  }
+
+  int? get episodeId {
+    final id = result?['episode_id'];
+    if (id is int) return id;
+    if (id is String) return int.tryParse(id);
+    return null;
+  }
+
+  bool get isCompleted => status == 'SUCCESS';
+  bool get isFailed => status == 'FAILED';
+  bool get isActive => status == 'PENDING' || status == 'DOWNLOADING';
 }

@@ -2,9 +2,9 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::episode_list_item::EpisodeListItem;
+use crate::components::episode_list_view::EpisodeListView;
 use crate::components::context::ExpandedDescriptions;
-use crate::components::context::{AppState, NotificationState, PageLoadState, UIState};
+use crate::components::context::{AppState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
 use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
@@ -13,7 +13,6 @@ use crate::components::gen_funcs::{
     strip_images_from_html, truncate_description, unix_timestamp_to_datetime_string,
 };
 use crate::components::safehtml::SafeHtml;
-use crate::pages::episode_layout::AppStateMsg as EpisodeMsg;
 use crate::requests::people_req::{
     call_get_person_subscriptions, call_subscribe_to_person, call_unsubscribe_from_person,
 };
@@ -29,6 +28,7 @@ use base64::{engine::general_purpose, Engine as _};
 use i18nrs::yew::use_translation;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::rc::Rc;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -83,6 +83,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
     let i18n_loading_podcasts = i18n.t("person.loading_podcasts").to_string();
 
     let (app_state, dispatch) = use_store::<AppState>();
+    let (podcast_state, podcast_dispatch) = use_store::<PodcastFeedState>();
+    let (search_data, _search_data_dispatch) = use_store::<SearchState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let person_ids = use_state(|| HashMap::<String, i32>::new());
     let (post_state, _post_dispatch) = use_store::<AppState>();
@@ -134,7 +136,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         });
     // Initialize the state for all podcasts
     let added_podcasts_state = use_state(|| {
-        app_state
+        podcast_state
             .podcast_feed_return
             .as_ref()
             .map_or(HashSet::new(), |feed| {
@@ -307,14 +309,16 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                     let podcasts: Vec<Podcast> =
                         join_all(podcast_futures).await.into_iter().flatten().collect();
 
-                    dispatch.reduce_mut(|state| {
+                    Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
                         state.podcast_feed_return = Some(PodcastResponse {
                             pods: Some(podcasts),
                         });
-                        if let Ok(pr) = person_result {
-                            state.people_feed_results = Some(pr);
-                        }
                     });
+                    if let Ok(pr) = person_result {
+                        Dispatch::<SearchState>::global().reduce_mut(|state| {
+                            state.people_feed_results = Some(pr);
+                        });
+                    }
                     Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                         state.is_loading = Some(false);
                     });
@@ -334,7 +338,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         let user_id = user_id.clone();
         let server_name = server_name.clone();
         let dispatch = dispatch.clone();
-        let state_callback = app_state.clone();
+        let state_callback = podcast_state.clone();
+        let dispatch_podcast = podcast_dispatch.clone();
 
         Callback::from(move |podcast_id: i32| {
             Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
@@ -441,7 +446,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 // Update the podcast ID with the correct one from the DB
                                 podcast.podcastid = new_podcast_id;
                                 // Update Yewdux state
-                                dispatch_callback.reduce_mut(|state| {
+                                Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
                                     if let Some(feed) = state.podcast_feed_return.as_mut() {
                                         if let Some(pods) = feed.pods.as_mut() {
                                             if let Some(existing_podcast) = pods
@@ -764,7 +769,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         <p class="item_container-text text-gray-400 italic">{ &i18n_loading_podcasts }</p>
                                     </div>
                                 }
-                            } else if let Some(podcasts) = app_state.podcast_feed_return.clone() {
+                            } else if let Some(podcasts) = podcast_state.podcast_feed_return.clone() {
                                 let int_podcasts = podcasts.clone();
                                 if let Some(pods) = int_podcasts.pods.clone() {
                                     if pods.is_empty() {
@@ -802,7 +807,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         let podcast_description_clone = podcast.description.clone();
 
                                         let on_title_click = create_on_title_click(
-                                            dispatch.clone(),
                                             server_name_iter,
                                             api_key_iter,
                                             &history,
@@ -937,7 +941,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                         if *episodes_expanded { "max-h-full opacity-100" } else { "max-h-0 opacity-0" }
                     )}>
                         {
-                        if let Some(results) = &app_state.people_feed_results {
+                        if let Some(results) = &search_data.people_feed_results {
                             if results.items.is_empty() {
                                 html! {
                                     <div class="empty-episodes-container" id="episode-container">
@@ -947,12 +951,20 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                     </div>
                                 }
                             } else {
+                                // External-API result set — all-at-once fetch, no pagination.
+                                // EpisodeListView still earns its keep: display_count ramp keeps
+                                // the initial render light when a person has appeared in many
+                                // episodes, and the IO sentinel reveals more cards as the user
+                                // scrolls. backend_can_load_more=false disables the load-more
+                                // emission so the (default) no-op on_load_more never fires.
+                                let episodes_rc: Rc<Vec<_>> = Rc::new(results.items.clone());
                                 html! {
-                                    <>
-                                    { for results.items.iter().map(|ep| html! {
-                                        <EpisodeListItem key={ep.episodeurl.clone()} episode={ep.clone()} />
-                                    })}
-                                    </>
+                                    <EpisodeListView
+                                        key={format!("person-{}", name)}
+                                        episodes={episodes_rc}
+                                        backend_can_load_more={false}
+                                        loading_more={false}
+                                    />
                                 }
                             }
                         } else {

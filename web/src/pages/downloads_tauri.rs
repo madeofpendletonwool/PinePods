@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, EpisodeStatusState, ExpandedDescriptions, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, ExpandedDescriptions, NotificationState, PodcastFeedState, UIState};
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -315,6 +315,7 @@ struct FileEntry {
 pub fn downloads() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
     let (ep_status, _) = use_store::<EpisodeStatusState>();
     let (ui_state, ui_dispatch) = use_store::<UIState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
@@ -394,7 +395,7 @@ pub fn downloads() -> Html {
 
             wasm_bindgen_futures::spawn_local(async move {
                 // First ensure we have a valid podcast feed state, even if empty
-                dispatch.reduce_mut(move |state| {
+                Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                     state.podcast_feed_return = Some(PodcastResponse {
                         pods: Some(Vec::new()),
                     });
@@ -406,7 +407,7 @@ pub fn downloads() -> Html {
                         web_sys::console::log_1(
                             &format!("Fetched podcasts: {:?}", fetched_podcasts).into(),
                         );
-                        dispatch.reduce_mut(move |state| {
+                        Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                             state.podcast_feed_return = Some(PodcastResponse {
                                 pods: Some(fetched_podcasts),
                             });
@@ -594,7 +595,7 @@ pub fn downloads() -> Html {
     web_sys::console::log_1(
         &format!(
             "Podcast feed count: {:?}",
-            state
+            podcast_state
                 .podcast_feed_return
                 .as_ref()
                 .and_then(|pf| pf.pods.as_ref().map(|pods| pods.len()))
@@ -627,7 +628,7 @@ pub fn downloads() -> Html {
             .into(),
         );
 
-        if let Some(podcast_feed) = state.podcast_feed_return.as_ref() {
+        if let Some(podcast_feed) = podcast_state.podcast_feed_return.as_ref() {
             if let Some(pods) = podcast_feed.pods.as_ref() {
                 web_sys::console::log_1(
                     &format!(
@@ -839,7 +840,7 @@ pub fn downloads() -> Html {
                         html! {
                             <>
                             {
-                                if let Some(podcast_feed) = state.podcast_feed_return.as_ref() {
+                                if let Some(podcast_feed) = podcast_state.podcast_feed_return.as_ref() {
                                     if let Some(pods) = podcast_feed.pods.as_ref() {
                                         html! {
                                             <>

@@ -63,6 +63,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
 
   /// The currently playing episode
   Episode? _currentEpisode;
+  int? _currentPlaylistId;
 
   /// The currently 'processed' transcript;
   Transcript? _currentTranscript;
@@ -720,6 +721,20 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       return;
     }
 
+    // Priority 0: playlist context auto-play
+    try {
+      final playlistEpisode = await _getNextPlaylistEpisode();
+      if (playlistEpisode != null) {
+        log.fine('Auto-playing next playlist episode: ${playlistEpisode.title}');
+        _currentEpisode = null;
+        await playEpisode(episode: playlistEpisode);
+        _updateQueueState();
+        return;
+      }
+    } catch (e) {
+      log.warning('Failed to get next playlist episode: $e');
+    }
+
     // Check auto-play-next before the queue
     try {
       final autoPlayNextEpisode = await _getAutoPlayNextEpisode();
@@ -887,6 +902,52 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       return episode;
     } catch (e) {
       log.warning('Error checking auto-play-next: $e');
+      return null;
+    }
+  }
+
+  @override
+  void setPlaylistContext(int? playlistId) {
+    _currentPlaylistId = playlistId;
+  }
+
+  /// Check if we are in a playlist context and fetch the next episode from it
+  Future<Episode?> _getNextPlaylistEpisode() async {
+    if (_currentPlaylistId == null) return null;
+
+    final server = settingsService.pinepodsServer;
+    final apiKey = settingsService.pinepodsApiKey;
+    final userId = settingsService.pinepodsUserId;
+
+    if (server == null || apiKey == null || userId == null) return null;
+    if (_currentEpisode == null) return null;
+
+    final guid = _currentEpisode!.guid;
+    if (!guid.startsWith('pinepods_')) return null;
+
+    final episodeId = int.tryParse(guid.substring('pinepods_'.length));
+    if (episodeId == null) return null;
+
+    try {
+      final pinepodsService = PinepodsService();
+      pinepodsService.setCredentials(server, apiKey);
+
+      final nextPinepodsEpisode = await pinepodsService.getNextPlaylistEpisode(
+        episodeId,
+        _currentPlaylistId!,
+        userId,
+      );
+
+      if (nextPinepodsEpisode == null) {
+        log.fine('Playlist exhausted, clearing playlist context');
+        _currentPlaylistId = null;
+        return null;
+      }
+
+      return _convertPinepodsEpisodeToEpisode(nextPinepodsEpisode, pinepodsService, userId);
+    } catch (e) {
+      log.warning('Error fetching next playlist episode: $e');
+      _currentPlaylistId = null;
       return null;
     }
   }

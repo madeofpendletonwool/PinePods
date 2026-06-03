@@ -6,6 +6,7 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/download/download_service.dart';
+import 'package:pinepods_mobile/ui/pinepods/download_activity.dart';
 import 'package:pinepods_mobile/bloc/podcast/episode_bloc.dart';
 import 'package:pinepods_mobile/state/bloc_state.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
@@ -773,6 +774,23 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const DownloadActivity()),
+                  ),
+                  icon: const Icon(Icons.history, size: 16),
+                  label: const Text('Download Activity'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
             Row(
               children: [
                 Expanded(

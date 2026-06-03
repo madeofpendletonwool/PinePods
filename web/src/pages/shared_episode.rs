@@ -2,7 +2,7 @@ use crate::components::loading::Loading;
 use crate::components::gen_components::{empty_message, FallbackImage, UseScrollToTop};
 use crate::components::audio::on_play_click_shared;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, EpisodeDetailState, UIState, UserPreferencesState};
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
@@ -36,6 +36,8 @@ pub struct SharedProps {
 pub fn shared_episode(_props: &SharedProps) -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (episode_detail_state, _) = use_store::<EpisodeDetailState>();
+    let (prefs_state, _) = use_store::<UserPreferencesState>();
 
     let error = use_state(|| None);
 
@@ -118,8 +120,8 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_get_episode_by_url_key(&server_name, &url_key).await {
                         Ok(shared_episode_data) => {
-                            dispatch.reduce_mut(move |state| {
-                                state.shared_fetched_episode = Some(shared_episode_data);
+                            Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
+                                s.shared_fetched_episode = Some(shared_episode_data);
                             });
 
                             loading_clone.set(false);
@@ -147,7 +149,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                 if *loading { // If loading is true, display the loading animation
                     html! { <Loading/> }
                 } else {
-                    if let Some(episode) = state.shared_fetched_episode.clone() {
+                    if let Some(episode) = episode_detail_state.shared_fetched_episode.clone() {
                         let episode_url_clone = episode.episode.episodeurl.clone();
                         let episode_title_clone = episode.episode.episodetitle.clone();
                         let episode_description_clone = episode.episode.episodedescription.clone();
@@ -182,10 +184,10 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                             episode_is_youtube.clone(),
                         );
 
-                        let datetime = parse_date(&episode.episode.episodepubdate, &state.user_tz);
-                        let date_format = match_date_format(state.date_format.as_deref());
+                        let datetime = parse_date(&episode.episode.episodepubdate, &prefs_state.user_tz);
+                        let date_format = match_date_format(prefs_state.date_format.as_deref());
                         let format_duration = format_time(episode.episode.episodeduration);
-                        let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+                        let format_release = format!("{}", format_datetime(&datetime, &prefs_state.hour_preference, date_format));
 
                         let open_in_new_tab = Callback::from(move |url: String| {
                             let window = web_sys::window().unwrap();

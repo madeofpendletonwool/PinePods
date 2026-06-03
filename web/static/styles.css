@@ -6349,6 +6349,67 @@ input:checked + .notification-toggle-slider:before {
     opacity: 0.8;
 }
 
+.bulk-action-queue {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 0.375rem;
+    background-color: var(--accent-color);
+    color: var(--background-color);
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.bulk-action-queue:hover {
+    opacity: 0.8;
+}
+
+.bulk-action-download {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 0.375rem;
+    background-color: var(--standout-color);
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.bulk-action-download:hover {
+    opacity: 0.8;
+}
+
+/* Bulk Actions Toolbar */
+.bulk-actions-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--container-background);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.bulk-actions-bar__count {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-color);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.bulk-actions-bar__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
 .episode-select-button {
     padding: 0.125rem 0.25rem;
     font-size: 0.75rem;
@@ -8375,6 +8436,13 @@ body.search-takeover-open .drawer-icon { display: none; }
     animation: sp-spin 700ms linear infinite;
 }
 @keyframes sp-spin { to { transform: rotate(360deg); } }
+
+.sp-select-controls {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding: 0 0 0.75rem;
+}
 
 /* Mobile bottom filter sheet */
 .sp-sheet-scrim {

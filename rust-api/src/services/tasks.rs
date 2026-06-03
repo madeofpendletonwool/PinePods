@@ -363,7 +363,9 @@ impl TaskSpawner {
                 };
 
                 let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, description, feed_username, feed_password) = episode_info;
-                
+
+                task_manager.set_task_metadata(&task_id_clone, Some(episode_title.clone()), Some(podcast_name.clone())).await?;
+
                 let status_message = format!("Preparing {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 10.0, Some(status_message.clone()), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
                 
@@ -619,8 +621,10 @@ impl TaskSpawner {
                     }
                 };
                 
+                task_manager.set_task_metadata(&task_id, Some(video_title.clone()), Some("YouTube".to_string())).await?;
+
                 let output_path = format!("/opt/pinepods/downloads/youtube/{}.mp3", youtube_video_id);
-                
+
                 // Check if file already exists
                 if tokio::fs::metadata(&output_path).await.is_ok() {
                     tracing::info!("Video {} already downloaded", video_title);

@@ -1,5 +1,5 @@
 use crate::components::audio::on_play_click;
-use crate::components::context::{AppState, EpisodeStatusState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, PodcastFeedState, UIState, UserPreferencesState};
 use crate::components::gen_components::{on_shownotes_click, EpisodeModal, FallbackImage};
 
 use crate::components::context_menu_button::{ContextMenuButton, PageType};
@@ -7,16 +7,36 @@ use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target, use_long_press,
 };
 use crate::components::gen_funcs::{format_time, strip_images_from_html};
-use crate::components::safehtml::SafeHtml;
-use crate::components::virtual_list::DragCallbacks;
+use crate::components::safehtml::RawHtml;
 use crate::requests::episode::Episode;
 use i18nrs::yew::use_translation;
 use yew_router::history::{BrowserHistory, History};
 use wasm_bindgen::prelude::*;
-use web_sys::MouseEvent;
+use web_sys::{DragEvent, MouseEvent};
 use yew::prelude::*;
 use yew::Callback;
 use yewdux::prelude::*;
+
+/// Drag interaction callbacks used by [`EpisodeListItem`] (currently only the queue page wires
+/// these up for drag-to-reorder). All fields are optional; if none are set, the card is not
+/// draggable.
+#[derive(Properties, PartialEq, Clone, Default)]
+pub struct DragCallbacks {
+    pub ondragstart: Option<Callback<DragEvent>>,
+    pub ondragenter: Option<Callback<DragEvent>>,
+    pub ondragover: Option<Callback<DragEvent>>,
+    pub ondrop: Option<Callback<DragEvent>>,
+}
+
+impl DragCallbacks {
+    /// Item is draggable if any callback field is set
+    pub fn draggable(&self) -> bool {
+        self.ondragstart.is_some()
+            || self.ondragenter.is_some()
+            || self.ondragover.is_some()
+            || self.ondrop.is_some()
+    }
+}
 
 #[allow(dead_code)]
 #[derive(Properties, PartialEq, Clone)]
@@ -47,25 +67,33 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     // Use selective subscriptions to only re-render when relevant state changes
     let episode_id = props.episode.episodeid;
 
-    // Only subscribe to the specific fields we need for RENDERING
-    let is_completed = use_selector(move |state: &EpisodeStatusState| {
-        state.completed_episodes.contains(&episode_id)
+    // Consolidate same-store reads into single selectors. Each use_selector adds yewdux
+    // bookkeeping + an equality check on every store change, so collapsing 3 → 1 per store
+    // halves mount cost across 50 cards.
+    let episode_status = use_selector(move |state: &EpisodeStatusState| {
+        (
+            state.completed_episodes.contains(&episode_id),
+            state.downloaded_episodes.is_server_download(episode_id),
+            state.downloaded_episodes.is_local_download(episode_id),
+        )
     });
+    let (is_completed, is_downloaded_server, is_downloaded_local) = *episode_status;
+
+    let user_prefs = use_selector(|state: &UserPreferencesState| {
+        (
+            state.user_tz.clone(),
+            state.date_format.clone(),
+            state.hour_preference,
+        )
+    });
+    let (user_tz, date_format, hour_preference) = (*user_prefs).clone();
+
     let auth_details = use_selector(|state: &AppState| state.auth_details.clone());
     let user_details = use_selector(|state: &AppState| state.user_details.clone());
-    let date_format = use_selector(|state: &AppState| state.date_format.clone());
-    let user_tz = use_selector(|state: &AppState| state.user_tz.clone());
-    let hour_preference = use_selector(|state: &AppState| state.hour_preference);
     let selected_for_deletion = use_selector(move |state: &AppState| {
         state.selected_episodes_for_deletion.contains(&episode_id)
     });
-    let podcast_added = use_selector(|state: &AppState| state.podcast_added);
-    let is_downloaded_server = use_selector(move |state: &EpisodeStatusState| {
-        state.downloaded_episodes.is_server_download(episode_id)
-    });
-    let is_downloaded_local = use_selector(move |state: &EpisodeStatusState| {
-        state.downloaded_episodes.is_local_download(episode_id)
-    });
+    let podcast_added = use_selector(|state: &PodcastFeedState| state.podcast_added);
 
     // Selector returns (is_current, is_active_and_playing, is_loading) for THIS episode only.
     // Only this episode re-renders when its own play state changes; other episodes are unaffected.
@@ -137,9 +165,9 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     let formatted_pub_date = use_memo(
         (
             props.episode.episodepubdate.clone(),
-            (*user_tz).clone(),
-            (*date_format).clone(),
-            *hour_preference,
+            user_tz.clone(),
+            date_format.clone(),
+            hour_preference,
         ),
         |(pubdate, tz, fmt, hour)| {
             let date_fmt = match_date_format(fmt.as_deref());
@@ -166,10 +194,10 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
     // Compute is_local inline instead of passing it via app_state
     let is_local = if podcast_added.unwrap_or(false) && props.episode.episodeid != 0 {
-        *is_downloaded_server || {
+        is_downloaded_server || {
             #[cfg(not(feature = "server_build"))]
             {
-                *is_downloaded_local
+                is_downloaded_local
             }
             #[cfg(feature = "server_build")]
             {
@@ -231,9 +259,13 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     Episode Information
     */
 
+    // Sanitize + strip images in ONE memo so the (expensive) HTML parse and DOM walk happen
+    // once per episode-id, not on every parent re-render. Previously strip_images_from_html
+    // ran inline at the call site, so every display_count bump re-parsed every visible card's
+    // description.
     let episode_description = use_memo(
         props.episode.episodedescription.clone(),
-        |desc| sanitize_html_with_blank_target(desc),
+        |desc| strip_images_from_html(&sanitize_html_with_blank_target(desc)),
     );
 
     let (_listen_duration_str, listen_duration_percentage) = {
@@ -324,7 +356,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
     */
     let browser_history = BrowserHistory::new();
     let on_shownotes_click = {
-        let is_local_for_shownotes = *is_downloaded_local;
+        let is_local_for_shownotes = is_downloaded_local;
         let src = if props.episode.episodeurl.contains("youtube.com") {
             format!(
                 "{}/api/data/stream/{}?api_key={}&user_id={}&type=youtube",
@@ -428,7 +460,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                         alt={format!("Cover for {}", props.episode.episodetitle)}
                         class="ep-art-img"
                     />
-                    if *is_completed {
+                    if is_completed {
                         <div class="ep-art-badge"><i class="ph ph-check-circle"></i></div>
                     }
                 </div>
@@ -448,12 +480,12 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                             })
                         }
                     >
-                        <SafeHtml html={strip_images_from_html(&*episode_description)} />
+                        <RawHtml html={(*episode_description).clone()} />
                     </div>
                     <div class="ep-meta">
                         <span>{ (*formatted_pub_date).clone() }</span>
                         {
-                            if *is_completed {
+                            if is_completed {
                                 if is_narrow_viewport {
                                     html! { <span>{ &i18n_completed }</span> }
                                 } else {

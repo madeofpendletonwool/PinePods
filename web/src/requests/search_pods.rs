@@ -214,6 +214,7 @@ where
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
 pub struct PodcastFeedResult {
     pub(crate) episodes: Vec<Episode>,
+    pub(crate) total: i64,
 }
 
 pub async fn call_get_podcast_info(
@@ -417,6 +418,8 @@ pub async fn test_connection(search_api_url: &Option<String>) -> Result<(), Erro
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct PodcastEpisodesResponse {
     pub episodes: Vec<Episode>,
+    #[serde(default)]
+    pub total: i64,
 }
 
 #[allow(dead_code)]
@@ -425,11 +428,34 @@ pub async fn call_get_podcast_episodes(
     api_key: &Option<String>,
     user_id: &i32,
     podcast_id: &i32,
+    limit: Option<i64>,
+    offset: Option<i64>,
+    sort_by: Option<&str>,
+    sort_order: Option<&str>,
+    search: Option<&str>,
+    filter: Option<&str>,
 ) -> Result<PodcastFeedResult, anyhow::Error> {
-    let url = format!(
+    let mut url = format!(
         "{}/api/data/podcast_episodes?user_id={}&podcast_id={}",
         server_name, user_id, podcast_id
     );
+    if let (Some(l), Some(o)) = (limit, offset) {
+        url.push_str(&format!("&limit={}&offset={}", l, o));
+    }
+    if let Some(s) = sort_by {
+        url.push_str(&format!("&sort_by={}", s));
+    }
+    if let Some(o) = sort_order {
+        url.push_str(&format!("&sort_order={}", o));
+    }
+    if let Some(s) = search {
+        if !s.is_empty() {
+            url.push_str(&format!("&search={}", urlencoding::encode(s)));
+        }
+    }
+    if let Some(f) = filter {
+        url.push_str(&format!("&filter={}", f));
+    }
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
@@ -445,6 +471,7 @@ pub async fn call_get_podcast_episodes(
     }
     let response_text = response.text().await?;
     let response_data: PodcastEpisodesResponse = serde_json::from_str(&response_text)?;
+    let total = response_data.total;
     let episodes = response_data
         .episodes
         .into_iter()
@@ -456,7 +483,7 @@ pub async fn call_get_podcast_episodes(
             episode
         })
         .collect::<Vec<_>>();
-    Ok(PodcastFeedResult { episodes })
+    Ok(PodcastFeedResult { episodes, total })
 }
 
 #[allow(dead_code)]
@@ -501,7 +528,8 @@ pub async fn call_get_youtube_episodes(
             episode
         })
         .collect::<Vec<_>>();
-    Ok(PodcastFeedResult { episodes })
+    let total = episodes.len() as i64;
+    Ok(PodcastFeedResult { episodes, total })
 }
 
 #[allow(dead_code)]
@@ -561,7 +589,8 @@ pub async fn call_parse_podcast_url(
             }
         });
 
-        Ok(PodcastFeedResult { episodes })
+        let total = episodes.len() as i64;
+        Ok(PodcastFeedResult { episodes, total })
     } else {
         Err(anyhow::Error::msg(format!(
             "Failed to fetch podcast feed: HTTP {}",

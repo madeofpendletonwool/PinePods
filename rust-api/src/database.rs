@@ -3238,7 +3238,7 @@ impl DatabasePool {
 
                 // Listening personality badge (avg hour of day)
                 let personality_row = sqlx::query(r#"
-                    SELECT AVG(EXTRACT(HOUR FROM listendate)) AS avg_hour
+                    SELECT AVG(EXTRACT(HOUR FROM listendate))::float8 AS avg_hour
                     FROM "UserEpisodeHistory"
                     WHERE userid = $1 AND listendate IS NOT NULL
                 "#).bind(user_id).fetch_one(pool).await?;
@@ -5481,53 +5481,100 @@ impl DatabasePool {
         let episodes = self.parse_rss_feed_with_options(&content, podcast_id, artwork_url, true).await?;
         
         let mut first_episode_id = None;
-        
+        let mut inserted_count: usize = 0;
+        let mut skipped_count: usize = 0;
+        let parsed_count = episodes.len();
+
+        // Batch dedup: one query per podcast instead of N per-episode SELECTs.
+        // Compare URLs without query parameters — some feeds regenerate tracking params
+        // like d= and size= on every fetch (e.g. NPR/Podtrac).
+        let url_bases: Vec<String> = episodes.iter()
+            .filter(|ep| !ep.url.is_empty())
+            .map(|ep| ep.url.split('?').next().unwrap_or(&ep.url).to_string())
+            .collect();
+        let titles_no_url: Vec<String> = episodes.iter()
+            .filter(|ep| ep.url.is_empty())
+            .map(|ep| ep.title.clone())
+            .collect();
+
+        let mut url_to_id: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+        let mut title_to_id: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                if !url_bases.is_empty() {
+                    let rows = sqlx::query(
+                        r#"SELECT episodeid, split_part(episodeurl, '?', 1) AS url_base
+                           FROM "Episodes"
+                           WHERE podcastid = $1 AND split_part(episodeurl, '?', 1) = ANY($2)"#
+                    )
+                    .bind(podcast_id)
+                    .bind(&url_bases[..])
+                    .fetch_all(pool)
+                    .await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(base)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("url_base")) {
+                            url_to_id.insert(base, id);
+                        }
+                    }
+                }
+                if !titles_no_url.is_empty() {
+                    let rows = sqlx::query(
+                        r#"SELECT episodeid, episodetitle FROM "Episodes" WHERE podcastid = $1 AND episodetitle = ANY($2)"#
+                    )
+                    .bind(podcast_id)
+                    .bind(&titles_no_url[..])
+                    .fetch_all(pool)
+                    .await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(t)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("episodetitle")) {
+                            title_to_id.insert(t, id);
+                        }
+                    }
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                if !url_bases.is_empty() {
+                    let placeholders = url_bases.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                    let sql = format!(
+                        "SELECT EpisodeID, SUBSTRING_INDEX(EpisodeURL, '?', 1) AS url_base \
+                         FROM Episodes WHERE PodcastID = ? AND SUBSTRING_INDEX(EpisodeURL, '?', 1) IN ({})",
+                        placeholders
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(podcast_id);
+                    for base in &url_bases { q = q.bind(base); }
+                    let rows = q.fetch_all(pool).await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(base)) = (row.try_get::<i32, _>("EpisodeID"), row.try_get::<String, _>("url_base")) {
+                            url_to_id.insert(base, id);
+                        }
+                    }
+                }
+                if !titles_no_url.is_empty() {
+                    let placeholders = titles_no_url.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                    let sql = format!(
+                        "SELECT EpisodeID, EpisodeTitle FROM Episodes WHERE PodcastID = ? AND EpisodeTitle IN ({})",
+                        placeholders
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(podcast_id);
+                    for t in &titles_no_url { q = q.bind(t); }
+                    let rows = q.fetch_all(pool).await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(t)) = (row.try_get::<i32, _>("EpisodeID"), row.try_get::<String, _>("EpisodeTitle")) {
+                            title_to_id.insert(t, id);
+                        }
+                    }
+                }
+            }
+        }
+
         for episode in episodes {
-            // Check if episode already exists. URL is the canonical identifier, but when URL is
-            // empty (e.g. video feeds before parsing was fixed) fall back to title-based dedup
-            // to avoid collapsing all empty-URL episodes into a single row.
+            // Use pre-built maps — no per-episode DB round-trip needed.
             let existing_episode_id = if episode.url.is_empty() {
-                match self {
-                    DatabasePool::Postgres(pool) => {
-                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodetitle = $2"#)
-                            .bind(podcast_id)
-                            .bind(&episode.title)
-                            .fetch_optional(pool)
-                            .await?;
-                        row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
-                    }
-                    DatabasePool::MySQL(pool) => {
-                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeTitle = ?")
-                            .bind(podcast_id)
-                            .bind(&episode.title)
-                            .fetch_optional(pool)
-                            .await?;
-                        row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
-                    }
-                }
+                title_to_id.get(&episode.title).copied()
             } else {
-                // Compare URLs without query parameters — some feeds (e.g. NPR/Podtrac) regenerate
-                // tracking params like d= and size= on every fetch, which would otherwise cause the
-                // same episode to be inserted as new on each refresh.
                 let url_base = episode.url.split('?').next().unwrap_or(&episode.url);
-                match self {
-                    DatabasePool::Postgres(pool) => {
-                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND split_part(episodeurl, '?', 1) = $2"#)
-                            .bind(podcast_id)
-                            .bind(url_base)
-                            .fetch_optional(pool)
-                            .await?;
-                        row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
-                    }
-                    DatabasePool::MySQL(pool) => {
-                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND SUBSTRING_INDEX(EpisodeURL, '?', 1) = ?")
-                            .bind(podcast_id)
-                            .bind(url_base)
-                            .fetch_optional(pool)
-                            .await?;
-                        row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
-                    }
-                }
+                url_to_id.get(url_base).copied()
             };
 
             if let Some(episode_id) = existing_episode_id {
@@ -5576,10 +5623,12 @@ impl DatabasePool {
                 continue;
             }
 
-            // Insert new episode (URL doesn't exist in this podcast)
+            // Insert new episode (URL doesn't exist in this podcast).
+            // Use match instead of ? so a single bad episode logs and skips rather than
+            // aborting the entire batch — prevents partial-subscription silent failures.
             let episode_id = match self {
                 DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(
+                    let row = match sqlx::query(
                         r#"INSERT INTO "Episodes"
                            (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration, is_video)
                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -5594,12 +5643,25 @@ impl DatabasePool {
                     .bind(episode.duration)
                     .bind(episode.is_video)
                     .fetch_one(pool)
-                    .await?;
-
-                    row.try_get::<i32, _>("episodeid")?
+                    .await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", episode.title, podcast_id, e);
+                            skipped_count += 1;
+                            continue;
+                        }
+                    };
+                    match row.try_get::<i32, _>("episodeid") {
+                        Ok(id) => id,
+                        Err(e) => {
+                            tracing::warn!("Failed to read episodeid for '{}': {}", episode.title, e);
+                            skipped_count += 1;
+                            continue;
+                        }
+                    }
                 }
                 DatabasePool::MySQL(pool) => {
-                    let result = sqlx::query(
+                    let result = match sqlx::query(
                         "INSERT INTO Episodes
                          (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, IsVideo)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -5613,11 +5675,19 @@ impl DatabasePool {
                     .bind(episode.duration)
                     .bind(episode.is_video)
                     .execute(pool)
-                    .await?;
-
+                    .await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", episode.title, podcast_id, e);
+                            skipped_count += 1;
+                            continue;
+                        }
+                    };
                     result.last_insert_id() as i32
                 }
             };
+
+            inserted_count += 1;
 
             // Send notification for new episode - matches Python implementation exactly
             if let Err(e) = self.check_and_send_notification(podcast_id, &episode.title).await {
@@ -5629,10 +5699,17 @@ impl DatabasePool {
                 first_episode_id = Some(episode_id);
             }
         }
-        
-        // Update episode count
-        self.update_episode_count(podcast_id).await?;
-        
+
+        tracing::info!(
+            "Podcast {}: parsed={} inserted={} skipped={}",
+            podcast_id, parsed_count, inserted_count, skipped_count
+        );
+
+        // Only recount when something actually changed (saves 3 DB queries per no-op refresh)
+        if inserted_count > 0 {
+            self.update_episode_count(podcast_id).await?;
+        }
+
         // Get the actual first episode ID (earliest by pub date)
         let first_id = self.get_first_episode_id(podcast_id, false).await?;
         
@@ -5656,49 +5733,98 @@ impl DatabasePool {
         let episodes = self.parse_rss_feed(&content, podcast_id, artwork_url).await?;
         
         let mut new_episodes = Vec::new();
-        
-        for mut episode in episodes {
-            // Check if episode already exists. URL is the canonical identifier, but when URL is
-            // empty fall back to title-based dedup to avoid collapsing all empty-URL episodes.
-            let existing_episode_id = if episode.url.is_empty() {
-                match self {
-                    DatabasePool::Postgres(pool) => {
-                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodetitle = $2"#)
-                            .bind(podcast_id)
-                            .bind(&episode.title)
-                            .fetch_optional(pool)
-                            .await?;
-                        row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
-                    }
-                    DatabasePool::MySQL(pool) => {
-                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeTitle = ?")
-                            .bind(podcast_id)
-                            .bind(&episode.title)
-                            .fetch_optional(pool)
-                            .await?;
-                        row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
+        let mut skipped_count: usize = 0;
+        let parsed_count = episodes.len();
+
+        // Batch dedup: one query per podcast instead of N per-episode SELECTs.
+        // Build url_base→id and title→id maps from existing DB rows, then look up in-memory.
+        let url_bases: Vec<String> = episodes.iter()
+            .filter(|ep| !ep.url.is_empty())
+            .map(|ep| ep.url.split('?').next().unwrap_or(&ep.url).to_string())
+            .collect();
+        let titles_no_url: Vec<String> = episodes.iter()
+            .filter(|ep| ep.url.is_empty())
+            .map(|ep| ep.title.clone())
+            .collect();
+
+        let mut url_to_id: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+        let mut title_to_id: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                if !url_bases.is_empty() {
+                    let rows = sqlx::query(
+                        r#"SELECT episodeid, split_part(episodeurl, '?', 1) AS url_base
+                           FROM "Episodes"
+                           WHERE podcastid = $1 AND split_part(episodeurl, '?', 1) = ANY($2)"#
+                    )
+                    .bind(podcast_id)
+                    .bind(&url_bases[..])
+                    .fetch_all(pool)
+                    .await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(base)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("url_base")) {
+                            url_to_id.insert(base, id);
+                        }
                     }
                 }
+                if !titles_no_url.is_empty() {
+                    let rows = sqlx::query(
+                        r#"SELECT episodeid, episodetitle FROM "Episodes" WHERE podcastid = $1 AND episodetitle = ANY($2)"#
+                    )
+                    .bind(podcast_id)
+                    .bind(&titles_no_url[..])
+                    .fetch_all(pool)
+                    .await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(t)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("episodetitle")) {
+                            title_to_id.insert(t, id);
+                        }
+                    }
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                if !url_bases.is_empty() {
+                    let placeholders = url_bases.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                    let sql = format!(
+                        "SELECT EpisodeID, SUBSTRING_INDEX(EpisodeURL, '?', 1) AS url_base \
+                         FROM Episodes WHERE PodcastID = ? AND SUBSTRING_INDEX(EpisodeURL, '?', 1) IN ({})",
+                        placeholders
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(podcast_id);
+                    for base in &url_bases { q = q.bind(base); }
+                    let rows = q.fetch_all(pool).await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(base)) = (row.try_get::<i32, _>("EpisodeID"), row.try_get::<String, _>("url_base")) {
+                            url_to_id.insert(base, id);
+                        }
+                    }
+                }
+                if !titles_no_url.is_empty() {
+                    let placeholders = titles_no_url.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                    let sql = format!(
+                        "SELECT EpisodeID, EpisodeTitle FROM Episodes WHERE PodcastID = ? AND EpisodeTitle IN ({})",
+                        placeholders
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(podcast_id);
+                    for t in &titles_no_url { q = q.bind(t); }
+                    let rows = q.fetch_all(pool).await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(t)) = (row.try_get::<i32, _>("EpisodeID"), row.try_get::<String, _>("EpisodeTitle")) {
+                            title_to_id.insert(t, id);
+                        }
+                    }
+                }
+            }
+        }
+
+        for mut episode in episodes {
+            // Use pre-built maps — no per-episode DB round-trip needed.
+            let existing_episode_id = if episode.url.is_empty() {
+                title_to_id.get(&episode.title).copied()
             } else {
                 let url_base = episode.url.split('?').next().unwrap_or(&episode.url);
-                match self {
-                    DatabasePool::Postgres(pool) => {
-                        let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND split_part(episodeurl, '?', 1) = $2"#)
-                            .bind(podcast_id)
-                            .bind(url_base)
-                            .fetch_optional(pool)
-                            .await?;
-                        row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
-                    }
-                    DatabasePool::MySQL(pool) => {
-                        let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND SUBSTRING_INDEX(EpisodeURL, '?', 1) = ?")
-                            .bind(podcast_id)
-                            .bind(url_base)
-                            .fetch_optional(pool)
-                            .await?;
-                        row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
-                    }
-                }
+                url_to_id.get(url_base).copied()
             };
 
             if let Some(episode_id) = existing_episode_id {
@@ -5762,10 +5888,11 @@ impl DatabasePool {
                 }
             }
 
-            // Insert new episode
+            // Insert new episode. Use match so a single bad episode logs and skips rather than
+            // aborting the entire batch — prevents partial-refresh silent failures.
             let episode_id = match self {
                 DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(
+                    let row = match sqlx::query(
                         r#"INSERT INTO "Episodes"
                            (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration, is_video)
                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -5780,12 +5907,25 @@ impl DatabasePool {
                     .bind(episode.duration)
                     .bind(episode.is_video)
                     .fetch_one(pool)
-                    .await?;
-
-                    row.try_get::<i32, _>("episodeid")?
+                    .await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", episode.title, podcast_id, e);
+                            skipped_count += 1;
+                            continue;
+                        }
+                    };
+                    match row.try_get::<i32, _>("episodeid") {
+                        Ok(id) => id,
+                        Err(e) => {
+                            tracing::warn!("Failed to read episodeid for '{}': {}", episode.title, e);
+                            skipped_count += 1;
+                            continue;
+                        }
+                    }
                 }
                 DatabasePool::MySQL(pool) => {
-                    let result = sqlx::query(
+                    let result = match sqlx::query(
                         "INSERT INTO Episodes
                          (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, IsVideo)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -5799,17 +5939,23 @@ impl DatabasePool {
                     .bind(episode.duration)
                     .bind(episode.is_video)
                     .execute(pool)
-                    .await?;
-
+                    .await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", episode.title, podcast_id, e);
+                            skipped_count += 1;
+                            continue;
+                        }
+                    };
                     result.last_insert_id() as i32
                 }
             };
-            
+
             // Send notification for new episode - matches Python implementation exactly
             if let Err(e) = self.check_and_send_notification(podcast_id, &episode.title).await {
                 tracing::warn!("Failed to send notification for episode '{}': {}", episode.title, e);
             }
-            
+
             // Add to new episodes list - this tracks EXACTLY which episodes were just inserted
             new_episodes.push(crate::handlers::podcasts::Episode {
                 podcastid: podcast_id,
@@ -5831,9 +5977,16 @@ impl DatabasePool {
             });
         }
 
-        // Update episode count
-        self.update_episode_count(podcast_id).await?;
-        
+        tracing::info!(
+            "Podcast {}: parsed={} inserted={} skipped={}",
+            podcast_id, parsed_count, new_episodes.len(), skipped_count
+        );
+
+        // Only recount when something actually changed (saves 3 DB queries per no-op refresh)
+        if !new_episodes.is_empty() {
+            self.update_episode_count(podcast_id).await?;
+        }
+
         Ok(new_episodes)
     }
 
@@ -6046,9 +6199,11 @@ impl DatabasePool {
             println!("No authentication for feed: {}", url);
         }
         
-        // Build HTTP client with proper configuration for container environment
+        // Build HTTP client with proper configuration for container environment.
+        // Use podcast client UA first — many hosts (e.g. Omny) return full episode lists to
+        // podcast apps but truncated/paginated feeds to browser UAs.
         let client = reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .user_agent("PinePods/1.0")
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| {
@@ -6070,13 +6225,13 @@ impl DatabasePool {
         })?;
         
         if !response.status().is_success() {
-            // If we get a 403, the server might be blocking browser User-Agents
-            // Try with a podcast client User-Agent first
+            // If we get a 403, the server might be blocking podcast client User-Agents.
+            // Try with a browser User-Agent as a fallback.
             if response.status() == 403 {
-                println!("Got 403 Forbidden, trying with podcast client User-Agent");
-                
+                println!("Got 403 Forbidden, retrying with browser User-Agent");
+
                 let podcast_client = reqwest::Client::builder()
-                    .user_agent("PinePods/1.0")
+                    .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     .timeout(std::time::Duration::from_secs(30))
                     .build()
                     .map_err(|e| {
@@ -6097,11 +6252,11 @@ impl DatabasePool {
                 })?;
                 
                 if podcast_response.status().is_success() {
-                    println!("Podcast client request succeeded with status: {}", podcast_response.status());
+                    println!("Browser UA request succeeded with status: {}", podcast_response.status());
                     return Ok(podcast_response.text().await.map_err(|e| AppError::Http(e))?);
                 }
-                
-                println!("Podcast client request also failed with status: {}", podcast_response.status());
+
+                println!("Browser UA request also failed with status: {}", podcast_response.status());
             }
             
             println!("Initial request failed with status: {}, trying alternate URL", response.status());
@@ -9988,18 +10143,102 @@ impl DatabasePool {
         }
     }
 
-    // Get podcast episodes with capitalized field names for frontend compatibility
-    pub async fn return_podcast_episodes_capitalized(&self, user_id: i32, podcast_id: i32) -> AppResult<Vec<crate::handlers::podcasts::PodcastEpisode>> {
+    // Get podcast episodes with capitalized field names for frontend compatibility.
+    //
+    // Pagination strategy: each UNION branch carries 5-6 LEFT JOINs, so the cost is dominated
+    // by how many rows the joins fire on. We resolve merged podcast IDs in a tiny up-front
+    // query, then push LIMIT (offset + limit) INSIDE each branch so the joins only run on the
+    // rows that can possibly contribute to the final page. The outer ORDER BY...LIMIT/OFFSET
+    // produces the correctly-merged page from the two pre-sorted streams. Total count is a
+    // separate cheap query (two COUNT(*) on the indexed PodcastID column, no joins).
+    pub async fn return_podcast_episodes_capitalized(
+        &self,
+        user_id: i32,
+        podcast_id: i32,
+        limit: Option<i64>,
+        offset: Option<i64>,
+        sort_by: &str,
+        sort_order: &str,
+        search: &str,
+        filter: &str,
+    ) -> AppResult<(Vec<crate::handlers::podcasts::PodcastEpisode>, i64)> {
+        // Validate sort column/direction to prevent SQL injection (only fixed string literals
+        // are ever spliced into the query — the actual user input is bound as a parameter).
+        let pg_order_col = match sort_by {
+            "duration" => "\"Episodeduration\"",
+            "title"    => "\"Episodetitle\"",
+            _          => "\"Episodepubdate\"", // "date" or unknown
+        };
+        let my_order_col = match sort_by {
+            "duration" => "Episodeduration",
+            "title"    => "Episodetitle",
+            _          => "Episodepubdate",
+        };
+        let order_dir = if sort_order == "asc" { "ASC" } else { "DESC" };
+        let has_search = !search.is_empty();
         match self {
             DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+                let lim: i64 = limit.unwrap_or(i64::MAX);
+                let off: i64 = offset.unwrap_or(0);
+                // Per-branch cap: each branch must keep at least (offset + limit) rows so the
+                // outer ORDER BY can correctly interleave them. saturating_add avoids overflow
+                // when limit is i64::MAX (the "give me everything" caller path).
+                let per_branch_limit: i64 = lim.saturating_add(off);
+
+                // Resolve the full set of podcast IDs (primary + merged) up front so the main
+                // query is just `podcastid = ANY($2)` instead of the per-row JSON unpacking the
+                // original query did.
+                let mut podcast_ids: Vec<i32> = vec![podcast_id];
+                let merged_row = sqlx::query(
+                    r#"SELECT mergedpodcastids FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#
+                )
+                .bind(podcast_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+                if let Some(row) = merged_row {
+                    if let Ok(Some(merged_json)) = row.try_get::<Option<String>, _>("mergedpodcastids") {
+                        if let Ok(parsed) = serde_json::from_str::<Vec<i32>>(&merged_json) {
+                            for id in parsed {
+                                if !podcast_ids.contains(&id) {
+                                    podcast_ids.push(id);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let filter_clause = match filter {
+                    "completed"   => " WHERE \"Completed\" = TRUE",
+                    "in_progress" => " WHERE \"Completed\" = FALSE AND \"Listenduration\" IS NOT NULL AND \"Listenduration\" > 0",
+                    "incomplete"  => " WHERE \"Completed\" = FALSE",
+                    _             => "",
+                };
+                let ep_search_clause = if has_search {
+                    " AND (\"Episodes\".episodetitle ILIKE $3 OR \"Episodes\".episodedescription ILIKE $3)"
+                } else { "" };
+                let yt_search_clause = if has_search {
+                    " AND (\"YouTubeVideos\".videotitle ILIKE $3 OR \"YouTubeVideos\".videodescription ILIKE $3)"
+                } else { "" };
+                let search_pattern = if has_search {
+                    format!("%{}%", search)
+                } else { String::new() };
+
+                // Bind positions shift when a search pattern is present (it takes $3).
+                let (pb_lim_pos, outer_lim_pos, outer_off_pos) = if has_search {
+                    ("$4", "$5", "$6")
+                } else {
+                    ("$3", "$4", "$5")
+                };
+
+                let rows_sql = format!(
                     r#"SELECT * FROM (
-                        SELECT
+                        (SELECT
                             "Podcasts".podcastname as podcastname,
                             "Episodes".episodetitle as "Episodetitle",
                             "Episodes".episodepubdate as "Episodepubdate",
                             "Episodes".episodedescription as "Episodedescription",
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "Episodes".episodeartwork
@@ -10030,23 +10269,18 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedEpisodes" ON
                             "Episodes".episodeid = "DownloadedEpisodes".episodeid
                             AND "DownloadedEpisodes".userid = $1
-                        WHERE "Podcasts".userid = $1 AND (
-                            "Podcasts".podcastid = $2 OR
-                            "Podcasts".podcastid IN (
-                                SELECT jsonb_array_elements_text(COALESCE(mergedpodcastids::jsonb, '[]'::jsonb))::int
-                                FROM "Podcasts" p2
-                                WHERE p2.podcastid = $2 AND p2.userid = $1
-                            )
-                        )
+                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){ep_search_clause}
+                        ORDER BY "Episodes".episodepubdate DESC
+                        LIMIT {pb_lim_pos})
 
                         UNION ALL
 
-                        SELECT
+                        (SELECT
                             "Podcasts".podcastname as podcastname,
                             "YouTubeVideos".videotitle as "Episodetitle",
                             "YouTubeVideos".publishedat as "Episodepubdate",
                             "YouTubeVideos".videodescription as "Episodedescription",
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "YouTubeVideos".thumbnailurl
@@ -10074,27 +10308,82 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedVideos" ON
                             "YouTubeVideos".videoid = "DownloadedVideos".videoid
                             AND "DownloadedVideos".userid = $1
-                        WHERE "Podcasts".userid = $1 AND (
-                            "Podcasts".podcastid = $2 OR
-                            "Podcasts".podcastid IN (
-                                SELECT jsonb_array_elements_text(COALESCE(mergedpodcastids::jsonb, '[]'::jsonb))::int
-                                FROM "Podcasts" p2
-                                WHERE p2.podcastid = $2 AND p2.userid = $1
-                            )
-                        )
-                    ) combined
-                    ORDER BY "Episodepubdate" DESC"#
-                )
-                .bind(user_id)
-                .bind(podcast_id)
-                .fetch_all(pool)
-                .await?;
+                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){yt_search_clause}
+                        ORDER BY "YouTubeVideos".publishedat DESC
+                        LIMIT {pb_lim_pos})
+                    ) combined{filter_clause}
+                    ORDER BY {pg_order_col} {order_dir} NULLS LAST
+                    LIMIT {outer_lim_pos} OFFSET {outer_off_pos}"#,
+                    ep_search_clause = ep_search_clause,
+                    yt_search_clause = yt_search_clause,
+                    pb_lim_pos = pb_lim_pos,
+                    pg_order_col = pg_order_col,
+                    order_dir = order_dir,
+                    filter_clause = filter_clause,
+                    outer_lim_pos = outer_lim_pos,
+                    outer_off_pos = outer_off_pos,
+                );
+
+                // SAFETY: rows_sql is built from static literals plus the validated
+                // sort_by/sort_order/filter/has_search dispatch above. User-supplied search text
+                // is bound as $3, never interpolated.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(rows_sql.as_str()))
+                    .bind(user_id)
+                    .bind(&podcast_ids);
+                if has_search {
+                    q = q.bind(search_pattern.clone());
+                }
+                let rows = q
+                    .bind(per_branch_limit)
+                    .bind(lim)
+                    .bind(off)
+                    .fetch_all(pool)
+                    .await?;
+
+                // Total comes from a separate count query. The rows query LIMITs each branch to
+                // `per_branch_limit` for efficiency (so the joins only fire on rows that can
+                // possibly contribute to the requested page), which means a `COUNT(*) OVER()` on
+                // it would cap at the page size and break pagination on long podcast feeds. The
+                // count query mirrors the rows query's filters but selects only the minimum
+                // columns needed for `filter_clause`.
+                let count_sql = format!(
+                    r#"SELECT COUNT(*) AS total FROM (
+                        (SELECT
+                            "UserEpisodeHistory".listenduration as "Listenduration",
+                            "Episodes".completed as "Completed"
+                        FROM "Episodes"
+                        INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "UserEpisodeHistory" ON
+                            "Episodes".episodeid = "UserEpisodeHistory".episodeid
+                            AND "UserEpisodeHistory".userid = $1
+                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){ep_search_clause})
+
+                        UNION ALL
+
+                        (SELECT
+                            "YouTubeVideos".listenposition as "Listenduration",
+                            "YouTubeVideos".completed as "Completed"
+                        FROM "YouTubeVideos"
+                        INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){yt_search_clause})
+                    ) combined{filter_clause}"#,
+                    ep_search_clause = ep_search_clause,
+                    yt_search_clause = yt_search_clause,
+                    filter_clause = filter_clause,
+                );
+                let mut count_q = sqlx::query(sqlx::AssertSqlSafe(count_sql.as_str()))
+                    .bind(user_id)
+                    .bind(&podcast_ids);
+                if has_search {
+                    count_q = count_q.bind(search_pattern.clone());
+                }
+                let total: i64 = count_q.fetch_one(pool).await?.try_get("total")?;
 
                 let mut episodes = Vec::new();
                 for row in rows {
                     let naive_date = row.try_get::<chrono::NaiveDateTime, _>("Episodepubdate")?;
                     let episodepubdate = naive_date.format("%Y-%m-%dT%H:%M:%S").to_string();
-                    
+
                     episodes.push(crate::handlers::podcasts::PodcastEpisode {
                         podcastname: row.try_get("podcastname")?,
                         episodetitle: row.try_get("Episodetitle")?,
@@ -10114,12 +10403,62 @@ impl DatabasePool {
                     });
                 }
 
-                Ok(episodes)
+                Ok((episodes, total))
             }
             DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query(
+                let lim: i64 = limit.unwrap_or(i64::MAX);
+                let off: i64 = offset.unwrap_or(0);
+                let per_branch_limit: i64 = lim.saturating_add(off);
+
+                // Resolve podcast IDs (primary + merged) up front so the main query is just
+                // `PodcastID IN (?, ?, ...)` instead of MySQL's JSON-extract-with-numbers join.
+                let mut podcast_ids: Vec<i32> = vec![podcast_id];
+                let merged_row = sqlx::query(
+                    "SELECT MergedPodcastIDs FROM Podcasts WHERE PodcastID = ? AND UserID = ?"
+                )
+                .bind(podcast_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+                if let Some(row) = merged_row {
+                    if let Ok(Some(merged_json)) = row.try_get::<Option<String>, _>("MergedPodcastIDs") {
+                        if let Ok(parsed) = serde_json::from_str::<Vec<i32>>(&merged_json) {
+                            for id in parsed {
+                                if !podcast_ids.contains(&id) {
+                                    podcast_ids.push(id);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // MySQL doesn't have an ANY($1) form for sqlx — build a `(?, ?, ...)` placeholder
+                // string sized to the resolved list and bind each ID below.
+                let id_placeholders = vec!["?"; podcast_ids.len()].join(",");
+
+                let mysql_filter = match filter {
+                    "completed"   => " WHERE Completed = 1",
+                    "in_progress" => " WHERE Completed = 0 AND Listenduration IS NOT NULL AND Listenduration > 0",
+                    "incomplete"  => " WHERE Completed = 0",
+                    _             => "",
+                };
+                let ep_search_clause = if has_search {
+                    " AND (Episodes.EpisodeTitle LIKE ? OR Episodes.EpisodeDescription LIKE ?)"
+                } else { "" };
+                let yt_search_clause = if has_search {
+                    " AND (YouTubeVideos.VideoTitle LIKE ? OR YouTubeVideos.VideoDescription LIKE ?)"
+                } else { "" };
+                let search_pattern = if has_search {
+                    format!("%{}%", search)
+                } else { String::new() };
+
+                // Main query: LIMIT pushed inside each branch so joins only fire on the rows
+                // that can possibly contribute to the final page. The outer ORDER BY merges
+                // the two pre-sorted streams. The filtered total is fetched separately below
+                // because a `COUNT(*) OVER()` here would cap at the per-branch limit.
+                let rows_sql = format!(
                     "SELECT * FROM (
-                        SELECT
+                        (SELECT
                             Podcasts.PodcastName as podcastname,
                             Episodes.EpisodeTitle as Episodetitle,
                             Episodes.EpisodePubDate as Episodepubdate,
@@ -10155,24 +10494,18 @@ impl DatabasePool {
                         LEFT JOIN DownloadedEpisodes ON
                             Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                             AND DownloadedEpisodes.UserID = ?
-                        WHERE Podcasts.UserID = ? AND (
-                            Podcasts.PodcastID = ? OR
-                            Podcasts.PodcastID IN (
-                                SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) AS UNSIGNED)
-                                FROM (SELECT 0 as n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) numbers
-                                INNER JOIN Podcasts p2 ON p2.PodcastID = ? AND p2.UserID = ?
-                                WHERE JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) IS NOT NULL
-                            )
-                        )
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){ep_search_clause}
+                        ORDER BY Episodes.EpisodePubDate DESC
+                        LIMIT ?)
 
                         UNION ALL
 
-                        SELECT
+                        (SELECT
                             Podcasts.PodcastName as podcastname,
                             YouTubeVideos.VideoTitle as Episodetitle,
                             YouTubeVideos.PublishedAt as Episodepubdate,
                             YouTubeVideos.VideoDescription as Episodedescription,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 ELSE YouTubeVideos.ThumbnailURL
@@ -10200,41 +10533,91 @@ impl DatabasePool {
                         LEFT JOIN DownloadedVideos ON
                             YouTubeVideos.VideoID = DownloadedVideos.VideoID
                             AND DownloadedVideos.UserID = ?
-                        WHERE Podcasts.UserID = ? AND (
-                            Podcasts.PodcastID = ? OR
-                            Podcasts.PodcastID IN (
-                                SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) AS UNSIGNED)
-                                FROM (SELECT 0 as n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) numbers
-                                INNER JOIN Podcasts p2 ON p2.PodcastID = ? AND p2.UserID = ?
-                                WHERE JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) IS NOT NULL
-                            )
-                        )
-                    ) combined
-                    ORDER BY Episodepubdate DESC"
-                )
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(podcast_id)
-                .bind(podcast_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(user_id)
-                .bind(podcast_id)
-                .bind(podcast_id)
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){yt_search_clause}
+                        ORDER BY YouTubeVideos.PublishedAt DESC
+                        LIMIT ?)
+                    ) combined{mysql_filter}
+                    ORDER BY {my_order_col} {order_dir}
+                    LIMIT ? OFFSET ?",
+                    ph = id_placeholders,
+                    ep_search_clause = ep_search_clause,
+                    yt_search_clause = yt_search_clause,
+                    mysql_filter = mysql_filter,
+                    my_order_col = my_order_col,
+                    order_dir = order_dir,
+                );
+
+                // SAFETY: rows_sql is static SQL plus the programmatically generated `?,?,...`
+                // placeholder string and validated sort_by/sort_order/filter/has_search splices.
+                // The user-supplied search text is bound as a parameter, never interpolated.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(rows_sql.as_str()));
+                // Episodes branch: 5x UserID joins + IN list + (optional 2x search) + per-branch LIMIT.
+                q = q.bind(user_id).bind(user_id).bind(user_id).bind(user_id).bind(user_id);
+                for id in &podcast_ids { q = q.bind(*id); }
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                q = q.bind(per_branch_limit);
+                // YouTubeVideos branch: 4x UserID joins + IN list + (optional 2x search) + per-branch LIMIT.
+                q = q.bind(user_id).bind(user_id).bind(user_id).bind(user_id);
+                for id in &podcast_ids { q = q.bind(*id); }
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                q = q.bind(per_branch_limit);
+                // Outer LIMIT/OFFSET.
+                q = q.bind(lim).bind(off);
+
+                let rows = q.fetch_all(pool).await?;
+
+                // Separate count query: mirrors the rows query's filtering (search, filter_clause)
+                // but without the per-branch LIMIT, so the total reflects the full filtered set.
+                let count_sql = format!(
+                    "SELECT COUNT(*) AS total FROM (
+                        (SELECT
+                            UserEpisodeHistory.ListenDuration as Listenduration,
+                            Episodes.Completed as Completed
+                        FROM Episodes
+                        INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN UserEpisodeHistory ON
+                            Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                            AND UserEpisodeHistory.UserID = ?
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){ep_search_clause})
+
+                        UNION ALL
+
+                        (SELECT
+                            YouTubeVideos.ListenPosition as Listenduration,
+                            YouTubeVideos.Completed as Completed
+                        FROM YouTubeVideos
+                        INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){yt_search_clause})
+                    ) combined{mysql_filter}",
+                    ph = id_placeholders,
+                    ep_search_clause = ep_search_clause,
+                    yt_search_clause = yt_search_clause,
+                    mysql_filter = mysql_filter,
+                );
+                let mut count_q = sqlx::query(sqlx::AssertSqlSafe(count_sql.as_str()));
+                // Episodes branch: UserID (join), UserID (where), IN list, (optional 2x search).
+                count_q = count_q.bind(user_id).bind(user_id);
+                for id in &podcast_ids { count_q = count_q.bind(*id); }
+                if has_search {
+                    count_q = count_q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                // YouTubeVideos branch: UserID (where), IN list, (optional 2x search).
+                count_q = count_q.bind(user_id);
+                for id in &podcast_ids { count_q = count_q.bind(*id); }
+                if has_search {
+                    count_q = count_q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                let total: i64 = count_q.fetch_one(pool).await?.try_get("total")?;
 
                 let mut episodes = Vec::new();
                 for row in rows {
                     let datetime = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("Episodepubdate")?;
                     let episodepubdate = datetime.format("%Y-%m-%dT%H:%M:%S").to_string();
-                    
+
                     episodes.push(crate::handlers::podcasts::PodcastEpisode {
                         podcastname: row.try_get("podcastname")?,
                         episodetitle: row.try_get("Episodetitle")?,
@@ -10254,7 +10637,7 @@ impl DatabasePool {
                     });
                 }
 
-                Ok(episodes)
+                Ok((episodes, total))
             }
         }
     }
@@ -15237,25 +15620,26 @@ impl DatabasePool {
         
         println!("Fetching podcast values from feed URL: {}", feed_url);
         
-        // Build HTTP client with proper configuration for container environment
+        // Build HTTP client with podcast client UA first — many hosts serve full feeds to
+        // podcast apps but truncated versions to browser UAs.
         let client = reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .user_agent("PinePods/1.0")
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| {
                 println!("Failed to build HTTP client in get_podcast_values: {}", e);
                 AppError::Http(e)
             })?;
-        
+
         let mut request = client.get(feed_url);
-        
+
         if let (Some(user), Some(pass)) = (username, password) {
             println!("Using basic authentication for feed: {}", feed_url);
             use base64::Engine;
             let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
             request = request.header(AUTHORIZATION, format!("Basic {}", encoded));
         }
-        
+
         // Fetch RSS feed with better error handling
         println!("Sending HTTP request to: {}", feed_url);
         let response = request.send().await
@@ -15263,16 +15647,16 @@ impl DatabasePool {
                 println!("HTTP request failed for {}: {}", feed_url, e);
                 AppError::Http(e)
             })?;
-        
+
         println!("Received response with status: {}", response.status());
         if !response.status().is_success() {
-            // If we get a 403, the server might be blocking browser User-Agents
-            // Try with a podcast client User-Agent
+            // If we get a 403, the server might be blocking podcast client User-Agents.
+            // Try with a browser User-Agent as fallback.
             if response.status() == 403 {
-                println!("Got 403 Forbidden, trying with podcast client User-Agent");
-                
+                println!("Got 403 Forbidden, retrying with browser User-Agent");
+
                 let podcast_client = reqwest::Client::builder()
-                    .user_agent("PinePods/1.0")
+                    .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     .timeout(std::time::Duration::from_secs(30))
                     .build()
                     .map_err(|e| {

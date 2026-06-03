@@ -1,11 +1,11 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeNavigationState, NotificationState, UIState};
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
 
-use crate::components::episode_list_item::EpisodeListItem;
+use crate::components::episode_list_view::EpisodeListView;
 use crate::requests::episode::Episode;
 use crate::requests::pod_req::{
     call_bulk_delete_downloaded_episodes, call_get_podcast_download_summary,
@@ -15,6 +15,7 @@ use crate::requests::pod_req::{
 use i18nrs::yew::use_translation;
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::rc::Rc;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yewdux::prelude::*;
@@ -180,7 +181,7 @@ pub fn downloads() -> Html {
                     .iter()
                     .cloned()
                     .collect();
-                let is_youtube = state.selected_is_youtube;
+                let is_youtube = Dispatch::<EpisodeNavigationState>::global().get().selected_is_youtube;
 
                 state.selected_episodes_for_deletion.clear();
 
@@ -667,22 +668,26 @@ pub fn render_podcast_with_episodes(
             </div>
 
             { if is_expanded {
+                // Wrap the per-podcast loaded episodes in EpisodeListView. The view is now
+                // backed by VirtualList (true windowing), so even hundreds of locally-loaded
+                // episodes mount at viewport-bound cost. `disable_sentinel=true` plus the
+                // explicit "Load more" button below: the page is a list-of-podcasts, so a
+                // sentinel inside one expanded podcast would auto-fetch more episodes for
+                // THIS podcast every time the user scrolls past it toward the next podcast.
+                let episodes_rc: Rc<Vec<Episode>> = Rc::new(episodes);
                 html! {
                     <div class="podcast-episodes-container expanded">
                         <div class="podcast-episodes-inner">
-                            {
-                                for episodes.into_iter().map(|episode| {
-                                    let on_checkbox_change_cloned = on_checkbox_change.clone();
-                                    html!{
-                                        <EpisodeListItem
-                                            episode={ episode }
-                                            page_type={ PageType::Downloads }
-                                            on_checkbox_change={ on_checkbox_change_cloned }
-                                            is_delete_mode={ is_delete_mode }
-                                        />
-                                    }
-                                })
-                            }
+                            <EpisodeListView
+                                key={format!("downloads-{}", summary.podcastid)}
+                                episodes={episodes_rc}
+                                backend_can_load_more={false}
+                                loading_more={false}
+                                page_type={PageType::Downloads}
+                                is_delete_mode={is_delete_mode}
+                                on_checkbox_change={on_checkbox_change.clone()}
+                                disable_sentinel={true}
+                            />
                             { if loading_more {
                                 html! {
                                     <div class="flex justify-center py-4">

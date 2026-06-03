@@ -600,6 +600,9 @@ class NativeAudioPlayerService extends AudioPlayerService {
     _transcriptEvent.add(TranscriptUnavailableState());
   }
 
+  @override
+  void setPlaylistContext(int? playlistId) {}
+
   void setPinepodsAudioService(PinepodsAudioService? service) {
     _pinepodsAudioService = service;
   }

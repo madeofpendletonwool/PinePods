@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, EpisodeStatusState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PodcastFeedState, UIState};
 use crate::components::gen_components::{EpisodeModal, FallbackImage};
 use crate::components::gen_funcs::format_time_rm_hour;
 #[cfg(not(feature = "server_build"))]
@@ -1839,13 +1839,15 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             let history_clone = history.clone();
                             let props = props.clone();
                             wasm_bindgen_futures::spawn_local(async move {
-                                dispatch_clone.reduce_mut(move |state| {
-                                    // Only clear fetched_episode if we're navigating to a different episode
-                                    if state.selected_episode_id != Some(episode_id) {
-                                        state.fetched_episode = None;
-                                    }
-                                    state.selected_episode_id = Some(episode_id);
+                                let old_episode_id = Dispatch::<EpisodeNavigationState>::global().get().selected_episode_id;
+                                Dispatch::<EpisodeNavigationState>::global().reduce_mut(move |s| {
+                                    s.selected_episode_id = Some(episode_id);
                                 });
+                                if old_episode_id != Some(episode_id) {
+                                    Dispatch::<EpisodeDetailState>::global().reduce_mut(|s| {
+                                        s.fetched_episode = None;
+                                    });
+                                }
                                 if episode_id != 0 {
                                     if props.is_youtube {
                                         history_clone.push(format!("/episode?episode_id={}&youtube=true", episode_id));
@@ -1865,14 +1867,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                                     history_clone.push(new_url);
 
-                                    dispatch_clone.reduce_mut(move |state| {
-                                        state.selected_episode_id = Some(episode_id);
-                                        state.selected_episode_url = Some(props.episode.episodeurl.clone());
-                                        state.selected_episode_audio_url = Some(props.src.clone());
-                                        state.selected_podcast_title = Some(props.title.clone());
-                                        state.person_episode = Some(false);
-                                        state.selected_is_youtube = props.episode.is_youtube;
-                                        state.fetched_episode = None;
+                                    Dispatch::<EpisodeNavigationState>::global().reduce_mut(move |s| {
+                                        s.selected_episode_id = Some(episode_id);
+                                        s.selected_episode_url = Some(props.episode.episodeurl.clone());
+                                        s.selected_episode_audio_url = Some(props.src.clone());
+                                        s.selected_podcast_title = Some(props.title.clone());
+                                        s.selected_is_youtube = props.episode.is_youtube;
+                                    });
+                                    Dispatch::<EpisodeDetailState>::global().reduce_mut(|s| {
+                                        s.person_episode = Some(false);
+                                        s.fetched_episode = None;
                                     });
                                 }
                             });
@@ -1916,7 +1920,8 @@ pub fn on_play_pause(
     app_state: Rc<AppState>,
 ) -> Callback<MouseEvent> {
     let ep_status = Dispatch::<EpisodeStatusState>::global().get();
-    let is_local = if app_state.podcast_added.unwrap_or(false) && episode.episodeid != 0 {
+    let podcast_feed_state = Dispatch::<PodcastFeedState>::global().get();
+    let is_local = if podcast_feed_state.podcast_added.unwrap_or(false) && episode.episodeid != 0 {
         ep_status
             .downloaded_episodes
             .is_server_download(episode.episodeid)

@@ -188,10 +188,29 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     }
 
     try {
-      await _audioService!.playPinepodsEpisode(pinepodsEpisode: episode);
+      await _audioService!.playPinepodsEpisode(
+        pinepodsEpisode: episode,
+        playlistId: widget.playlist.playlistId,
+      );
     } catch (e) {
       if (mounted) {
         _showSnackBar('Failed to play episode: $e', Colors.red);
+      }
+    }
+  }
+
+  Future<void> _playFromTop() async {
+    if (_audioService == null || _playlistResponse == null) return;
+    if (_playlistResponse!.episodes.isEmpty) return;
+
+    try {
+      await _audioService!.playPinepodsEpisode(
+        pinepodsEpisode: _playlistResponse!.episodes.first,
+        playlistId: widget.playlist.playlistId,
+      );
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Failed to start playlist: $e', Colors.red);
       }
     }
   }
@@ -435,6 +454,14 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
         title: Text(widget.playlist.name),
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
+        actions: [
+          if (_playlistResponse != null && _playlistResponse!.episodes.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.playlist_play),
+              tooltip: 'Play from top',
+              onPressed: _playFromTop,
+            ),
+        ],
       ),
       body: _buildBody(),
     );

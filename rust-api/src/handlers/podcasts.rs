@@ -117,6 +117,7 @@ pub struct PodcastEpisode {
 #[derive(Serialize)]
 pub struct PodcastEpisodesResponse {
     pub episodes: Vec<PodcastEpisode>,
+    pub total: i64,
 }
 
 #[derive(Serialize)]
@@ -1154,6 +1155,12 @@ pub async fn download_status(
 pub struct PodcastEpisodesQuery {
     pub user_id: i32,
     pub podcast_id: i32,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub sort_by: Option<String>,    // "date" | "duration" | "title"
+    pub sort_order: Option<String>, // "asc" | "desc"
+    pub search: Option<String>,     // free-text term, matched against title and description
+    pub filter: Option<String>,     // "all" | "completed" | "in_progress"
 }
 
 // Get episodes for a specific podcast - matches Python podcast_episodes endpoint
@@ -1163,7 +1170,7 @@ pub async fn podcast_episodes(
     State(state): State<AppState>,
 ) -> Result<Json<PodcastEpisodesResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -1175,10 +1182,26 @@ pub async fn podcast_episodes(
         return Err(AppError::forbidden("You can only return episodes of your own!"));
     }
 
-    // Get podcast episodes from database 
-    let episodes = state.db_pool.return_podcast_episodes_capitalized(query.user_id, query.podcast_id).await?;
-    
-    Ok(Json(PodcastEpisodesResponse { episodes }))
+    let sort_by = query.sort_by.as_deref().unwrap_or("date");
+    let sort_order = query.sort_order.as_deref().unwrap_or("desc");
+    let filter = query.filter.as_deref().unwrap_or("all");
+    let search = query.search.as_deref().unwrap_or("");
+
+    // Get podcast episodes from database
+    let (episodes, total) = state.db_pool
+        .return_podcast_episodes_capitalized(
+            query.user_id,
+            query.podcast_id,
+            query.limit,
+            query.offset,
+            sort_by,
+            sort_order,
+            search,
+            filter,
+        )
+        .await?;
+
+    Ok(Json(PodcastEpisodesResponse { episodes, total }))
 }
 
 // Query parameters for get_podcast_id_from_ep_name
