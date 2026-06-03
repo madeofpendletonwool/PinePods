@@ -1110,7 +1110,17 @@
     "no_matches_header": "Nothing in your library matches that",
     "no_matches_body": "Try a different term, clear the status filter, or search new shows from the top bar.",
     "mobile_placeholder": "Search your library…",
-    "desktop_placeholder": "Search episodes, shows, show notes…"
+    "desktop_placeholder": "Search episodes, shows, show notes…",
+    "select": "Select",
+    "exit_select": "Exit Select",
+    "select_all": "Select All",
+    "deselect_all": "Deselect All",
+    "select_unplayed": "Select Unplayed",
+    "select_in_progress": "Select In Progress",
+    "mark_complete": "Mark Complete",
+    "save": "Save",
+    "queue": "Queue",
+    "download": "Download"
   },
   "search_new": {
     "search_new": "Search New"

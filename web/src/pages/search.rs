@@ -792,7 +792,7 @@ pub fn search(_props: &SearchProps) -> Html {
                             onclick={toggle_select.clone()}
                         >
                             <i class={if *is_selecting { "ph ph-x-square" } else { "ph ph-check-square" }}></i>
-                            <span>{ if *is_selecting { "Exit Select" } else { "Select" } }</span>
+                            <span>{ if *is_selecting { i18n.t("search.exit_select") } else { i18n.t("search.select") } }</span>
                         </button>
                     }
                 </div>
@@ -992,13 +992,13 @@ pub fn search(_props: &SearchProps) -> Html {
                     if *is_selecting && !visible_empty {
                         <div class="sp-select-controls">
                             <button class="bulk-select-button" onclick={on_select_all.clone()}>
-                                { if sel_all_selected { "Deselect All" } else { "Select All" } }
+                                { if sel_all_selected { i18n.t("search.deselect_all") } else { i18n.t("search.select_all") } }
                             </button>
                             <button class="bulk-filter-button" onclick={on_select_unplayed.clone()}>
-                                { "Select Unplayed" }
+                                { i18n.t("search.select_unplayed") }
                             </button>
                             <button class="bulk-filter-button" onclick={on_select_in_progress.clone()}>
-                                { "Select In Progress" }
+                                { i18n.t("search.select_in_progress") }
                             </button>
                         </div>
                     }
@@ -1047,7 +1047,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     class="btn btn-secondary"
                                 >
                                     <i class="ph ph-check-circle"></i>
-                                    { "Mark Complete" }
+                                    { i18n.t("search.mark_complete") }
                                 </button>
                                 <button
                                     onclick={
@@ -1085,7 +1085,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     class="btn btn-secondary"
                                 >
                                     <i class="ph ph-star"></i>
-                                    { "Save" }
+                                    { i18n.t("search.save") }
                                 </button>
                                 <button
                                     onclick={
@@ -1123,7 +1123,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     class="btn btn-secondary"
                                 >
                                     <i class="ph ph-list-plus"></i>
-                                    { "Queue" }
+                                    { i18n.t("search.queue") }
                                 </button>
                                 <button
                                     onclick={
@@ -1161,7 +1161,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     class="btn btn-secondary"
                                 >
                                     <i class="ph ph-download-simple"></i>
-                                    { "Download" }
+                                    { i18n.t("search.download") }
                                 </button>
                             </div>
                         </div>
