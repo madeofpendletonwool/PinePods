@@ -10,7 +10,6 @@ use crate::components::gen_funcs::{
 use crate::components::host_component::HostDropdown;
 use crate::components::loading::Loading;
 use crate::components::episode_list_view::EpisodeListView;
-use crate::components::virtual_list::ScrollSource;
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_bulk_download_episodes,
@@ -343,7 +342,6 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
 pub fn episode_layout() -> Html {
     let (i18n, _) = use_translation();
     let is_added = use_state(|| false);
-    let scroll_ref = use_node_ref();
     let (search_state, _search_dispatch) = use_store::<AppState>();
     let (search_data, _) = use_store::<SearchState>();
     let (state, _dispatch) = use_store::<UIState>();
@@ -4755,7 +4753,7 @@ pub fn episode_layout() -> Html {
                                             Rc::new((*selected_episodes).clone());
 
                                         html! {
-                                            <div ref={scroll_ref.clone()} class="flex-grow overflow-y-auto">
+                                            <div class="flex-grow overflow-y-auto">
                                                 <EpisodeListView
                                                     key={view_key}
                                                     episodes={episodes_rc}
@@ -4767,7 +4765,6 @@ pub fn episode_layout() -> Html {
                                                     on_select_above={on_select_newer.clone()}
                                                     on_select_below={on_select_older.clone()}
                                                     selected_episodes={selected_eps_rc}
-                                                    scroll_source={ScrollSource::Container(scroll_ref.clone())}
                                                 />
                                             </div>
                                         }

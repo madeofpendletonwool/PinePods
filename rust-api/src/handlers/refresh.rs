@@ -177,227 +177,140 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
         }
     };
     
-    println!("Running refresh for {total_podcasts} podcasts");
-    let mut current_podcast = 0;
-    
+    // Collect all podcast rows into plain owned structs first, then process in parallel.
+    // This releases the DB connection before spawning concurrent futures, and lets us
+    // share processing logic between Postgres and MySQL backends.
+    struct PodcastRefreshItem {
+        podcast_id: i32,
+        feed_url: String,
+        artwork_url: Option<String>,
+        auto_download: bool,
+        username: Option<String>,
+        password: Option<String>,
+        is_youtube: bool,
+        user_id: i32,
+        feed_cutoff: Option<i32>,
+    }
+
+    let mut refresh_items: Vec<PodcastRefreshItem> = Vec::with_capacity(total_podcasts);
+
     match &state.db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
             let rows = sqlx::query(
                 r#"SELECT podcastid, feedurl, artworkurl, autodownload, username, password,
-                          isyoutubechannel, userid, COALESCE(feedurl, '') as channel_id, feedcutoffdays, podcastname
-                   FROM "Podcasts" 
+                          isyoutubechannel, userid, feedcutoffdays
+                   FROM "Podcasts"
                    WHERE COALESCE(refreshpodcast, TRUE) = TRUE"#
             )
             .fetch_all(pool)
             .await?;
-            
+
             for result in rows {
                 let podcast_id: i32 = result.try_get("podcastid")?;
-                let feed_url: String = result.try_get("feedurl")?;
-                let artwork_url: Option<String> = result.try_get("artworkurl").ok();
-                let auto_download: bool = result.try_get("autodownload")?;
-                let username: Option<String> = result.try_get("username").ok();
-                let password: Option<String> = result.try_get("password").ok();
-                let is_youtube: bool = result.try_get("isyoutubechannel")?;
-                let user_id: i32 = result.try_get("userid")?;
-                let feed_cutoff: Option<i32> = result.try_get("feedcutoffdays").ok();
-                
-                current_podcast += 1;
-                
-                // Get podcast name for better logging
-                let podcast_name = result.try_get::<String, _>("podcastname").unwrap_or_else(|_| format!("Podcast {}", podcast_id));
-                println!("Running refresh for podcast {}/{}: {}", current_podcast, total_podcasts, podcast_name);
-
-                if feed_url.starts_with("local://") {
-                    println!("Skipping local podcast {} - not an RSS feed", podcast_id);
-                    continue;
-                }
-
-                if is_youtube {
-                    // Handle YouTube channel refresh
-                    // Extract channel ID from feed URL
-                    let channel_id = if feed_url.contains("channel/") {
-                        feed_url.split("channel/").nth(1).unwrap_or(&feed_url).split('/').next().unwrap_or(&feed_url).split('?').next().unwrap_or(&feed_url)
-                    } else {
-                        &feed_url
-                    };
-                    
-                    // Call YouTube processing function
-                    println!("Processing YouTube videos for channel: {}", channel_id);
-                    match crate::handlers::youtube::process_youtube_channel(
-                        podcast_id, 
-                        channel_id, 
-                        feed_cutoff.unwrap_or(30), 
-                        &state
-                    ).await {
-                        Ok(_) => {
-                            println!("Successfully refreshed YouTube channel {}", podcast_id);
-                        }
-                        Err(e) => {
-                            println!("Error refreshing YouTube channel {}: {}", podcast_id, e);
-                            // Continue with other podcasts - matches Python behavior
-                        }
-                    }
-                } else {
-                    // Use the new function that returns newly inserted episodes - matches Python implementation exactly
-                    match state.db_pool.add_episodes_with_new_list(
-                        podcast_id, 
-                        &feed_url, 
-                        artwork_url.as_deref().unwrap_or(""), 
-                        username.as_deref(),
-                        password.as_deref()
-                    ).await {
-                        Ok(new_episodes) => {
-                            println!("Successfully refreshed podcast {}: {} new episodes", podcast_id, new_episodes.len());
-                            
-                            // Handle auto-download for background refresh - matches Python implementation exactly
-                            if auto_download {
-                                let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
-                                if downloads_enabled {
-                                    println!("Auto-download enabled for podcast {} - processing {} new episodes", podcast_id, new_episodes.len());
-
-                                    // Auto-download ONLY the episodes that were just inserted - 100% reliable!
-                                    for episode in &new_episodes {
-                                        println!("Auto-downloading episode '{}' (ID: {}) for user {}",
-                                            episode.episodetitle, episode.episodeid, user_id);
-
-                                        // Determine if this is a YouTube episode
-                                        let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
-
-                                        // Spawn download task
-                                        let task_result = if is_youtube {
-                                            state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
-                                        } else {
-                                            state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
-                                        };
-
-                                        match task_result {
-                                            Ok(task_id) => println!("Auto-download task queued with ID: {}", task_id),
-                                            Err(e) => println!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
-                                        }
-                                    }
-                                } else {
-                                    println!("Skipping auto-download for podcast {} - server downloads are disabled", podcast_id);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            println!("Error refreshing podcast {}: {}", podcast_id, e);
-                            // Continue with other podcasts - matches Python behavior
-                        }
-                    }
-                }
+                refresh_items.push(PodcastRefreshItem {
+                    podcast_id,
+                    feed_url: result.try_get("feedurl")?,
+                    artwork_url: result.try_get("artworkurl").ok(),
+                    auto_download: result.try_get("autodownload")?,
+                    username: result.try_get("username").ok(),
+                    password: result.try_get("password").ok(),
+                    is_youtube: result.try_get("isyoutubechannel")?,
+                    user_id: result.try_get("userid")?,
+                    feed_cutoff: result.try_get("feedcutoffdays").ok(),
+                });
             }
         }
         crate::database::DatabasePool::MySQL(pool) => {
             let rows = sqlx::query(
                 "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
-                        IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id, FeedCutoffDays, PodcastName
+                        IsYouTubeChannel, UserID, FeedCutoffDays
                  FROM Podcasts
                  WHERE COALESCE(RefreshPodcast, 1) = 1"
             )
             .fetch_all(pool)
             .await?;
-            
+
             for result in rows {
                 let podcast_id: i32 = result.try_get("PodcastID")?;
-                let feed_url: String = result.try_get("FeedURL")?;
-                let artwork_url: Option<String> = result.try_get("ArtworkURL").ok();
-                let auto_download: bool = result.try_get("AutoDownload")?;
-                let username: Option<String> = result.try_get("Username").ok();
-                let password: Option<String> = result.try_get("Password").ok();
-                let is_youtube: bool = result.try_get("IsYouTubeChannel")?;
-                let user_id: i32 = result.try_get("UserID")?;
-                let feed_cutoff: Option<i32> = result.try_get("FeedCutoffDays").ok();
-                
-                current_podcast += 1;
-                
-                // Get podcast name for better logging
-                let podcast_name = result.try_get::<String, _>("PodcastName").unwrap_or_else(|_| format!("Podcast {}", podcast_id));
-                println!("Running refresh for podcast {}/{}: {}", current_podcast, total_podcasts, podcast_name);
-
-                if feed_url.starts_with("local://") {
-                    println!("Skipping local podcast {} - not an RSS feed", podcast_id);
-                    continue;
-                }
-
-                if is_youtube {
-                    // Handle YouTube channel refresh
-                    // Extract channel ID from feed URL
-                    let channel_id = if feed_url.contains("channel/") {
-                        feed_url.split("channel/").nth(1).unwrap_or(&feed_url).split('/').next().unwrap_or(&feed_url).split('?').next().unwrap_or(&feed_url)
-                    } else {
-                        &feed_url
-                    };
-                    
-                    // Call YouTube processing function
-                    println!("Processing YouTube videos for channel: {}", channel_id);
-                    match crate::handlers::youtube::process_youtube_channel(
-                        podcast_id, 
-                        channel_id, 
-                        feed_cutoff.unwrap_or(30), 
-                        &state
-                    ).await {
-                        Ok(_) => {
-                            println!("Successfully refreshed YouTube channel {}", podcast_id);
-                        }
-                        Err(e) => {
-                            println!("Error refreshing YouTube channel {}: {}", podcast_id, e);
-                            // Continue with other podcasts - matches Python behavior
-                        }
-                    }
-                } else {
-                    // Use the new function that returns newly inserted episodes - matches Python implementation exactly
-                    match state.db_pool.add_episodes_with_new_list(
-                        podcast_id, 
-                        &feed_url, 
-                        artwork_url.as_deref().unwrap_or(""), 
-                        username.as_deref(),
-                        password.as_deref()
-                    ).await {
-                        Ok(new_episodes) => {
-                            println!("Successfully refreshed podcast {}: {} new episodes", podcast_id, new_episodes.len());
-                            
-                            // Handle auto-download for background refresh - matches Python implementation exactly
-                            if auto_download {
-                                let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
-                                if downloads_enabled {
-                                    println!("Auto-download enabled for podcast {} - processing {} new episodes", podcast_id, new_episodes.len());
-
-                                    // Auto-download ONLY the episodes that were just inserted - 100% reliable!
-                                    for episode in &new_episodes {
-                                        println!("Auto-downloading episode '{}' (ID: {}) for user {}",
-                                            episode.episodetitle, episode.episodeid, user_id);
-
-                                        // Determine if this is a YouTube episode
-                                        let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
-
-                                        // Spawn download task
-                                        let task_result = if is_youtube {
-                                            state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
-                                        } else {
-                                            state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
-                                        };
-
-                                        match task_result {
-                                            Ok(task_id) => println!("Auto-download task queued with ID: {}", task_id),
-                                            Err(e) => println!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
-                                        }
-                                    }
-                                } else {
-                                    println!("Skipping auto-download for podcast {} - server downloads are disabled", podcast_id);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            println!("Error refreshing podcast {}: {}", podcast_id, e);
-                            // Continue with other podcasts - matches Python behavior
-                        }
-                    }
-                }
+                refresh_items.push(PodcastRefreshItem {
+                    podcast_id,
+                    feed_url: result.try_get("FeedURL")?,
+                    artwork_url: result.try_get("ArtworkURL").ok(),
+                    auto_download: result.try_get("AutoDownload")?,
+                    username: result.try_get("Username").ok(),
+                    password: result.try_get("Password").ok(),
+                    is_youtube: result.try_get("IsYouTubeChannel")?,
+                    user_id: result.try_get("UserID")?,
+                    feed_cutoff: result.try_get("FeedCutoffDays").ok(),
+                });
             }
         }
     }
+
+    println!("Running refresh for {} podcasts (concurrency=10)", refresh_items.len());
+
+    // Process all podcasts with bounded concurrency. &AppState is Copy (shared ref) so it
+    // can be captured by each async block without any cloning overhead.
+    use futures::stream::{self, StreamExt};
+    stream::iter(refresh_items)
+        .for_each_concurrent(Some(10), |item| async move {
+            if item.feed_url.starts_with("local://") {
+                println!("Skipping local podcast {} - not an RSS feed", item.podcast_id);
+                return;
+            }
+
+            if item.is_youtube {
+                let channel_id = if item.feed_url.contains("channel/") {
+                    item.feed_url.split("channel/").nth(1).unwrap_or(&item.feed_url)
+                        .split('/').next().unwrap_or(&item.feed_url)
+                        .split('?').next().unwrap_or(&item.feed_url)
+                        .to_string()
+                } else {
+                    item.feed_url.clone()
+                };
+                println!("Processing YouTube videos for channel: {}", channel_id);
+                match crate::handlers::youtube::process_youtube_channel(
+                    item.podcast_id,
+                    &channel_id,
+                    item.feed_cutoff.unwrap_or(30),
+                    state,
+                ).await {
+                    Ok(_) => println!("Successfully refreshed YouTube channel {}", item.podcast_id),
+                    Err(e) => println!("Error refreshing YouTube channel {}: {}", item.podcast_id, e),
+                }
+            } else {
+                match state.db_pool.add_episodes_with_new_list(
+                    item.podcast_id,
+                    &item.feed_url,
+                    item.artwork_url.as_deref().unwrap_or(""),
+                    item.username.as_deref(),
+                    item.password.as_deref(),
+                ).await {
+                    Ok(new_episodes) => {
+                        println!("Successfully refreshed podcast {}: {} new episodes", item.podcast_id, new_episodes.len());
+                        if item.auto_download && !new_episodes.is_empty() {
+                            let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
+                            if downloads_enabled {
+                                for episode in &new_episodes {
+                                    let is_yt = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
+                                    let task_result = if is_yt {
+                                        state.task_spawner.spawn_download_youtube_video(episode.episodeid, item.user_id).await
+                                    } else {
+                                        state.task_spawner.spawn_download_podcast_episode(episode.episodeid, item.user_id).await
+                                    };
+                                    match task_result {
+                                        Ok(task_id) => println!("Auto-download task queued with ID: {}", task_id),
+                                        Err(e) => println!("Failed to queue auto-download: {}", e),
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => println!("Error refreshing podcast {}: {}", item.podcast_id, e),
+                }
+            }
+        })
+        .await;
     
     // Run auto-complete check for all users with auto-complete enabled after episode refresh
     println!("Running auto-complete threshold check for all users...");

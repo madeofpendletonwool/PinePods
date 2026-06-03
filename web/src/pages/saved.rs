@@ -6,7 +6,6 @@ use crate::components::episode_list_view::EpisodeListView;
 use crate::components::gen_components::{
     empty_message, Search_nav, UseScrollToTop,
 };
-use crate::components::virtual_list::ScrollSource;
 use crate::components::gen_funcs::{
     get_default_sort_direction, get_filter_preference, set_filter_preference,
 };
@@ -58,7 +57,6 @@ pub fn saved() -> Html {
     let offset = use_state(|| 0i64);
     let loading = use_state(|| true);
     let loading_more = use_state(|| false);
-    let scroll_ref = use_node_ref();
 
     let episode_search_term = use_state(|| String::new());
 
@@ -393,14 +391,13 @@ pub fn saved() -> Html {
                                     )
                                 } else {
                                     html! {
-                                        <div ref={scroll_ref.clone()} class="flex-grow overflow-y-auto">
+                                        <div class="flex-grow overflow-y-auto">
                                             <EpisodeListView
                                                 episodes={display_episodes_rc}
                                                 backend_can_load_more={backend_can_load_more}
                                                 loading_more={*loading_more}
                                                 on_load_more={on_load_more.clone()}
                                                 page_type={PageType::Saved}
-                                                scroll_source={ScrollSource::Container(scroll_ref.clone())}
                                             />
                                         </div>
                                     }

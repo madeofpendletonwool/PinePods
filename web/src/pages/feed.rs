@@ -3,7 +3,6 @@ use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::context::{AppState, EpisodeStatusState, FilterState, PodcastFeedState};
 use crate::components::episode_list_view::EpisodeListView;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
-use crate::components::virtual_list::ScrollSource;
 use crate::components::loading::Loading;
 use crate::requests::episode::Episode;
 use crate::requests::pod_req;
@@ -51,7 +50,6 @@ pub fn feed() -> Html {
     let loading = use_state(|| true);
     let loading_more = use_state(|| false);
     let error = use_state(|| None::<String>);
-    let scroll_ref = use_node_ref();
 
     // Initial page fetch
     {
@@ -265,13 +263,12 @@ pub fn feed() -> Html {
                     )
                 } else {
                     html! {
-                        <div ref={scroll_ref.clone()} class="flex-grow overflow-y-auto">
+                        <div class="flex-grow overflow-y-auto">
                             <EpisodeListView
                                 episodes={filtered_episodes_rc}
                                 backend_can_load_more={backend_can_load_more}
                                 loading_more={*loading_more}
                                 on_load_more={on_load_more.clone()}
-                                scroll_source={ScrollSource::Container(scroll_ref.clone())}
                             />
                         </div>
                     }

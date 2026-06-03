@@ -24,25 +24,21 @@
 //! We intentionally do NOT auto-detect by walking up the DOM looking for an overflow ancestor
 //! — too magical, breaks silently when CSS is reorganized.
 //!
-//! ## Item height table (load-bearing)
+//! ## Item height (self-tuning)
 //!
-//! The window math needs to know how tall each card renders at the current viewport width.
-//! Variable item heights / per-item `ResizeObserver` measurement are out of scope; we use three
-//! fixed breakpoint heights, measured once on mount and re-measured on `resize`:
+//! The window math needs the per-card vertical footprint (card height + outer margin). We
+//! seed it from a breakpoint table on mount, then **measure the real rendered spacing** after
+//! each render with ≥ 2 visible items (`children[2].top − children[1].top` on the list root,
+//! which captures the card's bounding rect plus its `mb-4` in one read). If the measured
+//! value differs from the current estimate by more than 1px we update, which triggers a
+//! re-render with corrected spacers. Convergence is one or two renders.
 //!
-//! | Width            | Card | + `mb-4` | Total |
-//! |------------------|------|----------|-------|
-//! | ≤ 530px (mobile) | 122  | 16       | 138   |
-//! | ≤ 768px (tablet) | 150  | 16       | 166   |
-//! | > 768px (desktop)| 221  | 16       | 237   |
+//! This means [`default_item_height`] is only a startup seed — it doesn't need to track
+//! [`EpisodeListItem`](crate::components::episode_list_item)'s CSS exactly; measurement
+//! corrects any drift. The cost is a single layout-glitch frame on first mount where the
+//! window slice is sized off the seed. Acceptable.
 //!
-//! **These are coupled to [`EpisodeListItem`](crate::components::episode_list_item)'s CSS.**
-//! If that component's per-breakpoint container height (or its outer `mb-4` margin) changes,
-//! update [`default_item_height`] in lockstep. Symptom of skew: spacer math under- or
-//! over-allocates, so cards appear floating above/below where the scrollbar expects them, and
-//! the window slides off-axis with scroll.
-//!
-//! A page that needs a different item size can pass `item_height_fn` to override the table.
+//! A page that needs a different initial seed can pass `item_height_fn`.
 //! [`EpisodeListView`] doesn't expose this — it's a VirtualList-internal escape hatch.
 //!
 //! ## Known limitations (documented; do not call these bugs)
@@ -266,6 +262,31 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
     let items_html = (start..end)
         .map(|i| props.render_item.emit((props.episodes[i].clone(), i)))
         .collect::<Html>();
+
+    // Self-tuning measurement: after each render where the slice has ≥ 2 cards, read the
+    // y-distance between the first two and feed it back into `item_height`. Threshold of 1px
+    // avoids feedback from sub-pixel rect rounding. The effect re-runs whenever start/end
+    // change (which is whenever we scroll or whenever item_height changes — so each correction
+    // gets revalidated by the next render).
+    {
+        let item_height = item_height.clone();
+        let root_ref = root_ref.clone();
+        use_effect_with((start, end), move |&(start, end)| {
+            if end - start >= 2 {
+                if let Some(root_el) = root_ref.cast::<Element>() {
+                    let children = root_el.children();
+                    if let (Some(c1), Some(c2)) = (children.item(1), children.item(2)) {
+                        let measured = c2.get_bounding_client_rect().top()
+                            - c1.get_bounding_client_rect().top();
+                        if measured > 1.0 && (measured - *item_height).abs() > 1.0 {
+                            item_height.set(measured);
+                        }
+                    }
+                }
+            }
+            || ()
+        });
+    }
 
     html! {
         <div ref={root_ref}>

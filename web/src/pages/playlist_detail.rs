@@ -4,7 +4,6 @@ use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::episode_list_view::EpisodeListView;
 use crate::components::gen_components::{Search_nav, UseScrollToTop};
-use crate::components::virtual_list::ScrollSource;
 use crate::components::loading::Loading;
 use crate::pages::playlists::{IconSelector, PodcastSelector};
 use crate::requests::episode::Episode;
@@ -38,7 +37,6 @@ pub fn playlist_detail(props: &Props) -> Html {
     let loading = use_state(|| true);
     let loading_more = use_state(|| false);
     let error = use_state(|| None::<String>);
-    let scroll_ref = use_node_ref();
 
     // Edit modal state
     let show_edit_modal = use_state(|| false);
@@ -517,14 +515,13 @@ pub fn playlist_detail(props: &Props) -> Html {
                                     </p>
                                 </div>
                             } else {
-                                <div ref={scroll_ref.clone()} class="flex-grow overflow-y-auto">
+                                <div class="flex-grow overflow-y-auto">
                                     <EpisodeListView
                                         key={format!("playlist-{}", playlist_id)}
                                         episodes={(*episodes).clone()}
                                         backend_can_load_more={*offset < *total}
                                         loading_more={*loading_more}
                                         on_load_more={on_load_more.clone()}
-                                        scroll_source={ScrollSource::Container(scroll_ref.clone())}
                                     />
                                 </div>
                             }

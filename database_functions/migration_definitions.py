@@ -4390,3 +4390,31 @@ def migration_042_add_episode_pagination_composite_indexes(conn, db_type: str):
         raise
     finally:
         cursor.close()
+
+
+@register_migration("043", "add_episode_dedup_indexes", "Add (PodcastID, EpisodeTitle) index to speed up title-based episode deduplication", requires=["001"])
+def migration_043_add_episode_dedup_indexes(conn, db_type: str):
+    """The episode insertion path uses title-based dedup for episodes without audio URLs.
+    A composite (PodcastID, EpisodeTitle) index makes those lookups index-only instead of
+    full-podcast table scans."""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting episode dedup indexes migration")
+
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+
+        safe_add_index(
+            cursor, db_type,
+            f'CREATE INDEX idx_episodes_podcastid_title ON {table_prefix}Episodes{table_suffix}(PodcastID, EpisodeTitle)',
+            'idx_episodes_podcastid_title'
+        )
+
+        logger.info("Episode dedup indexes migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in episode dedup indexes migration: {e}")
+        raise
+    finally:
+        cursor.close()
