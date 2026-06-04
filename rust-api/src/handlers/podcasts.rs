@@ -1922,6 +1922,7 @@ pub struct SearchDataRequest {
 pub struct SearchQueryParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    pub filter: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1946,6 +1947,7 @@ pub async fn search_data(
 
     let limit  = params.limit.unwrap_or(50).min(200);
     let offset = params.offset.unwrap_or(0).max(0);
+    let filter = params.filter.as_deref().unwrap_or("all");
 
     let (result, total) = state.db_pool
         .search_data(
@@ -1954,6 +1956,7 @@ pub async fn search_data(
             request.categories.as_deref().unwrap_or(&[]),
             limit,
             offset,
+            filter,
         )
         .await?;
 

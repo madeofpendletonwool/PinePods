@@ -685,10 +685,11 @@ pub async fn call_search_database_paged(
     request_data: &SearchRequest,
     limit: i64,
     offset: i64,
+    filter: &str,
 ) -> Result<SearchPage, Error> {
     let url = format!(
-        "{}/api/data/search_data?limit={}&offset={}",
-        server_name, limit, offset
+        "{}/api/data/search_data?limit={}&offset={}&filter={}",
+        server_name, limit, offset, filter
     );
     let api_key_ref = api_key
         .as_deref()
