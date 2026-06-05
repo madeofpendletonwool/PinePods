@@ -906,7 +906,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     api_key_tile,
                                     &history_tile,
                                     pod.podcastid,
-                                    pod.podcastindexid,
+                                    pod.podcastindexid.unwrap_or(0),
                                     pod.podcastname.clone(),
                                     pod.feedurl.clone().unwrap_or_default(),
                                     pod.description.clone().unwrap_or_default(),

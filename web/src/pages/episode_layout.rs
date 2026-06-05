@@ -4177,14 +4177,12 @@ pub fn episode_layout() -> Html {
                                 {
                                     // Modern mobile-friendly filter bar
                                     html! {
-                                        <div class="mb-6 space-y-4">
-                                            // Combined search and sort bar (seamless design)
-                                            <div class="flex gap-0 h-12">
-                                                // Search input (left half)
-                                                <div class="flex-1 relative">
+                                        <div class="pfb-section">
+                                            <div class="pfb-bar">
+                                                <div class="sp-input">
+                                                    <i class="ph ph-headphones sp-search-ico"></i>
                                                     <input
                                                         type="text"
-                                                        class="search-input"
                                                         placeholder={i18n_search_episodes_placeholder.clone()}
                                                         value={(*episode_search_term).clone()}
                                                         oninput={
@@ -4196,13 +4194,10 @@ pub fn episode_layout() -> Html {
                                                             })
                                                         }
                                                     />
-                                                    <i class="ph ph-magnifying-glass search-icon"></i>
                                                 </div>
-
-                                                // Sort dropdown (right half)
-                                                <div class="flex-shrink-0 relative min-w-[160px]">
+                                                <div class="pfb-sort">
                                                     <select
-                                                        class="sort-dropdown"
+                                                        class="pfb-sort-select"
                                                         onchange={
                                                             let episode_sort_direction = episode_sort_direction.clone();
                                                             let podcast_id_clone = podcast_id.clone();
@@ -4210,7 +4205,6 @@ pub fn episode_layout() -> Html {
                                                                 let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
                                                                 let value = target.value();
 
-                                                                // Save preference to per-podcast local storage
                                                                 if *podcast_id_clone > 0 {
                                                                     let preference_key = format!("podcast_{}", *podcast_id_clone);
                                                                     set_filter_preference(&preference_key, &value);
@@ -4229,61 +4223,34 @@ pub fn episode_layout() -> Html {
                                                         }
                                                     >
                                                         <option value="newest" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"
                                                         }>{&i18n_newest_first}</option>
                                                         <option value="oldest" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"
                                                         }>{&i18n_oldest_first}</option>
                                                         <option value="shortest" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"
                                                         }>{&i18n_shortest_first}</option>
                                                         <option value="longest" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"
                                                         }>{&i18n_longest_first}</option>
                                                         <option value="title_az" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"
                                                         }>{&i18n_title_az}</option>
                                                         <option value="title_za" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"
                                                         }>{&i18n_title_za}</option>
                                                     </select>
-                                                    <i class="ph ph-caret-down dropdown-arrow"></i>
+                                                    <i class="ph ph-caret-down pfb-sort-arrow"></i>
                                                 </div>
                                             </div>
-
-                                            // Filter chips (horizontal scroll on mobile)
-                                            <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-                                                // Clear all filters
+                                            <div class="sp-chips pfb-chips">
                                                 <button
                                                     onclick={
                                                         let show_in_progress = show_in_progress.clone();
@@ -4300,13 +4267,11 @@ pub fn episode_layout() -> Html {
                                                             }
                                                         })
                                                     }
-                                                    class="filter-chip"
+                                                    class="sp-chip"
                                                 >
-                                                    <i class="ph ph-broom text-lg"></i>
-                                                    <span class="text-sm font-medium">{&i18n_clear_all}</span>
+                                                    <i class="ph ph-broom"></i>
+                                                    <span>{&i18n_clear_all}</span>
                                                 </button>
-
-                                                // Completed filter chip (3-state)
                                                 <button
                                                     onclick={
                                                         let completed_filter_state = completed_filter_state.clone();
@@ -4331,19 +4296,17 @@ pub fn episode_layout() -> Html {
                                                     }
                                                     title={completed_title.clone()}
                                                     class={classes!(
-                                                        "filter-chip",
+                                                        "sp-chip",
                                                         match *completed_filter_state {
-                                                            CompletedFilter::ShowOnly => "filter-chip-active",
-                                                            CompletedFilter::Hide => "filter-chip-alert",
+                                                            CompletedFilter::ShowOnly => "is-active",
+                                                            CompletedFilter::Hide => "is-alert",
                                                             CompletedFilter::ShowAll => ""
                                                         }
                                                     )}
                                                 >
-                                                    <i class={classes!("ph", completed_icon, "text-lg")}></i>
-                                                    <span class="text-sm font-medium">{completed_text}</span>
+                                                    <i class={classes!("ph", completed_icon)}></i>
+                                                    <span>{completed_text}</span>
                                                 </button>
-
-                                                // In progress filter chip
                                                 <button
                                                     onclick={
                                                         let show_in_progress = show_in_progress.clone();
@@ -4351,37 +4314,26 @@ pub fn episode_layout() -> Html {
                                                             show_in_progress.set(!*show_in_progress);
                                                         })
                                                     }
-                                                    class={classes!(
-                                                        "filter-chip",
-                                                        if *show_in_progress { "filter-chip-active" } else { "" }
-                                                    )}
+                                                    class={classes!("sp-chip", if *show_in_progress { "is-active" } else { "" })}
                                                 >
-                                                    <i class="ph ph-hourglass-medium text-lg"></i>
-                                                    <span class="text-sm font-medium">{&i18n_in_progress}</span>
+                                                    <i class="ph ph-hourglass-medium"></i>
+                                                    <span>{&i18n_in_progress}</span>
                                                 </button>
-
-                                                // Selection mode toggle
                                                 <button
                                                     onclick={
                                                         let is_selecting = is_selecting.clone();
                                                         let selected_episodes = selected_episodes.clone();
                                                         Callback::from(move |_| {
                                                             if *is_selecting {
-                                                                // Exit selection mode and clear selections
                                                                 selected_episodes.set(HashSet::new());
                                                             }
                                                             is_selecting.set(!*is_selecting);
                                                         })
                                                     }
-                                                    class={classes!(
-                                                        "filter-chip",
-                                                        if *is_selecting { "filter-chip-active" } else { "" }
-                                                    )}
+                                                    class={classes!("sp-chip", if *is_selecting { "is-active" } else { "" })}
                                                 >
-                                                    <i class="ph ph-check-square text-lg"></i>
-                                                    <span class="text-sm font-medium">
-                                                        {if *is_selecting { &i18n_exit_select } else { &i18n_select }}
-                                                    </span>
+                                                    <i class="ph ph-check-square"></i>
+                                                    <span>{if *is_selecting { &i18n_exit_select } else { &i18n_select }}</span>
                                                 </button>
                                             </div>
 

@@ -687,7 +687,18 @@
     "gpodder_server_url": "Server URL",
     "username": "Username",
     "password": "Password",
-    "test_connection": "Test Connection"
+    "test_connection": "Test Connection",
+    "connection": "Endpoint Test",
+    "devices": "Current Device Count",
+    "subscriptions": "Synced Subscription Count",
+    "server_information": "Server Information",
+    "server_url_colon": "Server URL:",
+    "sync_type_colon": "Sync Type:",
+    "last_sync_colon": "Last Sync:",
+    "api_endpoint_status": "API Endpoint Status",
+    "recent_episode_actions": "Recent Episode Actions",
+    "hide_extra_options": "Hide Extra Options",
+    "intial_sync": "Initial Sync"
   },
   "notification_center": {
     "active_tasks": "Active Tasks",
@@ -746,7 +757,10 @@
     "topic": "Topic: ",
     "username": "Username",
     "gotify": "gotify",
-    "username_password_or_token": "Choose either username/password OR access token, not both"
+    "username_password_or_token": "Choose either username/password OR access token, not both",
+    "http_endpoint_url": "HTTP Endpoint URL",
+    "token_authentication": "Auth Token",
+    "http_method": "HTTP Method"
   },
   "oauth_callback": {
     "api_key_not_found": "API key not found",
@@ -1290,6 +1304,10 @@
     "cover_for": "Cover for",
     "select_newer_episodes": "Select this episode and all newer episodes",
     "select_older_episodes": "Select this episode and all older episodes"
+  },
+  "theme_options": {
+    "my_themes": "My Themes",
+    "show_fewer": "Show Fewer"
   },
   "youtube_layout": {
     "channel_thumbnail": "channel thumbnail",

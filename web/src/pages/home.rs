@@ -275,7 +275,7 @@ pub fn home() -> Html {
                                     api_key_clone,
                                     &history_clone,
                                     podcast.podcastid,
-                                    podcast.podcastindexid,
+                                    podcast.podcastindexid.unwrap_or(0),
                                     podcast.podcastname.clone(),
                                     podcast.feedurl.clone().unwrap_or_default(),
                                     podcast.description.clone().unwrap_or_else(|| i18n_no_description_provided.clone()),
