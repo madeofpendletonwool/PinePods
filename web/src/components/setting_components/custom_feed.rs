@@ -210,7 +210,7 @@ pub fn custom_feed() -> Html {
                 <div class="settings-row-control">
                     <button
                         onclick={add_custom_feed}
-                        class="btn btn-primary"
+                        class="btn btn-secondary"
                         style="padding:6px 12px;"
                         disabled={*is_loading}
                     >
@@ -241,7 +241,7 @@ pub fn custom_feed() -> Html {
                 <div class="settings-row-control">
                     <button
                         onclick={add_youtube_channel}
-                        class="btn btn-primary"
+                        class="btn btn-secondary"
                         style="padding:6px 12px;"
                         disabled={*is_loading}
                     >

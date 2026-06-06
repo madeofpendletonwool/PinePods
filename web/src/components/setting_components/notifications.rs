@@ -620,7 +620,7 @@ pub fn notification_settings() -> Html {
                     }
                 </div>
                 <div class="settings-row-control">
-                    <button type="submit" class="btn btn-primary" style="padding:6px 12px;">
+                    <button type="submit" class="btn btn-secondary" style="padding:6px 12px;">
                         <i class="ph ph-floppy-disk"></i>
                         {&i18n_save_settings}
                     </button>

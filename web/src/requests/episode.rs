@@ -59,8 +59,11 @@ pub struct Episode {
     pub listenduration: i32,
     #[serde(alias = "Completed")]
     pub completed: bool,
+    #[serde(alias = "is_saved")]
     pub saved: bool,
+    #[serde(alias = "is_queued")]
     pub queued: bool,
+    #[serde(alias = "is_downloaded")]
     pub downloaded: bool,
     pub is_youtube: bool,
     pub is_video: bool,

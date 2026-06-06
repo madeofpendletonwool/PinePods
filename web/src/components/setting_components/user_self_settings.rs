@@ -768,7 +768,7 @@ pub fn user_self_settings() -> Html {
                     }
                 </div>
                 <div class="settings-row-control">
-                    <button type="submit" class="btn btn-primary" style="padding:6px 12px;">
+                    <button type="submit" class="btn btn-secondary" style="padding:6px 12px;">
                         <i class="ph ph-floppy-disk"></i>
                         {i18n.t("settings.save_changes")}
                     </button>

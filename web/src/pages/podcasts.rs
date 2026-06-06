@@ -83,9 +83,9 @@ fn render_layout_toggle(
     };
 
     html! {
-        <button class="filter-chip" {onclick}>
-            <i class={classes!(icon, "text-lg")}></i>
-            <span class="text-sm font-medium">{text}</span>
+        <button class="sp-chip" {onclick}>
+            <i class={icon}></i>
+            <span>{text}</span>
         </button>
     }
 }
@@ -1058,30 +1058,12 @@ pub fn podcasts() -> Html {
             {
                 html! {
                     <div>
-                        // Modern mobile-friendly filter bar with tab-style page title
-                        <div class="mb-6 space-y-4">
-                            // Tab-style page indicator
-                            <div class="flex gap-0 h-12 relative">
-                                // <div class="page-tab-indicator">
-                                //     <i class="ph ph-microphone tab-icon"></i>
-                                //     {"Podcasts"}
-                                // </div>
-                                <div class="flex gap-2 ml-auto items-center">
-                                    <button class="filter-chip" onclick={toggle_custom_modal}>
-                                        <i class="ph ph-plus-circle text-lg"></i>
-                                        <span class="text-sm font-medium">{&i18n_custom_feed}</span>
-                                    </button>
-                                    {render_layout_toggle(prefs_dispatch.clone(), prefs_state.podcast_layout.clone(), &i18n)}
-                                </div>
-                            </div>
-
-                            // Combined search and sort bar
-                            <div class="flex gap-0 h-12 relative">
-                                // Search input (left half)
-                                <div class="flex-1 relative">
+                        <div class="pfb-section">
+                            <div class="pfb-bar">
+                                <div class="sp-input">
+                                    <i class="ph ph-microphone sp-search-ico"></i>
                                     <input
                                         type="text"
-                                        class="search-input"
                                         placeholder={i18n_search_podcasts_placeholder.clone()}
                                         value={(*search_term).clone()}
                                         oninput={let search_term = search_term.clone();
@@ -1092,14 +1074,10 @@ pub fn podcasts() -> Html {
                                             })
                                         }
                                     />
-                                    <i class="ph ph-magnifying-glass search-icon"></i>
                                 </div>
-
-                                // Sort dropdown (right half)
-                                <div class="flex-shrink-0 relative min-w-[160px]">
+                                <div class="pfb-sort">
                                     <select
-                                        class="sort-dropdown"
-                                        value="alpha_asc"
+                                        class="pfb-sort-select"
                                         onchange={
                                             let sort_direction = sort_direction.clone();
                                             Callback::from(move |e: Event| {
@@ -1128,40 +1106,35 @@ pub fn podcasts() -> Html {
                                         <option value="most_played">{&i18n.t("podcasts.sort_most_played")}</option>
                                         <option value="least_played">{&i18n.t("podcasts.sort_least_played")}</option>
                                     </select>
-                                    <i class="ph ph-caret-down dropdown-arrow"></i>
+                                    <i class="ph ph-caret-down pfb-sort-arrow"></i>
+                                </div>
+                                <div class="flex gap-2 items-center flex-shrink-0">
+                                    <button class="sp-chip" onclick={toggle_custom_modal}>
+                                        <i class="ph ph-plus-circle"></i>
+                                        <span>{&i18n_custom_feed}</span>
+                                    </button>
+                                    {render_layout_toggle(prefs_dispatch.clone(), prefs_state.podcast_layout.clone(), &i18n)}
                                 </div>
                             </div>
-
-                            // Filter chips (horizontal scroll on mobile)
-                            <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-                                // Clear all filters
-                                <button
-                                    onclick={reset_filter}
-                                    class="filter-chip"
-                                >
-                                    <i class="ph ph-broom text-lg"></i>
-                                    <span class="text-sm font-medium">{&i18n.t("podcasts.clear_all")}</span>
+                            <div class="sp-chips pfb-chips">
+                                <button onclick={reset_filter} class="sp-chip">
+                                    <i class="ph ph-broom"></i>
+                                    <span>{&i18n.t("podcasts.clear_all")}</span>
                                 </button>
-
-                                // Category filter chips (limited to prevent multiple lines)
                                 {
                                     if let Some(categories) = &filter_state.category_filter_list {
                                         categories.iter().map(|category| {
                                             let category_clone = category.clone();
                                             let is_selected = selected_category.as_ref().map_or(false, |selected| selected == category);
                                             let on_filter_click_clone = on_filter_click.clone();
-
                                             html! {
                                                 <button
                                                     onclick={Callback::from(move |_| {
                                                         on_filter_click_clone.emit(category_clone.clone());
                                                     })}
-                                                    class={classes!(
-                                                        "filter-chip",
-                                                        if is_selected { "filter-chip-active" } else { "" }
-                                                    )}
+                                                    class={classes!("sp-chip", if is_selected { "is-active" } else { "" })}
                                                 >
-                                                    <span class="text-sm font-medium">{category}</span>
+                                                    <span>{category}</span>
                                                 </button>
                                             }
                                         }).collect::<Html>()

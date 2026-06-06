@@ -293,7 +293,7 @@ pub fn local_podcast() -> Html {
                 <div class="settings-row-control">
                     <button
                         onclick={add_local_podcast_cb}
-                        class="btn btn-primary"
+                        class="btn btn-secondary"
                         style="padding:6px 12px;"
                         disabled={*is_loading}
                     >

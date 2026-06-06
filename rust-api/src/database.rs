@@ -3453,7 +3453,7 @@ impl DatabasePool {
     }
 
     // Search data - matches Python search_data function (simplified version)
-    pub async fn search_data(&self, search_term: &str, user_id: i32, categories: &[String], limit: i64, offset: i64) -> AppResult<(Vec<serde_json::Value>, i64)> {
+    pub async fn search_data(&self, search_term: &str, user_id: i32, categories: &[String], limit: i64, offset: i64, filter: &str) -> AppResult<(Vec<serde_json::Value>, i64)> {
         match self {
             DatabasePool::Postgres(pool) => {
                 let cat_clause = if categories.is_empty() {
@@ -3463,6 +3463,13 @@ impl DatabasePool {
                         .map(|i| format!("LOWER(p.categories) LIKE LOWER(${})", i + 5))
                         .collect();
                     format!("AND ({})", conds.join(" OR "))
+                };
+                let filter_clause = match filter {
+                    "unplayed"    => " WHERE listenduration = 0 AND completed = false",
+                    "in_progress" => " WHERE listenduration > 0 AND completed = false",
+                    "saved"       => " WHERE saved = true",
+                    "downloaded"  => " WHERE downloaded = true",
+                    _             => "",
                 };
 
                 let sql = format!(
@@ -3511,8 +3518,9 @@ impl DatabasePool {
                           {}
                         ORDER BY p.podcastname, e.episodepubdate DESC
                     ) inner_q
+                    {}
                     LIMIT $3 OFFSET $4"#,
-                    cat_clause
+                    cat_clause, filter_clause
                 );
 
                 let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
@@ -3579,6 +3587,13 @@ impl DatabasePool {
                     let conds = vec!["LOWER(p.Categories) LIKE LOWER(?)"; categories.len()];
                     format!("AND ({})", conds.join(" OR "))
                 };
+                let filter_clause = match filter {
+                    "unplayed"    => " WHERE listenduration = 0 AND completed = 0",
+                    "in_progress" => " WHERE listenduration > 0 AND completed = 0",
+                    "saved"       => " WHERE saved = 1",
+                    "downloaded"  => " WHERE downloaded = 1",
+                    _             => "",
+                };
 
                 let sql = format!(
                     "SELECT *, COUNT(*) OVER() AS total_count FROM (
@@ -3626,8 +3641,9 @@ impl DatabasePool {
                           {}
                         ORDER BY p.PodcastName, e.EpisodePubDate DESC
                     ) inner_q
+                    {}
                     LIMIT ? OFFSET ?",
-                    cat_clause
+                    cat_clause, filter_clause
                 );
 
                 let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))

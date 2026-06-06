@@ -265,16 +265,12 @@ pub fn history() -> Html {
                 } else {
                     html! {
                         <>
-                            <div class="mb-6 space-y-4 mt-4">
-                                <div class="flex gap-0 h-12 relative">
-                                    <div class="page-tab-indicator">
-                                        <i class="ph ph-clock-clockwise tab-icon"></i>
-                                        {&i18n_history}
-                                    </div>
-                                    <div class="flex-1 relative">
+                            <div class="pfb-section">
+                                <div class="pfb-bar">
+                                    <div class="sp-input">
+                                        <i class="ph ph-clock-counter-clockwise sp-search-ico"></i>
                                         <input
                                             type="text"
-                                            class="search-input"
                                             placeholder={i18n_search_listening_history.clone()}
                                             value={(*episode_search_term).clone()}
                                             oninput={let episode_search_term = episode_search_term.clone();
@@ -285,11 +281,10 @@ pub fn history() -> Html {
                                                 })
                                             }
                                         />
-                                        <i class="ph ph-magnifying-glass search-icon"></i>
                                     </div>
-                                    <div class="flex-shrink-0 relative min-w-[160px]">
+                                    <div class="pfb-sort">
                                         <select
-                                            class="sort-dropdown"
+                                            class="pfb-sort-select"
                                             onchange={
                                                 let sort_value = sort_value.clone();
                                                 let reload_trigger = reload_trigger.clone();
@@ -309,11 +304,10 @@ pub fn history() -> Html {
                                             <option value="title_az" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{&i18n_title_az}</option>
                                             <option value="title_za" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{&i18n_title_za}</option>
                                         </select>
-                                        <i class="ph ph-caret-down dropdown-arrow"></i>
+                                        <i class="ph ph-caret-down pfb-sort-arrow"></i>
                                     </div>
                                 </div>
-
-                                <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                                <div class="sp-chips pfb-chips">
                                     <button
                                         onclick={
                                             let filter_value = filter_value.clone();
@@ -324,12 +318,11 @@ pub fn history() -> Html {
                                                 reload_trigger.set(*reload_trigger + 1);
                                             })
                                         }
-                                        class="filter-chip"
+                                        class="sp-chip"
                                     >
-                                        <i class="ph ph-broom text-lg"></i>
-                                        <span class="text-sm font-medium">{&i18n_clear_all}</span>
+                                        <i class="ph ph-broom"></i>
+                                        <span>{&i18n_clear_all}</span>
                                     </button>
-
                                     <button
                                         onclick={
                                             let filter_value = filter_value.clone();
@@ -341,15 +334,11 @@ pub fn history() -> Html {
                                                 reload_trigger.set(*reload_trigger + 1);
                                             })
                                         }
-                                        class={classes!(
-                                            "filter-chip",
-                                            if *filter_value == "completed" { "filter-chip-active" } else { "" }
-                                        )}
+                                        class={classes!("sp-chip", if *filter_value == "completed" { "is-active" } else { "" })}
                                     >
-                                        <i class="ph ph-check-circle text-lg"></i>
-                                        <span class="text-sm font-medium">{&i18n_completed}</span>
+                                        <i class="ph ph-check-circle"></i>
+                                        <span>{&i18n_completed}</span>
                                     </button>
-
                                     <button
                                         onclick={
                                             let filter_value = filter_value.clone();
@@ -361,13 +350,10 @@ pub fn history() -> Html {
                                                 reload_trigger.set(*reload_trigger + 1);
                                             })
                                         }
-                                        class={classes!(
-                                            "filter-chip",
-                                            if *filter_value == "in_progress" { "filter-chip-active" } else { "" }
-                                        )}
+                                        class={classes!("sp-chip", if *filter_value == "in_progress" { "is-active" } else { "" })}
                                     >
-                                        <i class="ph ph-hourglass-medium text-lg"></i>
-                                        <span class="text-sm font-medium">{&i18n_in_progress}</span>
+                                        <i class="ph ph-hourglass-medium"></i>
+                                        <span>{&i18n_in_progress}</span>
                                     </button>
                                 </div>
                             </div>

@@ -374,24 +374,24 @@ pub fn downloads() -> Html {
                                         {
                                             if **page_state.borrow() == PageState::Normal {
                                                 html! {
-                                                    <button class="filter-chip"
+                                                    <button class="sp-chip"
                                                         onclick={delete_mode_enable.clone()}>
-                                                        <i class="ph ph-lasso text-lg"></i>
-                                                        <span class="text-sm font-medium">{&i18n_select}</span>
+                                                        <i class="ph ph-lasso"></i>
+                                                        <span>{&i18n_select}</span>
                                                     </button>
                                                 }
                                             } else {
                                                 html! {
                                                     <>
-                                                        <button class="filter-chip"
+                                                        <button class="sp-chip"
                                                             onclick={delete_mode_disable.clone()}>
-                                                            <i class="ph ph-prohibit text-lg"></i>
-                                                            <span class="text-sm font-medium">{&i18n_cancel}</span>
+                                                            <i class="ph ph-prohibit"></i>
+                                                            <span>{&i18n_cancel}</span>
                                                         </button>
-                                                        <button class="filter-chip filter-chip-alert"
+                                                        <button class="sp-chip is-alert"
                                                             onclick={delete_selected_episodes.clone()}>
-                                                            <i class="ph ph-trash text-lg"></i>
-                                                            <span class="text-sm font-medium">{&i18n_delete}</span>
+                                                            <i class="ph ph-trash"></i>
+                                                            <span>{&i18n_delete}</span>
                                                         </button>
                                                     </>
                                                 }
@@ -400,12 +400,12 @@ pub fn downloads() -> Html {
                                     </div>
                                 </div>
 
-                                <div class="mb-6 space-y-4">
-                                    <div class="w-full">
-                                        <div class="relative">
+                                <div class="pfb-section">
+                                    <div class="pfb-bar">
+                                        <div class="sp-input">
+                                            <i class="ph ph-download-simple sp-search-ico"></i>
                                             <input
                                                 type="text"
-                                                class="downloads-search-input"
                                                 placeholder={i18n_search_downloaded_episodes.clone()}
                                                 value={(*episode_search_term).clone()}
                                                 oninput={let episode_search_term = episode_search_term.clone();
@@ -416,11 +416,9 @@ pub fn downloads() -> Html {
                                                     })
                                                 }
                                             />
-                                            <i class="ph ph-magnifying-glass search-icon"></i>
                                         </div>
                                     </div>
-
-                                    <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                                    <div class="sp-chips pfb-chips">
                                         <button
                                             onclick={
                                                 let show_completed = show_completed.clone();
@@ -432,12 +430,11 @@ pub fn downloads() -> Html {
                                                     episode_search_term.set(String::new());
                                                 })
                                             }
-                                            class="filter-chip"
+                                            class="sp-chip"
                                         >
-                                            <i class="ph ph-broom text-lg"></i>
-                                            <span class="text-sm font-medium">{&i18n_clear_all}</span>
+                                            <i class="ph ph-broom"></i>
+                                            <span>{&i18n_clear_all}</span>
                                         </button>
-
                                         <button
                                             onclick={let show_completed = show_completed.clone();
                                                 let show_in_progress = show_in_progress.clone();
@@ -448,15 +445,11 @@ pub fn downloads() -> Html {
                                                     }
                                                 })
                                             }
-                                            class={classes!(
-                                                "filter-chip",
-                                                if *show_completed { "filter-chip-active" } else { "" }
-                                            )}
+                                            class={classes!("sp-chip", if *show_completed { "is-active" } else { "" })}
                                         >
-                                            <i class="ph ph-check-circle text-lg"></i>
-                                            <span class="text-sm font-medium">{&i18n_completed}</span>
+                                            <i class="ph ph-check-circle"></i>
+                                            <span>{&i18n_completed}</span>
                                         </button>
-
                                         <button
                                             onclick={let show_in_progress = show_in_progress.clone();
                                                 let show_completed = show_completed.clone();
@@ -467,13 +460,10 @@ pub fn downloads() -> Html {
                                                     }
                                                 })
                                             }
-                                            class={classes!(
-                                                "filter-chip",
-                                                if *show_in_progress { "filter-chip-active" } else { "" }
-                                            )}
+                                            class={classes!("sp-chip", if *show_in_progress { "is-active" } else { "" })}
                                         >
-                                            <i class="ph ph-hourglass-medium text-lg"></i>
-                                            <span class="text-sm font-medium">{&i18n_in_progress}</span>
+                                            <i class="ph ph-hourglass-medium"></i>
+                                            <span>{&i18n_in_progress}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -697,9 +687,9 @@ pub fn render_podcast_with_episodes(
                             } else if has_more {
                                 html! {
                                     <div class="flex justify-center py-4">
-                                        <button class="filter-chip" onclick={load_more}>
-                                            <i class="ph ph-arrow-down text-lg"></i>
-                                            <span class="text-sm font-medium">{ &load_more_label }</span>
+                                        <button class="sp-chip" onclick={load_more}>
+                                            <i class="ph ph-arrow-down"></i>
+                                            <span>{ &load_more_label }</span>
                                         </button>
                                     </div>
                                 }

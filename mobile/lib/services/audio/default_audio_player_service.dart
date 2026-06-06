@@ -390,6 +390,8 @@ class DefaultAudioPlayerService extends AudioPlayerService {
   @override
   Future<void> setPlaybackSpeed(double speed) async {
     await _audioHandlerReady.future;
+    _playbackSpeed = speed;
+    settingsService.playbackSpeed = speed;
     return _audioHandler.setSpeed(speed);
   }
 
@@ -1330,7 +1332,7 @@ class _DefaultAudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
     var downloaded = mediaItem.extras!['downloaded'] as bool? ?? true;
     var startPosition = mediaItem.extras!['position'] as int? ?? 0;
-    var playbackSpeed = mediaItem.extras!['speed'] as double? ?? 0.0;
+    var playbackSpeed = mediaItem.extras!['speed'] as double? ?? 1.0;
     var start = startPosition > 0 ? Duration(milliseconds: startPosition) : Duration.zero;
     var boost = mediaItem.extras!['boost'] as bool? ?? true;
     // Commented out until just audio position bug is fixed

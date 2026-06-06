@@ -39,6 +39,18 @@ enum FilterChip {
     Downloaded,
 }
 
+impl FilterChip {
+    fn to_api_str(&self) -> &'static str {
+        match self {
+            FilterChip::All        => "all",
+            FilterChip::Unplayed   => "unplayed",
+            FilterChip::InProgress => "in_progress",
+            FilterChip::Saved      => "saved",
+            FilterChip::Downloaded => "downloaded",
+        }
+    }
+}
+
 fn filter_episode(ep: &Episode, chip: &FilterChip) -> bool {
     match chip {
         FilterChip::All        => true,
@@ -279,29 +291,8 @@ pub fn search(_props: &SearchProps) -> Html {
         });
     }
 
-    // ── Chip counts (computed from all loaded episodes, regardless of active filter) ─────
-    let chip_counts = [
-        (*episodes).len(),
-        (*episodes).iter().filter(|e| !e.completed && e.listenduration == 0).count(),
-        (*episodes).iter().filter(|e| e.listenduration > 0 && !e.completed).count(),
-        (*episodes).iter().filter(|e| e.saved).count(),
-        (*episodes).iter().filter(|e| e.downloaded).count(),
-    ];
-
-    // Visible episodes after the FilterChip filter. When the chip is "All", skip the clone
-    // and just hand the parent's Rc straight through; otherwise allocate a filtered Vec.
-    let display_episodes_rc: Rc<Vec<Episode>> = if *active_filter == FilterChip::All {
-        (*episodes).clone()
-    } else {
-        let filter = (*active_filter).clone();
-        Rc::new(
-            (*episodes)
-                .iter()
-                .filter(|ep| filter_episode(ep, &filter))
-                .cloned()
-                .collect(),
-        )
-    };
+    // Episodes are already filtered server-side; hand the Rc through directly.
+    let display_episodes_rc: Rc<Vec<Episode>> = (*episodes).clone();
     let visible_count = display_episodes_rc.len();
     let visible_empty = visible_count == 0;
     let visible_ep_ids: Vec<i32> = display_episodes_rc.iter().map(|ep| ep.episodeid).collect();
@@ -420,7 +411,7 @@ pub fn search(_props: &SearchProps) -> Html {
         })
     };
 
-    // ── fire_search: low-level executor, accepts (term, cats) explicitly ────
+    // ── fire_search: low-level executor, accepts (term, cats, filter_str) explicitly ────
     let fire_search = {
         let current_term = current_term.clone();
         let episodes = episodes.clone();
@@ -431,7 +422,7 @@ pub fn search(_props: &SearchProps) -> Html {
         let user_id = user_id.clone();
         let server_name = server_name.clone();
 
-        Callback::from(move |(term, cats): (String, Vec<String>)| {
+        Callback::from(move |(term, cats, filter_str): (String, Vec<String>, String)| {
             current_term.set(term.clone());
             episodes.set(Rc::new(Vec::new()));
             total.set(0);
@@ -457,7 +448,7 @@ pub fn search(_props: &SearchProps) -> Html {
                         user_id: uid,
                         categories: if cats.is_empty() { None } else { Some(cats) },
                     };
-                    match call_search_database_paged(&server, &Some(ak), &req, PAGE_SIZE, 0).await {
+                    match call_search_database_paged(&server, &Some(ak), &req, PAGE_SIZE, 0, &filter_str).await {
                         Ok(page) => {
                             if *current_term != term_clone { return; }
                             total.set(page.total);
@@ -479,6 +470,7 @@ pub fn search(_props: &SearchProps) -> Html {
         let query = query.clone();
         let recent_searches = recent_searches.clone();
         let fire_search = fire_search.clone();
+        let active_filter_commit = active_filter.clone();
 
         Callback::from(move |(term, cats): (String, Vec<String>)| {
             let t = term.trim().to_string();
@@ -495,7 +487,8 @@ pub fn search(_props: &SearchProps) -> Html {
                 save_recents_to_storage(&recents);
             }
 
-            fire_search.emit((t, cats));
+            let filter_str = (*active_filter_commit).to_api_str().to_string();
+            fire_search.emit((t, cats, filter_str));
         })
     };
 
@@ -510,6 +503,7 @@ pub fn search(_props: &SearchProps) -> Html {
         let commit_search = commit_search.clone();
         let selected_categories_check = selected_categories.clone();
         let fire_search_input = fire_search.clone();
+        let active_filter_input = active_filter.clone();
 
         Callback::from(move |e: InputEvent| {
             let value = e.target_unchecked_into::<HtmlInputElement>().value();
@@ -523,7 +517,8 @@ pub fn search(_props: &SearchProps) -> Html {
                     offset.set(0);
                     current_term.set(String::new());
                 } else {
-                    fire_search_input.emit(("".to_string(), (*selected_categories_check).clone()));
+                    let filter_str = (*active_filter_input).to_api_str().to_string();
+                    fire_search_input.emit(("".to_string(), (*selected_categories_check).clone(), filter_str));
                 }
                 return;
             }
@@ -604,6 +599,7 @@ pub fn search(_props: &SearchProps) -> Html {
         let user_id = user_id.clone();
         let server_name = server_name.clone();
         let selected_categories_lm = selected_categories.clone();
+        let active_filter_lm = active_filter.clone();
         use_callback((), move |_: (), _| {
             if *loading_more {
                 return;
@@ -628,6 +624,7 @@ pub fn search(_props: &SearchProps) -> Html {
             let loading_more = loading_more.clone();
             let current_term_for_check = current_term.clone();
             let term_snap = search_term.clone();
+            let filter_str = (*active_filter_lm).to_api_str().to_string();
             spawn_local(async move {
                 let req = SearchRequest {
                     search_term: term_snap.clone(),
@@ -640,6 +637,7 @@ pub fn search(_props: &SearchProps) -> Html {
                     &req,
                     PAGE_SIZE,
                     current_offset,
+                    &filter_str,
                 )
                 .await
                 {
@@ -666,6 +664,7 @@ pub fn search(_props: &SearchProps) -> Html {
         let selected_categories = selected_categories.clone();
         let query = query.clone();
         let fire_search = fire_search.clone();
+        let active_filter_cat = active_filter.clone();
         Callback::from(move |cat: String| {
             let mut cats = (*selected_categories).clone();
             if cats.contains(&cat) {
@@ -675,7 +674,8 @@ pub fn search(_props: &SearchProps) -> Html {
             }
             selected_categories.set(cats.clone());
             let term = (*query).trim().to_string();
-            fire_search.emit((term, cats));
+            let filter_str = (*active_filter_cat).to_api_str().to_string();
+            fire_search.emit((term, cats, filter_str));
         })
     };
 
@@ -697,11 +697,11 @@ pub fn search(_props: &SearchProps) -> Html {
     ];
 
     let render_chips = |dispatch_chip: &Callback<FilterChip>| -> Html {
+        let active_total = *total as usize;
         html! {
             <>
-            { chips.iter().enumerate().map(|(idx, (_, label_key, icon, chip))| {
+            { chips.iter().map(|(_, label_key, icon, chip)| {
                 let label = i18n.t(label_key);
-                let count = chip_counts[idx];
                 let is_active = *active_filter == *chip;
                 let chip_val = chip.clone();
                 let dispatch_chip = dispatch_chip.clone();
@@ -718,7 +718,9 @@ pub fn search(_props: &SearchProps) -> Html {
                             <i class={*ico}></i>
                         }
                         <span>{ label }</span>
-                        <span class="sp-chip-count">{ count }</span>
+                        if is_active {
+                            <span class="sp-chip-count">{ active_total }</span>
+                        }
                     </button>
                 }
             }).collect::<Html>() }
@@ -728,7 +730,18 @@ pub fn search(_props: &SearchProps) -> Html {
 
     let set_filter = {
         let active_filter = active_filter.clone();
-        Callback::from(move |chip: FilterChip| active_filter.set(chip))
+        let fire_search = fire_search.clone();
+        let query = query.clone();
+        let selected_categories = selected_categories.clone();
+        Callback::from(move |chip: FilterChip| {
+            let filter_str = chip.to_api_str().to_string();
+            active_filter.set(chip);
+            let term = (*query).trim().to_string();
+            let cats = (*selected_categories).clone();
+            if !term.is_empty() || !cats.is_empty() {
+                fire_search.emit((term, cats, filter_str));
+            }
+        })
     };
 
     // ── Pre-computed values for select mode UI ───────────────────────────────
@@ -804,6 +817,7 @@ pub fn search(_props: &SearchProps) -> Html {
                             let selected_categories_rm = selected_categories.clone();
                             let query_rm = query.clone();
                             let fire_search_rm = fire_search.clone();
+                            let active_filter_rm = active_filter.clone();
                             html! {
                                 <button key={cat.clone()} class="sp-chip is-active"
                                     onclick={Callback::from(move |_: MouseEvent| {
@@ -811,7 +825,8 @@ pub fn search(_props: &SearchProps) -> Html {
                                         cats.retain(|c| c != &cat_rm);
                                         selected_categories_rm.set(cats.clone());
                                         let term = (*query_rm).trim().to_string();
-                                        fire_search_rm.emit((term, cats));
+                                        let filter_str = (*active_filter_rm).to_api_str().to_string();
+                                        fire_search_rm.emit((term, cats, filter_str));
                                     })}>
                                     <i class="ph ph-tag"></i>
                                     <span>{ cat }</span>
@@ -891,7 +906,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     api_key_tile,
                                     &history_tile,
                                     pod.podcastid,
-                                    pod.podcastindexid,
+                                    pod.podcastindexid.unwrap_or(0),
                                     pod.podcastname.clone(),
                                     pod.feedurl.clone().unwrap_or_default(),
                                     pod.description.clone().unwrap_or_default(),

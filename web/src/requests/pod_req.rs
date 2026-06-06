@@ -4076,7 +4076,7 @@ pub async fn call_update_episode_duration(
 pub struct HomePodcast {
     pub podcastid: i32,
     pub podcastname: String,
-    pub podcastindexid: i32,
+    pub podcastindexid: Option<i32>,
     pub artworkurl: Option<String>,
     pub author: Option<String>,
     pub categories: Option<HashMap<String, String>>,

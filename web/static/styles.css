@@ -7978,6 +7978,10 @@ body.search-takeover-open .drawer-icon { display: none; }
     margin-bottom: 1rem;
 }
 
+.insights-row-2col {
+    grid-template-columns: 1fr 1fr;
+}
+
 .chart-card {
     background-color: var(--container-background);
     border: 1px solid var(--border-color);
@@ -8086,6 +8090,7 @@ body.search-takeover-open .drawer-icon { display: none; }
 
 @media (max-width: 768px) {
     .insights-row { grid-template-columns: 1fr; }
+    .insights-row-2col { grid-template-columns: 1fr; }
 }
 
 /* ── Search Page (sp-*) ─────────────────────────────────────────────────────
@@ -8490,4 +8495,82 @@ body.search-takeover-open .drawer-icon { display: none; }
         transition: none !important;
     }
     .sp-result { animation: none !important; }
+}
+
+/* ── Page Filter Bar (pfb-*) ─────────────────────────────────────────────────
+   Consistent search-bar header used across Saved, History, Downloads,
+   Episode Layout, and Podcasts — shares sp-* visual tokens.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.pfb-section { margin: 16px 0 20px; }
+
+.pfb-bar {
+    display: flex; align-items: center; gap: 10px;
+}
+
+/* sp-input inside pfb-bar: same pill/shadow look, compact 44px height */
+.pfb-bar .sp-input {
+    flex: 1; height: 44px; padding: 0 16px; gap: 10px;
+}
+.pfb-bar .sp-input:focus-within {
+    border-color: var(--hover-color);
+    box-shadow: 0 0 0 3px rgba(93,128,170,.22);
+}
+.pfb-bar .sp-input > i.sp-search-ico { font-size: 18px; }
+.pfb-bar .sp-input input { font-size: 14px; }
+
+/* Sort dropdown — same pill/shadow as sp-input */
+.pfb-sort {
+    flex-shrink: 0;
+    display: flex; align-items: center;
+    height: 44px; padding: 0 32px 0 16px;
+    background: var(--container-background);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    box-shadow: 0 6px 20px -10px rgba(0,0,0,.5);
+    min-width: 150px;
+    position: relative;
+    transition: border-color 180ms, box-shadow 240ms;
+}
+.pfb-sort:focus-within {
+    border-color: var(--hover-color);
+    box-shadow: 0 0 0 3px rgba(93,128,170,.22);
+}
+
+.pfb-sort-select {
+    flex: 1; min-width: 0; width: 100%;
+    background: transparent; border: none; outline: none;
+    color: var(--text-color); font-family: inherit; font-size: 13px; font-weight: 500;
+    appearance: none; -webkit-appearance: none; cursor: pointer;
+}
+
+.pfb-sort-arrow {
+    font-size: 14px; color: var(--text-secondary-color);
+    position: absolute; right: 12px; top: 50%;
+    transform: translateY(-50%); pointer-events: none;
+}
+
+/* Alert chip state (danger / destructive) */
+.sp-chip.is-alert {
+    background: var(--alert-color);
+    color: var(--text-color);
+    border-color: var(--alert-color);
+}
+.sp-chip.is-alert:hover { border-color: color-mix(in srgb, var(--alert-color) 80%, white); }
+
+/* Chip row for pfb pages — left-aligned, single-line horizontal scroll */
+.pfb-chips {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    max-width: 100%;
+    margin: 12px 0 0;
+}
+.pfb-chips::-webkit-scrollbar { display: none; }
+
+@media (max-width: 500px) {
+    .pfb-bar { gap: 6px; }
+    .pfb-sort { min-width: 120px; }
 }
