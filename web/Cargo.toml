@@ -57,6 +57,7 @@ web-sys = { version = "0.3.99", features = [
     "IntersectionObserver",
     "IntersectionObserverInit",
     "IntersectionObserverEntry",
+    "ResizeObserver",
 ] }
 log = "0.4.30"
 wasm-bindgen = "0.2.122"

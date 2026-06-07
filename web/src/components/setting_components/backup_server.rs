@@ -339,12 +339,12 @@ pub fn backup_server() -> Html {
                 {i18n.t("backup_server.manual_backup")}
             </div>
 
-            <div class="settings-row">
+            <div class="settings-row" style="flex-wrap: wrap;">
                 <div class="settings-row-label">
                     <div>{i18n.t("backup_server.download_backup_file")}</div>
                     <div class="settings-row-desc">{i18n.t("backup_server.download_backup_description")}</div>
                 </div>
-                <div class="settings-row-control">
+                <div class="settings-row-control" style="flex: 1 1 200px; min-width: 0;">
                     <input
                         type="password"
                         id="db-pw"
@@ -355,13 +355,13 @@ pub fn backup_server() -> Html {
                         })}
                         class="input"
                         placeholder="mYDBp@ss!"
-                        style="width:180px;"
+                        style="flex: 1; min-width: 0;"
                     />
                     <button
                         onclick={on_download_click}
                         disabled={*is_loading}
                         class="btn btn-secondary"
-                        style="padding:6px 12px;"
+                        style="flex-shrink: 0;"
                     >
                         if *is_loading {
                             <i class="ph ph-spinner animate-spin"></i>
@@ -374,17 +374,16 @@ pub fn backup_server() -> Html {
                 </div>
             </div>
 
-            <div class="settings-row">
+            <div class="settings-row" style="flex-wrap: wrap;">
                 <div class="settings-row-label">
                     <div>{i18n.t("backup_server.save_to_backup_directory")}</div>
                     <div class="settings-row-desc">{i18n.t("backup_server.save_to_backup_description")}</div>
                 </div>
-                <div class="settings-row-control">
+                <div class="settings-row-control" style="flex: 1 1 auto;">
                     <button
                         onclick={on_manual_backup_to_directory}
                         disabled={*is_loading}
                         class="btn btn-secondary"
-                        style="padding:6px 12px;"
                     >
                         if *is_loading {
                             <i class="ph ph-spinner animate-spin"></i>

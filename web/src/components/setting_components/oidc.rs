@@ -1227,16 +1227,18 @@ pub fn oidc_settings() -> Html {
 
     html! {
         <>
-            <div class="settings-row">
+            <div class="settings-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
                 <div>
                     <div class="settings-row-label">{&i18n_oidc_redirect_url}</div>
                     <div class="settings-row-desc">{&i18n_use_this_url_when_configuring}</div>
                 </div>
-                <div class="settings-row-control">
-                    <code style="font-size:12px;color:var(--text-color);padding:4px 8px;background:rgba(128,128,128,0.1);border-radius:4px;word-break:break-all;">
-                        {redirect_url}
-                    </code>
-                    <button onclick={onclick_copy} class="btn btn-ghost" style="padding:6px 8px;" title="Copy to clipboard">
+                <div style="display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;">
+                    <div style="flex: 1; min-width: 0; overflow-x: auto; background: rgba(128,128,128,0.1); border-radius: 4px; padding: 4px 8px;">
+                        <code style="font-size: 12px; color: var(--text-color); white-space: nowrap; display: block;">
+                            {redirect_url}
+                        </code>
+                    </div>
+                    <button onclick={onclick_copy} class="btn btn-ghost" style="flex-shrink: 0; padding: 6px 8px;" title="Copy to clipboard">
                         <i class="ph ph-copy"></i>
                     </button>
                 </div>

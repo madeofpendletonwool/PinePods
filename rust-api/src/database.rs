@@ -18018,8 +18018,10 @@ impl DatabasePool {
         
         for video in videos {
             let video_id = video.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let title = video.get("title").and_then(|v| v.as_str()).unwrap_or("");
-            let description = video.get("description").and_then(|v| v.as_str()).unwrap_or("");
+            let raw_title = video.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let raw_description = video.get("description").and_then(|v| v.as_str()).unwrap_or("");
+            let title = self.clean_and_normalize_title(raw_title);
+            let description = self.decode_html_entities(raw_description);
             let url = video.get("url").and_then(|v| v.as_str()).unwrap_or("");
             let thumbnail = video.get("thumbnail").and_then(|v| v.as_str()).unwrap_or("");
             

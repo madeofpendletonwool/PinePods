@@ -15,11 +15,11 @@
 //!
 //! - [`ScrollSource::Window`] — read scroll from `window.scrollY` (via the list root's
 //!   `getBoundingClientRect`). Use this for inline lists embedded inside a longer page
-//!   that the document itself scrolls (e.g. `person`, `subscribed_people`, `downloads`).
+//!   that the document itself scrolls (e.g. `person`, `subscribed_people`).
 //! - [`ScrollSource::Container(node_ref)`] — read scroll from a specific container element's
-//!   `scrollTop`. Use this when the parent renders the list inside a
-//!   `flex-grow overflow-y-auto` div (every paginated page: `episode_layout`, `feed`,
-//!   `saved`, `history`, `playlist_detail`, `search`).
+//!   `scrollTop`. Use this when the parent renders the list inside an `overflow-y-auto` div
+//!   (every paginated page: `episode_layout`, `feed`, `saved`, `history`, `playlist_detail`,
+//!   `search`; also each expanded podcast's `.podcast-episodes-inner` box on `downloads`).
 //!
 //! We intentionally do NOT auto-detect by walking up the DOM looking for an overflow ancestor
 //! — too magical, breaks silently when CSS is reorganized.
@@ -55,7 +55,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use web_sys::{window, Element, HtmlElement};
+use web_sys::{window, Element, HtmlElement, ResizeObserver};
 use yew::prelude::*;
 
 /// Where to read scroll position from. Pages opt into [`Container`](Self::Container) explicitly.
@@ -244,6 +244,44 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
                 move || drop(listener)
             },
         );
+    }
+
+    // Container resize observer. In `Container` mode the scroll element's `clientHeight` can
+    // change *after* the one-shot mount measurement: `downloads` animates its episode box from
+    // `max-height: 0` to full height (0.5s) and loads episodes async, so the mount read often
+    // captures a box that's still tens of pixels tall and `viewport_height` sticks there —
+    // the window then only fills the top sliver of the eventual 850px box. `window.innerHeight`
+    // (Window mode) is stable and already covered by the resize listener above, so we only
+    // observe in Container mode. The observer fires an initial callback on `observe`, then on
+    // every size change, so `viewport_height` converges to the box's real height without
+    // requiring the user to scroll.
+    {
+        let viewport_height = viewport_height.clone();
+        let scroll_source = props.scroll_source.clone();
+        use_effect_with(props.scroll_source.clone(), move |_| {
+            let mut cleanup: Option<(ResizeObserver, Closure<dyn Fn()>)> = None;
+            if let ScrollSource::Container(nr) = &scroll_source {
+                if let Some(el) = nr.cast::<Element>() {
+                    let viewport_height = viewport_height.clone();
+                    let scroll_source = scroll_source.clone();
+                    let cb = Closure::<dyn Fn()>::wrap(Box::new(move || {
+                        let measured = read_viewport_height(&scroll_source);
+                        if measured > 1.0 && (measured - *viewport_height).abs() > 1.0 {
+                            viewport_height.set(measured);
+                        }
+                    }));
+                    if let Ok(observer) = ResizeObserver::new(cb.as_ref().unchecked_ref()) {
+                        observer.observe(&el);
+                        cleanup = Some((observer, cb));
+                    }
+                }
+            }
+            move || {
+                if let Some((observer, _cb)) = cleanup {
+                    observer.disconnect();
+                }
+            }
+        });
     }
 
     let item_h = (*item_height).max(1.0);

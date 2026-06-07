@@ -618,12 +618,13 @@ pub fn gpodder_advanced_options() -> Html {
                 } else {
                     html! {
                         <>
-                            <div class="settings-row">
+                            <div class="settings-row" style="flex-wrap: wrap;">
                                 <div><div class="settings-row-label">{&i18n_select_device_for_operations}</div></div>
-                                <div class="settings-row-control">
+                                <div class="settings-row-control" style="flex: 1 1 200px; min-width: 0;">
                                     <select
                                         id="device-select"
                                         class="select"
+                                        style="width: 100%; min-width: 0;"
                                         onchange={on_device_select_change}
                                     >
                                         <option value="">{&i18n_select_a_device}</option>
@@ -659,52 +660,55 @@ pub fn gpodder_advanced_options() -> Html {
                                 </div>
                             </div>
 
-                            <div class="settings-row">
-                                <div></div>
-                                <div class="settings-row-control">
-                                    <button
-                                        onclick={on_sync_click}
-                                        disabled={*is_syncing || selected_device_id.is_none()}
-                                        class="btn btn-secondary"
-                                    >
-                                        <i class="ph ph-arrows-clockwise"></i>
-                                        { if *is_syncing { &i18n_syncing } else { &i18n_sync_gpodder } }
-                                    </button>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 0;">
+                                <button
+                                    onclick={on_sync_click}
+                                    disabled={*is_syncing || selected_device_id.is_none()}
+                                    class="btn btn-secondary"
+                                >
+                                    <i class="ph ph-arrows-clockwise"></i>
+                                    { if *is_syncing { &i18n_syncing } else { &i18n_sync_gpodder } }
+                                </button>
 
-                                    <button
-                                        onclick={on_push_click}
-                                        disabled={*is_pushing || selected_device_id.is_none()}
-                                        class="btn btn-secondary"
-                                    >
-                                        <i class="ph ph-arrow-clockwise"></i>
-                                        { if *is_pushing { &i18n_initial_syncing } else { &i18n_initial_sync } }
-                                    </button>
+                                <button
+                                    onclick={on_push_click}
+                                    disabled={*is_pushing || selected_device_id.is_none()}
+                                    class="btn btn-secondary"
+                                >
+                                    <i class="ph ph-arrow-clockwise"></i>
+                                    { if *is_pushing { &i18n_initial_syncing } else { &i18n_initial_sync } }
+                                </button>
 
-                                    <button
-                                        onclick={on_set_default_device}
-                                        disabled={*is_setting_default || selected_device_id.is_none() || is_selected_device_default}
-                                        class="btn btn-ghost"
-                                    >
-                                        {
-                                            if *is_setting_default {
-                                                html! { <><i class="ph ph-spinner"></i>{ &i18n_setting_default }</> }
-                                            } else if is_selected_device_default {
-                                                html! { <><i class="ph ph-check-circle"></i>{ &i18n_current_default }</> }
-                                            } else {
-                                                html! { <><i class="ph ph-star"></i>{ &i18n_set_as_default }</> }
-                                            }
+                                {
+                                    if !is_selected_device_default {
+                                        html! {
+                                            <button
+                                                onclick={on_set_default_device}
+                                                disabled={*is_setting_default || selected_device_id.is_none()}
+                                                class="btn btn-ghost"
+                                            >
+                                                {
+                                                    if *is_setting_default {
+                                                        html! { <><i class="ph ph-spinner"></i>{ &i18n_setting_default }</> }
+                                                    } else {
+                                                        html! { <><i class="ph ph-star"></i>{ &i18n_set_as_default }</> }
+                                                    }
+                                                }
+                                            </button>
                                         }
-                                    </button>
-                                </div>
+                                    } else {
+                                        html! {}
+                                    }
+                                }
                             </div>
 
                                 <div class="mb-4">
                                     {
                                         if let Some(default_dev) = default_device.as_ref() {
                                             html! {
-                                                <div class="flex items-center py-2 px-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                                                    <i class="ph ph-info text-blue-500 mr-2"></i>
-                                                    <span>
+                                                <div class="flex items-center py-2 px-4 rounded-lg" style="background-color: var(--container-background);">
+                                                    <i class="ph ph-info mr-2" style="color: var(--link-color);"></i>
+                                                    <span style="color: var(--text-color);">
                                                         {format!("Default device: {}", default_dev.name)}
                                                         {
                                                             if let Some(caption) = &default_dev.caption {
@@ -720,27 +724,28 @@ pub fn gpodder_advanced_options() -> Html {
                                             html! {
                                                 <div class="flex items-center">
                                                     <i class="ph ph-spinner animate-spin mr-2"></i>
-                                                    <span>{ &i18n_loading_default_device }</span>
+                                                    <span style="color: var(--text-color);">{ &i18n_loading_default_device }</span>
                                                 </div>
                                             }
                                         } else {
                                             html! {
-                                                <div class="flex items-center py-2 px-4 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                                                    <i class="ph ph-info text-yellow-500 mr-2"></i>
-                                                    <span>{ &i18n_no_default_device_set }</span>
+                                                <div class="flex items-center py-2 px-4 rounded-lg" style="background-color: var(--container-background);">
+                                                    <i class="ph ph-info mr-2" style="color: var(--warning-color);"></i>
+                                                    <span style="color: var(--text-color);">{ &i18n_no_default_device_set }</span>
                                                 </div>
                                             }
                                         }
                                     }
                                 </div>
 
-                                <table class="w-full text-sm text-left">
-                                    <thead class="text-xs uppercase">
+                                <div class="relative overflow-x-auto">
+                                <table class="w-full text-sm text-left rtl:text-right">
+                                    <thead class="text-xs uppercase table-header">
                                         <tr>
-                                            <th class="py-3 px-6">{ &i18n_name }</th>
-                                            <th class="py-3 px-6">{ &i18n_type }</th>
-                                            <th class="py-3 px-6">{ &i18n_last_sync }</th>
-                                            <th class="py-3 px-6">{ &i18n_status }</th>
+                                            <th scope="col" class="py-3 px-6">{ &i18n_name }</th>
+                                            <th scope="col" class="py-3 px-6">{ &i18n_type }</th>
+                                            <th scope="col" class="py-3 px-6">{ &i18n_last_sync }</th>
+                                            <th scope="col" class="py-3 px-6">{ &i18n_status }</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -753,12 +758,12 @@ pub fn gpodder_advanced_options() -> Html {
                                                 };
 
                                                 html! {
-                                                    <tr class="border-b">
+                                                    <tr class="table-row border-b">
                                                         <td class="py-4 px-6">
                                                             {&device.name}
                                                             {
                                                                 if let Some(caption) = &device.caption {
-                                                                    html! { <span class="text-gray-500 ml-2">{"("}{caption}{")"}</span> }
+                                                                    html! { <span style="color: var(--text-secondary-color); margin-left: 0.5rem;">{"("}{caption}{")"}</span> }
                                                                 } else {
                                                                     html! {}
                                                                 }
@@ -778,7 +783,7 @@ pub fn gpodder_advanced_options() -> Html {
                                                             {
                                                                 if is_default {
                                                                     html! {
-                                                                        <span class="flex items-center text-green-500">
+                                                                        <span class="flex items-center" style="color: var(--success-color);">
                                                                             <i class="ph ph-star-fill mr-1"></i>
                                                                             { &i18n_default }
                                                                         </span>
@@ -794,6 +799,7 @@ pub fn gpodder_advanced_options() -> Html {
                                         }
                                     </tbody>
                                 </table>
+                                </div>
                             </>
                         }
                     }
@@ -852,7 +858,7 @@ pub fn gpodder_advanced_options() -> Html {
                     <button
                         onclick={on_create_device}
                         disabled={*is_creating_device || (*new_device_name).is_empty()}
-                        class="btn btn-primary"
+                        class="btn btn-secondary"
                     >
                         <i class="ph ph-plus"></i>
                         { if *is_creating_device { &i18n_creating } else { &i18n_add_device } }
@@ -1774,7 +1780,7 @@ pub fn sync_options() -> Html {
                                                 </button>
                                                 <button
                                                     onclick={on_authenticate_server_click}
-                                                    class="btn btn-primary"
+                                                    class="btn btn-secondary"
                                                 >
                                                     { &i18n_authenticate }
                                                 </button>
@@ -1816,10 +1822,10 @@ pub fn sync_options() -> Html {
                 if should_hide_sync_options || (determine_sync_type() == "external_gpodder" && *is_sync_configured) {
                     let current_sync_type = determine_sync_type();
                     html! {
-                        <div class="mb-6 p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
+                        <div class="mb-6 p-4 border rounded-lg" style="background-color: var(--container-background); border-color: var(--border-color);">
                             <div class="flex items-center mb-2">
-                                <i class="ph ph-info text-blue-500 mr-2 text-lg"></i>
-                                <h4 class="font-medium">
+                                <i class="ph ph-info mr-2 text-lg" style="color: var(--link-color);"></i>
+                                <h4 class="font-medium" style="color: var(--text-color);">
                                     {
                                         match current_sync_type {
                                             "internal_gpodder" => "Internal gpodder API is active",
@@ -1834,41 +1840,41 @@ pub fn sync_options() -> Html {
                                 {
                                     match current_sync_type {
                                         "internal_gpodder" => html! {
-                                            <p class="text-sm">
+                                            <p class="text-sm" style="color: var(--text-secondary-color);">
                                                 {"External sync options (Nextcloud and GPodder server) are hidden while the internal gpodder API is enabled. Disable the internal API to configure an external sync option."}
                                             </p>
                                         },
                                         "nextcloud" => html! {
                                             <>
-                                                <p class="text-sm mb-2">
+                                                <p class="text-sm mb-2" style="color: var(--text-secondary-color);">
                                                     { &i18n_nextcloud_sync_active }
                                                 </p>
-                                                <p class="text-sm mb-2">
+                                                <p class="text-sm mb-2" style="color: var(--text-secondary-color);">
                                                     { &i18n_nextcloud_limited_impl }
                                                 </p>
-                                                <p class="text-sm mb-2">
+                                                <p class="text-sm mb-2" style="color: var(--text-secondary-color);">
                                                     { &i18n_nextcloud_antennapod }
                                                 </p>
-                                                <p class="text-sm italic">
+                                                <p class="text-sm italic" style="color: var(--text-secondary-color);">
                                                     { &i18n_nextcloud_advanced_hint }
                                                 </p>
                                             </>
                                         },
                                         "external_gpodder" => html! {
                                             <>
-                                                <p class="text-sm mb-2">
-                                                    { &i18n_external_gpodder_active }<span class="font-medium">{(*nextcloud_url).clone()}</span>{"."}
+                                                <p class="text-sm mb-2" style="color: var(--text-secondary-color);">
+                                                    { &i18n_external_gpodder_active }<span style="color: var(--text-color); font-weight: 600;">{(*nextcloud_url).clone()}</span>{"."}
                                                 </p>
-                                                <p class="text-sm mb-2">
+                                                <p class="text-sm mb-2" style="color: var(--text-secondary-color);">
                                                     { &i18n_gpodder_full_sync }
                                                 </p>
-                                                <p class="text-sm mb-2">
+                                                <p class="text-sm mb-2" style="color: var(--text-secondary-color);">
                                                     { &i18n_gpodder_compatible }
                                                 </p>
                                                 {
                                                     if *is_sync_configured && *sync_type == "gpodder" {
                                                         html! {
-                                                            <p class="text-sm mt-3">
+                                                            <p class="text-sm mt-3" style="color: var(--text-secondary-color);">
                                                                 { &i18n_gpodder_device_mgmt }
                                                             </p>
                                                         }
@@ -1879,7 +1885,7 @@ pub fn sync_options() -> Html {
                                             </>
                                         },
                                         _ => html! {
-                                            <p class="text-sm">
+                                            <p class="text-sm" style="color: var(--text-secondary-color);">
                                                 { &i18n_no_sync_configured }
                                             </p>
                                         }
@@ -2037,27 +2043,28 @@ pub fn gpodder_statistics_dropdown() -> Html {
     };
 
     html! {
-        <div class="mt-6 p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-700">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                    <i class="ph ph-chart-bar text-blue-600 dark:text-blue-400 text-lg mr-2"></i>
-                    <h4 class="font-semibold text-gray-800 dark:text-gray-200">{ &i18n_gpodder_sync_statistics }</h4>
+        <>
+            <div class="settings-row">
+                <div>
+                    <div class="settings-row-label">
+                        <i class="ph ph-chart-bar mr-2" style="color: var(--link-color);"></i>
+                        { &i18n_gpodder_sync_statistics }
+                    </div>
                 </div>
-                <div class="flex items-center space-x-2">
+                <div class="settings-row-control">
                     {
                         if *show_statistics {
                             html! {
                                 <button
                                     onclick={on_refresh_statistics}
                                     disabled={*is_loading_stats}
-                                    class="p-1 text-gray-600 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400 transition-colors"
-                                    title="Refresh statistics"
+                                    class="btn btn-ghost"
                                 >
                                     {
                                         if *is_loading_stats {
-                                            html! { <i class="ph ph-spinner animate-spin"></i> }
+                                            html! { <><i class="ph ph-spinner animate-spin"></i></> }
                                         } else {
-                                            html! { <i class="ph ph-arrow-clockwise"></i> }
+                                            html! { <><i class="ph ph-arrow-clockwise"></i></> }
                                         }
                                     }
                                 </button>
@@ -2068,13 +2075,13 @@ pub fn gpodder_statistics_dropdown() -> Html {
                     }
                     <button
                         onclick={on_toggle_statistics}
-                        class="text-gray-600 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400 transition-colors"
+                        class="btn btn-ghost"
                     >
                         {
                             if *show_statistics {
-                                html! { <i class="ph ph-caret-up text-lg"></i> }
+                                html! { <><i class="ph ph-caret-up"></i>{ "Hide" }</> }
                             } else {
-                                html! { <i class="ph ph-caret-down text-lg"></i> }
+                                html! { <><i class="ph ph-caret-down"></i>{ "Show" }</> }
                             }
                         }
                     </button>
@@ -2084,14 +2091,14 @@ pub fn gpodder_statistics_dropdown() -> Html {
             {
                 if *show_statistics {
                     html! {
-                        <div class="mt-4 space-y-4">
+                        <div class="space-y-4 px-4 pb-4">
                             {
                                 if *is_loading_stats {
                                     html! {
                                         <div class="flex items-center justify-center py-8">
                                             <div class="flex items-center space-x-3">
-                                                <i class="ph ph-spinner animate-spin text-2xl text-blue-600"></i>
-                                                <span class="text-gray-600 dark:text-gray-300">{ &i18n_loading_server_statistics }</span>
+                                                <i class="ph ph-spinner animate-spin text-2xl" style="color: var(--link-color);"></i>
+                                                <span style="color: var(--text-secondary-color);">{ &i18n_loading_server_statistics }</span>
                                             </div>
                                         </div>
                                     }
@@ -2100,65 +2107,65 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                         <>
                                             // Connection Status
                                             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                                <div class="p-4 rounded-lg" style="background-color: var(--secondary-background);">
                                                     <div class="flex items-center">
-                                                        <i class="ph ph-globe text-green-500 text-xl mr-3"></i>
+                                                        <i class="ph ph-globe text-xl mr-3" style="color: var(--success-color);"></i>
                                                         <div>
-                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_connection }</p>
-                                                            <p class={format!("font-semibold {}",
+                                                            <p class="text-sm" style="color: var(--text-secondary-color);">{ &i18n_connection }</p>
+                                                            <p class="font-semibold" style={
                                                                 if stats.connection_status == "All endpoints working" {
-                                                                    "text-green-600 dark:text-green-400"
+                                                                    "color: var(--success-color);"
                                                                 } else if stats.connection_status == "Partial connectivity" {
-                                                                    "text-yellow-600 dark:text-yellow-400"
+                                                                    "color: var(--warning-color);"
                                                                 } else {
-                                                                    "text-red-600 dark:text-red-400"
+                                                                    "color: var(--error-color);"
                                                                 }
-                                                            )}>{&stats.connection_status}</p>
+                                                            }>{&stats.connection_status}</p>
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                                <div class="p-4 rounded-lg" style="background-color: var(--secondary-background);">
                                                     <div class="flex items-center">
-                                                        <i class="ph ph-devices text-blue-500 text-xl mr-3"></i>
+                                                        <i class="ph ph-devices text-xl mr-3" style="color: var(--link-color);"></i>
                                                         <div>
-                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_devices }</p>
-                                                            <p class="font-semibold text-gray-800 dark:text-gray-200">{stats.total_devices}</p>
+                                                            <p class="text-sm" style="color: var(--text-secondary-color);">{ &i18n_devices }</p>
+                                                            <p class="font-semibold" style="color: var(--text-color);">{stats.total_devices}</p>
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                                <div class="p-4 rounded-lg" style="background-color: var(--secondary-background);">
                                                     <div class="flex items-center">
-                                                        <i class="ph ph-podcast text-purple-500 text-xl mr-3"></i>
+                                                        <i class="ph ph-podcast text-xl mr-3" style="color: var(--accent-color);"></i>
                                                         <div>
-                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_subscriptions }</p>
-                                                            <p class="font-semibold text-gray-800 dark:text-gray-200">{stats.total_subscriptions}</p>
+                                                            <p class="text-sm" style="color: var(--text-secondary-color);">{ &i18n_subscriptions }</p>
+                                                            <p class="font-semibold" style="color: var(--text-color);">{stats.total_subscriptions}</p>
                                                         </div>
                                                     </div>
                                                 </div>
                                             </div>
 
                                             // Server Info
-                                            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-                                                <h5 class="font-medium text-gray-800 dark:text-gray-200 mb-2 flex items-center">
+                                            <div class="p-4 rounded-lg" style="background-color: var(--secondary-background);">
+                                                <h5 class="font-medium mb-2 flex items-center" style="color: var(--text-color);">
                                                     <i class="ph ph-server mr-2"></i>{ &i18n_server_information }
                                                 </h5>
                                                 <div class="space-y-2">
-                                                    <div class="flex justify-between">
-                                                        <span class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_server_url_colon }</span>
-                                                        <span class="text-sm font-mono text-gray-800 dark:text-gray-200">{&stats.server_url}</span>
+                                                    <div class="flex flex-wrap gap-1 justify-between">
+                                                        <span class="text-sm" style="color: var(--text-secondary-color); flex-shrink: 0;">{ &i18n_server_url_colon }</span>
+                                                        <span class="text-sm" style="color: var(--text-color); font-family: monospace; word-break: break-all; overflow-wrap: anywhere;">{&stats.server_url}</span>
                                                     </div>
-                                                    <div class="flex justify-between">
-                                                        <span class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_sync_type_colon }</span>
-                                                        <span class="text-sm font-semibold text-blue-600 dark:text-blue-400">{&stats.sync_type}</span>
+                                                    <div class="flex flex-wrap gap-1 justify-between">
+                                                        <span class="text-sm" style="color: var(--text-secondary-color); flex-shrink: 0;">{ &i18n_sync_type_colon }</span>
+                                                        <span class="text-sm font-semibold" style="color: var(--link-color);">{&stats.sync_type}</span>
                                                     </div>
                                                     {
                                                         if let Some(last_sync) = &stats.last_sync_timestamp {
                                                             html! {
-                                                                <div class="flex justify-between">
-                                                                    <span class="text-sm text-gray-600 dark:text-gray-400">{ &i18n_last_sync_colon }</span>
-                                                                    <span class="text-sm text-gray-800 dark:text-gray-200">{last_sync}</span>
+                                                                <div class="flex flex-wrap gap-1 justify-between">
+                                                                    <span class="text-sm" style="color: var(--text-secondary-color); flex-shrink: 0;">{ &i18n_last_sync_colon }</span>
+                                                                    <span class="text-sm" style="color: var(--text-color);">{last_sync}</span>
                                                                 </div>
                                                             }
                                                         } else {
@@ -2172,33 +2179,33 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                             {
                                                 if !stats.api_endpoints_tested.is_empty() {
                                                     html! {
-                                                        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-                                                            <h5 class="font-medium text-gray-800 dark:text-gray-200 mb-3 flex items-center">
+                                                        <div class="p-4 rounded-lg" style="background-color: var(--secondary-background);">
+                                                            <h5 class="font-medium mb-3 flex items-center" style="color: var(--text-color);">
                                                                 <i class="ph ph-plug mr-2"></i>{ &i18n_api_endpoint_status }
                                                             </h5>
                                                             <div class="space-y-2">
                                                                 {
                                                                     stats.api_endpoints_tested.iter().map(|endpoint| {
-                                                                        let status_class = if endpoint.status == "success" {
-                                                                            "text-green-600 dark:text-green-400"
+                                                                        let status_style = if endpoint.status == "success" {
+                                                                            "color: var(--success-color);"
                                                                         } else {
-                                                                            "text-red-600 dark:text-red-400"
+                                                                            "color: var(--error-color);"
                                                                         };
 
                                                                         html! {
-                                                                            <div class="flex items-center justify-between py-1">
-                                                                                <span class="text-sm font-mono text-gray-700 dark:text-gray-300">{&endpoint.endpoint}</span>
-                                                                                <div class="flex items-center space-x-2">
+                                                                            <div class="flex flex-wrap items-center justify-between py-1 gap-1">
+                                                                                <span class="text-sm" style="color: var(--text-color); font-family: monospace; word-break: break-all; overflow-wrap: anywhere; flex: 1; min-width: 0;">{&endpoint.endpoint}</span>
+                                                                                <div class="flex items-center space-x-2 flex-shrink-0">
                                                                                     {
                                                                                         if let Some(time) = endpoint.response_time_ms {
                                                                                             html! {
-                                                                                                <span class="text-xs text-gray-500 dark:text-gray-400">{format!("{}ms", time)}</span>
+                                                                                                <span class="text-xs" style="color: var(--text-secondary-color);">{format!("{}ms", time)}</span>
                                                                                             }
                                                                                         } else {
                                                                                             html! {}
                                                                                         }
                                                                                     }
-                                                                                    <span class={format!("text-sm font-semibold {}", status_class)}>
+                                                                                    <span class="text-sm font-semibold" style={status_style}>
                                                                                         {
                                                                                             if endpoint.status == "success" {
                                                                                                 html! { <i class="ph ph-check-circle"></i> }
@@ -2224,8 +2231,8 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                             {
                                                 if !stats.recent_episode_actions.is_empty() {
                                                     html! {
-                                                        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-                                                            <h5 class="font-medium text-gray-800 dark:text-gray-200 mb-3 flex items-center">
+                                                        <div class="p-4 rounded-lg" style="background-color: var(--secondary-background);">
+                                                            <h5 class="font-medium mb-3 flex items-center" style="color: var(--text-color);">
                                                                 <i class="ph ph-play mr-2"></i>{ &i18n_recent_episode_actions }
                                                             </h5>
                                                             <div class="space-y-2 max-h-40 overflow-y-auto">
@@ -2239,12 +2246,12 @@ pub fn gpodder_statistics_dropdown() -> Html {
 
                                                                         html! {
                                                                             <div class="flex items-center space-x-3 py-1">
-                                                                                <i class={format!("ph {} text-gray-500", action_icon)}></i>
+                                                                                <i class={format!("ph {}", action_icon)} style="color: var(--text-secondary-color);"></i>
                                                                                 <div class="flex-1 min-w-0">
-                                                                                    <p class="text-sm text-gray-800 dark:text-gray-200 truncate">
+                                                                                    <p class="text-sm truncate" style="color: var(--text-color);">
                                                                                         {format!("{} - {}", action.action, action.episode)}
                                                                                     </p>
-                                                                                    <p class="text-xs text-gray-500 dark:text-gray-400">{&action.timestamp}</p>
+                                                                                    <p class="text-xs" style="color: var(--text-secondary-color);">{&action.timestamp}</p>
                                                                                 </div>
                                                                             </div>
                                                                         }
@@ -2262,9 +2269,9 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                 } else {
                                     html! {
                                         <div class="text-center py-6">
-                                            <i class="ph ph-warning text-yellow-500 text-2xl mb-2"></i>
-                                            <p class="text-gray-600 dark:text-gray-300">{ &i18n_no_statistics_available }</p>
-                                            <p class="text-sm text-gray-500 dark:text-gray-400">{ &i18n_click_refresh }</p>
+                                            <i class="ph ph-warning text-2xl mb-2" style="color: var(--warning-color);"></i>
+                                            <p style="color: var(--text-secondary-color);">{ &i18n_no_statistics_available }</p>
+                                            <p class="text-sm" style="color: var(--text-secondary-color);">{ &i18n_click_refresh }</p>
                                         </div>
                                     }
                                 }
@@ -2275,6 +2282,6 @@ pub fn gpodder_statistics_dropdown() -> Html {
                     html! {}
                 }
             }
-        </div>
+        </>
     }
 }
