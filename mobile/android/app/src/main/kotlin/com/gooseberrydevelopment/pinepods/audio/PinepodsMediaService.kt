@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
+import java.io.File
 import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
@@ -353,7 +354,12 @@ class PinepodsMediaService : MediaLibraryService() {
 
         player?.let { p ->
             try {
-                val uri = Uri.parse(url)
+                // For local downloads `url` is a raw filesystem path (which may
+                // contain spaces and has no scheme). Uri.parse() leaves it
+                // scheme-less and unencoded, so ExoPlayer fails to load it and
+                // never reports a duration (player shows 00:00 and won't scrub).
+                // Uri.fromFile() builds a properly-encoded file:// URI.
+                val uri = if (isLocal) Uri.fromFile(File(url)) else Uri.parse(url)
 
                 // Build media metadata
                 val mediaMetadataBuilder = MediaMetadata.Builder()

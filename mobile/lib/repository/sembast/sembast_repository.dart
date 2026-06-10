@@ -3,7 +3,9 @@
 // found in the LICENSE file.
 
 import 'package:pinepods_mobile/core/extensions.dart';
+import 'package:pinepods_mobile/entities/downloadable.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
+import 'package:pinepods_mobile/entities/pending_action.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/entities/queue.dart';
 import 'package:pinepods_mobile/entities/transcript.dart';
@@ -22,11 +24,13 @@ class SembastRepository extends Repository {
 
   final _podcastSubject = BehaviorSubject<Podcast>();
   final _episodeSubject = BehaviorSubject<EpisodeState>();
+  final _pendingActionSubject = BehaviorSubject<void>();
 
   final _podcastStore = intMapStoreFactory.store('podcast');
   final _episodeStore = intMapStoreFactory.store('episode');
   final _queueStore = intMapStoreFactory.store('queue');
   final _transcriptStore = intMapStoreFactory.store('transcript');
+  final _pendingActionStore = intMapStoreFactory.store('pending_action');
 
   final _queueGuids = <String>[];
 
@@ -44,6 +48,34 @@ class SembastRepository extends Repository {
       _cleanupEpisodes().then((value) {
         log.fine('Orphan episodes cleanup complete');
       });
+      _cleanupPlaybackDownloadArtifacts();
+    }
+  }
+
+  /// Remove "download" records created as a side effect of playing a local
+  /// download. Local downloads are always stored under a 'pinepods_<id>' guid;
+  /// playback used to persist a second record keyed by the episode's content
+  /// URL and mark it downloaded, which then appeared as a duplicate entry in the
+  /// downloads list (often with a bogus duration). These artifacts are only ever
+  /// created by playback, so any downloaded record without a 'pinepods_' guid is
+  /// safe to delete on startup (nothing is playing yet).
+  Future<void> _cleanupPlaybackDownloadArtifacts() async {
+    try {
+      final all = await findAllEpisodes();
+      final artifacts = all
+          .where((e) =>
+              e.downloadState == DownloadState.downloaded && !e.guid.startsWith('pinepods_'))
+          .toList();
+
+      if (artifacts.isNotEmpty) {
+        log.info('Removing ${artifacts.length} duplicate playback download artifact(s)');
+        await deleteEpisodes(artifacts);
+        for (final e in artifacts) {
+          _episodeSubject.add(EpisodeDeleteState(e));
+        }
+      }
+    } catch (e) {
+      log.warning('Playback download artifact cleanup failed: $e');
     }
   }
 
@@ -390,6 +422,40 @@ class SembastRepository extends Repository {
   }
 
   @override
+  Future<PendingAction> savePendingAction(PendingAction action) async {
+    if (action.id == null) {
+      action.id = await _pendingActionStore.add(await _db, action.toMap());
+    } else {
+      final finder = Finder(filter: Filter.byKey(action.id));
+      await _pendingActionStore.update(await _db, action.toMap(), finder: finder);
+    }
+
+    _pendingActionSubject.add(null);
+
+    return action;
+  }
+
+  @override
+  Future<List<PendingAction>> getPendingActions() async {
+    // Oldest first so the queue flushes in the order interactions happened.
+    final finder = Finder(sortOrders: [SortOrder('createdAt', true)]);
+
+    final List<RecordSnapshot<int, Map<String, Object?>>> recordSnapshots =
+        await _pendingActionStore.find(await _db, finder: finder);
+
+    return recordSnapshots
+        .map((snapshot) => PendingAction.fromMap(snapshot.key, snapshot.value))
+        .toList();
+  }
+
+  @override
+  Future<void> deletePendingAction(int id) async {
+    final finder = Finder(filter: Filter.byKey(id));
+    await _pendingActionStore.delete(await _db, finder: finder);
+    _pendingActionSubject.add(null);
+  }
+
+  @override
   Future<Transcript?> findTranscriptById(int? id) async {
     final finder = Finder(filter: Filter.byKey(id));
     final RecordSnapshot<int, Map<String, Object?>>? snapshot =
@@ -678,4 +744,7 @@ class SembastRepository extends Repository {
 
   @override
   Stream<Podcast> get podcastListener => _podcastSubject.stream;
+
+  @override
+  Stream<void> get pendingActionListener => _pendingActionSubject.stream;
 }

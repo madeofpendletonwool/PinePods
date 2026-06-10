@@ -15,12 +15,17 @@ class PinepodsEpisodeCard extends StatefulWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onPlayPressed;
 
+  /// When true the card shows an "offline" badge, indicating the episode is
+  /// available as a local download and can be played without a connection.
+  final bool isLocalDownload;
+
   const PinepodsEpisodeCard({
     Key? key,
     required this.episode,
     this.onTap,
     this.onLongPress,
     this.onPlayPressed,
+    this.isLocalDownload = false,
   }) : super(key: key);
 
   @override
@@ -245,6 +250,15 @@ class _PinepodsEpisodeCardState extends State<PinepodsEpisodeCard> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (widget.isLocalDownload)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Icon(
+                            Icons.offline_pin,
+                            size: 16,
+                            color: Colors.green[600],
+                          ),
+                        ),
                       if (widget.episode.saved)
                         Icon(
                           Icons.bookmark,

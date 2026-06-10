@@ -728,7 +728,19 @@
     "task_download": "Download",
     "task_feed_refresh": "Feed Refresh",
     "task_playlist": "Playlist",
-    "task_youtube_download": "YouTube Download"
+    "task_youtube_download": "YouTube Download",
+    "task_bulk_download": "Bulk Download",
+    "task_youtube_bulk_download": "YouTube Bulk Download",
+    "task_opml_import": "OPML Import",
+    "task_add_podcast": "Add Podcast",
+    "task_backup": "Backup",
+    "task_restore": "Restore",
+    "task_gpodder_sync": "gPodder Sync",
+    "task_nextcloud_sync": "Nextcloud Sync",
+    "task_nextcloud_auth": "Nextcloud Auth",
+    "task_playlist_update": "Playlist Update",
+    "task_cleanup": "Cleanup",
+    "task_refresh_hosts": "Refresh Hosts"
   },
   "notifications": {
     "access_token": "Access Token",

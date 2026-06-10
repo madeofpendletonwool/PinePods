@@ -107,6 +107,18 @@ pub fn notification_center() -> Html {
     let i18n_youtube_download = i18n
         .t("notification_center.task_youtube_download")
         .to_string();
+    let i18n_bulk_download = i18n.t("notification_center.task_bulk_download").to_string();
+    let i18n_youtube_bulk_download = i18n.t("notification_center.task_youtube_bulk_download").to_string();
+    let i18n_opml_import = i18n.t("notification_center.task_opml_import").to_string();
+    let i18n_add_podcast = i18n.t("notification_center.task_add_podcast").to_string();
+    let i18n_backup = i18n.t("notification_center.task_backup").to_string();
+    let i18n_restore = i18n.t("notification_center.task_restore").to_string();
+    let i18n_gpodder_sync = i18n.t("notification_center.task_gpodder_sync").to_string();
+    let i18n_nextcloud_sync = i18n.t("notification_center.task_nextcloud_sync").to_string();
+    let i18n_nextcloud_auth = i18n.t("notification_center.task_nextcloud_auth").to_string();
+    let i18n_playlist_update = i18n.t("notification_center.task_playlist_update").to_string();
+    let i18n_cleanup = i18n.t("notification_center.task_cleanup").to_string();
+    let i18n_refresh_hosts = i18n.t("notification_center.task_refresh_hosts").to_string();
     let i18n_episode = i18n.t("notification_center.item_episode").to_string();
     let i18n_youtube_video = i18n.t("notification_center.item_youtube_video").to_string();
     let i18n_item = i18n.t("notification_center.item_generic").to_string();
@@ -428,10 +440,22 @@ pub fn notification_center() -> Html {
 
                                                         // Get task type display name
                                                         let task_type_display = match task.r#type.as_str() {
-                                                            "podcast_download" => i18n_download.as_str(),
+                                                            "podcast_download" | "download_episode" => i18n_download.as_str(),
                                                             "feed_refresh" => i18n_feed_refresh.as_str(),
                                                             "playlist_generation" => i18n_playlist.as_str(),
-                                                            "youtube_download" => i18n_youtube_download.as_str(),
+                                                            "youtube_download" | "download_video" => i18n_youtube_download.as_str(),
+                                                            "bulk_download" | "download_all_episodes" => i18n_bulk_download.as_str(),
+                                                            "download_all_videos" => i18n_youtube_bulk_download.as_str(),
+                                                            "opml_import" => i18n_opml_import.as_str(),
+                                                            "add_podcast_episodes" => i18n_add_podcast.as_str(),
+                                                            "manual_backup_to_directory" => i18n_backup.as_str(),
+                                                            "restore_from_backup_file" => i18n_restore.as_str(),
+                                                            "refresh_gpodder_subscriptions" | "gpodder_subscription_refresh" => i18n_gpodder_sync.as_str(),
+                                                            "refresh_nextcloud_subscriptions" => i18n_nextcloud_sync.as_str(),
+                                                            "nextcloud_auth" => i18n_nextcloud_auth.as_str(),
+                                                            "update_playlists" => i18n_playlist_update.as_str(),
+                                                            "cleanup_tasks" => i18n_cleanup.as_str(),
+                                                            "refresh_hosts" => i18n_refresh_hosts.as_str(),
                                                             _ => &task.r#type
                                                         };
 

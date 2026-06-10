@@ -1,7 +1,11 @@
 // lib/ui/pinepods/download_activity.dart
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/entities/downloadable.dart';
+import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:provider/provider.dart';
 
 class DownloadActivity extends StatefulWidget {
@@ -29,37 +33,126 @@ class _DownloadActivityState extends State<DownloadActivity> {
       _errorMessage = null;
     });
 
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+
+    // Local download activity from the on-device repository. Always available,
+    // even offline, and includes auto-downloads, in-progress, and failures.
+    List<DownloadTask> localTasks = [];
     try {
-      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-      final settings = settingsBloc.currentSettings;
-
-      if (settings.pinepodsServer == null ||
-          settings.pinepodsApiKey == null ||
-          settings.pinepodsUserId == null) {
-        setState(() {
-          _errorMessage = 'Not connected to PinePods server.';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
-      final userId = settings.pinepodsUserId!;
-      final tasks = await _pinepodsService.getDownloadActivity(userId);
-
-      setState(() {
-        _tasks = tasks;
-        _isLoading = false;
-      });
+      final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
+      final episodes = await podcastBloc.podcastService.repository.findAllEpisodes();
+      localTasks = _localTasksFromEpisodes(episodes);
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Failed to load download activity.';
-        _isLoading = false;
-      });
+      // Non-fatal; just show whatever else we have.
+    }
+
+    // Server-side download activity (best effort — may be offline / logged out).
+    List<DownloadTask> serverTasks = [];
+    String? serverError;
+    if (settings.pinepodsServer != null &&
+        settings.pinepodsApiKey != null &&
+        settings.pinepodsUserId != null) {
+      try {
+        _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+        serverTasks = await _pinepodsService.getDownloadActivity(settings.pinepodsUserId!);
+      } catch (e) {
+        serverError = 'Failed to load server download activity.';
+      }
+    }
+
+    final all = [...serverTasks, ...localTasks]
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    if (!mounted) return;
+    setState(() {
+      _tasks = all;
+      // Only surface an error if we genuinely have nothing to show.
+      _errorMessage = all.isEmpty ? serverError : null;
+      _isLoading = false;
+    });
+  }
+
+  /// Build activity entries for local downloads from the on-device episode
+  /// store. Local downloads persist their state on the [Episode] record
+  /// (downloadState / downloadPercentage / lastUpdated), so recent activity —
+  /// including failures and auto-downloads — can be derived directly.
+  List<DownloadTask> _localTasksFromEpisodes(List<Episode> episodes) {
+    final cutoff = DateTime.now().subtract(const Duration(days: 7));
+    final tasks = <DownloadTask>[];
+
+    for (final e in episodes) {
+      // Local downloads are always keyed by a 'pinepods_<id>' guid; anything
+      // else (streaming/playback records) is not a local download.
+      if (!e.guid.startsWith('pinepods_')) continue;
+      if (e.downloadState == DownloadState.none) continue;
+
+      final updated = e.lastUpdated ?? DateTime.now();
+      if (updated.isBefore(cutoff)) continue;
+
+      tasks.add(DownloadTask(
+        id: e.guid,
+        taskType: 'local',
+        status: _statusForState(e.downloadState),
+        progress: (e.downloadPercentage ?? 0).toDouble(),
+        message: e.downloadState == DownloadState.failed
+            ? 'Local download failed'
+            : e.downloadState == DownloadState.cancelled
+                ? 'Download cancelled'
+                : null,
+        createdAt: updated,
+        updatedAt: updated,
+        result: {'episode_id': LocalDownloadUtils.episodeIdFromGuid(e.guid)},
+        episodeTitle: e.title,
+        podcastName: e.podcast,
+      ));
+    }
+
+    return tasks;
+  }
+
+  String _statusForState(DownloadState state) {
+    switch (state) {
+      case DownloadState.downloaded:
+        return 'SUCCESS';
+      case DownloadState.failed:
+      case DownloadState.cancelled:
+        return 'FAILED';
+      case DownloadState.downloading:
+      case DownloadState.paused:
+        return 'DOWNLOADING';
+      case DownloadState.queued:
+      case DownloadState.none:
+        return 'PENDING';
     }
   }
 
   Future<void> _retryDownload(DownloadTask task) async {
+    // Local downloads retry through the on-device download service rather than
+    // the server.
+    if (task.taskType == 'local') {
+      final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
+      final episode = await podcastBloc.podcastService.repository.findEpisodeByGuid(task.id);
+      if (episode == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Episode no longer available'), duration: Duration(seconds: 2)),
+        );
+        return;
+      }
+      final success = await podcastBloc.downloadService.downloadEpisode(episode);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? 'Local download restarted' : 'Failed to restart download'),
+          backgroundColor: success ? Colors.green : Colors.red,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      if (success) _loadActivity();
+      return;
+    }
+
     final episodeId = task.episodeId;
     if (episodeId == null) return;
 
@@ -210,6 +303,8 @@ class _DownloadActivityState extends State<DownloadActivity> {
                       ),
                     ),
                     const SizedBox(width: 8),
+                    _sourceChip(task, theme),
+                    const SizedBox(width: 8),
                     Text(
                       timeLabel,
                       style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
@@ -257,6 +352,30 @@ class _DownloadActivityState extends State<DownloadActivity> {
                 ],
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Small chip distinguishing on-device (local) downloads from server-side ones.
+  Widget _sourceChip(DownloadTask task, ThemeData theme) {
+    final isLocal = task.taskType == 'local';
+    final color = isLocal ? Colors.green[600]! : Colors.blue[600]!;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(isLocal ? Icons.smartphone : Icons.cloud, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(
+            isLocal ? 'Local' : 'Server',
+            style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600),
           ),
         ],
       ),

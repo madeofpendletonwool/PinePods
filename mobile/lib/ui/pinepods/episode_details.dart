@@ -6,6 +6,7 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/audio/default_audio_player_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/entities/pending_action.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/person.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_html.dart';
@@ -49,6 +50,16 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
   }
 
   PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
+
+  /// Enqueue an interaction in the offline outbox so it syncs when back online,
+  /// used when a direct server call fails (e.g. the device is offline). Returns
+  /// true if it was queued.
+  Future<bool> _enqueueOffline(PendingActionType type, int userId) async {
+    final queue = GlobalServices.offlineActionQueue;
+    if (queue == null) return false;
+    await queue.enqueueSimple(type, _episode!.episodeId, userId, _episode!.isYoutube);
+    return true;
+  }
 
   Future<void> _checkLocalDownloadStatus() async {
     if (_episode == null) return;
@@ -102,11 +113,12 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
       final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
       final settings = settingsBloc.currentSettings;
 
-      if (settings.pinepodsServer == null || 
-          settings.pinepodsApiKey == null || 
+      if (settings.pinepodsServer == null ||
+          settings.pinepodsApiKey == null ||
           settings.pinepodsUserId == null) {
+        // No server connection: still show the episode we were given (e.g. a
+        // local download opened while offline) rather than an error page.
         setState(() {
-          _errorMessage = 'Not connected to PinePods server. Please login first.';
           _isLoading = false;
         });
         return;
@@ -157,14 +169,19 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
           _isLoading = false;
         });
       } else {
+        // Metadata unavailable: fall back to the episode passed in so the page
+        // (and playback of a local download) still works.
         setState(() {
-          _errorMessage = 'Failed to load episode details';
           _isLoading = false;
         });
       }
     } catch (e) {
+      // Likely offline. Keep the initial episode so local downloads remain
+      // playable; only surface an error if we have nothing to show.
       setState(() {
-        _errorMessage = 'Error loading episode details: ${e.toString()}';
+        if (_episode == null) {
+          _errorMessage = 'Error loading episode details: ${e.toString()}';
+        }
         _isLoading = false;
       });
     }
@@ -303,7 +320,12 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
         _showSnackBar('Failed to save episode', Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error saving episode: $e', Colors.red);
+      if (await _enqueueOffline(PendingActionType.saveEpisode, userId)) {
+        setState(() => _episode = _updateEpisodeProperty(_episode!, saved: true));
+        _showSnackBar('Saved — will sync when online', Colors.blueGrey);
+      } else {
+        _showSnackBar('Error saving episode: $e', Colors.red);
+      }
     }
   }
 
@@ -333,7 +355,12 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
         _showSnackBar('Failed to remove saved episode', Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error removing saved episode: $e', Colors.red);
+      if (await _enqueueOffline(PendingActionType.removeSaved, userId)) {
+        setState(() => _episode = _updateEpisodeProperty(_episode!, saved: false));
+        _showSnackBar('Removed — will sync when online', Colors.blueGrey);
+      } else {
+        _showSnackBar('Error removing saved episode: $e', Colors.red);
+      }
     }
   }
 
@@ -471,7 +498,17 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
         _showSnackBar('Failed to update completion status', Colors.red);
       }
     } catch (e) {
-      _showSnackBar('Error updating completion: $e', Colors.red);
+      final wasCompleted = _episode!.completed;
+      final type = wasCompleted ? PendingActionType.markUncompleted : PendingActionType.markCompleted;
+      if (await _enqueueOffline(type, userId)) {
+        setState(() => _episode = _updateEpisodeProperty(_episode!, completed: !wasCompleted));
+        _showSnackBar(
+          wasCompleted ? 'Marked incomplete — will sync when online' : 'Marked complete — will sync when online',
+          Colors.blueGrey,
+        );
+      } else {
+        _showSnackBar('Error updating completion: $e', Colors.red);
+      }
     }
   }
 

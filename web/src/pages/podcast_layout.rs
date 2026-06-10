@@ -329,7 +329,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 wasm_bindgen_futures::spawn_local(async move {
                     let podcast_values = PodcastValues {
                         pod_title: podcast.title.clone(),
-                        pod_artwork: podcast.artwork.clone(),
+                        pod_artwork: if podcast.artwork.is_empty() { podcast.image.clone() } else { podcast.artwork.clone() },
                         pod_author: podcast.author.clone(),
                         categories: podcast.categories.unwrap_or_default().clone(),
                         pod_description: podcast.description.clone(),
@@ -374,13 +374,16 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         })
     };
 
-    let podcast_id_clone = podcast.id.clone();
     let podcast_index_clone = podcast.index_id.clone();
     let podcast_title_clone = podcast.title.clone();
     let podcast_url_clone = podcast.url.clone();
     let podcast_description_clone = podcast.description.clone();
     let podcast_author_clone = podcast.author.clone();
-    let podcast_artwork_clone = podcast.artwork.clone();
+    let podcast_artwork_clone = if podcast.artwork.is_empty() {
+        podcast.image.clone()
+    } else {
+        podcast.artwork.clone()
+    };
     let podcast_explicit_clone = podcast.explicit.clone();
     let podcast_episode_count_clone = podcast.episodeCount.clone();
     let podcast_categories_clone = podcast.categories.clone();
@@ -397,7 +400,11 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 server,
                 api_key.clone(),
                 &history,
-                podcast_id_clone,
+                // Search results carry an external Podcast Index / iTunes id in
+                // `podcast.id`, not a DB id. Pass 0 so create_on_title_click takes
+                // the slow path (call_check_podcast) and resolves the real DB id
+                // for subscribed podcasts / parses the feed for unsubscribed ones.
+                0,
                 podcast_index_clone,
                 podcast_title_clone,
                 podcast_url_clone,

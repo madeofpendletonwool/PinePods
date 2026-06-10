@@ -594,7 +594,19 @@
     "task_download": "",
     "task_feed_refresh": "",
     "task_playlist": "",
-    "task_youtube_download": ""
+    "task_youtube_download": "",
+    "task_bulk_download": "",
+    "task_youtube_bulk_download": "",
+    "task_opml_import": "",
+    "task_add_podcast": "",
+    "task_backup": "",
+    "task_restore": "",
+    "task_gpodder_sync": "",
+    "task_nextcloud_sync": "",
+    "task_nextcloud_auth": "",
+    "task_playlist_update": "",
+    "task_cleanup": "",
+    "task_refresh_hosts": ""
   },
   "notifications": {
     "access_token": "",

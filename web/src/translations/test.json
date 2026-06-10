@@ -594,7 +594,19 @@
     "task_download": "ZZTEST-TASK-DOWNLOAD-ZZTEST",
     "task_feed_refresh": "ZZTEST-TASK-FEED-REFRESH-ZZTEST",
     "task_playlist": "ZZTEST-TASK-PLAYLIST-ZZTEST",
-    "task_youtube_download": "ZZTEST-TASK-YOUTUBE-DOWNLOAD-ZZTEST"
+    "task_youtube_download": "ZZTEST-TASK-YOUTUBE-DOWNLOAD-ZZTEST",
+    "task_bulk_download": "ZZTEST-TASK-BULK-DOWNLOAD-ZZTEST",
+    "task_youtube_bulk_download": "ZZTEST-TASK-YOUTUBE-BULK-DOWNLOAD-ZZTEST",
+    "task_opml_import": "ZZTEST-TASK-OPML-IMPORT-ZZTEST",
+    "task_add_podcast": "ZZTEST-TASK-ADD-PODCAST-ZZTEST",
+    "task_backup": "ZZTEST-TASK-BACKUP-ZZTEST",
+    "task_restore": "ZZTEST-TASK-RESTORE-ZZTEST",
+    "task_gpodder_sync": "ZZTEST-TASK-GPODDER-SYNC-ZZTEST",
+    "task_nextcloud_sync": "ZZTEST-TASK-NEXTCLOUD-SYNC-ZZTEST",
+    "task_nextcloud_auth": "ZZTEST-TASK-NEXTCLOUD-AUTH-ZZTEST",
+    "task_playlist_update": "ZZTEST-TASK-PLAYLIST-UPDATE-ZZTEST",
+    "task_cleanup": "ZZTEST-TASK-CLEANUP-ZZTEST",
+    "task_refresh_hosts": "ZZTEST-TASK-REFRESH-HOSTS-ZZTEST"
   },
   "notifications": {
     "access_token": "ZZTEST-ACCESS-TOKEN-ZZTEST",

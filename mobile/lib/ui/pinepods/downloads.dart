@@ -5,17 +5,17 @@ import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
-import 'package:pinepods_mobile/services/download/download_service.dart';
 import 'package:pinepods_mobile/ui/pinepods/download_activity.dart';
+import 'package:pinepods_mobile/ui/pinepods/action_queue.dart';
 import 'package:pinepods_mobile/bloc/podcast/episode_bloc.dart';
 import 'package:pinepods_mobile/state/bloc_state.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
-import 'package:pinepods_mobile/ui/widgets/episode_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
-import 'package:pinepods_mobile/ui/widgets/paginated_episode_list.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
-import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
+import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
+import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 import 'package:logging/logging.dart';
@@ -462,7 +462,8 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
         author: episode.podcastName,
         season: 0,
         episode: 0,
-        position: episode.listenDuration ?? 0,
+        // Episode.position is stored in milliseconds; listenDuration is seconds.
+        position: (episode.listenDuration ?? 0) * 1000,
         played: episode.completed,
         chapters: [],
         transcriptUrls: [],
@@ -623,28 +624,60 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
     );
   }
 
-  Widget _buildLocalPodcastDropdown(String podcastKey, List<Episode> episodes, {String? displayName}) {
-    final isExpanded = _expandedPodcasts.contains(podcastKey);
-    final title = displayName ?? podcastKey;
+  /// Flatten the per-podcast local download map into a single list sorted by the
+  /// active sort control. Local downloads render as a flat list of standard
+  /// episode cards (no per-podcast dropdown) so they match the rest of the app.
+  List<Episode> _flattenLocalDownloads(Map<String, List<Episode>> byPodcast) {
+    final all = <Episode>[];
+    for (final list in byPodcast.values) {
+      all.addAll(list);
+    }
+    all.sort((a, b) {
+      switch (_sortDirection) {
+        case DownloadSortDirection.newestFirst:
+          return _compareLocalDates(b.publicationDate, a.publicationDate);
+        case DownloadSortDirection.oldestFirst:
+          return _compareLocalDates(a.publicationDate, b.publicationDate);
+        case DownloadSortDirection.titleAZ:
+          return (a.title ?? '').toLowerCase().compareTo((b.title ?? '').toLowerCase());
+        case DownloadSortDirection.titleZA:
+          return (b.title ?? '').toLowerCase().compareTo((a.title ?? '').toLowerCase());
+      }
+    });
+    return all;
+  }
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-      child: Column(
-        children: [
-          ListTile(
-            leading: Icon(Icons.file_download, color: Colors.green[600]),
-            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('${episodes.length} episode${episodes.length != 1 ? 's' : ''}'),
-            trailing: Icon(isExpanded ? Icons.expand_less : Icons.expand_more),
-            onTap: () => _togglePodcastExpansion(podcastKey),
-          ),
-          if (isExpanded)
-            PaginatedEpisodeList(
-              episodes: episodes,
-              isServerEpisodes: false,
-              onPlayPressed: (episode) => _playLocalEpisode(episode),
-            ),
-        ],
+  /// Render a single local download using the standard episode card so it looks
+  /// and behaves identically to server episodes (tap opens the episode page,
+  /// long-press shows the context menu, play uses the unified path).
+  Widget _buildLocalEpisodeCard(Episode episode) {
+    final pe = LocalDownloadUtils.toPinepodsEpisode(episode);
+    return PinepodsEpisodeCard(
+      episode: pe,
+      isLocalDownload: true,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PinepodsEpisodeDetails(initialEpisode: pe),
+        ),
+      ),
+      onPlayPressed: () => _playLocalEpisode(episode),
+      onLongPress: () => _showLocalContextMenu(pe, episode),
+    );
+  }
+
+  void _showLocalContextMenu(PinepodsEpisode pe, Episode episode) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.3),
+      builder: (context) => EpisodeContextMenu(
+        episode: pe,
+        isDownloadedLocally: true,
+        onDeleteLocalDownload: () {
+          Navigator.of(context).pop();
+          _handleLocalEpisodeDelete(episode);
+        },
+        onDismiss: () => Navigator.of(context).pop(),
       ),
     );
   }
@@ -767,6 +800,36 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
     );
   }
 
+  /// Button linking to the offline action queue, with a live count of pending
+  /// interactions waiting to sync.
+  Widget _buildActionQueueButton() {
+    final repository = Provider.of<PodcastBloc>(context, listen: false).podcastService.repository;
+
+    return StreamBuilder<void>(
+      stream: repository.pendingActionListener,
+      builder: (context, _) {
+        return FutureBuilder<int>(
+          future: repository.getPendingActions().then((a) => a.length),
+          builder: (context, snapshot) {
+            final count = snapshot.data ?? 0;
+            return TextButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ActionQueue()),
+              ),
+              icon: Icon(count > 0 ? Icons.sync_problem : Icons.sync, size: 16),
+              label: Text(count > 0 ? 'Action Queue ($count)' : 'Action Queue'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                visualDensity: VisualDensity.compact,
+                foregroundColor: count > 0 ? Colors.orange[700] : null,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildSearchAndFilterBar() {
     return SliverToBoxAdapter(
       child: Padding(
@@ -777,6 +840,8 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                _buildActionQueueButton(),
+                const SizedBox(width: 4),
                 TextButton.icon(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const DownloadActivity()),
@@ -908,9 +973,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
               ],
             ),
           ),
-          ..._filteredLocalDownloadsByPodcast.entries.map((entry) {
-            return _buildLocalPodcastDropdown('local_${entry.key}', entry.value, displayName: entry.key);
-          }).toList(),
+          ..._flattenLocalDownloads(_filteredLocalDownloadsByPodcast).map(_buildLocalEpisodeCard),
         ],
 
         if (serverSummaries.isNotEmpty) ...[
@@ -952,8 +1015,20 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
   Future<void> _playLocalEpisode(Episode episode) async {
     try {
       log.info('Playing local episode: ${episode.title}');
-      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
-      await audioPlayerService.playEpisode(episode: episode, resume: true);
+      final audioService = GlobalServices.pinepodsAudioService;
+      if (audioService == null) {
+        _showErrorSnackBar('Audio service not available');
+        return;
+      }
+      // Play through the unified PinePods path so position/duration tracking and
+      // interaction recording work the same as for server episodes.
+      final pe = LocalDownloadUtils.toPinepodsEpisode(episode);
+      await playPinepodsEpisodeWithOptionalFullScreen(
+        context,
+        audioService,
+        pe,
+        resume: true,
+      );
       log.info('Successfully started local episode playback');
     } catch (e) {
       log.severe('Error playing local episode: $e');
@@ -1038,9 +1113,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                   ],
                 ),
               ),
-              ...localDownloadsByPodcast.entries.map((entry) {
-                return _buildLocalPodcastDropdown('offline_local_${entry.key}', entry.value, displayName: entry.key);
-              }).toList(),
+              ..._flattenLocalDownloads(localDownloadsByPodcast).map(_buildLocalEpisodeCard),
               const SizedBox(height: 100),
             ]),
           ),

@@ -16,6 +16,40 @@ class LocalDownloadUtils {
     return 'pinepods_${episode.episodeId}';
   }
 
+  /// Parse the server episode id out of a local-download guid. Handles both the
+  /// canonical `pinepods_<id>` format and the legacy `pinepods_<id>_<ts>` one.
+  static int episodeIdFromGuid(String guid) {
+    if (!guid.startsWith('pinepods_')) return 0;
+    final rest = guid.substring('pinepods_'.length);
+    return int.tryParse(rest.split('_').first) ?? 0;
+  }
+
+  /// Convert a stored local-download [Episode] back into a [PinepodsEpisode] so
+  /// it can be rendered and played through the same widgets/path as every other
+  /// (server) episode. The reverse of [localDownloadEpisode]'s conversion.
+  static PinepodsEpisode toPinepodsEpisode(Episode episode) {
+    return PinepodsEpisode(
+      podcastName: episode.podcast ?? 'Unknown Podcast',
+      episodeTitle: episode.title ?? '',
+      episodePubDate: episode.publicationDate?.toIso8601String() ?? '',
+      episodeDescription: episode.description ?? '',
+      episodeArtwork: episode.imageUrl ?? '',
+      // episodeUrl doubles as the now-playing match key; keep it as the original
+      // content URL so highlighting lines up with the unified play path.
+      episodeUrl: episode.contentUrl ?? '',
+      episodeDuration: episode.duration, // stored in seconds
+      // Episode.position is milliseconds; listenDuration is seconds.
+      listenDuration: episode.position > 0 ? episode.position ~/ 1000 : null,
+      episodeId: episodeIdFromGuid(episode.guid),
+      completed: episode.played,
+      saved: false,
+      queued: false,
+      downloaded: true,
+      isYoutube: episode.pguid?.contains('youtube') ?? false,
+      podcastId: null,
+    );
+  }
+
   /// Clear the local download status cache (call on refresh)
   static void clearCache() {
     _localDownloadStatusCache.clear();
@@ -142,7 +176,8 @@ class LocalDownloadUtils {
         author: episode.podcastName,
         season: 0,
         episode: 0,
-        position: episode.listenDuration ?? 0,
+        // Episode.position is stored in milliseconds; listenDuration is seconds.
+        position: (episode.listenDuration ?? 0) * 1000,
         played: episode.completed,
         chapters: [],
         transcriptUrls: [],

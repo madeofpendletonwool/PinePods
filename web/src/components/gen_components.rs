@@ -58,27 +58,43 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     });
     let server_name = (*server_name_sel).clone();
 
-    // Just use the original src without timestamps
-    let image_src = use_state(|| props.src.clone());
+    const FALLBACK_IMAGE: &str = "/static/assets/favicon.png";
+
+    // Just use the original src without timestamps; treat empty src as immediate fallback
+    let image_src = use_state(|| {
+        if props.src.is_empty() {
+            FALLBACK_IMAGE.to_string()
+        } else {
+            props.src.clone()
+        }
+    });
 
     // Update src when props.src changes
     {
         let image_src = image_src.clone();
         let props_src = props.src.clone();
         use_effect_with(props_src, move |src| {
-            image_src.set(src.clone());
+            if src.is_empty() {
+                image_src.set(FALLBACK_IMAGE.to_string());
+            } else {
+                image_src.set(src.clone());
+            }
             || ()
         });
     }
 
-    // Create a proxied URL from the original source
+    // Create a proxied URL from the original source; skip proxy for empty URLs
     let proxied_url = {
         let original_url = props.src.clone();
-        format!(
-            "{}/api/proxy/image?url={}",
-            server_name,
-            urlencoding::encode(&original_url)
-        )
+        if original_url.is_empty() {
+            FALLBACK_IMAGE.to_string()
+        } else {
+            format!(
+                "{}/api/proxy/image?url={}",
+                server_name,
+                urlencoding::encode(&original_url)
+            )
+        }
     };
 
     // Handle image load error

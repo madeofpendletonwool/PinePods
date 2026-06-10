@@ -30,6 +30,7 @@ import 'package:pinepods_mobile/services/download/mobile_download_manager.dart';
 import 'package:pinepods_mobile/services/download/mobile_download_service.dart';
 import 'package:pinepods_mobile/services/podcast/mobile_podcast_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
+import 'package:pinepods_mobile/services/offline/offline_action_queue.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
@@ -92,6 +93,7 @@ class PinepodsPodcastApp extends StatefulWidget {
   List<int> certificateAuthorityBytes;
   late PinepodsAudioService pinepodsAudioService;
   late PinepodsService pinepodsService;
+  late OfflineActionQueue offlineActionQueue;
   CarPlayService? carPlayService;
 
   PinepodsPodcastApp({
@@ -143,10 +145,21 @@ class PinepodsPodcastApp extends StatefulWidget {
       );
     }
 
+    // Offline outbox: durably queues episode interactions and syncs them when
+    // online. Interaction recording in the audio service routes through it.
+    offlineActionQueue = OfflineActionQueue(
+      repository: repository,
+      pinepodsService: pinepodsService,
+      settingsService: mobileSettingsService,
+    );
+    pinepodsAudioService.setActionQueue(offlineActionQueue);
+    offlineActionQueue.start();
+
     // Initialize global services for app-wide access
     GlobalServices.initialize(
       pinepodsAudioService: pinepodsAudioService,
       pinepodsService: pinepodsService,
+      offlineActionQueue: offlineActionQueue,
     );
 
     // Initialize CarPlay service for iOS

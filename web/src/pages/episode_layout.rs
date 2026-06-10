@@ -1422,6 +1422,7 @@ pub fn episode_layout() -> Html {
         let api_key_copy = download_api_key.clone();
         let user_id_copy = user_id.clone();
         let feed_results_copy = download_feed_results.clone();
+        let page_state_copy = page_state.clone();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
@@ -1429,6 +1430,7 @@ pub fn episode_layout() -> Html {
             let api_key = api_key_copy.clone();
             let feed_results = feed_results_copy.clone();
             let call_down_dispatch = call_dispatch.clone();
+            let page_state = page_state_copy.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let episode_id = match feed_results
                     .as_ref()
@@ -1482,6 +1484,7 @@ pub fn episode_layout() -> Html {
                                     state.info_message =
                                         Option::from(format!("{}", success_message))
                                 });
+                                page_state.set(PageState::Hidden);
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
@@ -1489,6 +1492,7 @@ pub fn episode_layout() -> Html {
                                     state.error_message =
                                         Option::from(format!("{}", formatted_error))
                                 });
+                                page_state.set(PageState::Hidden);
                             }
                         }
                     }
@@ -1500,6 +1504,7 @@ pub fn episode_layout() -> Html {
                                 formatted_error
                             ))
                         });
+                        page_state.set(PageState::Hidden);
                     }
                 }
             });

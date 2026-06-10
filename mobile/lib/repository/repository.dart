@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:pinepods_mobile/entities/episode.dart';
+import 'package:pinepods_mobile/entities/pending_action.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/entities/transcript.dart';
 import 'package:pinepods_mobile/state/episode_state.dart';
@@ -64,7 +65,17 @@ abstract class Repository {
 
   Future<List<Episode>> loadQueue();
 
+  /// Offline action queue (pending server interactions)
+  Future<PendingAction> savePendingAction(PendingAction action);
+
+  Future<List<PendingAction>> getPendingActions();
+
+  Future<void> deletePendingAction(int id);
+
   /// Event listeners
   Stream<Podcast>? podcastListener;
   Stream<EpisodeState>? episodeListener;
+
+  /// Emits whenever the pending action queue changes (add/update/delete).
+  Stream<void>? pendingActionListener;
 }
