@@ -1488,8 +1488,9 @@ pub fn login() -> Html {
                                     value={(*user_language).clone()}
                                 >
                                     { for available_languages.iter().map(|lang| {
+                                        let selected = lang.code == *user_language;
                                         html! {
-                                            <option value={lang.code.clone()}>{&lang.name}</option>
+                                            <option value={lang.code.clone()} selected={selected}>{&lang.name}</option>
                                         }
                                     })}
                                 </select>
@@ -1507,8 +1508,8 @@ pub fn login() -> Html {
                                     oninput={on_time_pref_change}
                                     value={(*time_pref).to_string()}
                                 >
-                                    <option value="12">{"12 Hour"}</option>
-                                    <option value="24">{"24 Hour"}</option>
+                                    <option value="12" selected={*time_pref == 12}>{"12 Hour"}</option>
+                                    <option value="24" selected={*time_pref == 24}>{"24 Hour"}</option>
                                 </select>
                             </div>
 
@@ -1540,14 +1541,14 @@ pub fn login() -> Html {
                                     oninput={on_df_change}
                                     value={(*date_format).clone()}
                                 >
-                                    <option value="MDY">{"MM-DD-YYYY"}</option>
-                                    <option value="DMY">{"DD-MM-YYYY"}</option>
-                                    <option value="YMD">{"YYYY-MM-DD"}</option>
-                                    <option value="JUL">{ &i18n_date_format_julian }</option>
-                                    <option value="ISO">{ &i18n_date_format_iso8601 }</option>
-                                    <option value="USA">{"MM/DD/YYYY"}</option>
-                                    <option value="EUR">{"DD.MM.YYYY"}</option>
-                                    <option value="JIS">{"YYYY-MM-DD"}</option>
+                                    <option value="MDY" selected={*date_format == "MDY"}>{"MM-DD-YYYY"}</option>
+                                    <option value="DMY" selected={*date_format == "DMY"}>{"DD-MM-YYYY"}</option>
+                                    <option value="YMD" selected={*date_format == "YMD"}>{"YYYY-MM-DD"}</option>
+                                    <option value="JUL" selected={*date_format == "JUL"}>{ &i18n_date_format_julian }</option>
+                                    <option value="ISO" selected={*date_format == "ISO"}>{ &i18n_date_format_iso8601 }</option>
+                                    <option value="USA" selected={*date_format == "USA"}>{"MM/DD/YYYY"}</option>
+                                    <option value="EUR" selected={*date_format == "EUR"}>{"DD.MM.YYYY"}</option>
+                                    <option value="JIS" selected={*date_format == "JIS"}>{"YYYY-MM-DD"}</option>
                                 </select>
                             </div>
 
@@ -2621,8 +2622,9 @@ pub fn login() -> Html {
                                     value={(*user_language).clone()}
                                 >
                                     { for available_languages.iter().map(|lang| {
+                                        let selected = lang.code == *user_language;
                                         html! {
-                                            <option value={lang.code.clone()}>{&lang.name}</option>
+                                            <option value={lang.code.clone()} selected={selected}>{&lang.name}</option>
                                         }
                                     })}
                                 </select>
@@ -2640,8 +2642,8 @@ pub fn login() -> Html {
                                     oninput={on_time_pref_change}
                                     value={(*time_pref).to_string()}
                                 >
-                                    <option value="12">{"12 Hour"}</option>
-                                    <option value="24">{"24 Hour"}</option>
+                                    <option value="12" selected={*time_pref == 12}>{"12 Hour"}</option>
+                                    <option value="24" selected={*time_pref == 24}>{"24 Hour"}</option>
                                 </select>
                             </div>
 
@@ -2673,14 +2675,14 @@ pub fn login() -> Html {
                                     oninput={on_df_change}
                                     value={(*date_format).clone()}
                                 >
-                                    <option value="MDY">{"MM-DD-YYYY"}</option>
-                                    <option value="DMY">{"DD-MM-YYYY"}</option>
-                                    <option value="YMD">{"YYYY-MM-DD"}</option>
-                                    <option value="JUL">{ &i18n_date_format_julian }</option>
-                                    <option value="ISO">{ &i18n_date_format_iso8601 }</option>
-                                    <option value="USA">{"MM/DD/YYYY"}</option>
-                                    <option value="EUR">{"DD.MM.YYYY"}</option>
-                                    <option value="JIS">{"YYYY-MM-DD"}</option>
+                                    <option value="MDY" selected={*date_format == "MDY"}>{"MM-DD-YYYY"}</option>
+                                    <option value="DMY" selected={*date_format == "DMY"}>{"DD-MM-YYYY"}</option>
+                                    <option value="YMD" selected={*date_format == "YMD"}>{"YYYY-MM-DD"}</option>
+                                    <option value="JUL" selected={*date_format == "JUL"}>{ &i18n_date_format_julian }</option>
+                                    <option value="ISO" selected={*date_format == "ISO"}>{ &i18n_date_format_iso8601 }</option>
+                                    <option value="USA" selected={*date_format == "USA"}>{"MM/DD/YYYY"}</option>
+                                    <option value="EUR" selected={*date_format == "EUR"}>{"DD.MM.YYYY"}</option>
+                                    <option value="JIS" selected={*date_format == "JIS"}>{"YYYY-MM-DD"}</option>
                                 </select>
                             </div>
 
@@ -2933,8 +2935,6 @@ pub fn login() -> Html {
 
 #[function_component(LogOut)]
 pub fn logout() -> Html {
-    let history = BrowserHistory::new();
-
     // Clear local and session storage except for 'user_theme'
     let window = web_sys::window().expect("no global `window` exists");
     let local_storage = window
@@ -2964,8 +2964,11 @@ pub fn logout() -> Html {
             .expect("failed to set 'selected_theme'");
     }
 
-    // Redirect to root path
-    history.push("/");
+    // Force a full page reload (not a client-side route push) so that all
+    // in-memory yewdux stores (AppState, PodcastFeedState, etc.) are wiped.
+    // A client-side push leaves the previous user's data in WASM memory, which
+    // leaks across user switches (e.g. a stale podcast list on /podcasts).
+    let _ = window.location().set_href("/");
 
     html! {}
 }

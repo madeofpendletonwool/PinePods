@@ -189,7 +189,8 @@
     "podcast_name_placeholder": "Podcast Name",
     "refresh_button": "Refresh Directory",
     "refresh_description": "Drop new audio files in the directory and click Refresh to add them as episodes.",
-    "title": "Add Local Podcast"
+    "title": "Add Local Podcast",
+    "refresh": "Refresh"
   },
   "custom_theme_creator": {
     "create_theme": "Create Theme",
@@ -401,6 +402,8 @@
     "playback_speed_reset": "Playback speed reset to default",
     "playback_speed_reset_default": "Playback speed reset to default",
     "playback_speed_updated": "Playback speed updated",
+    "playback_speed_custom_badge": "Custom speed",
+    "playback_speed_global_badge": "Global default",
     "podcast_index_id": "Podcast Index ID",
     "podcast_index_id_placeholder": "Enter Podcast Index ID",
     "podcast_name": "Podcast Name",
@@ -517,7 +520,19 @@
     "top_podcasts": "Top Podcasts",
     "unknown_author": "Unknown Author",
     "welcome_description": "Start by adding some podcasts using the search bar above.",
-    "welcome_to_pinepods": "Welcome to Pinepods"
+    "welcome_to_pinepods": "Welcome to Pinepods",
+    "welcome_hero_subtitle": "Your self-hosted home for podcasts",
+    "welcome_intro": "Pinepods is a self-hosted, forever-free podcast manager. Subscribe to any feed, sync your progress across devices, download episodes for offline listening, and keep your entire library in one place — all on infrastructure you control.",
+    "welcome_get_started": "Get Started",
+    "welcome_docs_button": "Read the Docs",
+    "welcome_tips_heading": "A few ways to get started",
+    "welcome_tip_search_title": "Search for a podcast",
+    "welcome_tip_search_desc": "Use the search bar at the top of the page to find a show by name, then subscribe with a single click.",
+    "welcome_tip_feed_title": "Add a custom feed",
+    "welcome_tip_feed_desc": "Head to the Podcasts page to add any show directly by its RSS feed URL.",
+    "welcome_tip_docs_title": "Explore the docs",
+    "welcome_tip_docs_desc": "New to Pinepods? The getting started guide walks you through everything the app can do.",
+    "welcome_open_podcasts": "Go to Podcasts"
   },
   "host_component": {
     "add_hosts_here": "Add hosts for this podcast here",
@@ -684,6 +699,15 @@
     "caption_optional": "Optional Note",
     "internal_gpodder_api": "Internal Gpodder API",
     "internal_gpodder_desc": "Enable the internal gpodder API to synchronize podcasts between Pinepods and other gpodder-compatible clients. This will disable external sync options while enabled.",
+    "choose_sync_method": "Choose a sync method",
+    "choose_sync_method_desc": "Pick one of the options below. Each is a separate, mutually-exclusive way to sync — you don't need to fill in all of them.",
+    "sync_option_internal": "Option 1 · Internal GPodder API",
+    "sync_option_internal_hint": "Run Pinepods' own gpodder-compatible server. Just flip the toggle — no server URL or login needed.",
+    "sync_option_nextcloud": "Option 2 · Nextcloud",
+    "sync_option_nextcloud_hint": "Sync through a Nextcloud server with the GPodder Sync app. Enter your Nextcloud URL and authenticate in the browser — no username/password fields here.",
+    "sync_option_external_gpodder": "Option 3 · External GPodder Server",
+    "sync_option_external_gpodder_hint": "Connect to an external gpodder-compatible server (e.g. gpodder.net or a self-hosted one). The server URL, username, and password below all belong to this option.",
+    "sync_option_or": "OR",
     "nextcloud_server_url": "Nextcloud Server URL",
     "authenticate": "Authenticate",
     "gpodder_server_url": "Server URL",
@@ -700,7 +724,12 @@
     "api_endpoint_status": "API Endpoint Status",
     "recent_episode_actions": "Recent Episode Actions",
     "hide_extra_options": "Hide Extra Options",
-    "intial_sync": "Initial Sync"
+    "intial_sync": "Initial Sync",
+    "loading_server_statistics": "Loading Server Statistics",
+    "nextcloud_sync_active": "Nextcloud Sync Active",
+    "sync_now": "Sync Now",
+    "syncing": "Syncing...",
+    "waiting_for_auth": "Waiting for authentication..."
   },
   "notification_center": {
     "active_tasks": "Active Tasks",
@@ -972,6 +1001,7 @@
   },
   "podcast_index_matching": {
     "ignore": "Ignore",
+    "no_ignored": "No Ignored Podcasts",
     "ignored_podcasts": "Ignored Podcasts",
     "match": "Match",
     "no_ignored_podcasts": "No podcasts are ignored from index matching.",
@@ -1090,7 +1120,7 @@
     "rss_feed_description": "RSS feeds allow you to subscribe to your Pinepods queue using any RSS reader. This creates a personal RSS feed that includes all queued episodes.",
     "rss_feed_settings": "RSS Feed Settings:",
     "rss_feed_url": "Your RSS Feed URL:",
-    "url_includes_api_key": "The url uses a custom API key only valid for this shared link. Share away!",
+    "url_includes_api_key": "The url uses a custom API key only valid for this shared link. Feel free to share RSS feeds with your friends!",
     "your_rss_feed_url": "Your RSS feed URL"
   },
   "safehtml": {

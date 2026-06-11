@@ -902,13 +902,15 @@ async fn process_opml_import(
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
     
-    // Mark task as completed
-    let _ = task_manager.update_task_progress(
+    // Mark task as completed (sets status to SUCCESS so the notification clears;
+    // update_task_progress only ever sets the status to DOWNLOADING, which would
+    // leave the notification stuck as an active task forever)
+    let _ = task_manager.complete_task(
         &task_id,
-        100.0,
+        None,
         Some("OPML import completed".to_string()),
     ).await;
-    
+
     // Clear progress from Redis
     let _ = redis_client.delete(&progress_key).await;
 }

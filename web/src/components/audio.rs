@@ -2291,7 +2291,7 @@ pub fn on_play_click(
                         )
                         .await
                         {
-                            Ok((playback_speed, start_skip, end_skip)) => {
+                            Ok((playback_speed, start_skip, end_skip, _playback_speed_customized)) => {
                                 let start_pos_sec = episode.listenduration.max(start_skip) as f64;
                                 let end_pos_sec = end_skip as f64;
 

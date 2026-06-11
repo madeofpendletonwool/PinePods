@@ -810,7 +810,16 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             server_name_iter,
                                             api_key_iter,
                                             &history,
-                                            podcast.podcastid,
+                                            // Person-page podcasts carry a synthetic temp id
+                                            // (1_000_000_000 + i), not a real DB id. Passing it
+                                            // would send create_on_title_click down its
+                                            // `podcast_id > 0` fast path and fetch episodes for a
+                                            // bogus id (errors, no episodes). Pass 0 so it takes
+                                            // the slow path — call_check_podcast resolves the real
+                                            // DB id for subscribed podcasts and parses the feed for
+                                            // unsubscribed ones — exactly like the search flow in
+                                            // podcast_layout.rs.
+                                            0,
                                             podcast.podcastindexid.clone(),
                                             podcast.podcastname.clone(),
                                             podcast.feedurl.clone(),

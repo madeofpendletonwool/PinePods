@@ -1210,3 +1210,156 @@ pub fn refresh_progress(props: &RefreshProgressProps) -> Html {
         </div>
     }
 }
+
+// Reusable themed image picker with live preview. Hides the native file input behind a
+// styled label button, shows the selected image, and lists supported file types.
+#[derive(Properties, PartialEq, Clone)]
+pub struct ImagePickerProps {
+    /// Unique DOM id so the styled <label> can target the hidden <input>.
+    pub id: String,
+    /// Fired with the selected File, or None when cleared.
+    pub on_change: Callback<Option<web_sys::File>>,
+    #[prop_or("image/*".to_string())]
+    pub accept: String,
+    /// Optional caption listing supported file types.
+    #[prop_or_default]
+    pub supported_types: Option<String>,
+    /// Optional override for the button label.
+    #[prop_or_default]
+    pub button_label: Option<String>,
+    /// Optional fully-qualified image URL shown as the default preview when the user
+    /// hasn't picked their own file (e.g. cover art auto-detected from a folder).
+    #[prop_or_default]
+    pub default_preview: Option<String>,
+    /// Optional caption shown beneath the default preview (e.g. "Detected from folder").
+    #[prop_or_default]
+    pub default_preview_label: Option<String>,
+}
+
+#[function_component(ImagePicker)]
+pub fn image_picker(props: &ImagePickerProps) -> Html {
+    let preview_url = use_state(|| None as Option<String>);
+    let file_name = use_state(|| None as Option<String>);
+    // Holds the current object URL so we can revoke it on change/unmount.
+    let url_ref = use_mut_ref(|| None as Option<String>);
+
+    // Revoke any outstanding object URL when the component is destroyed.
+    {
+        let url_ref = url_ref.clone();
+        use_effect_with((), move |_| {
+            move || {
+                if let Some(url) = url_ref.borrow_mut().take() {
+                    let _ = web_sys::Url::revoke_object_url(&url);
+                }
+            }
+        });
+    }
+
+    let on_input_change = {
+        let preview_url = preview_url.clone();
+        let file_name = file_name.clone();
+        let url_ref = url_ref.clone();
+        let on_change = props.on_change.clone();
+        Callback::from(move |e: Event| {
+            let file = e
+                .target_dyn_into::<HtmlInputElement>()
+                .and_then(|input| input.files())
+                .and_then(|files| files.get(0));
+
+            // Revoke the previous preview URL before replacing it.
+            if let Some(old) = url_ref.borrow_mut().take() {
+                let _ = web_sys::Url::revoke_object_url(&old);
+            }
+
+            match file {
+                Some(f) => {
+                    let url = web_sys::Url::create_object_url_with_blob(&f).ok();
+                    if let Some(ref u) = url {
+                        *url_ref.borrow_mut() = Some(u.clone());
+                    }
+                    file_name.set(Some(f.name()));
+                    preview_url.set(url);
+                    on_change.emit(Some(f));
+                }
+                None => {
+                    file_name.set(None);
+                    preview_url.set(None);
+                    on_change.emit(None);
+                }
+            }
+        })
+    };
+
+    let on_remove = {
+        let preview_url = preview_url.clone();
+        let file_name = file_name.clone();
+        let url_ref = url_ref.clone();
+        let on_change = props.on_change.clone();
+        let input_id = props.id.clone();
+        Callback::from(move |_: MouseEvent| {
+            if let Some(old) = url_ref.borrow_mut().take() {
+                let _ = web_sys::Url::revoke_object_url(&old);
+            }
+            // Clear the underlying input so re-selecting the same file still fires onchange.
+            if let Some(input) = window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.get_element_by_id(&input_id))
+                .and_then(|el| el.dyn_into::<HtmlInputElement>().ok())
+            {
+                input.set_value("");
+            }
+            file_name.set(None);
+            preview_url.set(None);
+            on_change.emit(None);
+        })
+    };
+
+    let button_label = props
+        .button_label
+        .clone()
+        .unwrap_or_else(|| "Choose Image".to_string());
+
+    let has_local_file = file_name.is_some();
+    // Show the user's pick if they made one; otherwise fall back to the provided default.
+    let shown_preview = (*preview_url)
+        .clone()
+        .or_else(|| if has_local_file { None } else { props.default_preview.clone() });
+    let showing_default = !has_local_file && props.default_preview.is_some();
+
+    html! {
+        <div class="image-picker">
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <label class="btn btn-secondary" for={props.id.clone()} style="padding:6px 12px; cursor:pointer;">
+                    <i class="ph ph-image"></i>
+                    <span>{ button_label }</span>
+                </label>
+                <input
+                    id={props.id.clone()}
+                    type="file"
+                    accept={props.accept.clone()}
+                    style="display:none;"
+                    onchange={on_input_change}
+                />
+                if let Some(name) = (*file_name).clone() {
+                    <span style="font-size:13px; color: var(--text-secondary-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:220px;">{ name }</span>
+                    <button type="button" class="btn btn-ghost" onclick={on_remove} style="padding:4px 8px;">
+                        <i class="ph ph-x"></i>
+                    </button>
+                }
+            </div>
+            if let Some(url) = shown_preview {
+                <div style="margin-top:10px;">
+                    <img src={url} alt="preview" style="max-width:160px; max-height:160px; border-radius:8px; object-fit:cover; border:1px solid rgba(128,128,128,0.2);" />
+                    if showing_default {
+                        if let Some(label) = props.default_preview_label.clone() {
+                            <div class="settings-row-desc" style="margin-top:4px;">{ label }</div>
+                        }
+                    }
+                </div>
+            }
+            if let Some(types) = props.supported_types.clone() {
+                <div class="settings-row-desc" style="margin-top:6px;">{ types }</div>
+            }
+        </div>
+    }
+}

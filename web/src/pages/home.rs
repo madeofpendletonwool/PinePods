@@ -2,7 +2,9 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, EpisodeStatusState, HomePageState, PlaylistDataState, UIState};
+use crate::components::context::{
+    AppState, EpisodeStatusState, HomePageState, PlaylistDataState, UIState,
+};
 use crate::components::context_menu_button::ContextMenuButton;
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::on_shownotes_click;
@@ -34,6 +36,94 @@ fn quick_link(props: &QuickLinkProps) -> Html {
             <i class={classes!("ph", props.icon)}></i>
             <span>{ props.label.clone() }</span>
         </Link<Route>>
+    }
+}
+
+#[derive(Properties, PartialEq, Clone)]
+struct WelcomeTipProps {
+    icon: &'static str,
+    title: String,
+    description: String,
+}
+
+#[function_component(WelcomeTip)]
+fn welcome_tip(props: &WelcomeTipProps) -> Html {
+    html! {
+        <div class="welcome-tip-card">
+            <div class="welcome-tip-icon">
+                <i class={classes!("ph", props.icon)}></i>
+            </div>
+            <div class="welcome-tip-text">
+                <h3 class="welcome-tip-title">{ props.title.clone() }</h3>
+                <p class="welcome-tip-desc">{ props.description.clone() }</p>
+            </div>
+        </div>
+    }
+}
+
+#[function_component(WelcomeHome)]
+fn welcome_home() -> Html {
+    let (i18n, _) = use_translation();
+
+    let hero_subtitle = i18n.t("home.welcome_hero_subtitle").to_string();
+    let intro = i18n.t("home.welcome_intro").to_string();
+    let get_started = i18n.t("home.welcome_get_started").to_string();
+    let docs_button = i18n.t("home.welcome_docs_button").to_string();
+    let tips_heading = i18n.t("home.welcome_tips_heading").to_string();
+    let tip_search_title = i18n.t("home.welcome_tip_search_title").to_string();
+    let tip_search_desc = i18n.t("home.welcome_tip_search_desc").to_string();
+    let tip_feed_title = i18n.t("home.welcome_tip_feed_title").to_string();
+    let tip_feed_desc = i18n.t("home.welcome_tip_feed_desc").to_string();
+    let tip_docs_title = i18n.t("home.welcome_tip_docs_title").to_string();
+    let tip_docs_desc = i18n.t("home.welcome_tip_docs_desc").to_string();
+    let welcome_title = i18n.t("home.welcome_to_pinepods").to_string();
+    let open_podcasts = i18n.t("home.welcome_open_podcasts").to_string();
+
+    html! {
+        <div class="welcome-container">
+            <div class="welcome-hero">
+                <img src="static/assets/favicon.png" alt="Pinepods" class="welcome-logo" />
+                <h1 class="welcome-title">{ welcome_title }</h1>
+                <p class="welcome-subtitle">{ hero_subtitle }</p>
+                <p class="welcome-intro">{ intro }</p>
+                <div class="welcome-actions">
+                    <a
+                        href="https://pinepods.online/docs/intro"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="welcome-btn welcome-btn-secondary"
+                    >
+                        <i class="ph ph-book"></i>
+                        <span>{ docs_button }</span>
+                    </a>
+                    <Link<Route> to={Route::Podcasts} classes="welcome-btn welcome-btn-secondary">
+                        <i class="ph ph-microphone-stage"></i>
+                        <span>{ open_podcasts }</span>
+                    </Link<Route>>
+                </div>
+            </div>
+
+            <div class="welcome-tips">
+                <h2 class="welcome-tips-heading">{ format!("{} \u{2014} {}", get_started, tips_heading) }</h2>
+                <div class="welcome-tips-grid">
+                    <WelcomeTip
+                        icon="ph-magnifying-glass"
+                        title={tip_search_title}
+                        description={tip_search_desc}
+                    />
+                    <WelcomeTip
+                        icon="ph-rss"
+                        title={tip_feed_title}
+                        description={tip_feed_desc}
+                    />
+                    <WelcomeTip
+                        icon="ph-binoculars"
+                        title={tip_docs_title}
+                        description={tip_docs_desc}
+                    />
+                </div>
+            </div>
+        </div>
     }
 }
 
@@ -127,11 +217,12 @@ pub fn home() -> Html {
                                     .chain(home_data.in_progress_episodes.iter());
 
                                 // Extract episode state information
-                                let completed_episode_ids: std::collections::HashSet<i32> = all_episodes
-                                    .clone()
-                                    .filter(|ep| ep.completed)
-                                    .map(|ep| ep.episodeid)
-                                    .collect();
+                                let completed_episode_ids: std::collections::HashSet<i32> =
+                                    all_episodes
+                                        .clone()
+                                        .filter(|ep| ep.completed)
+                                        .map(|ep| ep.episodeid)
+                                        .collect();
 
                                 let saved_episodes: Vec<Episode> = all_episodes
                                     .clone()
@@ -224,6 +315,10 @@ pub fn home() -> Html {
                 }
             } else {
                 if let Some(home_data) = &home_state.home_overview {
+                    if home_data.top_podcasts.is_empty() {
+                        // Zero podcasts added — greet the user with the welcome page
+                        <WelcomeHome />
+                    } else {
                     <div class="space-y-8">
                         // Quick Links Section
                         <div class="section-container">
@@ -352,6 +447,7 @@ pub fn home() -> Html {
                         </div>
                         <div class="h-30"></div>
                     </div>
+                    }
                 } else {
                     { empty_message(
                         &i18n_welcome_to_pinepods,

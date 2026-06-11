@@ -1624,6 +1624,7 @@ pub struct PlayEpisodeDetailsResponse {
     pub playback_speed: f64,
     pub start_skip: i32,
     pub end_skip: i32,
+    pub playback_speed_customized: bool,
 }
 
 // Get play episode details - matches Python get_play_episode_details endpoint exactly
@@ -1645,7 +1646,7 @@ pub async fn get_play_episode_details(
 
     if key_id == request.user_id || is_web_key {
         // Get all details in one function call
-        let (playback_speed, start_skip, end_skip) = state.db_pool.get_play_episode_details(
+        let (playback_speed, start_skip, end_skip, playback_speed_customized) = state.db_pool.get_play_episode_details(
             request.user_id,
             request.podcast_id,
             request.is_youtube.unwrap_or(false)
@@ -1654,7 +1655,8 @@ pub async fn get_play_episode_details(
         Ok(Json(PlayEpisodeDetailsResponse {
             playback_speed,
             start_skip,
-            end_skip
+            end_skip,
+            playback_speed_customized
         }))
     } else {
         Err(AppError::forbidden("You can only get metadata for yourself!"))

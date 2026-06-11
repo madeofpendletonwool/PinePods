@@ -9391,6 +9391,27 @@ impl DatabasePool {
         Ok(())
     }
 
+    // Clear podcast playback speed - resets the podcast back to the global default
+    pub async fn clear_podcast_playback_speed(&self, user_id: i32, podcast_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET playbackspeed = 1.0, playbackspeedcustomized = FALSE WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET PlaybackSpeed = 1.0, PlaybackSpeedCustomized = FALSE WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     // Enable/disable auto download for podcast - matches Python enable_auto_download function
     pub async fn enable_auto_download(&self, podcast_id: i32, auto_download: bool, user_id: i32) -> AppResult<()> {
         match self {
@@ -10041,7 +10062,7 @@ impl DatabasePool {
     }
 
     // Get play episode details - matches Python get_play_episode_details function exactly
-    pub async fn get_play_episode_details(&self, user_id: i32, podcast_id: i32, _is_youtube: bool) -> AppResult<(f64, i32, i32)> {
+    pub async fn get_play_episode_details(&self, user_id: i32, podcast_id: i32, _is_youtube: bool) -> AppResult<(f64, i32, i32, bool)> {
         match self {
             DatabasePool::Postgres(pool) => {
                 // First get user's default playback speed
@@ -10081,15 +10102,16 @@ impl DatabasePool {
                     let start_skip: Option<i32> = row.try_get("startskip")?;
                     let end_skip: Option<i32> = row.try_get("endskip")?;
                     
-                    let final_playback_speed = if playback_speed_customized.unwrap_or(false) {
+                    let is_customized = playback_speed_customized.unwrap_or(false);
+                    let final_playback_speed = if is_customized {
                         podcast_playback_speed.unwrap_or(user_playback_speed)
                     } else {
                         user_playback_speed
                     };
-                    
-                    Ok((final_playback_speed, start_skip.unwrap_or(0), end_skip.unwrap_or(0)))
+
+                    Ok((final_playback_speed, start_skip.unwrap_or(0), end_skip.unwrap_or(0), is_customized))
                 } else {
-                    Ok((user_playback_speed, 0, 0))
+                    Ok((user_playback_speed, 0, 0, false))
                 }
             }
             DatabasePool::MySQL(pool) => {
@@ -10130,15 +10152,16 @@ impl DatabasePool {
                     let start_skip: Option<i32> = row.try_get("StartSkip")?;
                     let end_skip: Option<i32> = row.try_get("EndSkip")?;
                     
-                    let final_playback_speed = if playback_speed_customized.unwrap_or(false) {
+                    let is_customized = playback_speed_customized.unwrap_or(false);
+                    let final_playback_speed = if is_customized {
                         podcast_playback_speed.unwrap_or(user_playback_speed)
                     } else {
                         user_playback_speed
                     };
-                    
-                    Ok((final_playback_speed, start_skip.unwrap_or(0), end_skip.unwrap_or(0)))
+
+                    Ok((final_playback_speed, start_skip.unwrap_or(0), end_skip.unwrap_or(0), is_customized))
                 } else {
-                    Ok((user_playback_speed, 0, 0))
+                    Ok((user_playback_speed, 0, 0, false))
                 }
             }
         }
@@ -18473,7 +18496,14 @@ impl DatabasePool {
                     .fetch_one(pool)
                     .await?;
 
-                Ok(row.try_get::<f64, _>("PlaybackSpeed").unwrap_or(1.0))
+                // PlaybackSpeed is a NUMERIC column in Postgres, which sqlx
+                // decodes to BigDecimal (not f64). The column comes back
+                // lowercased because it was selected unquoted.
+                if let Ok(speed) = row.try_get::<bigdecimal::BigDecimal, _>("playbackspeed") {
+                    Ok(speed.to_f64().unwrap_or(1.0))
+                } else {
+                    Ok(1.0)
+                }
             }
             DatabasePool::MySQL(pool) => {
                 let query = if let Some(_pod_id) = podcast_id {

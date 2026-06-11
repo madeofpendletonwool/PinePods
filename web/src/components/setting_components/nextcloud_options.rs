@@ -895,6 +895,15 @@ pub fn sync_options() -> Html {
     let i18n_remove_sync = i18n.t("nextcloud_options.remove_sync").to_string();
     let i18n_internal_gpodder_api = i18n.t("nextcloud_options.internal_gpodder_api").to_string();
     let i18n_internal_gpodder_desc = i18n.t("nextcloud_options.internal_gpodder_desc").to_string();
+    let i18n_choose_sync_method = i18n.t("nextcloud_options.choose_sync_method").to_string();
+    let i18n_choose_sync_method_desc = i18n.t("nextcloud_options.choose_sync_method_desc").to_string();
+    let i18n_sync_option_internal = i18n.t("nextcloud_options.sync_option_internal").to_string();
+    let i18n_sync_option_internal_hint = i18n.t("nextcloud_options.sync_option_internal_hint").to_string();
+    let i18n_sync_option_nextcloud = i18n.t("nextcloud_options.sync_option_nextcloud").to_string();
+    let i18n_sync_option_nextcloud_hint = i18n.t("nextcloud_options.sync_option_nextcloud_hint").to_string();
+    let i18n_sync_option_external_gpodder = i18n.t("nextcloud_options.sync_option_external_gpodder").to_string();
+    let i18n_sync_option_external_gpodder_hint = i18n.t("nextcloud_options.sync_option_external_gpodder_hint").to_string();
+    let i18n_sync_option_or = i18n.t("nextcloud_options.sync_option_or").to_string();
     let i18n_nextcloud_server_url = i18n.t("nextcloud_options.nextcloud_server_url").to_string();
     let i18n_authenticate = i18n.t("nextcloud_options.authenticate").to_string();
     let i18n_gpodder_server_url = i18n.t("nextcloud_options.gpodder_server_url").to_string();
@@ -903,6 +912,9 @@ pub fn sync_options() -> Html {
     let i18n_test_connection = i18n.t("nextcloud_options.test_connection").to_string();
     let i18n_testing = i18n.t("nextcloud_options.testing").to_string();
     let i18n_nextcloud_sync_active = i18n.t("nextcloud_options.nextcloud_sync_active").to_string();
+    let i18n_sync_now = i18n.t("nextcloud_options.sync_now").to_string();
+    let i18n_syncing = i18n.t("nextcloud_options.syncing").to_string();
+    let i18n_waiting_for_auth = i18n.t("nextcloud_options.waiting_for_auth").to_string();
     let i18n_nextcloud_limited_impl = i18n.t("nextcloud_options.nextcloud_limited_impl").to_string();
     let i18n_nextcloud_antennapod = i18n.t("nextcloud_options.nextcloud_antennapod").to_string();
     let i18n_nextcloud_advanced_hint = i18n.t("nextcloud_options.nextcloud_advanced_hint").to_string();
@@ -937,6 +949,8 @@ pub fn sync_options() -> Html {
     // Loading states
     let is_loading = use_state(|| false);
     let is_testing_connection = use_state(|| false);
+    let is_authenticating = use_state(|| false);
+    let is_nextcloud_syncing = use_state(|| false);
 
     // Effect to get current gpodder API status
     {
@@ -1172,6 +1186,10 @@ pub fn sync_options() -> Html {
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let auth_status = auth_status.clone();
+        let is_authenticating = is_authenticating.clone();
+        let nextcloud_url = nextcloud_url.clone();
+        let sync_type = sync_type.clone();
+        let is_sync_configured = is_sync_configured.clone();
 
         Callback::from(move |_| {
             let dispatch = dispatch.clone();
@@ -1181,8 +1199,13 @@ pub fn sync_options() -> Html {
             let api_key = api_key.clone();
             let user_id = user_id.clone();
             let dispatch_clone = dispatch.clone();
+            let is_authenticating = is_authenticating.clone();
+            let nextcloud_url = nextcloud_url.clone();
+            let sync_type = sync_type.clone();
+            let is_sync_configured = is_sync_configured.clone();
 
             if !server.trim().is_empty() {
+                is_authenticating.set(true);
                 wasm_bindgen_futures::spawn_local(async move {
                     match initiate_nextcloud_login(
                         &server,
@@ -1226,6 +1249,12 @@ pub fn sync_options() -> Html {
                                                 if response.data {
                                                     log::info!("gPodder settings have been set up");
                                                     Dispatch::<NotificationState>::global().reduce_mut(|state| state.info_message = Option::from("Nextcloud server has been authenticated successfully".to_string()));
+
+                                                    // Immediately update the UI to the active Nextcloud sync state
+                                                    sync_type.set("nextcloud".to_string());
+                                                    nextcloud_url.set(server.clone());
+                                                    is_sync_configured.set(true);
+                                                    is_authenticating.set(false);
 
                                                     // Set `is_refreshing` to true and start the WebSocket refresh
                                                     let server_name_call = server_name.clone();
@@ -1279,6 +1308,7 @@ pub fn sync_options() -> Html {
                                 }
                                 Err(e) => {
                                     log::error!("Error calling add_nextcloud_server: {:?}", e);
+                                    is_authenticating.set(false);
                                     let formatted_error = format_error_message(&e.to_string());
                                     Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                         state.error_message = Option::from(
@@ -1297,6 +1327,7 @@ pub fn sync_options() -> Html {
                                 "Failed to initiate Nextcloud login: {:?}",
                                 e
                             )));
+                            is_authenticating.set(false);
                             Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Option::from("Failed to initiate Nextcloud login. Please check the server URL.".to_string()));
                             auth_status.set(
                                 "Failed to initiate Nextcloud login. Please check the server URL."
@@ -1310,6 +1341,76 @@ pub fn sync_options() -> Html {
                 Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message =
                         Option::from("Please enter a Nextcloud Server URL".to_string())
+                });
+            }
+        })
+    };
+
+    // Handler for manually triggering a Nextcloud sync
+    let on_nextcloud_sync_click = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let is_nextcloud_syncing = is_nextcloud_syncing.clone();
+
+        Callback::from(move |_| {
+            let is_syncing = is_nextcloud_syncing.clone();
+            if let (Some(server_name), Some(api_key), Some(user_id)) =
+                (server_name.clone(), api_key.clone().flatten(), user_id)
+            {
+                is_syncing.set(true);
+                spawn_local(async move {
+                    match call_sync_with_gpodder(
+                        &server_name,
+                        &api_key,
+                        user_id,
+                        None,
+                        None,
+                        false,
+                    )
+                    .await
+                    {
+                        Ok(response) => {
+                            if response.success {
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
+                                    state.is_refreshing = Some(true);
+                                });
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                    state.info_message = Some(response.message);
+                                });
+
+                                if let Err(e) = connect_to_episode_websocket(
+                                    &server_name,
+                                    &user_id,
+                                    &api_key,
+                                    true,
+                                    Dispatch::<NotificationState>::global(),
+                                )
+                                .await
+                                {
+                                    web_sys::console::log_1(
+                                        &format!("Failed to connect to WebSocket: {:?}", e).into(),
+                                    );
+                                }
+
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
+                                    state.is_refreshing = Some(false);
+                                });
+                            } else {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                    state.error_message = Some(response.message);
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            let error_msg = format!("Failed to sync with Nextcloud: {}", e);
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                state.error_message = Some(error_msg);
+                            });
+                        }
+                    }
+
+                    is_syncing.set(false);
                 });
             }
         })
@@ -1665,14 +1766,33 @@ pub fn sync_options() -> Html {
                 }
             </div>
 
-            // Internal Gpodder API Section - hide when Nextcloud is active
+            // Sync method chooser intro - only when nothing is configured yet
             {
                 if !should_hide_sync_options {
                     html! {
                         <div class="settings-row">
                             <div>
+                                <div class="settings-row-label">{ &i18n_choose_sync_method }</div>
+                                <div class="settings-row-desc">{ &i18n_choose_sync_method_desc }</div>
+                            </div>
+                            <div></div>
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
+
+            // Option 1: Internal Gpodder API Section - hide when Nextcloud is active
+            {
+                if !should_hide_sync_options {
+                    html! {
+                        <>
+                        <div class="settings-subsection-title">{ &i18n_sync_option_internal }</div>
+                        <div class="settings-row">
+                            <div>
                                 <div class="settings-row-label">{ &i18n_internal_gpodder_api }</div>
-                                <div class="settings-row-desc">{ &i18n_internal_gpodder_desc }</div>
+                                <div class="settings-row-desc">{ &i18n_sync_option_internal_hint }</div>
                             </div>
                             <div class="settings-row-control">
                                 <label class="toggle">
@@ -1689,18 +1809,35 @@ pub fn sync_options() -> Html {
                                 }
                             </div>
                         </div>
+                        </>
                     }
                 } else {
                     html! {}
                 }
             }
 
-            // Nextcloud Section - hide when internal API is enabled
+            // OR divider between Internal and Nextcloud
             {
                 if !should_hide_sync_options {
                     html! {
+                        <div class="sync-option-divider"><span>{ &i18n_sync_option_or }</span></div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
+
+            // Option 2: Nextcloud Section - hide when internal API is enabled
+            {
+                if !should_hide_sync_options {
+                    html! {
+                        <>
+                        <div class="settings-subsection-title">{ &i18n_sync_option_nextcloud }</div>
                         <div class="settings-row">
-                            <div><div class="settings-row-label">{ &i18n_nextcloud_server_url }</div></div>
+                            <div>
+                                <div class="settings-row-label">{ &i18n_nextcloud_server_url }</div>
+                                <div class="settings-row-desc">{ &i18n_sync_option_nextcloud_hint }</div>
+                            </div>
                             <div class="settings-row-control">
                                 <input
                                     type="text"
@@ -1711,19 +1848,38 @@ pub fn sync_options() -> Html {
                                 />
                                 <button
                                     onclick={on_authenticate_click}
+                                    disabled={*is_authenticating}
                                     class="btn btn-secondary"
                                 >
-                                    { &i18n_authenticate }
+                                    {
+                                        if *is_authenticating {
+                                            html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{ &i18n_waiting_for_auth }</span> }
+                                        } else {
+                                            html! { { &i18n_authenticate } }
+                                        }
+                                    }
                                 </button>
                             </div>
                         </div>
+                        </>
                     }
                 } else {
                     html! {}
                 }
             }
 
-            // GPodder Section - hide when internal API is enabled
+            // OR divider between Nextcloud and External GPodder
+            {
+                if !should_hide_sync_options && !*is_internal_gpodder_enabled {
+                    html! {
+                        <div class="sync-option-divider"><span>{ &i18n_sync_option_or }</span></div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
+
+            // Option 3: External GPodder Section - hide when internal API is enabled
             {
                 if !should_hide_sync_options {
                     html! {
@@ -1731,8 +1887,12 @@ pub fn sync_options() -> Html {
                             if !*is_internal_gpodder_enabled {
                                 html! {
                                     <>
+                                        <div class="settings-subsection-title">{ &i18n_sync_option_external_gpodder }</div>
                                         <div class="settings-row">
-                                            <div><div class="settings-row-label">{ &i18n_gpodder_server_url }</div></div>
+                                            <div>
+                                                <div class="settings-row-label">{ &i18n_gpodder_server_url }</div>
+                                                <div class="settings-row-desc">{ &i18n_sync_option_external_gpodder_hint }</div>
+                                            </div>
                                             <div class="settings-row-control">
                                                 <input
                                                     type="text"
@@ -1858,6 +2018,19 @@ pub fn sync_options() -> Html {
                                                 <p class="text-sm italic" style="color: var(--text-secondary-color);">
                                                     { &i18n_nextcloud_advanced_hint }
                                                 </p>
+                                                <button
+                                                    onclick={on_nextcloud_sync_click}
+                                                    disabled={*is_nextcloud_syncing}
+                                                    class="btn btn-secondary mt-3"
+                                                >
+                                                    {
+                                                        if *is_nextcloud_syncing {
+                                                            html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{ &i18n_syncing }</span> }
+                                                        } else {
+                                                            html! { <><i class="ph ph-arrows-clockwise mr-2"></i>{ &i18n_sync_now }</> }
+                                                        }
+                                                    }
+                                                </button>
                                             </>
                                         },
                                         "external_gpodder" => html! {

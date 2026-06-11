@@ -3028,6 +3028,35 @@ pub async fn set_podcast_playback_speed(
     Ok(Json(serde_json::json!({ "detail": "Default podcast playback speed updated." })))
 }
 
+// Request struct for clear_podcast_playback_speed
+#[derive(Deserialize)]
+pub struct ClearPlaybackSpeedPodcast {
+    pub user_id: i32,
+    pub podcast_id: i32,
+}
+
+// Clear podcast playback speed - resets the podcast back to the global default
+pub async fn clear_podcast_playback_speed(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ClearPlaybackSpeedPodcast>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.clear_podcast_playback_speed(request.user_id, request.podcast_id).await?;
+
+    Ok(Json(serde_json::json!({ "message": "Podcast playback speed reset to global default." })))
+}
+
 // Request struct for enable_auto_download - matches Python AutoDownloadRequest model
 #[derive(Deserialize)]
 pub struct AutoDownloadRequest {
