@@ -208,10 +208,10 @@ pub fn search_bar() -> Html {
     let (i18n, _) = use_translation();
     let i18n_podcast_index = i18n.t("gen_components.podcast_index").to_string();
     let history = BrowserHistory::new();
-    // Selective subscription — only re-render when server_details changes (login/logout),
+    // Selective subscription — only re-render when auth_details changes (login/logout),
     // not on every episode save/download/queue action.
-    let server_details_sel = use_selector(|state: &AppState| state.server_details.clone());
-    let server_details = (*server_details_sel).clone();
+    let auth_details_sel = use_selector(|state: &AppState| state.auth_details.clone());
+    let auth_details = (*auth_details_sel).clone();
     let podcast_value = use_state(|| "".to_string());
     let search_index = use_state(|| "podcast_index".to_string());
     let is_submitting = use_state(|| false);
@@ -228,7 +228,7 @@ pub fn search_bar() -> Html {
 
     let handle_submit = {
         let is_submitting = is_submitting.clone();
-        let server_details = server_details.clone();
+        let auth_details = auth_details.clone();
         let history = history_clone.clone();
         let podcast_value = podcast_value_clone.clone();
         let search_index = search_index_clone.clone();
@@ -238,7 +238,14 @@ pub fn search_bar() -> Html {
                 return;
             }
             is_submitting.set(true);
-            let api_url = server_details.as_ref().map(|ud| ud.api_url.clone());
+            let server_name = auth_details
+                .as_ref()
+                .map(|ad| ad.server_name.clone())
+                .unwrap_or_default();
+            let api_key = auth_details
+                .as_ref()
+                .and_then(|ad| ad.api_key.clone())
+                .unwrap_or_default();
             let history = history.clone();
             let search_value = podcast_value.clone();
             let search_index = search_index.clone();
@@ -247,7 +254,7 @@ pub fn search_bar() -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
                 if *search_index == "youtube" {
-                    match call_youtube_search(&search_value, &api_url.unwrap()).await {
+                    match call_youtube_search(&search_value, &server_name, &api_key).await {
                         Ok(yt_results) => {
                             let search_results = YouTubeSearchResults {
                                 channels: yt_results.results,
@@ -273,7 +280,7 @@ pub fn search_bar() -> Html {
                         }
                     }
                 } else {
-                    match call_get_podcast_info(&search_value, &api_url.unwrap(), &search_index)
+                    match call_get_podcast_info(&search_value, &server_name, &api_key, &search_index)
                         .await
                     {
                         Ok(search_results) => {

@@ -190,7 +190,12 @@
     "refresh_button": "Refresh Directory",
     "refresh_description": "Drop new audio files in the directory and click Refresh to add them as episodes.",
     "title": "Add Local Podcast",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "browse": "Browse",
+    "select_a_folder": "Select a folder",
+    "no_subfolders": "No subfolders here.",
+    "cancel": "Cancel",
+    "select_this_folder": "Select this folder"
   },
   "custom_theme_creator": {
     "create_theme": "Create Theme",
@@ -730,6 +735,8 @@
     "sync_now": "Sync Now",
     "syncing": "Syncing...",
     "waiting_for_auth": "Waiting for authentication...",
+    "hide": "Hide",
+    "show": "Show",
     "nextcloud_limited_impl": "Please note that Nextcloud sync is a more limited gpodder implementation compared to internal sync or a dedicated gpodder server. It lacks device management capabilities available in more advanced sync options.",
     "nextcloud_antennapod": "Nextcloud sync works well with AntennaPod on Android and other gpodder-compatible clients but has fewer configuration options.",
     "nextcloud_advanced_hint": "If you need more advanced sync features (like device management), consider using the internal gpodder API or a dedicated gpodder server instead.",

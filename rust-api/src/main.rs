@@ -257,6 +257,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/get_extended_stats", get(handlers::podcasts::get_extended_stats))
         .route("/get_pinepods_version", get(handlers::podcasts::get_pinepods_version))
         .route("/search_data", post(handlers::podcasts::search_data))
+        .route("/proxy_search", get(handlers::podcasts::proxy_search))
         .route("/fetch_transcript", post(handlers::podcasts::fetch_transcript))
         .route("/home_overview", get(handlers::podcasts::home_overview))
         .route("/get_playlists", get(handlers::podcasts::get_playlists))

@@ -388,7 +388,7 @@ pub fn local_podcast() -> Html {
                         style="padding:6px 12px; white-space:nowrap;"
                     >
                         <i class="ph ph-folder-open"></i>
-                        {"Browse"}
+                        {i18n.t("local_podcast.browse")}
                     </button>
                 </div>
             </div>
@@ -493,7 +493,7 @@ pub fn local_podcast() -> Html {
                         onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}
                     >
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                            <h3 style="font-weight:600; margin:0;">{"Select a folder"}</h3>
+                            <h3 style="font-weight:600; margin:0;">{i18n.t("local_podcast.select_a_folder")}</h3>
                             <button type="button" class="btn btn-ghost" onclick={close_dir_browser.clone()} style="padding:4px 8px;">
                                 <i class="ph ph-x"></i>
                             </button>
@@ -523,7 +523,7 @@ pub fn local_podcast() -> Html {
                                 </div>
                             } else if browser_entries.is_empty() {
                                 <div class="settings-row-desc" style="padding:16px; text-align:center;">
-                                    {"No subfolders here."}
+                                    {i18n.t("local_podcast.no_subfolders")}
                                 </div>
                             } else {
                                 { for browser_entries.iter().map(|entry| {
@@ -550,11 +550,11 @@ pub fn local_podcast() -> Html {
 
                         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
                             <button type="button" class="btn btn-ghost" onclick={close_dir_browser} style="padding:6px 12px;">
-                                {"Cancel"}
+                                {i18n.t("local_podcast.cancel")}
                             </button>
                             <button type="button" class="btn btn-secondary" onclick={select_current_dir} style="padding:6px 12px;" disabled={browser_path.is_empty()}>
                                 <i class="ph ph-check"></i>
-                                {"Select this folder"}
+                                {i18n.t("local_podcast.select_this_folder")}
                             </button>
                         </div>
                     </div>

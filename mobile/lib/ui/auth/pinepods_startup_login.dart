@@ -1,10 +1,11 @@
 // lib/ui/auth/pinepods_startup_login.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
 import 'package:pinepods_mobile/services/auth_notifier.dart';
-import 'package:pinepods_mobile/ui/auth/oidc_browser.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:math';
@@ -185,32 +186,37 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
         return;
       }
 
-      setState(() {
-        _isLoading = false;
-      });
+      // Launch a native auth session (Chrome Custom Tab on Android,
+      // ASWebAuthenticationSession on iOS). The backend redirects the result
+      // back to the custom scheme, which flutter_web_auth_2 captures and returns.
+      final result = await FlutterWebAuth2.authenticate(
+        url: authUrl,
+        callbackUrlScheme: OidcService.callbackUrlScheme,
+      );
 
-      // Launch in-app browser
-      if (mounted) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => OidcBrowser(
-              authUrl: authUrl,
-              serverUrl: serverUrl,
-              onSuccess: (apiKey) async {
-                Navigator.of(context).pop(); // Close the browser
-                await _completeOidcLogin(apiKey, serverUrl);
-              },
-              onError: (error) {
-                Navigator.of(context).pop(); // Close the browser
-                setState(() {
-                  _errorMessage = 'Authentication failed: $error';
-                });
-              },
-            ),
-          ),
-        );
+      final callback = OidcService.parseCallback(result);
+      if (callback.isSuccess && callback.hasApiKey) {
+        await _completeOidcLogin(callback.apiKey!, serverUrl);
+      } else {
+        setState(() {
+          _errorMessage =
+              'Authentication failed: ${callback.error ?? 'no API key returned'}';
+          _isLoading = false;
+        });
       }
-      
+
+    } on PlatformException catch (e) {
+      // User dismissed the auth session - not an error worth surfacing.
+      if (e.code == 'CANCELED') {
+        setState(() {
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _errorMessage = 'OIDC login error: ${e.message ?? e.code}';
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       setState(() {
         _errorMessage = 'OIDC login error: ${e.toString()}';

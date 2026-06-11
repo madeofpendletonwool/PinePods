@@ -219,20 +219,19 @@ pub struct PodcastFeedResult {
 
 pub async fn call_get_podcast_info(
     podcast_value: &String,
-    search_api_url: &Option<String>,
+    server_name: &str,
+    api_key: &str,
     search_index: &str,
 ) -> Result<PodcastSearchResult, anyhow::Error> {
-    let url = if let Some(api_url) = search_api_url {
-        format!(
-            "{}?query={}&index={}",
-            api_url,
-            urlencoding::encode(podcast_value),
-            search_index
-        )
-    } else {
-        return Err(anyhow::Error::msg("API URL is not provided"));
-    };
-    let response = Request::get(&url).send().await.map_err(|err| {
+    // Route through the backend search proxy so the browser never needs to
+    // reach SEARCH_API_URL directly (it may be an internal Docker hostname).
+    let url = format!(
+        "{}/api/data/proxy_search?query={}&index={}",
+        server_name,
+        urlencoding::encode(podcast_value),
+        search_index
+    );
+    let response = Request::get(&url).header("Api-Key", api_key).send().await.map_err(|err| {
         web_sys::console::log_1(&JsValue::from_str(&format!("Request error: {:?}", err)));
         anyhow::Error::new(err)
     })?;
@@ -306,20 +305,18 @@ pub struct PeopleFeedResult {
 #[allow(dead_code)]
 pub async fn call_get_person_info(
     person_name: &String,
-    search_api_url: &Option<String>,
+    server_name: &str,
+    api_key: &str,
     search_index: &str,
 ) -> Result<PeopleFeedResult, anyhow::Error> {
-    let url = if let Some(api_url) = search_api_url {
-        format!(
-            "{}?query={}&index={}&search_type=person",
-            api_url,
-            urlencoding::encode(person_name),
-            search_index
-        )
-    } else {
-        return Err(anyhow::Error::msg("API URL is not provided"));
-    };
+    let url = format!(
+        "{}/api/data/proxy_search?query={}&index={}&search_type=person",
+        server_name,
+        urlencoding::encode(person_name),
+        search_index
+    );
     let response = Request::get(&url)
+        .header("Api-Key", api_key)
         .send()
         .await
         .map_err(|err| anyhow::Error::new(err))?;
@@ -796,19 +793,17 @@ pub struct YouTubeSearchResponse {
 
 pub async fn call_youtube_search(
     query: &str,
-    search_api_url: &Option<String>,
+    server_name: &str,
+    api_key: &str,
 ) -> Result<YouTubeSearchResponse, Error> {
-    let url = if let Some(api_url) = search_api_url {
-        format!(
-            "{}?query={}&index=youtube",
-            api_url,
-            urlencoding::encode(query)
-        )
-    } else {
-        return Err(anyhow::Error::msg("Search API URL is not provided"));
-    };
+    let url = format!(
+        "{}/api/data/proxy_search?query={}&index=youtube",
+        server_name,
+        urlencoding::encode(query)
+    );
 
     let response = Request::get(&url)
+        .header("Api-Key", api_key)
         .send()
         .await
         .map_err(|e| Error::msg(format!("Network request error: {}", e)))?;

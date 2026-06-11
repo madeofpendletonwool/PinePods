@@ -106,10 +106,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
     let is_subscribed = use_state(|| false);
     let page_loading = use_state(|| true);
     let fetched_person_img = use_state(|| Option::<String>::None);
-    let api_url = post_state
-        .server_details
-        .as_ref()
-        .map(|ud| ud.api_url.clone());
 
     // Try to get person data from UIState (fast-path when navigating from podcast page).
     // Fall back to a minimal struct built from what we know (name from URL, image from subscriptions).
@@ -221,7 +217,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let user_id = user_id.clone();
-        let api_url = api_url.clone();
         let dispatch = dispatch.clone();
         let page_loading = page_loading.clone();
         let name_str = (*name).clone();
@@ -231,12 +226,11 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                 (api_key, server_name, user_id)
             {
                 let api_key_str = api_key.unwrap_or_default();
-                let flat_api_url = api_url.flatten();
                 spawn_local(async move {
                     // Fetch person search results and podpeople podcasts in parallel
                     let server_opt = Some(server_name.clone());
                     let (person_result, podpeople_result) = futures::join!(
-                        call_get_person_info(&name_str, &flat_api_url, &api_key_str),
+                        call_get_person_info(&name_str, &server_name, &api_key_str, "person"),
                         call_get_podpeople_podcasts(&name_str, &server_opt, &api_key_str),
                     );
 

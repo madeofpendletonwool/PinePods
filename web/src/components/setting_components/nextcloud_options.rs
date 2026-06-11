@@ -2137,6 +2137,8 @@ pub fn gpodder_statistics_dropdown() -> Html {
     let i18n_recent_episode_actions = i18n.t("nextcloud_options.recent_episode_actions").to_string();
     let i18n_no_statistics_available = i18n.t("nextcloud_options.no_statistics_available").to_string();
     let i18n_click_refresh = i18n.t("nextcloud_options.click_refresh").to_string();
+    let i18n_hide = i18n.t("nextcloud_options.hide").to_string();
+    let i18n_show = i18n.t("nextcloud_options.show").to_string();
     let (state, dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -2252,9 +2254,9 @@ pub fn gpodder_statistics_dropdown() -> Html {
                     >
                         {
                             if *show_statistics {
-                                html! { <><i class="ph ph-caret-up"></i>{ "Hide" }</> }
+                                html! { <><i class="ph ph-caret-up"></i>{ &i18n_hide }</> }
                             } else {
-                                html! { <><i class="ph ph-caret-down"></i>{ "Show" }</> }
+                                html! { <><i class="ph ph-caret-down"></i>{ &i18n_show }</> }
                             }
                         }
                     </button>

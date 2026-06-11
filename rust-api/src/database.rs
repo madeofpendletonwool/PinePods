@@ -22253,10 +22253,11 @@ impl DatabasePool {
                     let podcast_artwork: Option<String> = row.try_get("artworkurl").ok();
                     let artwork_url = episode_artwork.filter(|url| !url.is_empty()).or(podcast_artwork);
                     
-                    let pub_date = if let Ok(dt) = row.try_get::<DateTime<Utc>, _>("episodepubdate") {
-                        dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
-                    } else {
-                        Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string()
+                    let pub_date = match row.try_get::<chrono::NaiveDateTime, _>("episodepubdate") {
+                        Ok(naive) => DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc)
+                            .format("%a, %d %b %Y %H:%M:%S %z")
+                            .to_string(),
+                        Err(_) => Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string(),
                     };
 
                     episodes.push(RssEpisode {
@@ -22370,10 +22371,11 @@ impl DatabasePool {
                     let podcast_artwork: Option<String> = row.try_get("ArtworkURL").ok();
                     let artwork_url = episode_artwork.filter(|url| !url.is_empty()).or(podcast_artwork);
                     
-                    let pub_date = if let Ok(dt) = row.try_get::<DateTime<Utc>, _>("EpisodePubDate") {
-                        dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
-                    } else {
-                        Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string()
+                    let pub_date = match row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate") {
+                        Ok(naive) => DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc)
+                            .format("%a, %d %b %Y %H:%M:%S %z")
+                            .to_string(),
+                        Err(_) => Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string(),
                     };
 
                     episodes.push(RssEpisode {

@@ -702,20 +702,11 @@ pub fn login() -> Html {
         })
     };
 
-    let on_key_press = {
+    let on_form_submit = {
         let on_submit = on_submit.clone();
-        Callback::from(move |e: KeyboardEvent| {
-            if e.key() == "Enter" {
-                e.prevent_default();
-                on_submit.emit(()); // Invoke the existing on_submit logic
-            }
-        })
-    };
-
-    let on_submit_click = {
-        let on_submit = on_submit.clone(); // Clone the existing on_submit logic
-        Callback::from(move |_: MouseEvent| {
-            on_submit.emit(()); // Invoke the existing on_submit logic
+        Callback::from(move |e: SubmitEvent| {
+            e.prevent_default();
+            on_submit.emit(());
         })
     };
 
@@ -1856,23 +1847,28 @@ pub fn login() -> Html {
                         {
                             if !*disable_standard_login {
                                 html! {
-                                    <>
+                                    <form class="contents" onsubmit={on_form_submit}>
                                         <input
                                             type="text"
+                                            id="username"
+                                            name="username"
+                                            autocomplete="username"
                                             placeholder={i18n.t("auth.username")}
                                             class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                                             oninput={on_login_username_change}
-                                            onkeypress={on_key_press.clone()}
                                         />
                                         <input
                                             type="password"
+                                            id="current-password"
+                                            name="current-password"
+                                            autocomplete="current-password"
                                             placeholder={i18n.t("auth.password")}
                                             class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                                             oninput={on_login_password_change}
-                                            onkeypress={on_key_press}
                                         />
                                         <div class="flex justify-between">
                                             <button
+                                                type="button"
                                                 onclick={on_forgot_password}
                                                 class="login-link text-sm"
                                             >
@@ -1882,6 +1878,7 @@ pub fn login() -> Html {
                                                 if *self_service_enabled {
                                                     html! {
                                                         <button
+                                                            type="button"
                                                             onclick={on_create_new_user.clone()}
                                                             class="text-sm login-link"
                                                         >
@@ -1894,12 +1891,12 @@ pub fn login() -> Html {
                                             }
                                         </div>
                                         <button
-                                            onclick={on_submit_click}
+                                            type="submit"
                                             class="modal-button w-full"
                                         >
                                             {&i18n_login}
                                         </button>
-                                    </>
+                                    </form>
                                 }
                             } else {
                                 html! {}
