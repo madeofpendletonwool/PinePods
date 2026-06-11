@@ -175,22 +175,22 @@ pub async fn gpodder_sync(
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
-    // Use the same sync process as the scheduler (tasks.rs) which uses proper API calls with timestamps
-    let sync_result = state.db_pool.refresh_gpodder_subscription_background(user_id).await?;
-    
-    if sync_result {
-        Ok(Json(serde_json::json!({
-            "success": true,
-            "message": "Sync completed successfully",
-            "data": null
-        })))
+    // Use the same sync process as the scheduler (tasks.rs) which uses proper API calls with timestamps.
+    // The boolean indicates whether any changes were applied - "no changes" is a successful sync,
+    // not a failure, so report success either way and surface a clear message.
+    let had_changes = state.db_pool.refresh_gpodder_subscription_background(user_id).await?;
+
+    let message = if had_changes {
+        "Sync completed successfully"
     } else {
-        Ok(Json(serde_json::json!({
-            "success": false,
-            "message": "Sync failed or no changes detected - check your sync configuration",
-            "data": null
-        })))
-    }
+        "Sync completed - already up to date"
+    };
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": message,
+        "data": null
+    })))
 }
 
 // Get gPodder status - matches Python get_gpodder_status function exactly

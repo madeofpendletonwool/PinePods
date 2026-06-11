@@ -729,7 +729,13 @@
     "nextcloud_sync_active": "Nextcloud Sync Active",
     "sync_now": "Sync Now",
     "syncing": "Syncing...",
-    "waiting_for_auth": "Waiting for authentication..."
+    "waiting_for_auth": "Waiting for authentication...",
+    "nextcloud_limited_impl": "Please note that Nextcloud sync is a more limited gpodder implementation compared to internal sync or a dedicated gpodder server. It lacks device management capabilities available in more advanced sync options.",
+    "nextcloud_antennapod": "Nextcloud sync works well with AntennaPod on Android and other gpodder-compatible clients but has fewer configuration options.",
+    "nextcloud_advanced_hint": "If you need more advanced sync features (like device management), consider using the internal gpodder API or a dedicated gpodder server instead.",
+    "external_gpodder_active": "External GPodder sync is currently active with ",
+    "gpodder_full_sync": "GPodder sync provides full podcast synchronization capabilities including managing multiple devices, subscription synchronization, and episode status tracking.",
+    "gpodder_compatible": "You can use this sync method with any gpodder-compatible clients like AntennaPod, and others."
   },
   "notification_center": {
     "active_tasks": "Active Tasks",
