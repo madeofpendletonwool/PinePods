@@ -315,7 +315,7 @@ pub fn app_drawer() -> Html {
                 </div>
 
                 // Sign out + version at bottom
-                <div style="padding: 8px 8px 4px; margin-top: auto;">
+                <div class="sb-bottom" style="padding: 8px 8px 4px; margin-top: auto;">
                     <hr class="sb-hr" />
                     <div onclick={toggle_drawer.clone()}>
                         <Link<Route> to={Route::LogOut} classes="sb-item">

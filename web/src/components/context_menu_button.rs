@@ -196,9 +196,10 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 click_handler(event);
             });
 
-            // Add touchend listener for mobile (more reliable than touchstart for outside clicks)
+            // Use touchstart for mobile: avoids the lift-after-long-press immediately
+            // triggering dismissal (touchend from the long press would close the menu instantly).
             let touch_handler = handle_outside_interaction.clone();
-            let touch_listener = EventListener::new(&document, "touchend", move |event| {
+            let touch_listener = EventListener::new(&document, "touchstart", move |event| {
                 touch_handler(event);
             });
 

@@ -3081,6 +3081,8 @@ pub struct PlayEpisodeDetailsResponse {
     pub playback_speed: f32,
     pub start_skip: i32,
     pub end_skip: i32,
+    #[serde(default)]
+    pub playback_speed_customized: bool,
 }
 
 pub async fn call_get_play_episode_details(
@@ -3089,7 +3091,7 @@ pub async fn call_get_play_episode_details(
     user_id: i32,
     podcast_id: i32,
     is_youtube: bool,
-) -> Result<(f32, i32, i32), Error> {
+) -> Result<(f32, i32, i32, bool), Error> {
     let url = format!("{}/api/data/get_play_episode_details", server_name);
     let api_key_ref = api_key
         .as_deref()
@@ -3114,6 +3116,7 @@ pub async fn call_get_play_episode_details(
             response_data.playback_speed,
             response_data.start_skip,
             response_data.end_skip,
+            response_data.playback_speed_customized,
         ))
     } else {
         let error_text = response

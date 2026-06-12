@@ -150,20 +150,30 @@ pub fn podcast_index_matching() -> Html {
     let search_podcast_index = {
         let search_results = search_results.clone();
         let is_searching = is_searching.clone();
-        let api_url = state.server_details.as_ref().map(|sd| sd.api_url.clone());
+        let server_name = state
+            .auth_details
+            .as_ref()
+            .map(|ad| ad.server_name.clone())
+            .unwrap_or_default();
+        let api_key = state
+            .auth_details
+            .as_ref()
+            .and_then(|ad| ad.api_key.clone())
+            .unwrap_or_default();
         let search_index = "podcast_index".to_string();
 
         Callback::from(move |podcast_name: String| {
             let search_results = search_results.clone();
             let is_searching = is_searching.clone();
-            let api_url = api_url.clone().unwrap();
+            let server_name = server_name.clone();
+            let api_key = api_key.clone();
             let search_index = search_index.clone();
 
             spawn_local(async move {
-                if let Some(api_url) = api_url {
+                {
                     is_searching.set(true);
 
-                    match call_get_podcast_info(&podcast_name, &Some(api_url), &search_index).await
+                    match call_get_podcast_info(&podcast_name, &server_name, &api_key, &search_index).await
                     {
                         Ok(podcast_results) => {
                             let mut podcasts = Vec::new();

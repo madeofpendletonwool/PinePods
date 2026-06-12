@@ -291,6 +291,26 @@ class NativeAudioPlayerService extends AudioPlayerService {
   }
 
   @override
+  Future<Episode?> findDownloadedEpisode(int episodeId) async {
+    final guid = 'pinepods_$episodeId';
+
+    final direct = await repository.findEpisodeByGuid(guid);
+    if (direct != null && direct.downloadState == DownloadState.downloaded) {
+      return direct;
+    }
+
+    // Legacy 'pinepods_<id>_<timestamp>' guids: fall back to a scan.
+    final all = await repository.findAllEpisodes();
+    for (final e in all) {
+      if ((e.guid == guid || e.guid.startsWith('${guid}_')) &&
+          e.downloadState == DownloadState.downloaded) {
+        return e;
+      }
+    }
+    return null;
+  }
+
+  @override
   Future<void> playEpisode({required Episode episode, bool resume = true}) async {
     log.info('playEpisode: ${episode.title}, resume: $resume');
 

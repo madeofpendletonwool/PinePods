@@ -1963,6 +1963,84 @@ pub async fn call_refresh_local_podcast(
     }
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct LocalDirEntry {
+    pub name: String,
+    pub path: String,
+    pub audio_count: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct LocalDirListing {
+    pub current_path: String,
+    pub directories: Vec<LocalDirEntry>,
+}
+
+pub async fn call_list_local_directories(
+    server_name: &str,
+    api_key: &str,
+    path: &str,
+) -> Result<LocalDirListing, Error> {
+    let encoded = urlencoding::encode(path);
+    let url = format!(
+        "{}/api/data/list_local_directories?path={}",
+        server_name, encoded
+    );
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        let response_text = response.text().await.map_err(Error::msg)?;
+        Ok(serde_json::from_str(&response_text).map_err(Error::msg)?)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(Error::msg(format!("Error listing directories: {}", error_text)))
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DetectCoverResponse {
+    pub artwork_url: Option<String>,
+}
+
+pub async fn call_detect_local_cover(
+    server_name: &str,
+    api_key: &str,
+    path: &str,
+) -> Result<Option<String>, Error> {
+    let encoded = urlencoding::encode(path);
+    let url = format!(
+        "{}/api/data/detect_local_cover?path={}",
+        server_name, encoded
+    );
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        let response_text = response.text().await.map_err(Error::msg)?;
+        let parsed: DetectCoverResponse =
+            serde_json::from_str(&response_text).map_err(Error::msg)?;
+        Ok(parsed.artwork_url)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(Error::msg(format!("Error detecting cover: {}", error_text)))
+    }
+}
+
 pub async fn call_podcast_opml_import(
     server_name: &str,
     api_key: &Option<String>,

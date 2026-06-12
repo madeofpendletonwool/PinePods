@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Multipart, State},
+    extract::{Multipart, Query, State},
     http::HeaderMap,
     response::Json,
 };
@@ -33,6 +33,19 @@ pub struct AddLocalPodcastRequest {
 pub struct RefreshLocalPodcastRequest {
     pub user_id: i32,
     pub podcast_id: i32,
+}
+
+#[derive(Deserialize)]
+pub struct ListLocalDirectoriesQuery {
+    #[serde(default)]
+    pub path: String,
+}
+
+#[derive(Serialize)]
+pub struct LocalDirectoryEntry {
+    pub name: String,
+    pub path: String,
+    pub audio_count: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -483,5 +496,137 @@ pub async fn add_local_podcast_artwork(
     Ok(Json(serde_json::json!({
         "detail": "Artwork updated successfully",
         "artwork_url": artwork_url
+    })))
+}
+
+// Count immediate audio files in a directory (non-recursive)
+fn count_audio_files(dir: &Path) -> usize {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return 0,
+    };
+    entries
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            let path = entry.path();
+            if !path.is_file() {
+                return false;
+            }
+            path.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| AUDIO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+                .unwrap_or(false)
+        })
+        .count()
+}
+
+// Detect the cover art a directory would use (cover.jpg/embedded ID3 art), so the
+// frontend can preview it before adding. Mirrors the artwork the add flow auto-selects.
+pub async fn detect_local_cover(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ListLocalDirectoriesQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    if query.path.trim().is_empty() {
+        return Ok(Json(serde_json::json!({ "artwork_url": serde_json::Value::Null })));
+    }
+
+    let canonical_path = validate_local_media_path(&query.path)?;
+    if !canonical_path.is_dir() {
+        return Ok(Json(serde_json::json!({ "artwork_url": serde_json::Value::Null })));
+    }
+
+    // Reuse the same scan the add flow uses, then pick the first available artwork —
+    // exactly how add_local_podcast chooses the podcast artwork.
+    let artwork_url = scan_local_directory(&canonical_path)
+        .ok()
+        .and_then(|candidates| candidates.iter().find_map(|c| c.artwork_url.clone()));
+
+    Ok(Json(serde_json::json!({ "artwork_url": artwork_url })))
+}
+
+// List immediate subdirectories under the local-media root (optionally within a
+// relative subpath), with an audio-file count for each, so the frontend can browse.
+pub async fn list_local_directories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ListLocalDirectoriesQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Resolve the directory to list. Empty path = the local-media root (create it if it
+    // does not exist yet so first-time users get an empty list rather than an error).
+    let target = if query.path.trim().is_empty() {
+        let root = PathBuf::from(LOCAL_MEDIA_ROOT);
+        std::fs::create_dir_all(&root)
+            .map_err(|e| AppError::internal(format!("Failed to access local-media root: {}", e)))?;
+        root.canonicalize()
+            .map_err(|_| AppError::internal("local-media root is not accessible"))?
+    } else {
+        validate_local_media_path(&query.path)?
+    };
+
+    if !target.is_dir() {
+        return Err(AppError::bad_request("Path is not a directory"));
+    }
+
+    // Canonical root, used to compute paths relative to the local-media mount.
+    let root_canonical = PathBuf::from(LOCAL_MEDIA_ROOT)
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(LOCAL_MEDIA_ROOT));
+
+    let mut directories: Vec<LocalDirectoryEntry> = Vec::new();
+
+    let entries = std::fs::read_dir(&target)
+        .map_err(|e| AppError::bad_request(format!("Cannot read directory: {}", e)))?;
+
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        // Skip the internal artwork directory
+        if path.file_name().and_then(|n| n.to_str()) == Some(ARTWORK_DIR) {
+            continue;
+        }
+
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        if name.is_empty() {
+            continue;
+        }
+
+        // Relative path the frontend can pass straight back as directory_path
+        let relative = path
+            .strip_prefix(&root_canonical)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| name.clone());
+
+        directories.push(LocalDirectoryEntry {
+            name,
+            path: relative,
+            audio_count: count_audio_files(&path),
+        });
+    }
+
+    // Alphabetical, case-insensitive
+    directories.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    // Current path relative to root (empty string at the root)
+    let current_path = target
+        .strip_prefix(&root_canonical)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    Ok(Json(serde_json::json!({
+        "current_path": current_path,
+        "directories": directories,
     })))
 }

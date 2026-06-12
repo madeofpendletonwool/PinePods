@@ -280,9 +280,10 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				}
 			}
 
-			// ORDER BY DESC (newest first) to prioritize recent actions
-			// This ensures recent play state is synced first, even if total actions > limit
-			queryParts = append(queryParts, "ORDER BY e.Timestamp DESC")
+			// ORDER BY ASC (oldest first) so clients can paginate forward through ALL actions
+			// using the returned timestamp as the next 'since'. With DESC + a row limit, anything
+			// beyond the limit (>25k actions) would be silently dropped on the next page.
+			queryParts = append(queryParts, "ORDER BY e.Timestamp ASC")
 
 			// Add LIMIT for performance - prevents returning massive datasets
 			// Clients should use the 'since' parameter to paginate through results
@@ -311,6 +312,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 
 		// Build response
 		actions := make([]models.EpisodeAction, 0)
+		var maxBatchTimestamp int64
 		for rows.Next() {
 			var action models.EpisodeAction
 			var deviceIDInt sql.NullInt64
@@ -318,6 +320,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			var started sql.NullInt64
 			var position sql.NullInt64
 			var total sql.NullInt64
+			var actionTimestamp int64
 
 			if err := rows.Scan(
 				&action.ActionID,
@@ -326,7 +329,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				&action.Podcast,
 				&action.Episode,
 				&action.Action,
-				&action.Timestamp,
+				&actionTimestamp,
 				&started,
 				&position,
 				&total,
@@ -334,6 +337,11 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			); err != nil {
 				log.Printf("[ERROR] getEpisodeActions: Error scanning action row: %v", err)
 				continue
+			}
+
+			action.Timestamp = actionTimestamp
+			if actionTimestamp > maxBatchTimestamp {
+				maxBatchTimestamp = actionTimestamp
 			}
 
 			// Set optional fields if present
@@ -368,10 +376,19 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 		totalDuration := time.Since(startTime)
 		log.Printf("[DEBUG] getEpisodeActions: Returning %d actions, total time: %v", len(actions), totalDuration)
 
+		// Determine the timestamp the client should use as 'since' on its next request.
+		// If we hit the row limit there are more actions to fetch, so return the max timestamp
+		// in THIS batch (results are ordered ascending) - that lets the client page forward
+		// through everything. Otherwise return the global latest so the next sync is incremental.
+		responseTimestamp := latestTimestamp
+		if len(actions) >= MAX_EPISODE_ACTIONS && maxBatchTimestamp > 0 {
+			responseTimestamp = maxBatchTimestamp
+		}
+
 		// Return response in gpodder format
 		c.JSON(http.StatusOK, models.EpisodeActionsResponse{
 			Actions:   actions,
-			Timestamp: latestTimestamp,
+			Timestamp: responseTimestamp,
 		})
 	}
 }

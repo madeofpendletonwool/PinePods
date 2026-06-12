@@ -1624,6 +1624,7 @@ pub struct PlayEpisodeDetailsResponse {
     pub playback_speed: f64,
     pub start_skip: i32,
     pub end_skip: i32,
+    pub playback_speed_customized: bool,
 }
 
 // Get play episode details - matches Python get_play_episode_details endpoint exactly
@@ -1645,7 +1646,7 @@ pub async fn get_play_episode_details(
 
     if key_id == request.user_id || is_web_key {
         // Get all details in one function call
-        let (playback_speed, start_skip, end_skip) = state.db_pool.get_play_episode_details(
+        let (playback_speed, start_skip, end_skip, playback_speed_customized) = state.db_pool.get_play_episode_details(
             request.user_id,
             request.podcast_id,
             request.is_youtube.unwrap_or(false)
@@ -1654,7 +1655,8 @@ pub async fn get_play_episode_details(
         Ok(Json(PlayEpisodeDetailsResponse {
             playback_speed,
             start_skip,
-            end_skip
+            end_skip,
+            playback_speed_customized
         }))
     } else {
         Err(AppError::forbidden("You can only get metadata for yourself!"))
@@ -2929,4 +2931,61 @@ pub async fn get_merged_podcasts(
     Ok(Json(MergedPodcastsResponse {
         merged_podcast_ids: merged_ids,
     }))
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ProxySearchParams {
+    pub query: String,
+    pub index: String,
+    #[serde(default)]
+    pub search_type: Option<String>,
+}
+
+// Proxy podcast/iTunes/YouTube/person search through the backend so the
+// browser (and mobile clients) never need to reach SEARCH_API_URL directly.
+// SEARCH_API_URL can therefore be an internal-only Docker hostname.
+pub async fn proxy_search(
+    Query(params): Query<ProxySearchParams>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let search_api_url = std::env::var("SEARCH_API_URL")
+        .unwrap_or_else(|_| "https://search.pinepods.online/api/search".to_string());
+
+    // Forward params via reqwest's query builder so encoding is handled for us.
+    let mut query_params: Vec<(&str, String)> = vec![
+        ("query", params.query.clone()),
+        ("index", params.index.clone()),
+    ];
+    if let Some(search_type) = params.search_type.clone() {
+        query_params.push(("search_type", search_type));
+    }
+
+    let response = reqwest::Client::new()
+        .get(&search_api_url)
+        .query(&query_params)
+        .send()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to call search service: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(AppError::external_error(&format!(
+            "Search service error: {}",
+            response.status()
+        )));
+    }
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to parse search response: {}", e)))?;
+
+    Ok(Json(body))
 }

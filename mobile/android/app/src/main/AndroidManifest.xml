@@ -68,16 +68,21 @@
                 <data android:scheme="http" />
             </intent-filter>
 
-            <!-- Handle OIDC authentication callbacks -->
-            <intent-filter android:autoVerify="true">
+        </activity>
+
+        <!-- OIDC authentication callback handler for flutter_web_auth_2.
+             Captures the pinepods:// redirect from the Chrome Custom Tab. -->
+        <activity
+                android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
+                android:exported="true"
+                android:taskAffinity="">
+            <intent-filter android:label="flutter_web_auth_2">
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="pinepods" />
-                <data android:host="auth" />
-                <data android:pathPrefix="/callback" />
             </intent-filter>
         </activity>
 

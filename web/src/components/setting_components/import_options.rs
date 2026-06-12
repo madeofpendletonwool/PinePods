@@ -251,13 +251,13 @@ pub fn import_options() -> Html {
                                         })
                                     };
                                     html! {
-                                        <div class="podcast import-list" style="padding: 8px 0; border-bottom: 1px solid rgba(128,128,128,0.12);">
-                                            <label class="toggle" onclick={toggle_selection} style="cursor:pointer; width:100%; justify-content:flex-start; gap:12px;">
+                                        <div class="podcast import-list" style="padding: 8px 0; border-bottom: 1px solid rgba(128,128,128,0.12); min-width: 0;">
+                                            <label class="toggle" onclick={toggle_selection} style="cursor:pointer; width:100%; min-width:0; justify-content:flex-start; gap:12px;">
                                                 <input type="checkbox" checked={podcast.selected} />
                                                 <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                                                <div>
-                                                    <span style="font-size:13px;font-weight:500;color:var(--text-color);">{&podcast.title}</span>
-                                                    <div style="font-size:11px;color:var(--text-secondary-color);margin-top:2px;">{&podcast.xml_url}</div>
+                                                <div style="min-width:0; overflow:hidden;">
+                                                    <span style="font-size:13px;font-weight:500;color:var(--text-color);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{&podcast.title}</span>
+                                                    <div style="font-size:11px;color:var(--text-secondary-color);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{&podcast.xml_url}</div>
                                                 </div>
                                             </label>
                                         </div>

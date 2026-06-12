@@ -594,7 +594,19 @@
     "task_download": "Ladda ner",
     "task_feed_refresh": "Uppdatera flöde",
     "task_playlist": "Spellista",
-    "task_youtube_download": "YouTube-nedladdning"
+    "task_youtube_download": "YouTube-nedladdning",
+    "task_bulk_download": "",
+    "task_youtube_bulk_download": "",
+    "task_opml_import": "",
+    "task_add_podcast": "",
+    "task_backup": "",
+    "task_restore": "",
+    "task_gpodder_sync": "",
+    "task_nextcloud_sync": "",
+    "task_nextcloud_auth": "",
+    "task_playlist_update": "",
+    "task_cleanup": "",
+    "task_refresh_hosts": ""
   },
   "notifications": {
     "access_token": "Åtkomsttoken",

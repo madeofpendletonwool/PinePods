@@ -15,11 +15,11 @@
 //!
 //! - [`ScrollSource::Window`] — read scroll from `window.scrollY` (via the list root's
 //!   `getBoundingClientRect`). Use this for inline lists embedded inside a longer page
-//!   that the document itself scrolls (e.g. `person`, `subscribed_people`, `downloads`).
+//!   that the document itself scrolls (e.g. `person`, `subscribed_people`).
 //! - [`ScrollSource::Container(node_ref)`] — read scroll from a specific container element's
-//!   `scrollTop`. Use this when the parent renders the list inside a
-//!   `flex-grow overflow-y-auto` div (every paginated page: `episode_layout`, `feed`,
-//!   `saved`, `history`, `playlist_detail`, `search`).
+//!   `scrollTop`. Use this when the parent renders the list inside an `overflow-y-auto` div
+//!   (every paginated page: `episode_layout`, `feed`, `saved`, `history`, `playlist_detail`,
+//!   `search`; also each expanded podcast's `.podcast-episodes-inner` box on `downloads`).
 //!
 //! We intentionally do NOT auto-detect by walking up the DOM looking for an overflow ancestor
 //! — too magical, breaks silently when CSS is reorganized.
@@ -28,10 +28,13 @@
 //!
 //! The window math needs the per-card vertical footprint (card height + outer margin). We
 //! seed it from a breakpoint table on mount, then **measure the real rendered spacing** after
-//! each render with ≥ 2 visible items (`children[2].top − children[1].top` on the list root,
-//! which captures the card's bounding rect plus its `mb-4` in one read). If the measured
-//! value differs from the current estimate by more than 1px we update, which triggers a
-//! re-render with corrected spacers. Convergence is one or two renders.
+//! each render with ≥ 2 visible cards. Rows are variable height, so we measure the *average*
+//! pitch across the whole visible slice — `(last_card.top − first_card.top) / (num_cards − 1)`
+//! on the list root — rather than a single pair, which would bounce as different-height rows
+//! scroll through the sample. We only update when the average differs from the current
+//! estimate by more than ~8px (hysteresis), which avoids re-render churn from per-row
+//! variation while still correcting real drift (breakpoint/zoom). Convergence is one or two
+//! renders.
 //!
 //! This means [`default_item_height`] is only a startup seed — it doesn't need to track
 //! [`EpisodeListItem`](crate::components::episode_list_item)'s CSS exactly; measurement
@@ -55,7 +58,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use web_sys::{window, Element, HtmlElement};
+use web_sys::{window, Element, HtmlElement, ResizeObserver};
 use yew::prelude::*;
 
 /// Where to read scroll position from. Pages opt into [`Container`](Self::Container) explicitly.
@@ -246,6 +249,44 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
         );
     }
 
+    // Container resize observer. In `Container` mode the scroll element's `clientHeight` can
+    // change *after* the one-shot mount measurement: `downloads` animates its episode box from
+    // `max-height: 0` to full height (0.5s) and loads episodes async, so the mount read often
+    // captures a box that's still tens of pixels tall and `viewport_height` sticks there —
+    // the window then only fills the top sliver of the eventual 850px box. `window.innerHeight`
+    // (Window mode) is stable and already covered by the resize listener above, so we only
+    // observe in Container mode. The observer fires an initial callback on `observe`, then on
+    // every size change, so `viewport_height` converges to the box's real height without
+    // requiring the user to scroll.
+    {
+        let viewport_height = viewport_height.clone();
+        let scroll_source = props.scroll_source.clone();
+        use_effect_with(props.scroll_source.clone(), move |_| {
+            let mut cleanup: Option<(ResizeObserver, Closure<dyn Fn()>)> = None;
+            if let ScrollSource::Container(nr) = &scroll_source {
+                if let Some(el) = nr.cast::<Element>() {
+                    let viewport_height = viewport_height.clone();
+                    let scroll_source = scroll_source.clone();
+                    let cb = Closure::<dyn Fn()>::wrap(Box::new(move || {
+                        let measured = read_viewport_height(&scroll_source);
+                        if measured > 1.0 && (measured - *viewport_height).abs() > 1.0 {
+                            viewport_height.set(measured);
+                        }
+                    }));
+                    if let Ok(observer) = ResizeObserver::new(cb.as_ref().unchecked_ref()) {
+                        observer.observe(&el);
+                        cleanup = Some((observer, cb));
+                    }
+                }
+            }
+            move || {
+                if let Some((observer, _cb)) = cleanup {
+                    observer.disconnect();
+                }
+            }
+        });
+    }
+
     let item_h = (*item_height).max(1.0);
     let total = props.episodes.len();
     let buffer = props.buffer_items;
@@ -263,11 +304,14 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
         .map(|i| props.render_item.emit((props.episodes[i].clone(), i)))
         .collect::<Html>();
 
-    // Self-tuning measurement: after each render where the slice has ≥ 2 cards, read the
-    // y-distance between the first two and feed it back into `item_height`. Threshold of 1px
-    // avoids feedback from sub-pixel rect rounding. The effect re-runs whenever start/end
-    // change (which is whenever we scroll or whenever item_height changes — so each correction
-    // gets revalidated by the next render).
+    // Self-tuning measurement: after each render where the slice has ≥ 2 cards, measure the
+    // *average* row pitch across the whole visible slice — `(last_card.top − first_card.top) /
+    // (num_cards − 1)` — and feed it back into `item_height`. Averaging matters because rows
+    // are variable height (title/description clamp to 2 lines, but 1- vs 2-line content swings
+    // a row ~30-40px); sampling only the first pair made `item_height` bounce as you scrolled,
+    // thrashing the spacers and re-mounting card artwork (visible flicker). The 8px hysteresis
+    // band stops that churn while still correcting real drift (breakpoint/zoom changes). The
+    // effect re-runs whenever start/end change, so each correction gets revalidated next render.
     {
         let item_height = item_height.clone();
         let root_ref = root_ref.clone();
@@ -275,11 +319,18 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
             if end - start >= 2 {
                 if let Some(root_el) = root_ref.cast::<Element>() {
                     let children = root_el.children();
-                    if let (Some(c1), Some(c2)) = (children.item(1), children.item(2)) {
-                        let measured = c2.get_bounding_client_rect().top()
-                            - c1.get_bounding_client_rect().top();
-                        if measured > 1.0 && (measured - *item_height).abs() > 1.0 {
-                            item_height.set(measured);
+                    // children: [0] top spacer, [1..=len-2] cards, [len-1] bottom spacer.
+                    let num_cards = (children.length() as i64 - 2).max(0) as u32;
+                    if num_cards >= 2 {
+                        let first = children.item(1);
+                        let last = children.item(children.length() - 2);
+                        if let (Some(first), Some(last)) = (first, last) {
+                            let span = last.get_bounding_client_rect().top()
+                                - first.get_bounding_client_rect().top();
+                            let avg = span / (num_cards - 1) as f64;
+                            if avg > 1.0 && (avg - *item_height).abs() > 8.0 {
+                                item_height.set(avg);
+                            }
                         }
                     }
                 }
@@ -289,10 +340,17 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
     }
 
     html! {
-        <div ref={root_ref}>
-            <div style={format!("height: {}px;", top_h)} />
+        // `overflow-anchor: none` opts the whole list subtree out of browser scroll
+        // anchoring. Without it, growing the top spacer as you scroll a *document*-scrolled
+        // list (`ScrollSource::Window`, e.g. the person page) makes the browser bump
+        // `scrollTop` to "keep" the content above the viewport, which the RAF scroll handler
+        // reads back and reacts to by growing the spacer again — a cross-frame feedback loop
+        // that yanks the page downward on its own. We set it on the spacers too, redundantly,
+        // for clarity about which elements are the resizing culprits.
+        <div ref={root_ref} style="overflow-anchor: none;">
+            <div style={format!("height: {}px; overflow-anchor: none;", top_h)} />
             { items_html }
-            <div style={format!("height: {}px;", bot_h)} />
+            <div style={format!("height: {}px; overflow-anchor: none;", bot_h)} />
         </div>
     }
 }

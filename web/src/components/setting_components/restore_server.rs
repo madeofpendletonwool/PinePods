@@ -255,11 +255,11 @@ pub fn restore_server() -> Html {
                 </div>
             </div>
 
-            <div class="settings-row">
+            <div class="settings-row" style="flex-wrap: wrap;">
                 <div class="settings-row-label">
                     <div>{ &i18n_restore_method }</div>
                 </div>
-                <div class="settings-row-control">
+                <div class="settings-row-control" style="flex: 1 1 200px; min-width: 0;">
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--text-color);">
                         <input
                             type="radio"
@@ -317,11 +317,11 @@ pub fn restore_server() -> Html {
                                 </div>
                             </div>
 
-                            <div class="settings-row">
+                            <div class="settings-row" style="flex-wrap: wrap;">
                                 <div class="settings-row-label">
                                     <div>{ &i18n_database_password }</div>
                                 </div>
-                                <div class="settings-row-control">
+                                <div class="settings-row-control" style="flex: 1 1 200px; min-width: 0;">
                                     <input
                                         type="password"
                                         id="db_pw"
@@ -332,13 +332,13 @@ pub fn restore_server() -> Html {
                                         })}
                                         class="input"
                                         placeholder="Database password"
-                                        style="width:180px;"
+                                        style="flex: 1; min-width: 0;"
                                     />
                                     <button
                                         onclick={onclick_restore}
                                         disabled={*is_loading}
                                         class="btn btn-danger"
-                                        style="padding:6px 12px;"
+                                        style="flex-shrink: 0;"
                                     >
                                         if *is_loading {
                                             <i class="ph ph-spinner animate-spin"></i>

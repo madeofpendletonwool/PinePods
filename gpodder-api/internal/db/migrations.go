@@ -534,5 +534,33 @@ func GetMigrations() []Migration {
 				CREATE INDEX idx_gpodder_syncstate_userid_deviceid ON GpodderSyncState(UserID, DeviceID);
 			`,
 		},
+		{
+			Version:     5,
+			Description: "Add subscription snapshot table for delta-based sync upload",
+			PostgreSQLSQL: `
+				CREATE TABLE IF NOT EXISTS "GpodderSubscriptionSnapshot" (
+					SnapshotID SERIAL PRIMARY KEY,
+					UserID INT NOT NULL,
+					SyncTarget TEXT NOT NULL,
+					FeedURL TEXT NOT NULL,
+					FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+					UNIQUE(UserID, SyncTarget, FeedURL)
+				);
+
+				CREATE INDEX IF NOT EXISTS idx_gpodder_subsnapshot_user_target ON "GpodderSubscriptionSnapshot"(UserID, SyncTarget);
+			`,
+			MySQLSQL: `
+				CREATE TABLE IF NOT EXISTS GpodderSubscriptionSnapshot (
+					SnapshotID INT AUTO_INCREMENT PRIMARY KEY,
+					UserID INT NOT NULL,
+					SyncTarget VARCHAR(512) NOT NULL,
+					FeedURL VARCHAR(2048) NOT NULL,
+					FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+					UNIQUE(UserID, SyncTarget, FeedURL(512))
+				);
+
+				CREATE INDEX idx_gpodder_subsnapshot_user_target ON GpodderSubscriptionSnapshot(UserID, SyncTarget);
+			`,
+		},
 	}
 }

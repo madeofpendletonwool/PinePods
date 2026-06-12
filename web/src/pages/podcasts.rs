@@ -85,7 +85,7 @@ fn render_layout_toggle(
     html! {
         <button class="sp-chip" {onclick}>
             <i class={icon}></i>
-            <span>{text}</span>
+            <span class="pfb-chip-text">{text}</span>
         </button>
     }
 }
@@ -1076,6 +1076,7 @@ pub fn podcasts() -> Html {
                                     />
                                 </div>
                                 <div class="pfb-sort">
+                                    <i class="ph ph-funnel pfb-sort-icon-mobile"></i>
                                     <select
                                         class="pfb-sort-select"
                                         onchange={
@@ -1111,7 +1112,7 @@ pub fn podcasts() -> Html {
                                 <div class="flex gap-2 items-center flex-shrink-0">
                                     <button class="sp-chip" onclick={toggle_custom_modal}>
                                         <i class="ph ph-plus-circle"></i>
-                                        <span>{&i18n_custom_feed}</span>
+                                        <span class="pfb-chip-text">{&i18n_custom_feed}</span>
                                     </button>
                                     {render_layout_toggle(prefs_dispatch.clone(), prefs_state.podcast_layout.clone(), &i18n)}
                                 </div>

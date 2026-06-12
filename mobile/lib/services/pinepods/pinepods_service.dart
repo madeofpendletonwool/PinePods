@@ -1333,14 +1333,19 @@ class PinepodsService {
     String query,
     SearchProvider provider,
   ) async {
-    const searchApiUrl = 'https://search.pinepods.online';
+    if (_server == null || _apiKey == null) {
+      throw Exception('Server and API key must be set');
+    }
+
+    // Route through the backend search proxy so the configured (possibly
+    // internal-only) SEARCH_API_URL is honored instead of the public default.
     final url = Uri.parse(
-      '$searchApiUrl/api/search?query=${Uri.encodeComponent(query)}&index=${provider.value}',
+      '$_server/api/data/proxy_search?query=${Uri.encodeComponent(query)}&index=${provider.value}',
     );
 
     try {
       print('Making search request to: $url');
-      final response = await http.get(url);
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

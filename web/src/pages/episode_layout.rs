@@ -393,6 +393,12 @@ pub fn episode_layout() -> Html {
     let i18n_playback_speed_description = i18n
         .t("episodes_layout.playback_speed_description")
         .to_string();
+    let i18n_playback_speed_custom_badge = i18n
+        .t("episodes_layout.playback_speed_custom_badge")
+        .to_string();
+    let i18n_playback_speed_global_badge = i18n
+        .t("episodes_layout.playback_speed_global_badge")
+        .to_string();
     let i18n_auto_skip_intros_outros = i18n
         .t("episodes_layout.auto_skip_intros_outros")
         .to_string();
@@ -502,9 +508,11 @@ pub fn episode_layout() -> Html {
     let feed_cutoff_days = use_state(|| 0);
     let feed_cutoff_days_input = use_state(|| "0".to_string());
     let playback_speed = use_state(|| 1.0);
+    let playback_speed_customized = use_state(|| false);
     let use_podcast_covers = use_state(|| false);
     let playback_speed_input = playback_speed.clone();
     let playback_speed_clone = playback_speed.clone();
+    let playback_speed_customized_render = playback_speed_customized.clone();
     let rss_key_state = use_state(|| None::<String>);
 
     // Bulk selection state
@@ -1001,6 +1009,7 @@ pub fn episode_layout() -> Html {
         let effect_start_skip = start_skip.clone();
         let effect_end_skip = end_skip.clone();
         let effect_playback_speed = playback_speed.clone();
+        let effect_playback_speed_customized = playback_speed_customized.clone();
         let effect_added = is_added.clone();
         let feed_cutoff_days = feed_cutoff_days.clone();
         let feed_cutoff_days_input = feed_cutoff_days_input.clone();
@@ -1151,10 +1160,11 @@ pub fn episode_layout() -> Html {
                                             Err(e) => { web_sys::console::log_1(&format!("Error getting favorite status: {}", e).into()); }
                                         }
                                         match play_details_result {
-                                            Ok((speed, start, end)) => {
+                                            Ok((speed, start, end, customized)) => {
                                                 effect_start_skip.set(start);
                                                 effect_end_skip.set(end);
                                                 effect_playback_speed.set(speed as f64);
+                                                effect_playback_speed_customized.set(customized);
                                             }
                                             Err(e) => { web_sys::console::log_1(&format!("Error getting auto-skip times: {}", e).into()); }
                                         }
@@ -1422,6 +1432,7 @@ pub fn episode_layout() -> Html {
         let api_key_copy = download_api_key.clone();
         let user_id_copy = user_id.clone();
         let feed_results_copy = download_feed_results.clone();
+        let page_state_copy = page_state.clone();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
@@ -1429,6 +1440,7 @@ pub fn episode_layout() -> Html {
             let api_key = api_key_copy.clone();
             let feed_results = feed_results_copy.clone();
             let call_down_dispatch = call_dispatch.clone();
+            let page_state = page_state_copy.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let episode_id = match feed_results
                     .as_ref()
@@ -1482,6 +1494,7 @@ pub fn episode_layout() -> Html {
                                     state.info_message =
                                         Option::from(format!("{}", success_message))
                                 });
+                                page_state.set(PageState::Hidden);
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
@@ -1489,6 +1502,7 @@ pub fn episode_layout() -> Html {
                                     state.error_message =
                                         Option::from(format!("{}", formatted_error))
                                 });
+                                page_state.set(PageState::Hidden);
                             }
                         }
                     }
@@ -1500,6 +1514,7 @@ pub fn episode_layout() -> Html {
                                 formatted_error
                             ))
                         });
+                        page_state.set(PageState::Hidden);
                     }
                 }
             });
@@ -1672,6 +1687,7 @@ pub fn episode_layout() -> Html {
     // Create the save playback speed function
     let save_playback_speed = {
         let playback_speed = playback_speed.clone();
+        let playback_speed_customized = playback_speed_customized.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
@@ -1686,6 +1702,7 @@ pub fn episode_layout() -> Html {
             let i18n_error_updating_playback_speed = i18n_error_updating_playback_speed.clone();
             let call_dispatch = dispatch.clone();
             let speed = *playback_speed;
+            let playback_speed_customized = playback_speed_customized.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone().unwrap();
             let server_name = server_name.clone();
@@ -1702,6 +1719,7 @@ pub fn episode_layout() -> Html {
 
                     match call_set_playback_speed(&server_name, &api_key, &request).await {
                         Ok(_) => {
+                            playback_speed_customized.set(true);
                             Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Option::from(i18n_playback_speed_updated)
                             });
@@ -1728,6 +1746,8 @@ pub fn episode_layout() -> Html {
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
         let dispatch = _search_dispatch.clone();
+        let playback_speed = playback_speed.clone();
+        let playback_speed_customized = playback_speed_customized.clone();
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             let i18n_playback_speed_reset_default = i18n_playback_speed_reset_default.clone();
@@ -1737,6 +1757,8 @@ pub fn episode_layout() -> Html {
             let user_id = user_id.clone().unwrap();
             let server_name = server_name.clone();
             let podcast_id = *podcast_id;
+            let playback_speed = playback_speed.clone();
+            let playback_speed_customized = playback_speed_customized.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
                 {
@@ -1746,6 +1768,20 @@ pub fn episode_layout() -> Html {
                     };
                     match call_clear_playback_speed(&server_name, &api_key, &request).await {
                         Ok(_) => {
+                            playback_speed_customized.set(false);
+                            // Re-fetch so the displayed value reflects the global default now in effect
+                            if let Ok((speed, _start, _end, customized)) = call_get_play_episode_details(
+                                &server_name,
+                                api_key,
+                                user_id,
+                                podcast_id,
+                                false,
+                            )
+                            .await
+                            {
+                                playback_speed.set(speed as f64);
+                                playback_speed_customized.set(customized);
+                            }
                             Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Option::from(i18n_playback_speed_reset_default)
                             });
@@ -2342,6 +2378,19 @@ pub fn episode_layout() -> Html {
                                     >
                                         {&i18n.t("episodes_layout.reset")}
                                     </button>
+                                </div>
+                                <div class="mt-2">
+                                    if *playback_speed_customized_render {
+                                        <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                            <i class="ph ph-pencil-simple"></i>
+                                            {&i18n_playback_speed_custom_badge}
+                                        </span>
+                                    } else {
+                                        <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                            <i class="ph ph-globe"></i>
+                                            {&i18n_playback_speed_global_badge}
+                                        </span>
+                                    }
                                 </div>
                                 <p class="text-xs text-gray-500 mt-1">{&i18n_playback_speed_description}</p>
                             </div>

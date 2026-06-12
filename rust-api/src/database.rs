@@ -9406,6 +9406,27 @@ impl DatabasePool {
         Ok(())
     }
 
+    // Clear podcast playback speed - resets the podcast back to the global default
+    pub async fn clear_podcast_playback_speed(&self, user_id: i32, podcast_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET playbackspeed = 1.0, playbackspeedcustomized = FALSE WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET PlaybackSpeed = 1.0, PlaybackSpeedCustomized = FALSE WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     // Enable/disable auto download for podcast - matches Python enable_auto_download function
     pub async fn enable_auto_download(&self, podcast_id: i32, auto_download: bool, user_id: i32) -> AppResult<()> {
         match self {
@@ -10056,7 +10077,7 @@ impl DatabasePool {
     }
 
     // Get play episode details - matches Python get_play_episode_details function exactly
-    pub async fn get_play_episode_details(&self, user_id: i32, podcast_id: i32, _is_youtube: bool) -> AppResult<(f64, i32, i32)> {
+    pub async fn get_play_episode_details(&self, user_id: i32, podcast_id: i32, _is_youtube: bool) -> AppResult<(f64, i32, i32, bool)> {
         match self {
             DatabasePool::Postgres(pool) => {
                 // First get user's default playback speed
@@ -10096,15 +10117,16 @@ impl DatabasePool {
                     let start_skip: Option<i32> = row.try_get("startskip")?;
                     let end_skip: Option<i32> = row.try_get("endskip")?;
                     
-                    let final_playback_speed = if playback_speed_customized.unwrap_or(false) {
+                    let is_customized = playback_speed_customized.unwrap_or(false);
+                    let final_playback_speed = if is_customized {
                         podcast_playback_speed.unwrap_or(user_playback_speed)
                     } else {
                         user_playback_speed
                     };
-                    
-                    Ok((final_playback_speed, start_skip.unwrap_or(0), end_skip.unwrap_or(0)))
+
+                    Ok((final_playback_speed, start_skip.unwrap_or(0), end_skip.unwrap_or(0), is_customized))
                 } else {
-                    Ok((user_playback_speed, 0, 0))
+                    Ok((user_playback_speed, 0, 0, false))
                 }
             }
             DatabasePool::MySQL(pool) => {
@@ -10145,15 +10167,16 @@ impl DatabasePool {
                     let start_skip: Option<i32> = row.try_get("StartSkip")?;
                     let end_skip: Option<i32> = row.try_get("EndSkip")?;
                     
-                    let final_playback_speed = if playback_speed_customized.unwrap_or(false) {
+                    let is_customized = playback_speed_customized.unwrap_or(false);
+                    let final_playback_speed = if is_customized {
                         podcast_playback_speed.unwrap_or(user_playback_speed)
                     } else {
                         user_playback_speed
                     };
-                    
-                    Ok((final_playback_speed, start_skip.unwrap_or(0), end_skip.unwrap_or(0)))
+
+                    Ok((final_playback_speed, start_skip.unwrap_or(0), end_skip.unwrap_or(0), is_customized))
                 } else {
-                    Ok((user_playback_speed, 0, 0))
+                    Ok((user_playback_speed, 0, 0, false))
                 }
             }
         }
@@ -13827,38 +13850,7 @@ impl DatabasePool {
             }
         }
 
-        tracing::info!("Total: {} episode actions fetched", total_actions_fetched);
-
-        println!("\n========== FORCE SYNC EPISODE ACTIONS DOWNLOAD COMPLETE ==========");
-        println!("📊 Downloaded {} total episode actions from ALL {} devices", all_episode_actions.len(), devices.len());
-
-        // Check if changelog-news-168 is in the downloaded actions
-        let has_changelog_168 = all_episode_actions.iter().any(|a| {
-            a.get("episode")
-                .and_then(|e| e.as_str())
-                .map(|s| s.contains("changelog-news-168"))
-                .unwrap_or(false)
-        });
-
-        if has_changelog_168 {
-            println!("🎯 FOUND changelog-news-168 in downloaded episode actions!");
-            // Find which device it came from
-            if let Some(action) = all_episode_actions.iter().find(|a| {
-                a.get("episode")
-                    .and_then(|e| e.as_str())
-                    .map(|s| s.contains("changelog-news-168"))
-                    .unwrap_or(false)
-            }) {
-                println!("   Device: {}", action.get("device").and_then(|d| d.as_str()).unwrap_or("unknown"));
-                println!("   Episode URL: {}", action.get("episode").and_then(|e| e.as_str()).unwrap_or("unknown"));
-                println!("   Position: {}", action.get("position").and_then(|p| p.as_i64()).unwrap_or(0));
-                println!("   Timestamp: {}", action.get("timestamp").and_then(|t| t.as_i64()).unwrap_or(0));
-            }
-        } else {
-            println!("❌ changelog-news-168 NOT FOUND in downloaded episode actions!");
-            println!("   This means the GPodder API never returned it across any device.");
-        }
-        println!("==================================================================\n");
+        tracing::info!("Total: {} episode actions fetched from {} devices", total_actions_fetched, devices.len());
 
         // Step 4: Process all subscriptions (additions)
         let subscriptions_vec: Vec<String> = all_subscriptions.into_iter().collect();
@@ -13877,22 +13869,47 @@ impl DatabasePool {
             }
         }
         
-        // Step 7: Upload local subscriptions to gPodder service (to default device)
-        if since_timestamp.is_none() || !subscriptions_vec.is_empty() || !removals_vec.is_empty() {
-            let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
-            self.upload_subscriptions_to_gpodder(gpodder_url, username, password, device_name, &local_subscriptions).await?;
-        } else {
-            tracing::info!("Skipping subscription upload - no changes detected in incremental sync");
+        // Step 7: Push genuine LOCAL subscription changes up to the gPodder service.
+        // We diff the current local feed set against the snapshot saved at the end of the last
+        // sync, so we only upload real local add/removes - never the full list (which would bloat
+        // the server change log) and never re-upload what the server just sent us (echo). This is
+        // also what propagates a local unsubscribe up to the server.
+        let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+        let (mut to_add, mut to_remove) = self
+            .compute_subscription_delta(user_id, gpodder_url, &local_subscriptions)
+            .await?;
+        // Suppress echoes: don't push back changes that originated from the server this sync.
+        let server_added: std::collections::HashSet<&String> = subscriptions_vec.iter().collect();
+        let server_removed: std::collections::HashSet<&String> = removals_vec.iter().collect();
+        to_add.retain(|f| !server_added.contains(f));
+        to_remove.retain(|f| !server_removed.contains(f));
+        if let Err(e) = self
+            .upload_subscription_delta_to_gpodder(gpodder_url, username, password, device_name, &to_add, &to_remove)
+            .await
+        {
+            tracing::warn!("Subscription delta upload failed but continuing: {}", e);
         }
-        
-        // Step 8: Upload local episode actions to gPodder service (to default device)
-        if let Err(e) = self.sync_episode_actions_with_gpodder(gpodder_url, username, password, device_name, user_id).await {
-            tracing::warn!("Episode actions sync failed but continuing: {}", e);
+        // Record the reconciled local state as the new baseline for next time.
+        self.save_subscription_snapshot(user_id, gpodder_url, &local_subscriptions).await?;
+
+        // Step 8: Upload local episode actions since the last sync. Remote actions were already
+        // downloaded and applied in steps 3 and 6, so this is upload-only (no redundant re-fetch).
+        let local_actions = match since_timestamp {
+            Some(since) => self.get_user_episode_actions_since(user_id, since).await?,
+            None => self.get_user_episode_actions(user_id).await?,
+        };
+        if !local_actions.is_empty() {
+            if let Err(e) = self
+                .upload_episode_actions_to_gpodder(gpodder_url, username, password, &local_actions)
+                .await
+            {
+                tracing::warn!("Episode actions upload failed but continuing: {}", e);
+            }
         }
-        
+
         // Step 9: Update last sync timestamp for next incremental sync
         self.update_last_sync_timestamp(user_id).await?;
-        
+
         Ok(true)
     }
 
@@ -14072,38 +14089,7 @@ impl DatabasePool {
             }
         }
 
-        tracing::info!("Total: {} episode actions fetched", total_actions_fetched);
-
-        println!("\n========== INITIAL SYNC EPISODE ACTIONS DOWNLOAD COMPLETE ==========");
-        println!("📊 Downloaded {} total episode actions from ALL {} devices", all_episode_actions.len(), devices.len());
-
-        // Check if changelog-news-168 is in the downloaded actions
-        let has_changelog_168 = all_episode_actions.iter().any(|a| {
-            a.get("episode")
-                .and_then(|e| e.as_str())
-                .map(|s| s.contains("changelog-news-168"))
-                .unwrap_or(false)
-        });
-
-        if has_changelog_168 {
-            println!("🎯 FOUND changelog-news-168 in downloaded episode actions!");
-            // Find which device it came from
-            if let Some(action) = all_episode_actions.iter().find(|a| {
-                a.get("episode")
-                    .and_then(|e| e.as_str())
-                    .map(|s| s.contains("changelog-news-168"))
-                    .unwrap_or(false)
-            }) {
-                println!("   Device: {}", action.get("device").and_then(|d| d.as_str()).unwrap_or("unknown"));
-                println!("   Episode URL: {}", action.get("episode").and_then(|e| e.as_str()).unwrap_or("unknown"));
-                println!("   Position: {}", action.get("position").and_then(|p| p.as_i64()).unwrap_or(0));
-                println!("   Timestamp: {}", action.get("timestamp").and_then(|t| t.as_i64()).unwrap_or(0));
-            }
-        } else {
-            println!("❌ changelog-news-168 NOT FOUND in downloaded episode actions!");
-            println!("   This means the GPodder API never returned it across any device.");
-        }
-        println!("====================================================================\n");
+        tracing::info!("Total: {} episode actions fetched from {} devices", total_actions_fetched, devices.len());
 
         // Step 3: Process all subscriptions and add missing podcasts FIRST
         // This ensures podcasts and their episodes are in the database before applying episode actions
@@ -14116,10 +14102,12 @@ impl DatabasePool {
             }
         }
         
-        // Step 4: Upload local subscriptions to GPodder service
+        // Step 4: Upload local subscriptions to GPodder service (full list for the initial sync)
         let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
         self.upload_subscriptions_to_gpodder(gpodder_url, username, password, device_name, &local_subscriptions).await?;
-        
+        // Save the snapshot baseline so later incremental syncs upload only genuine local deltas.
+        self.save_subscription_snapshot(user_id, gpodder_url, &local_subscriptions).await?;
+
         // Step 5: Upload local episode actions to GPodder service
         let local_episode_actions = self.get_user_episode_actions(user_id).await?;
         if !local_episode_actions.is_empty() {
@@ -14160,18 +14148,17 @@ impl DatabasePool {
         let subscriptions: serde_json::Value = response.json().await
             .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud subscriptions: {}", e)))?;
         
-        // Process subscriptions - Nextcloud returns array of feed URLs
-        let feed_urls = if let Some(feeds) = subscriptions.as_array() {
-            let urls: Vec<String> = feeds.iter()
-                .filter_map(|f| f.as_str().map(|s| s.to_string()))
-                .collect();
-            
-            tracing::info!("Downloaded {} subscriptions from Nextcloud", urls.len());
-            urls
+        // The gPodder Sync app returns an object {"add": [...], "remove": [...], "timestamp": N}.
+        // (Older/other servers may return a bare array of feed URLs, so handle both.)
+        let feed_urls: Vec<String> = if let Some(add_list) = subscriptions.get("add").and_then(|v| v.as_array()) {
+            add_list.iter().filter_map(|f| f.as_str().map(|s| s.to_string())).collect()
+        } else if let Some(feeds) = subscriptions.as_array() {
+            feeds.iter().filter_map(|f| f.as_str().map(|s| s.to_string())).collect()
         } else {
-            tracing::warn!("No subscriptions found in Nextcloud response");
+            tracing::warn!("No subscriptions found in Nextcloud response: {:?}", subscriptions);
             vec![]
         };
+        tracing::info!("Downloaded {} subscriptions from Nextcloud", feed_urls.len());
         
         // Get ALL episode actions from Nextcloud
         let episode_actions_url = format!("{}/index.php/apps/gpoddersync/episode_action", nextcloud_url.trim_end_matches('/'));
@@ -14218,10 +14205,12 @@ impl DatabasePool {
         // Process all subscriptions and add missing podcasts
         self.process_gpodder_subscriptions(user_id, &feed_urls).await?;
         
-        // Upload local subscriptions to Nextcloud
+        // Upload local subscriptions to Nextcloud (full list for the initial sync)
         let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
         self.upload_subscriptions_to_nextcloud(nextcloud_url, username, password, &local_subscriptions).await?;
-        
+        // Save the snapshot baseline (same target key as incremental sync: URL without trailing slash).
+        self.save_subscription_snapshot(user_id, nextcloud_url.trim_end_matches('/'), &local_subscriptions).await?;
+
         // Upload local episode actions to Nextcloud
         let local_episode_actions = self.get_user_episode_actions(user_id).await?;
         if !local_episode_actions.is_empty() {
@@ -14289,23 +14278,40 @@ impl DatabasePool {
     
     // Upload subscriptions to Nextcloud using the gPodder Sync app endpoint
     async fn upload_subscriptions_to_nextcloud(&self, nextcloud_url: &str, username: &str, password: &str, subscriptions: &[String]) -> AppResult<()> {
+        self.upload_subscription_changes_to_nextcloud(nextcloud_url, username, password, subscriptions, &[]).await
+    }
+
+    // Upload subscription add/remove changes using the gPodder Sync app's subscription_change/create
+    // endpoint. The app expects an object {"add": [...], "remove": [...]} (see AntennaPod's
+    // NextcloudSyncService.uploadSubscriptionChanges), not a bare array.
+    async fn upload_subscription_changes_to_nextcloud(&self, nextcloud_url: &str, username: &str, password: &str, add: &[String], remove: &[String]) -> AppResult<()> {
+        if add.is_empty() && remove.is_empty() {
+            return Ok(());
+        }
+
         let client = reqwest::Client::new();
-        // Nextcloud gPodder Sync app uses the subscription_change endpoint
-        let upload_url = format!("{}/index.php/apps/gpoddersync/subscription_change/upload", nextcloud_url.trim_end_matches('/'));
-        
+        let upload_url = format!("{}/index.php/apps/gpoddersync/subscription_change/create", nextcloud_url.trim_end_matches('/'));
+
+        let body = serde_json::json!({
+            "add": add,
+            "remove": remove,
+        });
+
         let response = client
             .post(&upload_url)
             .basic_auth(username, Some(password))
-            .json(subscriptions)
+            .json(&body)
             .send()
             .await
             .map_err(|e| AppError::internal(&format!("Failed to upload subscriptions to Nextcloud: {}", e)))?;
-        
+
         if response.status().is_success() {
-            tracing::info!("Successfully uploaded {} subscriptions to Nextcloud", subscriptions.len());
+            tracing::info!("Successfully uploaded {} added / {} removed subscriptions to Nextcloud", add.len(), remove.len());
             Ok(())
         } else {
-            tracing::warn!("Failed to upload subscriptions to Nextcloud: {}", response.status());
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::warn!("Failed to upload subscriptions to Nextcloud: {} - {}", status, body);
             Ok(()) // Don't fail the whole sync if upload fails
         }
     }
@@ -14473,14 +14479,24 @@ impl DatabasePool {
 
     // Upload local subscriptions to gPodder service - matches GPodder API spec POST /api/2/subscriptions/{username}/{device}.json
     async fn upload_subscriptions_to_gpodder(&self, gpodder_url: &str, username: &str, password: &str, device_name: &str, subscriptions: &[String]) -> AppResult<()> {
+        self.upload_subscription_delta_to_gpodder(gpodder_url, username, password, device_name, subscriptions, &[]).await
+    }
+
+    // Upload subscription add/remove changes to a gPodder service (internal or external) following
+    // the GPodder API spec: POST /api/2/subscriptions/{user}/{device}.json with {"add":[...],"remove":[...]}.
+    async fn upload_subscription_delta_to_gpodder(&self, gpodder_url: &str, username: &str, password: &str, device_name: &str, add: &[String], remove: &[String]) -> AppResult<()> {
+        if add.is_empty() && remove.is_empty() {
+            return Ok(());
+        }
+
         let upload_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
-        
+
         // Format subscription changes according to GPodder API spec
         let subscription_changes = serde_json::json!({
-            "add": subscriptions,
-            "remove": []
+            "add": add,
+            "remove": remove
         });
-        
+
         // Use correct authentication based on internal vs external
         let response = if gpodder_url == "http://localhost:8042" {
             // Internal GPodder API - use X-GPodder-Token header
@@ -14511,7 +14527,7 @@ impl DatabasePool {
         
         match response {
             Ok(resp) if resp.status().is_success() => {
-                tracing::info!("Successfully uploaded {} subscriptions to gPodder service", subscriptions.len());
+                tracing::info!("Uploaded subscription delta to gPodder service: {} added, {} removed", add.len(), remove.len());
                 Ok(())
             }
             Ok(resp) => {
@@ -14525,208 +14541,20 @@ impl DatabasePool {
         }
     }
 
-    // Sync episode actions with gPodder service - matches Python episode actions sync with timestamp support
-    async fn sync_episode_actions_with_gpodder(&self, gpodder_url: &str, username: &str, password: &str, device_name: &str, user_id: i32) -> AppResult<()> {
-        println!("\n========== STARTING EPISODE ACTIONS SYNC ==========");
-
-        // Get last sync timestamp for incremental sync (BETTER than Python - follows GPodder spec)
-        let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
-
-        println!("📅 Last sync timestamp from DB: {:?}", since_timestamp);
-        
-        // Get local episode actions since last sync for efficient incremental sync
-        let local_actions = if let Some(since) = since_timestamp {
-            self.get_user_episode_actions_since(user_id, since).await?
-        } else {
-            self.get_user_episode_actions(user_id).await?
-        };
-        
-        // Upload local actions to gPodder service - matches Python POST /api/2/episodes/{username}.json
-        if !local_actions.is_empty() {
-            let upload_url = format!("{}/api/2/episodes/{}.json", gpodder_url.trim_end_matches('/'), username);
-            
-            // Use correct authentication based on internal vs external
-            let response = if gpodder_url == "http://localhost:8042" {
-                // Internal GPodder API - use X-GPodder-Token header
-                let client = reqwest::Client::new();
-                client.post(&upload_url)
-                    .header("X-GPodder-Token", password)
-                    .json(&local_actions)
-                    .send()
-                    .await
-            } else {
-                // External GPodder API - use session auth with basic fallback
-                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
-                if session.authenticated {
-                    // Use session-based authentication
-                    session.client
-                        .post(&upload_url)
-                        .json(&local_actions)
-                        .send()
-                        .await
-                } else {
-                    // Fallback to basic auth
-                    session.client
-                        .post(&upload_url)
-                        .basic_auth(username, Some(password))
-                        .json(&local_actions)
-                        .send()
-                        .await
-                }
-            };
-            
-            match response {
-                Ok(resp) if resp.status().is_success() => {
-                    tracing::info!("Successfully uploaded {} episode actions", local_actions.len());
-                }
-                Ok(resp) => {
-                    tracing::warn!("Failed to upload episode actions: {}", resp.status());
-                }
-                Err(e) => {
-                    return Err(AppError::internal(&format!("Failed to upload episode actions: {}", e)));
-                }
-            }
-        }
-        
-        // Download remote actions from gPodder service with pagination support
-        // The server limits responses to 25k actions, so we need to loop until we get all of them
-        let mut all_remote_actions = Vec::new();
-        const MAX_ACTIONS_PER_BATCH: usize = 25000;
-
-        let initial_since = if let Some(since) = since_timestamp {
-            since.timestamp()
-        } else {
-            0
-        };
-
-        println!("🔍 GPodder episode actions sync starting with since={} ({})",
-                 initial_since,
-                 if initial_since == 0 { "FULL SYNC" } else { "INCREMENTAL SYNC" });
-        println!("   Fetching from ALL devices (no device filter to include NULL device actions)");
-
-        let mut current_since = initial_since;
-
-        loop {
-            // DON'T filter by device - get actions from ALL devices including NULL device actions
-            // The 'since' parameter ensures we only get NEW actions (efficient incremental sync)
-            let download_url = format!("{}/api/2/episodes/{}.json?since={}",
-                gpodder_url.trim_end_matches('/'), username, current_since);
-
-            println!("📥 Fetching episode actions from: {}", download_url);
-
-            // Use correct authentication based on internal vs external for download
-            let response = if gpodder_url == "http://localhost:8042" {
-                // Internal GPodder API - use X-GPodder-Token header
-                let client = reqwest::Client::new();
-                client.get(&download_url)
-                    .header("X-GPodder-Token", password)
-                    .send()
-                    .await
-            } else {
-                // External GPodder API - use session auth with basic fallback
-                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
-                if session.authenticated {
-                    session.client
-                        .get(&download_url)
-                        .send()
-                        .await
-                } else {
-                    session.client
-                        .get(&download_url)
-                        .basic_auth(username, Some(password))
-                        .send()
-                        .await
-                }
-            };
-
-            match response {
-                Ok(resp) if resp.status().is_success() => {
-                    let episode_data: serde_json::Value = resp.json().await
-                        .map_err(|e| AppError::internal(&format!("Failed to parse episode actions response: {}", e)))?;
-
-                    let actions = episode_data.get("actions").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-                    let batch_size = actions.len();
-                    let new_timestamp = episode_data.get("timestamp").and_then(|v| v.as_i64()).unwrap_or(current_since);
-
-                    // Check if changelog-news-168 is in this batch
-                    let has_changelog_168 = actions.iter().any(|a| {
-                        a.get("episode")
-                            .and_then(|e| e.as_str())
-                            .map(|s| s.contains("changelog-news-168"))
-                            .unwrap_or(false)
-                    });
-
-                    println!("📦 Fetched {} episode actions (since={}, response_timestamp={}) {}",
-                             batch_size, current_since, new_timestamp,
-                             if has_changelog_168 { "🎯 CONTAINS changelog-news-168" } else { "" });
-
-                    // Add actions from this batch
-                    for action in actions {
-                        all_remote_actions.push(action);
-                    }
-
-                    // If we got less than MAX_ACTIONS_PER_BATCH, we've reached the end
-                    if batch_size < MAX_ACTIONS_PER_BATCH {
-                        tracing::info!("Reached end of episode actions (got {} < {} limit)", batch_size, MAX_ACTIONS_PER_BATCH);
-                        break;
-                    }
-
-                    // Update since to the timestamp from the response for next iteration
-                    if new_timestamp > current_since {
-                        current_since = new_timestamp;
-                        tracing::info!("Updated since timestamp to {} for next batch", current_since);
-                    } else {
-                        tracing::warn!("Timestamp didn't advance, stopping pagination to avoid infinite loop");
-                        break;
-                    }
-                }
-                Ok(resp) => {
-                    tracing::warn!("Failed to download episode actions: {}", resp.status());
-                    break;
-                }
-                Err(e) => {
-                    return Err(AppError::internal(&format!("Failed to download episode actions: {}", e)));
-                }
-            }
-        }
-
-        println!("✅ Downloaded {} total remote episode actions across all batches", all_remote_actions.len());
-
-        // Check if changelog-news-168 is in the aggregated actions
-        let has_changelog_168 = all_remote_actions.iter().any(|a| {
-            a.get("episode")
-                .and_then(|e| e.as_str())
-                .map(|s| s.contains("changelog-news-168"))
-                .unwrap_or(false)
-        });
-
-        if has_changelog_168 {
-            println!("🎯 FOUND changelog-news-168 in aggregated remote actions before processing!");
-        } else {
-            println!("❌ changelog-news-168 NOT FOUND in aggregated remote actions!");
-            println!("   This means it was never returned by the GPodder API across all batches.");
-        }
-
-        // Apply all remote actions locally
-        if !all_remote_actions.is_empty() {
-            self.apply_remote_episode_actions(user_id, &all_remote_actions).await?;
-        }
-
-        // Update last sync timestamp for incremental sync (BETTER than Python)
-        self.update_last_sync_timestamp(user_id).await?;
-        
-        Ok(())
-    }
-
     // Get user podcast feeds for sync
+    // Returns the user's syncable feed URLs. Excludes:
+    //  - private feeds (with credentials) - we don't push credentials to a sync server
+    //  - non-http(s) feeds (e.g. local:///opt/... local media, internal identifiers) - gpodder and
+    //    Nextcloud servers only accept http/https URLs and reject anything else, so including them
+    //    just produces doomed uploads and snapshot noise.
     async fn get_user_podcast_feeds(&self, user_id: i32) -> AppResult<Vec<String>> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"SELECT feedurl FROM "Podcasts" WHERE userid = $1 AND (username IS NULL OR username = '') AND (password IS NULL OR password = '')"#)
+                let rows = sqlx::query(r#"SELECT feedurl FROM "Podcasts" WHERE userid = $1 AND (username IS NULL OR username = '') AND (password IS NULL OR password = '') AND (feedurl LIKE 'http://%' OR feedurl LIKE 'https://%')"#)
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?;
-                
+
                 let mut feeds = Vec::new();
                 for row in rows {
                     feeds.push(row.try_get::<String, _>("feedurl")?);
@@ -14734,11 +14562,11 @@ impl DatabasePool {
                 Ok(feeds)
             }
             DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query("SELECT FeedURL FROM Podcasts WHERE UserID = ? AND (Username IS NULL OR Username = '') AND (Password IS NULL OR Password = '')")
+                let rows = sqlx::query("SELECT FeedURL FROM Podcasts WHERE UserID = ? AND (Username IS NULL OR Username = '') AND (Password IS NULL OR Password = '') AND (FeedURL LIKE 'http://%' OR FeedURL LIKE 'https://%')")
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?;
-                
+
                 let mut feeds = Vec::new();
                 for row in rows {
                     feeds.push(row.try_get::<String, _>("FeedURL")?);
@@ -14746,6 +14574,92 @@ impl DatabasePool {
                 Ok(feeds)
             }
         }
+    }
+
+    // Get the set of feed URLs that were present locally at the end of the last sync to `target`.
+    // Used to compute genuine local add/remove deltas to push up, without a per-change queue.
+    async fn get_subscription_snapshot(&self, user_id: i32, target: &str) -> AppResult<std::collections::HashSet<String>> {
+        let mut feeds = std::collections::HashSet::new();
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"SELECT feedurl FROM "GpodderSubscriptionSnapshot" WHERE userid = $1 AND synctarget = $2"#)
+                    .bind(user_id)
+                    .bind(target)
+                    .fetch_all(pool)
+                    .await?;
+                for row in rows {
+                    feeds.insert(row.try_get::<String, _>("feedurl")?);
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query("SELECT FeedURL FROM GpodderSubscriptionSnapshot WHERE UserID = ? AND SyncTarget = ?")
+                    .bind(user_id)
+                    .bind(target)
+                    .fetch_all(pool)
+                    .await?;
+                for row in rows {
+                    feeds.insert(row.try_get::<String, _>("FeedURL")?);
+                }
+            }
+        }
+        Ok(feeds)
+    }
+
+    // Replace the stored snapshot for (user, target) with the given feed set. Called after a
+    // successful sync so the next sync only uploads genuine local changes.
+    async fn save_subscription_snapshot(&self, user_id: i32, target: &str, feeds: &[String]) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                sqlx::query(r#"DELETE FROM "GpodderSubscriptionSnapshot" WHERE userid = $1 AND synctarget = $2"#)
+                    .bind(user_id)
+                    .bind(target)
+                    .execute(&mut *tx)
+                    .await?;
+                for feed in feeds {
+                    sqlx::query(r#"INSERT INTO "GpodderSubscriptionSnapshot" (userid, synctarget, feedurl) VALUES ($1, $2, $3) ON CONFLICT (userid, synctarget, feedurl) DO NOTHING"#)
+                        .bind(user_id)
+                        .bind(target)
+                        .bind(feed)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                tx.commit().await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                sqlx::query("DELETE FROM GpodderSubscriptionSnapshot WHERE UserID = ? AND SyncTarget = ?")
+                    .bind(user_id)
+                    .bind(target)
+                    .execute(&mut *tx)
+                    .await?;
+                for feed in feeds {
+                    sqlx::query("INSERT IGNORE INTO GpodderSubscriptionSnapshot (UserID, SyncTarget, FeedURL) VALUES (?, ?, ?)")
+                        .bind(user_id)
+                        .bind(target)
+                        .bind(feed)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                tx.commit().await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Compute genuine local subscription changes since the last sync to `target` by diffing the
+    // current local feed set against the saved snapshot. Returns (to_add, to_remove):
+    //   to_add    = local now but not in snapshot  (subscribed locally since last sync)
+    //   to_remove = in snapshot but not local now   (unsubscribed locally since last sync)
+    // Private feeds (with credentials) are excluded by get_user_podcast_feeds, so they are never
+    // in the snapshot and never appear in either list - they are never pushed to a sync server.
+    async fn compute_subscription_delta(&self, user_id: i32, target: &str, local_feeds: &[String]) -> AppResult<(Vec<String>, Vec<String>)> {
+        let snapshot = self.get_subscription_snapshot(user_id, target).await?;
+        let local_set: std::collections::HashSet<String> = local_feeds.iter().cloned().collect();
+
+        let to_add: Vec<String> = local_feeds.iter().filter(|f| !snapshot.contains(*f)).cloned().collect();
+        let to_remove: Vec<String> = snapshot.iter().filter(|f| !local_set.contains(*f)).cloned().collect();
+        Ok((to_add, to_remove))
     }
 
     // Apply remote episode actions locally - matches Python apply_episode_actions function exactly
@@ -14756,17 +14670,9 @@ impl DatabasePool {
         let mut applied_count = 0;
         let mut not_found_count = 0;
         let mut not_found_urls: Vec<String> = Vec::new();
-        let mut changelog_168_found = false;
-        let mut changelog_168_result = String::new();
 
-        // Process in batches with progress logging
-        const BATCH_SIZE: usize = 1000;
+        // Process with periodic progress logging
         const LOG_INTERVAL: usize = 500; // Log progress every 500 actions
-
-        // DEBUG: Log the first action to see its structure
-        if !actions.is_empty() {
-            tracing::info!("DEBUG: First episode action structure: {}", serde_json::to_string_pretty(&actions[0]).unwrap_or_else(|_| "failed to serialize".to_string()));
-        }
 
         for (index, action) in actions.iter().enumerate() {
             // Log progress periodically instead of for every action
@@ -14817,18 +14723,8 @@ impl DatabasePool {
                                         match self.mark_episode_completed(episode_id, user_id, false).await {
                                             Ok(_) => {
                                                 applied_count += 1;
-                                                // Only log changelog-news-168 for debugging
-                                                if episode_url.contains("changelog-news-168") {
-                                                    changelog_168_found = true;
-                                                    changelog_168_result = format!("✅ Marked as completed: {}s/{}s", position_sec, episode_duration);
-                                                    tracing::info!("✓ Marked changelog-news-168 as completed via GPodder sync");
-                                                }
                                             }
                                             Err(e) => {
-                                                if episode_url.contains("changelog-news-168") {
-                                                    changelog_168_found = true;
-                                                    changelog_168_result = format!("❌ FAILED to mark complete: {}", e);
-                                                }
                                                 tracing::debug!("Failed to mark episode as completed: {}", e);
                                             }
                                         }
@@ -14837,17 +14733,8 @@ impl DatabasePool {
                                         match self.update_episode_progress(user_id, episode_id, position_sec, timestamp).await {
                                             Ok(_) => {
                                                 applied_count += 1;
-                                                if episode_url.contains("changelog-news-168") {
-                                                    changelog_168_found = true;
-                                                    changelog_168_result = format!("✅ Updated progress: {}s/{}s", position_sec, episode_duration);
-                                                    tracing::info!("✓ Updated changelog-news-168 progress to {}s/{}s", position_sec, episode_duration);
-                                                }
                                             }
                                             Err(e) => {
-                                                if episode_url.contains("changelog-news-168") {
-                                                    changelog_168_found = true;
-                                                    changelog_168_result = format!("❌ FAILED: {}", e);
-                                                }
                                                 tracing::debug!("Failed to update episode progress: {}", e);
                                             }
                                         }
@@ -14866,10 +14753,6 @@ impl DatabasePool {
                             } else {
                                 not_found_count += 1;
                                 not_found_urls.push(episode_url.to_string());
-                                if episode_url.contains("changelog-news-168") {
-                                    changelog_168_found = true;
-                                    changelog_168_result = "❌ NOT FOUND in database".to_string();
-                                }
                             }
                         }
                     }
@@ -14888,25 +14771,13 @@ impl DatabasePool {
             }
         }
         
-        tracing::info!("✅ Episode actions processing complete: {}/{} applied, {} not found in local database",
+        tracing::info!("Episode actions processing complete: {}/{} applied, {} not found in local database",
                       applied_count, total_actions, not_found_count);
 
-        // Print changelog-news-168 result
-        println!("\n========== CHANGELOG-NEWS-168 DEBUG ==========");
-        if changelog_168_found {
-            println!("🎯 changelog-news-168 WAS PROCESSED: {}", changelog_168_result);
-        } else {
-            println!("⚠️  changelog-news-168 was NOT found in episode actions");
-        }
-        println!("==============================================\n");
-
-        // Print sample of not found URLs for debugging
+        // Log a sample of not-found URLs to help diagnose feed/episode URL mismatches
         if !not_found_urls.is_empty() {
-            println!("\n========== EPISODE ACTIONS NOT FOUND (first 20) ==========");
-            for url in not_found_urls.iter().take(20) {
-                println!("❌ NOT FOUND: {}", url);
-            }
-            println!("========== END NOT FOUND EPISODES (total: {}) ==========\n", not_found_urls.len());
+            tracing::debug!("{} episode actions referenced episodes not in the local database (showing up to 20): {:?}",
+                          not_found_urls.len(), not_found_urls.iter().take(20).collect::<Vec<_>>());
         }
 
         Ok(())
@@ -18033,8 +17904,10 @@ impl DatabasePool {
         
         for video in videos {
             let video_id = video.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let title = video.get("title").and_then(|v| v.as_str()).unwrap_or("");
-            let description = video.get("description").and_then(|v| v.as_str()).unwrap_or("");
+            let raw_title = video.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let raw_description = video.get("description").and_then(|v| v.as_str()).unwrap_or("");
+            let title = self.clean_and_normalize_title(raw_title);
+            let description = self.decode_html_entities(raw_description);
             let url = video.get("url").and_then(|v| v.as_str()).unwrap_or("");
             let thumbnail = video.get("thumbnail").and_then(|v| v.as_str()).unwrap_or("");
             
@@ -18486,7 +18359,14 @@ impl DatabasePool {
                     .fetch_one(pool)
                     .await?;
 
-                Ok(row.try_get::<f64, _>("PlaybackSpeed").unwrap_or(1.0))
+                // PlaybackSpeed is a NUMERIC column in Postgres, which sqlx
+                // decodes to BigDecimal (not f64). The column comes back
+                // lowercased because it was selected unquoted.
+                if let Ok(speed) = row.try_get::<bigdecimal::BigDecimal, _>("playbackspeed") {
+                    Ok(speed.to_f64().unwrap_or(1.0))
+                } else {
+                    Ok(1.0)
+                }
             }
             DatabasePool::MySQL(pool) => {
                 let query = if let Some(_pod_id) = podcast_id {
@@ -22388,10 +22268,11 @@ impl DatabasePool {
                     let podcast_artwork: Option<String> = row.try_get("artworkurl").ok();
                     let artwork_url = episode_artwork.filter(|url| !url.is_empty()).or(podcast_artwork);
                     
-                    let pub_date = if let Ok(dt) = row.try_get::<DateTime<Utc>, _>("episodepubdate") {
-                        dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
-                    } else {
-                        Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string()
+                    let pub_date = match row.try_get::<chrono::NaiveDateTime, _>("episodepubdate") {
+                        Ok(naive) => DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc)
+                            .format("%a, %d %b %Y %H:%M:%S %z")
+                            .to_string(),
+                        Err(_) => Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string(),
                     };
 
                     episodes.push(RssEpisode {
@@ -22505,10 +22386,11 @@ impl DatabasePool {
                     let podcast_artwork: Option<String> = row.try_get("ArtworkURL").ok();
                     let artwork_url = episode_artwork.filter(|url| !url.is_empty()).or(podcast_artwork);
                     
-                    let pub_date = if let Ok(dt) = row.try_get::<DateTime<Utc>, _>("EpisodePubDate") {
-                        dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
-                    } else {
-                        Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string()
+                    let pub_date = match row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate") {
+                        Ok(naive) => DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc)
+                            .format("%a, %d %b %Y %H:%M:%S %z")
+                            .to_string(),
+                        Err(_) => Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string(),
                     };
 
                     episodes.push(RssEpisode {
@@ -24149,8 +24031,14 @@ impl DatabasePool {
                     match resp.json::<serde_json::Value>().await {
                         Ok(subs_data) => {
                             tracing::info!("Nextcloud subscriptions response: {:?}", subs_data);
-                            if let Some(subs_array) = subs_data.as_array() {
-                                tracing::info!("Found {} subscriptions in Nextcloud array", subs_array.len());
+                            // The gPodder Sync app returns {"add": [...], "remove": [...], "timestamp": N};
+                            // the full subscription list lives in "add". Fall back to a bare array.
+                            let subs_array = subs_data
+                                .get("add")
+                                .and_then(|v| v.as_array())
+                                .or_else(|| subs_data.as_array());
+                            if let Some(subs_array) = subs_array {
+                                tracing::info!("Found {} subscriptions in Nextcloud response", subs_array.len());
                                 for sub in subs_array {
                                     if let Some(url) = sub.as_str() {
                                         server_subscriptions.push(ServerSubscription {
@@ -24161,7 +24049,7 @@ impl DatabasePool {
                                     }
                                 }
                             } else {
-                                tracing::warn!("Nextcloud subscriptions response is not an array: {:?}", subs_data);
+                                tracing::warn!("Unexpected Nextcloud subscriptions response shape: {:?}", subs_data);
                             }
                         }
                         Err(e) => {
@@ -24857,12 +24745,10 @@ impl DatabasePool {
         // Decrypt token using existing decrypt_password method
         let password = self.decrypt_password(&encrypted_token).await?;
         
-        // Get last sync timestamp for incremental sync
-        let since_timestamp = if let Some(last_sync) = self.get_last_sync_timestamp(user_id).await? {
-            last_sync.timestamp()
-        } else {
-            0
-        };
+        // Get last sync timestamp for incremental sync (keep both the DateTime, for selecting
+        // local episode actions to upload, and the unix form, for the Nextcloud `since` query).
+        let last_sync_dt = self.get_last_sync_timestamp(user_id).await?;
+        let since_timestamp = last_sync_dt.map(|t| t.timestamp()).unwrap_or(0);
         
         // Build Nextcloud API endpoint URLs
         let base_url = if gpodder_url.ends_with('/') {
@@ -24886,15 +24772,20 @@ impl DatabasePool {
             .await
             .map_err(|e| AppError::internal(&format!("Failed to fetch Nextcloud subscriptions: {}", e)))?;
             
+        // Track changes the server sent us so we don't echo them back on upload.
+        let mut server_added: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut server_removed: std::collections::HashSet<String> = std::collections::HashSet::new();
+
         if subscriptions_response.status().is_success() {
             let subscription_data: serde_json::Value = subscriptions_response.json().await
                 .map_err(|e| AppError::internal(&format!("Failed to parse subscription response: {}", e)))?;
-            
+
             // Process subscription changes
             if let Some(add_list) = subscription_data.get("add").and_then(|v| v.as_array()) {
                 for url in add_list {
                     if let Some(podcast_url) = url.as_str() {
                         tracing::info!("Adding Nextcloud subscription: {}", podcast_url);
+                        server_added.insert(podcast_url.to_string());
                         if let Err(e) = self.add_podcast_from_url(user_id, podcast_url, None).await {
                             tracing::error!("Failed to add podcast {}: {}", podcast_url, e);
                         } else {
@@ -24903,11 +24794,12 @@ impl DatabasePool {
                     }
                 }
             }
-            
+
             if let Some(remove_list) = subscription_data.get("remove").and_then(|v| v.as_array()) {
                 for url in remove_list {
                     if let Some(podcast_url) = url.as_str() {
                         tracing::info!("Removing Nextcloud subscription: {}", podcast_url);
+                        server_removed.insert(podcast_url.to_string());
                         if let Err(e) = self.remove_podcast_by_url(user_id, podcast_url).await {
                             tracing::error!("Failed to remove podcast {}: {}", podcast_url, e);
                         } else {
@@ -24942,15 +24834,46 @@ impl DatabasePool {
             }
         }
         
-        // Update last sync timestamp 
+        // Push genuine LOCAL subscription changes up to Nextcloud. Without an upload the sync is
+        // download-only, so podcasts added locally never reach the server. We diff the current
+        // local feed set against the snapshot from the last sync (rather than re-sending the full
+        // list) so we only push real local add/removes, propagate local unsubscribes, and avoid
+        // echoing back what the server just sent us.
+        let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+        let (mut to_add, mut to_remove) = self
+            .compute_subscription_delta(user_id, &base_url, &local_subscriptions)
+            .await?;
+        to_add.retain(|f| !server_added.contains(f));
+        to_remove.retain(|f| !server_removed.contains(f));
+        if let Err(e) = self
+            .upload_subscription_changes_to_nextcloud(&base_url, &username, &password, &to_add, &to_remove)
+            .await
+        {
+            tracing::warn!("Failed to upload subscription delta to Nextcloud: {}", e);
+        }
+        self.save_subscription_snapshot(user_id, &base_url, &local_subscriptions).await?;
+
+        // Upload only episode actions created since the last sync (full history on the first sync),
+        // matching the gpodder path - avoids re-uploading the entire play history every sync.
+        let local_episode_actions = match last_sync_dt {
+            Some(since) => self.get_user_episode_actions_since(user_id, since).await?,
+            None => self.get_user_episode_actions(user_id).await?,
+        };
+        if !local_episode_actions.is_empty() {
+            if let Err(e) = self.upload_episode_actions_to_nextcloud(&base_url, &username, &password, &local_episode_actions).await {
+                tracing::warn!("Failed to upload local episode actions to Nextcloud: {}", e);
+            }
+        }
+
+        // Update last sync timestamp
         if let Err(e) = self.update_last_sync_timestamp(user_id).await {
             tracing::error!("Failed to update sync timestamp for user {}: {}", user_id, e);
         }
-        
+
         tracing::info!("Nextcloud sync completed for user {} - changes: {}", user_id, has_changes);
         Ok(has_changes)
     }
-    
+
     // Process individual episode action from Nextcloud
     async fn process_nextcloud_episode_action(&self, user_id: i32, action: &serde_json::Value) -> AppResult<()> {
         let episode_url = action.get("episode") 

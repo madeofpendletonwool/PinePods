@@ -94,12 +94,14 @@ class OidcService {
     OidcPkce? pkce,
   }) async {
     try {
-      // Store state on server first - use web origin for in-app browser
+      // Store state on server first - use the app deep link as the origin so the
+      // backend redirects the result back to the native auth session via the
+      // custom scheme (captured by flutter_web_auth_2).
       final stateStored = await storeOidcState(
         serverUrl: serverUrl,
         state: state,
         clientId: provider.clientId,
-        originUrl: '$serverUrl/oauth/callback', // Use web callback for in-app browser
+        originUrl: '$callbackUrlScheme:/$callbackPath', // pinepods://auth/callback
         codeVerifier: pkce?.codeVerifier, // Include PKCE code verifier
       );
       
@@ -132,22 +134,6 @@ class OidcService {
     }
   }
 
-  /// Extract API key from callback URL (for in-app browser)
-  static String? extractApiKeyFromUrl(String url) {
-    try {
-      final uri = Uri.parse(url);
-      
-      // Check if this is our callback URL with API key
-      if (uri.path.contains('/oauth/callback')) {
-        return uri.queryParameters['api_key'];
-      }
-      
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-  
   /// Handle OIDC callback and extract authentication result
   static OidcCallbackResult parseCallback(String callbackUrl) {
     try {

@@ -6,6 +6,7 @@ use crate::components::gen_components::{empty_message, FallbackImage, Search_nav
 use crate::components::loading::Loading;
 
 use crate::components::episode_list_view::EpisodeListView;
+use crate::components::virtual_list::ScrollSource;
 use crate::requests::episode::Episode;
 use crate::requests::pod_req::{
     call_bulk_delete_downloaded_episodes, call_get_podcast_download_summary,
@@ -580,6 +581,65 @@ pub fn downloads() -> Html {
     }
 }
 
+/// The expanded episode list for a single downloaded podcast.
+///
+/// Exists as its own component (rather than inline markup in
+/// [`render_podcast_with_episodes`]) so it can own a `use_node_ref` for the
+/// `.podcast-episodes-inner` scroll box. That box has `overflow-y: auto; max-height: 850px`,
+/// so the list scrolls locally — `VirtualList` must read its `scrollTop`/`clientHeight` via
+/// [`ScrollSource::Container`], not the window. Without this, window-based windowing math
+/// only ever renders the first viewport of cards and the rest collapse into the bottom
+/// spacer (blank screen after ~10 episodes).
+#[derive(Properties, PartialEq)]
+pub struct DownloadEpisodesProps {
+    pub episodes: Rc<Vec<Episode>>,
+    pub podcastid: i32,
+    pub is_delete_mode: bool,
+    pub on_checkbox_change: Callback<i32>,
+    pub loading_more: bool,
+    pub has_more: bool,
+    pub load_more: Callback<MouseEvent>,
+    pub load_more_label: String,
+}
+
+#[function_component(DownloadEpisodes)]
+pub fn download_episodes(props: &DownloadEpisodesProps) -> Html {
+    let container_ref = use_node_ref();
+    html! {
+        <div class="podcast-episodes-inner" ref={container_ref.clone()}>
+            <EpisodeListView
+                key={format!("downloads-{}", props.podcastid)}
+                episodes={props.episodes.clone()}
+                backend_can_load_more={false}
+                loading_more={false}
+                page_type={PageType::Downloads}
+                is_delete_mode={props.is_delete_mode}
+                on_checkbox_change={props.on_checkbox_change.clone()}
+                disable_sentinel={true}
+                scroll_source={ScrollSource::Container(container_ref.clone())}
+            />
+            { if props.loading_more {
+                html! {
+                    <div class="flex justify-center py-4">
+                        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-current"></div>
+                    </div>
+                }
+            } else if props.has_more {
+                html! {
+                    <div class="flex justify-center py-4">
+                        <button class="sp-chip" onclick={props.load_more.clone()}>
+                            <i class="ph ph-arrow-down"></i>
+                            <span>{ &props.load_more_label }</span>
+                        </button>
+                    </div>
+                }
+            } else {
+                html! {}
+            }}
+        </div>
+    }
+}
+
 pub fn render_podcast_with_episodes(
     summary: &PodcastDownloadSummary,
     episodes: Vec<Episode>,
@@ -667,36 +727,16 @@ pub fn render_podcast_with_episodes(
                 let episodes_rc: Rc<Vec<Episode>> = Rc::new(episodes);
                 html! {
                     <div class="podcast-episodes-container expanded">
-                        <div class="podcast-episodes-inner">
-                            <EpisodeListView
-                                key={format!("downloads-{}", summary.podcastid)}
-                                episodes={episodes_rc}
-                                backend_can_load_more={false}
-                                loading_more={false}
-                                page_type={PageType::Downloads}
-                                is_delete_mode={is_delete_mode}
-                                on_checkbox_change={on_checkbox_change.clone()}
-                                disable_sentinel={true}
-                            />
-                            { if loading_more {
-                                html! {
-                                    <div class="flex justify-center py-4">
-                                        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-current"></div>
-                                    </div>
-                                }
-                            } else if has_more {
-                                html! {
-                                    <div class="flex justify-center py-4">
-                                        <button class="sp-chip" onclick={load_more}>
-                                            <i class="ph ph-arrow-down"></i>
-                                            <span>{ &load_more_label }</span>
-                                        </button>
-                                    </div>
-                                }
-                            } else {
-                                html! {}
-                            }}
-                        </div>
+                        <DownloadEpisodes
+                            episodes={episodes_rc}
+                            podcastid={summary.podcastid}
+                            is_delete_mode={is_delete_mode}
+                            on_checkbox_change={on_checkbox_change.clone()}
+                            loading_more={loading_more}
+                            has_more={has_more}
+                            load_more={load_more.clone()}
+                            load_more_label={load_more_label.clone()}
+                        />
                     </div>
                 }
             } else {

@@ -28,6 +28,10 @@
     --check-box-color: #ffffff;
 }
 
+html, body {
+    overflow-x: clip;
+}
+
 body {
     background-color: var(--background-color);
     min-height: 100vh;
@@ -4175,6 +4179,188 @@ button.item-container-action-button.item-container-action-button {
     }
 }
 
+/* ===== Welcome / first-run home page ===== */
+.welcome-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2.5rem;
+    padding: 2rem 1rem 6rem;
+    max-width: 980px;
+    margin: 0 auto;
+}
+
+.welcome-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    width: 100%;
+    padding: 2.5rem 1.5rem;
+    border-radius: 1rem;
+    background: linear-gradient(
+        160deg,
+        var(--container-background) 0%,
+        var(--secondary-background) 100%
+    );
+    border: 1px solid var(--button-color);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.welcome-logo {
+    width: 88px;
+    height: 88px;
+    margin-bottom: 1.25rem;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+.welcome-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+}
+
+.welcome-subtitle {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--link-color);
+    margin: 0.5rem 0 1.25rem;
+}
+
+.welcome-intro {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--text-secondary-color);
+    opacity: 0.85;
+    max-width: 620px;
+    margin: 0 0 1.75rem;
+}
+
+.welcome-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
+}
+
+.welcome-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.4rem;
+    border-radius: 0.6rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    border: 1px solid transparent;
+}
+
+.welcome-btn i {
+    font-size: 1.2rem;
+}
+
+.welcome-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.welcome-btn-secondary {
+    background-color: var(--container-background);
+    color: var(--text-color);
+    border-color: var(--button-color);
+}
+
+.welcome-tips {
+    width: 100%;
+}
+
+.welcome-tips-heading {
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: var(--text-color);
+    text-align: center;
+    margin: 0 0 1.5rem;
+}
+
+.welcome-tips-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+.welcome-tip-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    border-radius: 0.85rem;
+    background-color: var(--container-background);
+    border: 1px solid var(--button-color);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.welcome-tip-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+.welcome-tip-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 0.6rem;
+    background-color: var(--secondary-background);
+    color: var(--link-color);
+}
+
+.welcome-tip-icon i {
+    font-size: 1.6rem;
+}
+
+.welcome-tip-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0;
+}
+
+.welcome-tip-desc {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text-secondary-color);
+    opacity: 0.8;
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .welcome-tips-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .welcome-hero {
+        padding: 2rem 1rem;
+    }
+
+    .welcome-title {
+        font-size: 1.6rem;
+    }
+
+    .welcome-actions {
+        width: 100%;
+    }
+
+    .welcome-btn {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+}
+
 
 .playlist-card {
     cursor: pointer;
@@ -6565,6 +6751,11 @@ body {
     padding: 8px 0 4px;
 }
 
+/* Lift sign-out + version above the mini player when audio is active */
+body.audio-player-active .sb-bottom {
+    margin-bottom: 74px;
+}
+
 /* ============================================================
    TOP BAR
    ============================================================ */
@@ -7137,7 +7328,7 @@ input[type="file"] { color: var(--text-color); font-size: 13px; }
     top: 0;
     left: 0;
     right: 0;
-    width: 100%;
+    max-width: 100vw;
     z-index: 45;
     box-sizing: border-box;
 }
@@ -7658,6 +7849,19 @@ body.search-takeover-open .drawer-icon { display: none; }
     margin-top: 4px;
 }
 .settings-subsection-title:first-child { border-top: none; margin-top: 0; }
+
+/* "OR" divider between mutually-exclusive sync options */
+.sync-option-divider {
+    display: flex; align-items: center; gap: 12px;
+    padding: 6px 20px; margin: 2px 0;
+    color: var(--text-secondary-color);
+    font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+}
+.sync-option-divider::before,
+.sync-option-divider::after {
+    content: ""; flex: 1; height: 1px;
+    background: rgba(255,255,255,.08);
+}
 
 /* Info tooltip button */
 .info-btn {
@@ -8570,7 +8774,38 @@ body.search-takeover-open .drawer-icon { display: none; }
 }
 .pfb-chips::-webkit-scrollbar { display: none; }
 
-@media (max-width: 500px) {
+/* Mobile icon — hidden on desktop */
+.pfb-sort-icon-mobile { display: none; }
+
+@media (max-width: 640px) {
     .pfb-bar { gap: 6px; }
-    .pfb-sort { min-width: 120px; }
+
+    /* Collapse sort dropdown to a 44×44 icon-only button */
+    .pfb-sort {
+        min-width: unset;
+        width: 44px;
+        padding: 0;
+        justify-content: center;
+    }
+    /* Funnel icon visible on mobile */
+    .pfb-sort-icon-mobile {
+        display: block;
+        font-size: 18px;
+        pointer-events: none;
+        color: var(--text-color);
+    }
+    /* Select overlaid invisibly so it's still tappable */
+    .pfb-sort-select {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+    }
+    /* Hide caret arrow on mobile */
+    .pfb-sort-arrow { display: none; }
+
+    /* Hide text labels from chip buttons (custom feed, list/grid) */
+    .pfb-chip-text { display: none; }
 }

@@ -3446,6 +3446,60 @@ def migration_106_optimize_subscription_sync_performance(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("108", "gpodder_subscription_snapshot", "Add subscription snapshot table for delta-based sync upload", requires=["008"])
+def migration_108_gpodder_subscription_snapshot(conn, db_type: str):
+    """Create GpodderSubscriptionSnapshot table.
+
+    Stores, per (user, sync target), the set of local feed URLs at the end of the last sync.
+    The sync code diffs the current local feeds against this snapshot to compute genuine local
+    add/remove deltas to push up - instead of re-uploading the full list every sync (which bloats
+    the server change log) and without a per-change queue.
+    """
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting gpodder migration 108: Add subscription snapshot table")
+
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS "GpodderSubscriptionSnapshot" (
+                    SnapshotID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SyncTarget TEXT NOT NULL,
+                    FeedURL TEXT NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, SyncTarget, FeedURL)
+                )
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_subsnapshot_user_target ON "GpodderSubscriptionSnapshot"(UserID, SyncTarget)
+            ''', conn=conn)
+        else:  # mysql
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS GpodderSubscriptionSnapshot (
+                    SnapshotID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SyncTarget VARCHAR(512) NOT NULL,
+                    FeedURL VARCHAR(2048) NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, SyncTarget, FeedURL(512))
+                )
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_subsnapshot_user_target ON GpodderSubscriptionSnapshot(UserID, SyncTarget)
+            ''', conn=conn)
+
+        logger.info("Created GpodderSubscriptionSnapshot table successfully")
+
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 108: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("033", "add_http_notification_columns", "Add generic HTTP notification columns to UserNotificationSettings table", requires=["011"])
 def migration_033_add_http_notification_columns(conn, db_type: str):
     """Add generic HTTP notification columns for platforms like Telegram"""

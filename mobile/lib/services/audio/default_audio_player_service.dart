@@ -357,6 +357,24 @@ class DefaultAudioPlayerService extends AudioPlayerService {
   }
 
   @override
+  Future<Episode?> findDownloadedEpisode(int episodeId) async {
+    final guid = 'pinepods_$episodeId';
+
+    // Common case: download stored under the canonical guid.
+    final direct = await repository.findEpisodeByGuid(guid);
+    if (direct != null && direct.downloadState == DownloadState.downloaded) {
+      return direct;
+    }
+
+    // Legacy downloads used a 'pinepods_<id>_<timestamp>' guid; fall back to a
+    // scan so older downloads still resolve to their local file.
+    final all = await repository.findAllEpisodes();
+    return all.firstWhereOrNull((e) =>
+        (e.guid == guid || e.guid.startsWith('${guid}_')) &&
+        e.downloadState == DownloadState.downloaded);
+  }
+
+  @override
   Future<void> rewind() => _audioHandler.rewind();
 
   @override
@@ -1340,11 +1358,13 @@ class _DefaultAudioPlayerHandler extends BaseAudioHandler with SeekHandler {
 
     log.fine('loading new track ${mediaItem.id} - from position ${start.inSeconds} (${start.inMilliseconds})');
 
+    // For downloaded episodes mediaItem.id is a filesystem path which may
+    // contain spaces or other characters that are invalid in a raw URI string
+    // (podcast folder names keep spaces). Uri.file() percent-encodes them
+    // correctly; string-concatenating "file://" does not and breaks playback
+    // (the player never loads, so position/duration stay at 00:00).
     var source = downloaded
-        ? AudioSource.uri(
-            Uri.parse("file://${mediaItem.id}"),
-            tag: mediaItem.id,
-          )
+        ? AudioSource.uri(Uri.file(mediaItem.id), tag: mediaItem.id)
         : AudioSource.uri(Uri.parse(mediaItem.id), tag: mediaItem.id);
 
     try {

@@ -47,6 +47,12 @@ abstract class AudioPlayerService {
   /// Play a new episode, optionally resume at last save point.
   Future<void> playEpisode({required Episode episode, bool resume = true});
 
+  /// Look up a locally-downloaded copy of a PinePods episode by its server
+  /// episode id. Returns the stored [Episode] (carrying filepath/filename) if a
+  /// completed download exists, otherwise null. Used to prefer the on-disk file
+  /// over streaming when playing.
+  Future<Episode?> findDownloadedEpisode(int episodeId);
+
   /// Resume playing of current episode
   Future<void> play();
 
