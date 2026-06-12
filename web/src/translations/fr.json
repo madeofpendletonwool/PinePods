@@ -103,6 +103,7 @@
     "add": "Ajouter",
     "back": "Retour",
     "cancel": "Annuler",
+    "close": "Close",
     "close_modal": "Fermer la fenêtre",
     "confirm": "Confirmer",
     "copy": "Copier",
@@ -133,8 +134,7 @@
     "title_za": "Titre Z-A",
     "update": "Mettre à jour",
     "username": "Nom d'utilisateur",
-    "yes": "Oui",
-    "close": "Close"
+    "yes": "Oui"
   },
   "context_menu_button": {
     "delete_local_download": "Supprimer le téléchargement local",
@@ -182,12 +182,12 @@
     "completed": "Complété",
     "downloaded_episodes_count": "Épisodes téléchargés",
     "in_progress": "En cours",
+    "load_more": "Load More",
     "no_downloaded_episodes_description": "Les épisodes téléchargés apparaîtront ici. Pour télécharger un épisode, vous pouvez ouvrir le menu contextuel de cet épisode et sélectionner Télécharger l'épisode. Il sera ensuite téléchargé sur le serveur et affiché ici !",
     "no_downloaded_episodes_found": "Aucun épisode téléchargé trouvé",
     "no_episode_downloads_found": "Aucun téléchargement d'épisode trouvé",
     "search_downloaded_episodes": "Rechercher dans les épisodes téléchargés…",
-    "select": "Sélectionner",
-    "load_more": "Load More"
+    "select": "Sélectionner"
   },
   "downloads_tauri": {
     "downloaded_episodes_count": "épisodes",
@@ -404,6 +404,7 @@
     "username": "Nom d'utilisateur",
     "username_placeholder": "Entrez votre nom d'utilisateur pour les flux premium",
     "verify_downloads": "Vérifier les téléchargements",
+    "video": "Video",
     "visit_external_website": "Visitez le site web du podcast",
     "website_url": "URL du site web",
     "website_url_placeholder": "Entrez l'URL du site web",
@@ -413,8 +414,7 @@
     "youtube_channel_successfully_removed": "Chaîne YouTube supprimée avec succès",
     "youtube_download_limit": "Limite de téléchargement d'épisode YouTube (jours) :",
     "youtube_episode_limit_updated": "Limite d'épisodes YouTube mise à jour !",
-    "youtube_limit_description": "Ajuster la durée de rétention du flux audio YouTube lors du téléchargement pour diffusion via le serveur. Les épisodes YouTube seront supprimés ensuite pour libérer de l'espace.",
-    "video": "Video"
+    "youtube_limit_description": "Ajuster la durée de rétention du flux audio YouTube lors du téléchargement pour diffusion via le serveur. Les épisodes YouTube seront supprimés ensuite pour libérer de l'espace."
   },
   "export_settings": {
     "download_export_opml": "Télécharger/Exporter OPML",
@@ -686,22 +686,22 @@
     "status_in_progress": "En cours",
     "status_processing": "En cours",
     "status_queued": "Mis en file d'attente",
-    "task_download": "Télécharger",
-    "task_feed_refresh": "Rafraîchir le flux",
-    "task_playlist": "Liste de lecture",
-    "task_youtube_download": "Téléchargement YouTube",
-    "task_bulk_download": "",
-    "task_youtube_bulk_download": "",
-    "task_opml_import": "",
     "task_add_podcast": "",
     "task_backup": "",
-    "task_restore": "",
-    "task_gpodder_sync": "",
-    "task_nextcloud_sync": "",
-    "task_nextcloud_auth": "",
-    "task_playlist_update": "",
+    "task_bulk_download": "",
     "task_cleanup": "",
-    "task_refresh_hosts": ""
+    "task_download": "Télécharger",
+    "task_feed_refresh": "Rafraîchir le flux",
+    "task_gpodder_sync": "",
+    "task_nextcloud_auth": "",
+    "task_nextcloud_sync": "",
+    "task_opml_import": "",
+    "task_playlist": "Liste de lecture",
+    "task_playlist_update": "",
+    "task_refresh_hosts": "",
+    "task_restore": "",
+    "task_youtube_bulk_download": "",
+    "task_youtube_download": "Téléchargement YouTube"
   },
   "notifications": {
     "access_token": "Jeton d'accès",
@@ -795,12 +795,12 @@
   "people_subs": {
     "avatar_alt": "Avatar pour",
     "episode_count": "Nombre d'épisodes",
+    "loading_episodes": "Loading episodes...",
+    "no_recent_episodes_found": "No recent episodes found.",
     "no_subscribed_people_found": "Aucun abonné trouvé",
     "shows": "Émissions",
     "subscribe_to_hosts_message": "Abonnez-vous à des hôtes et invités pour voir leurs derniers épisodes ici !",
-    "subscribed_people": "Personnes abonnées",
-    "loading_episodes": "Loading episodes...",
-    "no_recent_episodes_found": "No recent episodes found."
+    "subscribed_people": "Personnes abonnées"
   },
   "person": {
     "add_podcasts_message": "Vous pouvez ajouter de nouveaux podcasts en utilisant la barre de recheche ci-dessus. Cherchez votre podcast préféré et cliquez sur le bouton plus pour l'ajouter.",
@@ -809,6 +809,7 @@
     "episodes_this_person_appears_in": "Épisodes dans lesquels cette personne apparaît",
     "error_adding_podcast": "Erreur de l'ajout du podcast",
     "error_removing_podcast": "Erreur de suppression du podcast",
+    "loading_podcasts": "Loading podcasts...",
     "no_description_provided": "Aucune description fournie",
     "no_episodes_found": "Aucun épisode trouvé",
     "no_episodes_message": "Ce podcast n'a bizarrement aucun épisode. Essayez en un plus populaire peut-être ?",
@@ -821,8 +822,7 @@
     "profile_alt": "profil",
     "subscribe": "S'abonner",
     "unknown_author": "Auteur inconnu",
-    "unsubscribe": "Se désabonner",
-    "loading_podcasts": "Loading podcasts..."
+    "unsubscribe": "Se désabonner"
   },
   "playback_settings": {
     "auto_complete_description": "Les épisodes dont il reste tant ou moins de secondes seront marqués comme lus automatiquement. Passez la valeur à 0 pour le désactiver.",
@@ -841,25 +841,25 @@
   "playlist_detail": {
     "almost_done_empty": "Vous n'avez aucun épisode près d'être achevé. Continuez à écouter !",
     "currently_listening_empty": "Commencer à écouter à des épisodes et ils apparaîtront ici pour un accès facilité.",
+    "edit_episode_status": "Episode Status",
+    "edit_filter_by_podcasts": "Filter by Podcasts",
+    "edit_group_by_podcast": "Group by Podcast",
+    "edit_include_partially_played": "Include Partially Played",
+    "edit_include_played": "Include Played",
+    "edit_include_unplayed": "Include Unplayed",
+    "edit_max_duration": "Max Duration (min)",
+    "edit_max_episodes": "Max Episodes",
+    "edit_max_progress": "Max Progress (%)",
+    "edit_min_duration": "Min Duration (min)",
+    "edit_min_progress": "Min Progress (%)",
+    "edit_time_filter_hours": "Time Filter (hours)",
     "episodes": "épisodes",
     "fresh_releases_empty": "Aucun épisode n'a été publié dans les dernières 24 heures. Revenez plus tard pour du contenu frais !",
     "no_episodes_found": "Aucun épisode trouvé",
     "no_episodes_match_criteria": "Aucun épisode ne correspond aux critères actuels de la liste de lecture. Essayez d'ajuster les filtres ou d'ajouter plus de podcasts.",
     "play_from_top": "Play from Top",
     "refresh": "Rafraîchir",
-    "refreshing": "Rafraîchissement…",
-    "edit_filter_by_podcasts": "Filter by Podcasts",
-    "edit_episode_status": "Episode Status",
-    "edit_include_unplayed": "Include Unplayed",
-    "edit_include_partially_played": "Include Partially Played",
-    "edit_include_played": "Include Played",
-    "edit_min_duration": "Min Duration (min)",
-    "edit_max_duration": "Max Duration (min)",
-    "edit_min_progress": "Min Progress (%)",
-    "edit_max_progress": "Max Progress (%)",
-    "edit_time_filter_hours": "Time Filter (hours)",
-    "edit_max_episodes": "Max Episodes",
-    "edit_group_by_podcast": "Group by Podcast"
+    "refreshing": "Rafraîchissement…"
   },
   "playlists": {
     "are_you_sure_delete": "Êtes-vous sûr de vouloir supprimer",
