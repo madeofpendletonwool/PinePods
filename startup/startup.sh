@@ -125,6 +125,7 @@ mkdir -p /pinepods/cache
 mkdir -p /opt/pinepods/backups
 mkdir -p /opt/pinepods/downloads
 mkdir -p /opt/pinepods/certs
+mkdir -p /opt/pinepods/local-media  # User-mounted media library; app writes artwork here
 mkdir -p /var/log/pinepods  # Make sure log directory exists
 
 # Database Setup
@@ -159,21 +160,50 @@ else
     echo "Starting Horust in production mode (logs to files)..."
 fi
 
-# Set permissions for download and backup directories BEFORE starting services
-# Only do this if PUID and PGID are set
-if [[ -n "$PUID" && -n "$PGID" ]]; then
-    echo "Setting permissions for download and backup directories...(Be patient this might take a while if you have a lot of downloads)"
-    chown -R ${PUID}:${PGID} /opt/pinepods/downloads
-    chown -R ${PUID}:${PGID} /opt/pinepods/backups
-else
-    echo "Skipping permission setting as PUID/PGID are not set"
-fi
-
 # Copy service configurations to Horust directory
 cp /pinepods/startup/services/*.toml /etc/horust/services/
 
-# Start all services with Horust
-echo "Starting services with Horust..."
-echo "PinePods startup complete, running Horust in foreground..."
-exec horust --services-path /etc/horust/services/
+# Ensure runtime directories exist and are writable when running non-root.
+# Horust creates a unix-domain-socket folder at /var/run/horust; nginx needs its own dirs.
+mkdir -p /run/nginx /var/lib/nginx/tmp /var/log/nginx /var/run/horust
+
+# When PUID/PGID are set, drop privileges and run the whole stack as that user so files
+# are created with correct ownership natively (no per-file chown needed). Otherwise run as root.
+if [[ -n "$PUID" && -n "$PGID" ]]; then
+    echo "Configuring non-root execution as ${PUID}:${PGID}..."
+
+    # Remap the runtime user/group to the requested IDs (-o allows duplicate IDs).
+    # This gives the dropped-privilege process a valid passwd entry and HOME (/pinepods).
+    groupmod -o -g "$PGID" pinepods 2>/dev/null || true
+    usermod -o -u "$PUID" -g "$PGID" pinepods 2>/dev/null || true
+
+    # Cheap, non-recursive ownership of the dirs the app writes to.
+    # Note: local-media is intentionally chowned non-recursively — it's often a large
+    # pre-existing library; the app only needs to write artwork into a subdir.
+    chown "${PUID}:${PGID}" /pinepods/cache /var/log/pinepods /opt/pinepods/certs \
+                            /opt/pinepods/downloads /opt/pinepods/backups \
+                            /opt/pinepods/local-media \
+                            /run/nginx /var/lib/nginx /var/lib/nginx/tmp /var/log/nginx \
+                            /var/run/horust 2>/dev/null || true
+
+    # One-time recursive migration of pre-existing root-owned content, gated by a marker
+    # on the persisted downloads volume. Non-fatal so an NFS/read-only mount can't block startup.
+    if [ ! -f /opt/pinepods/downloads/.perms-migrated ]; then
+        echo "One-time permission migration (only happens once; future boots are instant)..."
+        if chown -R "${PUID}:${PGID}" /opt/pinepods/downloads /opt/pinepods/backups 2>/dev/null; then
+            touch /opt/pinepods/downloads/.perms-migrated 2>/dev/null || true
+        else
+            echo "Skipped recursive chown (read-only/NFS mount) — new files will be owned by ${PUID}:${PGID} as they are written."
+        fi
+    fi
+
+    echo "Starting services as ${PUID}:${PGID} with Horust..."
+    echo "PinePods startup complete, running Horust in foreground..."
+    exec su-exec "${PUID}:${PGID}" horust --services-path /etc/horust/services/
+else
+    echo "PUID/PGID not set — running as root (legacy mode)."
+    echo "Starting services with Horust..."
+    echo "PinePods startup complete, running Horust in foreground..."
+    exec horust --services-path /etc/horust/services/
+fi
 

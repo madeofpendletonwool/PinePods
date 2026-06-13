@@ -21418,6 +21418,43 @@ impl DatabasePool {
         }
     }
 
+    // Get an episode's URL (verifying the user owns the podcast). Used by the stream
+    // endpoint to fall back to local-media episodes that are not in DownloadedEpisodes.
+    pub async fn get_episode_url_for_stream(
+        &self,
+        episode_id: i32,
+        user_id: i32,
+    ) -> AppResult<Option<String>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT e.episodeurl AS episodeurl
+                    FROM "Episodes" e
+                    JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    WHERE e.episodeid = $1 AND p.userid = $2
+                "#)
+                    .bind(episode_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(row.map(|r| r.try_get::<String, _>("episodeurl")).transpose()?)
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("
+                    SELECT e.EpisodeURL AS episodeurl
+                    FROM Episodes e
+                    JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                    WHERE e.EpisodeID = ? AND p.UserID = ?
+                ")
+                    .bind(episode_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(row.map(|r| r.try_get::<String, _>("episodeurl")).transpose()?)
+            }
+        }
+    }
+
     // Update YouTube video duration after download - updates duration from MP3 file
     pub async fn update_youtube_video_duration(&self, video_id: &str, duration_seconds: i32) -> AppResult<()> {
         println!("Updating duration for YouTube video {} to {} seconds", video_id, duration_seconds);

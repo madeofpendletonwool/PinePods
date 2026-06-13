@@ -362,7 +362,11 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                 "{}/api/data/stream/{}?api_key={}&user_id={}&type=youtube",
                 server_name, props.episode.episodeid, api_key, user_id
             )
-        } else if is_local_for_shownotes {
+        } else if is_local_for_shownotes
+            || props.episode.downloaded
+            || props.episode.episodeurl.starts_with("local://")
+        {
+            // Server-downloaded and local-media episodes stream through the backend.
             format!(
                 "{}/api/data/stream/{}?api_key={}&user_id={}",
                 server_name, props.episode.episodeid, api_key, user_id

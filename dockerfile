@@ -106,7 +106,12 @@ FROM alpine
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 # Install runtime dependencies
-RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg wget jq mariadb-connector-c-dev
+# su-exec: drop privileges to PUID:PGID at startup. shadow: usermod/groupmod to remap the runtime user's IDs.
+RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg wget jq mariadb-connector-c-dev su-exec shadow
+
+# Create a fixed runtime user/group (default 911); startup.sh remaps these to PUID/PGID at runtime
+RUN addgroup -g 911 pinepods && \
+    adduser -D -H -u 911 -G pinepods -h /pinepods pinepods
 
 
 # Download and install latest yt-dlp — pick the arch-specific musl binary (no Python needed)
@@ -167,8 +172,8 @@ RUN chmod +x /usr/local/bin/start-gpodder.sh
 RUN cp /usr/share/zoneinfo/UTC /etc/localtime && \
     echo "UTC" > /etc/timezone
 
-# Expose ports
-EXPOSE 8080 8000
+# Expose ports (nginx web UI + gpodder API)
+EXPOSE 8040 8042
 
 # Start everything using the startup script
 ENTRYPOINT ["bash", "/startup.sh"]

@@ -1985,7 +1985,29 @@ pub fn on_play_click(
     skip_queue: bool,
     playlist_id: Option<i32>,
 ) -> Callback<MouseEvent> {
-    Callback::from(move |_: MouseEvent| {
+    Callback::from(move |_e: MouseEvent| {
+        // Local-first: on desktop, if this episode is downloaded to the device, play the
+        // on-device file instead of streaming. (No-op on the hosted web/server build.)
+        #[cfg(not(feature = "server_build"))]
+        {
+            let status = Dispatch::<EpisodeStatusState>::global().get();
+            let downloads = &status.downloaded_episodes;
+            if downloads.is_local_download(episode.episodeid) {
+                if let Some(local_ep) = downloads
+                    .episodes()
+                    .find(|ep| ep.episodeid == episode.episodeid && ep.downloadedlocation.is_some())
+                {
+                    on_play_click_offline(
+                        local_ep.clone(),
+                        audio_dispatch.clone(),
+                        Dispatch::<AppState>::global(),
+                    )
+                    .emit(_e.clone());
+                    return;
+                }
+            }
+        }
+
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
@@ -2154,13 +2176,22 @@ pub fn on_play_click(
             }
         });
 
-        // Determine the source URL
+        // Determine the source URL. Prefer the server download endpoint whenever the
+        // episode is downloaded to the server — regardless of which UI context started
+        // playback — so we never stream the original feed URL for a downloaded episode.
+        let is_server_download = episode.downloaded
+            || Dispatch::<EpisodeStatusState>::global()
+                .get()
+                .downloaded_episodes
+                .is_server_download(episode.episodeid);
         let src = if episode.episodeurl.contains("youtube.com") {
             format!(
                 "{}/api/data/stream/{}?api_key={}&user_id={}&type=youtube",
                 server_name, episode.episodeid, api_key, user_id
             )
-        } else if is_local {
+        } else if is_local || is_server_download || episode.episodeurl.starts_with("local://") {
+            // Server-downloaded episodes and local-media episodes both stream through the
+            // backend (a browser can't load a local:// URL directly).
             format!(
                 "{}/api/data/stream/{}?api_key={}&user_id={}",
                 server_name, episode.episodeid, api_key, user_id
