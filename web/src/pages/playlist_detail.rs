@@ -464,7 +464,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                             if let Some(info) = &*playlist_info {
                                 <div class="playlist-header mb-6">
                                     <div class="flex items-start justify-between gap-4">
-                                        <div class="flex items-center gap-4 flex-grow">
+                                        <div class="flex items-center gap-4 min-w-0">
                                             <i class={classes!("text-4xl", info.icon_name.clone())}></i>
                                             <div>
                                                 <h1 class="text-2xl font-bold item_container-text">{&info.name}</h1>
@@ -476,11 +476,11 @@ pub fn playlist_detail(props: &Props) -> Html {
                                                 </p>
                                             </div>
                                         </div>
-                                        <div class="flex items-center gap-2">
+                                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                                             if !info.is_system_playlist.unwrap_or(false) {
                                                 <button
                                                     onclick={on_edit_click}
-                                                    class="btn-secondary flex items-center gap-2 px-4 py-2 rounded-lg"
+                                                    class="btn-secondary flex items-center justify-center gap-2 px-4 py-2 rounded-lg"
                                                 >
                                                     <i class="ph ph-pencil text-xl"></i>
                                                     {&i18n.t("playlist_detail.edit_playlist")}
@@ -488,7 +488,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                             }
                                             <button
                                                 onclick={play_from_top}
-                                                class="btn-primary flex items-center gap-2 px-4 py-2 rounded-lg"
+                                                class="btn-primary flex items-center justify-center gap-2 px-4 py-2 rounded-lg"
                                                 disabled={(*episodes).is_empty()}
                                             >
                                                 <i class="ph ph-play-circle text-xl"></i>
