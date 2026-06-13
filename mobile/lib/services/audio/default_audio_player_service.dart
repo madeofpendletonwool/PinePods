@@ -852,7 +852,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       );
       
       // Convert PinepodsEpisode to Episode for playback
-      final episode = _convertPinepodsEpisodeToEpisode(nextPinepodsEpisode, pinepodsService, userId);
+      final episode = await _convertPinepodsEpisodeToEpisode(nextPinepodsEpisode, pinepodsService, userId);
       
       log.fine('Retrieved next episode from server queue: ${episode.title}');
       return episode;
@@ -917,7 +917,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         return null;
       }
 
-      final episode = _convertPinepodsEpisodeToEpisode(nextPinepodsEpisode, pinepodsService, userId);
+      final episode = await _convertPinepodsEpisodeToEpisode(nextPinepodsEpisode, pinepodsService, userId);
       log.fine('Found next episode for auto-play: ${episode.title}');
       return episode;
     } catch (e) {
@@ -964,7 +964,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         return null;
       }
 
-      return _convertPinepodsEpisodeToEpisode(nextPinepodsEpisode, pinepodsService, userId);
+      return await _convertPinepodsEpisodeToEpisode(nextPinepodsEpisode, pinepodsService, userId);
     } catch (e) {
       log.warning('Error fetching next playlist episode: $e');
       _currentPlaylistId = null;
@@ -972,8 +972,14 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     }
   }
 
-  /// Convert PinepodsEpisode to Episode for audio playback
-  Episode _convertPinepodsEpisodeToEpisode(PinepodsEpisode pinepodsEpisode, PinepodsService pinepodsService, int userId) {
+  /// Convert PinepodsEpisode to Episode for audio playback.
+  ///
+  /// Local-first: if the episode is downloaded to THIS device, the returned
+  /// Episode is marked so the player uses the on-disk file; otherwise it falls
+  /// back to the server stream (when downloaded to the server) and finally the
+  /// original URL. Mirrors PinepodsAudioService.playPinepodsEpisode so every
+  /// playback path (including queue/auto-play) honours the same priority.
+  Future<Episode> _convertPinepodsEpisodeToEpisode(PinepodsEpisode pinepodsEpisode, PinepodsService pinepodsService, int userId) async {
     // Determine the content URL
     String contentUrl;
     if (pinepodsEpisode.downloaded) {
@@ -997,7 +1003,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       contentUrl = pinepodsEpisode.episodeUrl;
     }
 
-    return Episode(
+    final episode = Episode(
       guid: 'pinepods_${pinepodsEpisode.episodeId}',
       pguid: 'pinepods_${pinepodsEpisode.podcastId}',
       podcast: pinepodsEpisode.podcastName,
@@ -1016,6 +1022,20 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       persons: [], // Basic conversion without persons
       transcriptUrls: [], // Basic conversion without transcripts
     );
+
+    // Prefer an on-device download when one exists so queued/auto-played episodes
+    // play the local file (and work offline). We set only downloadState + file
+    // location, not downloadPercentage — see the note in
+    // PinepodsAudioService.playPinepodsEpisode for why.
+    final localDownload = await findDownloadedEpisode(pinepodsEpisode.episodeId);
+    if (localDownload != null) {
+      episode.downloadState = DownloadState.downloaded;
+      episode.filepath = localDownload.filepath;
+      episode.filename = localDownload.filename;
+      log.info('Auto-play using local download for episode ${pinepodsEpisode.episodeId}');
+    }
+
+    return episode;
   }
 
   /// This method is called when audio_service sends a [AudioProcessingState.loading] event.

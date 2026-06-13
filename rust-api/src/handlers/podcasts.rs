@@ -2450,13 +2450,26 @@ pub async fn stream_episode(
     // RSS keys don't need user permission checks - they can stream any episode
 
     // Choose which lookup to use based on source_type
-    let file_path = if query.source_type.as_deref() == Some("youtube") {
+    let mut file_path = if query.source_type.as_deref() == Some("youtube") {
         println!("Looking up YouTube video file path");
         state.db_pool.get_youtube_video_location(episode_id, query.user_id).await?
     } else {
         println!("Looking up regular episode file path");
         state.db_pool.get_download_location(episode_id, query.user_id).await?
     };
+
+    // Fall back to local-media episodes, which are not recorded in DownloadedEpisodes.
+    // Their episode URL is a local:// pseudo-URL pointing under /opt/pinepods/local-media.
+    if file_path.is_none() {
+        if let Some(url) = state.db_pool.get_episode_url_for_stream(episode_id, query.user_id).await? {
+            if let Some(raw) = url.strip_prefix("local://") {
+                // validate_local_media_path canonicalizes and blocks path traversal outside the root
+                let resolved = crate::handlers::local_podcast::validate_local_media_path(raw)?;
+                println!("Resolved local-media episode to: {}", resolved.display());
+                file_path = Some(resolved.to_string_lossy().to_string());
+            }
+        }
+    }
 
     if let Some(path) = file_path {
         println!("Found file at: {}", path);

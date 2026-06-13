@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:flutter_carplay/flutter_carplay.dart';
 import 'package:logging/logging.dart';
+import 'package:pinepods_mobile/entities/downloadable.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
@@ -807,6 +808,24 @@ class CarPlayService {
 
   Future<void> _playEpisode(Episode episode) async {
     log.info('Playing episode from CarPlay: ${episode.title}');
+
+    // Local-first: episodes converted from PinepodsEpisode/HomeEpisode carry a
+    // 'pinepods_<id>' guid but no downloadState, so they'd stream even when a
+    // local copy exists. Resolve the on-device download here before playing.
+    if (episode.downloadState != DownloadState.downloaded) {
+      final idStr = episode.guid.replaceFirst('pinepods_', '').split('_').first;
+      final episodeId = int.tryParse(idStr);
+      if (episodeId != null) {
+        final local = await audioPlayerService.findDownloadedEpisode(episodeId);
+        if (local != null) {
+          episode.downloadState = DownloadState.downloaded;
+          episode.filepath = local.filepath;
+          episode.filename = local.filename;
+          log.info('CarPlay using local download for episode $episodeId');
+        }
+      }
+    }
+
     log.info('Episode URL: ${episode.contentUrl}');
 
     try {

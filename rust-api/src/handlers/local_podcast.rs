@@ -59,7 +59,7 @@ pub struct LocalEpisodeCandidate {
     pub artwork_url: Option<String>,
 }
 
-fn validate_local_media_path(input: &str) -> Result<PathBuf, AppError> {
+pub(crate) fn validate_local_media_path(input: &str) -> Result<PathBuf, AppError> {
     let root = Path::new(LOCAL_MEDIA_ROOT);
     // Canonicalize resolves symlinks and `..` segments, blocking traversal
     let candidate = root.join(input);

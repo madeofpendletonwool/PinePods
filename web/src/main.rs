@@ -217,6 +217,29 @@ fn language_manager() -> Html {
         });
     }
 
+    // Desktop only: load the set of episodes downloaded to THIS device once on startup,
+    // so local-first playback works from any list (home, feed, search, playlists) and not
+    // just the pages that already fetch local downloads (Downloads/Saved/Feed/Queue).
+    #[cfg(not(feature = "server_build"))]
+    {
+        use_effect_with((), move |_| {
+            spawn_local(async move {
+                if let Ok(mut local_episodes) =
+                    crate::pages::downloads_tauri::fetch_local_episodes().await
+                {
+                    Dispatch::<crate::components::context::EpisodeStatusState>::global()
+                        .reduce_mut(move |s| {
+                            s.downloaded_episodes.clear_local();
+                            for ep in local_episodes.drain(..) {
+                                s.downloaded_episodes.push_local(ep);
+                            }
+                        });
+                }
+            });
+            || ()
+        });
+    }
+
     html! {
         <BrowserRouter>
             <NavigationHandler>
