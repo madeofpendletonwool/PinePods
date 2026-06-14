@@ -8,6 +8,7 @@ use id3::TagLike;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+use tracing::{info};
 
 use crate::{
     error::AppError,
@@ -324,7 +325,7 @@ pub async fn add_local_podcast(
         .get_podcast_details(request.user_id, podcast_id)
         .await?;
 
-    println!(
+    info!(
         "✅ Local podcast '{}' added with {} episodes",
         request.podcast_name,
         candidates.len()
@@ -385,7 +386,7 @@ pub async fn refresh_local_podcast(
             .await?;
     }
 
-    println!(
+    info!(
         "🔄 Refreshed local podcast {}: {} new episodes",
         request.podcast_id, new_count
     );

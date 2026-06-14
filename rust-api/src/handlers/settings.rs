@@ -11,6 +11,7 @@ use crate::{
     AppState,
 };
 use sqlx::{Row, ValueRef};
+use tracing::{debug, error, info, warn};
 
 // Request struct for set_theme
 #[derive(Deserialize)]
@@ -1177,7 +1178,7 @@ pub async fn delete_api_key(
     let api_key_owner = api_key_owner.unwrap();
 
     // For debugging - log the values
-    println!("🔐 delete_api_key: requesting_user={}, api_key_owner={}, is_admin={}, api_id={}", 
+    info!("🔐 delete_api_key: requesting_user={}, api_key_owner={}, is_admin={}, api_id={}", 
         requesting_user_id, api_key_owner, is_requesting_user_admin, api_id);
 
     // Authorization logic:
@@ -1359,16 +1360,16 @@ async fn backup_server_streaming(
         
         match child.wait().await {
             Ok(status) if status.success() => {
-                println!("Backup process completed successfully");
+                info!("Backup process completed successfully");
             }
             Ok(status) => {
-                println!("Backup process failed with status: {}", status);
+                warn!("Backup process failed with status: {}", status);
                 if !stderr_output.is_empty() {
-                    println!("Mysqldump stderr output: {}", stderr_output);
+                    info!("Mysqldump stderr output: {}", stderr_output);
                 }
             }
             Err(e) => {
-                println!("Failed to wait for backup process: {}", e);
+                warn!("Failed to wait for backup process: {}", e);
             }
         }
     });
@@ -1968,16 +1969,16 @@ pub async fn add_nextcloud_server(
 async fn poll_for_auth_completion_background(state: AppState, request: AddNextcloudServerRequest, task_id: String) {
     // Update task to indicate polling has started
     if let Err(e) = state.task_manager.update_task_progress(&task_id, 10.0, Some("Starting Nextcloud authentication polling...".to_string())).await {
-        eprintln!("Failed to update task progress: {}", e);
+        error!("Failed to update task progress: {}", e);
     }
 
     match poll_for_auth_completion(&request.poll_endpoint, &request.token, &state.task_manager, &task_id).await {
         Ok(credentials) => {
-            println!("Nextcloud authentication successful: {:?}", credentials);
+            info!("Nextcloud authentication successful: {:?}", credentials);
             
             // Update task progress
             if let Err(e) = state.task_manager.update_task_progress(&task_id, 90.0, Some("Authentication successful, saving credentials...".to_string())).await {
-                eprintln!("Failed to update task progress: {}", e);
+                error!("Failed to update task progress: {}", e);
             }
             
             // Extract credentials from the response
@@ -1988,31 +1989,31 @@ async fn poll_for_auth_completion_background(state: AppState, request: AddNextcl
                 // Save the real credentials using the database method
                 match state.db_pool.save_nextcloud_credentials(request.user_id, &request.nextcloud_url, app_password, login_name).await {
                     Ok(_) => {
-                        println!("Successfully added Nextcloud settings for user {}", request.user_id);
+                        debug!("Successfully added Nextcloud settings for user {}", request.user_id);
                         if let Err(e) = state.task_manager.complete_task(&task_id, 
                             Some(serde_json::json!({"status": "success", "message": "Nextcloud authentication completed"})), 
                             Some("Nextcloud authentication completed successfully".to_string())).await {
-                            eprintln!("Failed to complete task: {}", e);
+                            error!("Failed to complete task: {}", e);
                         }
                     }
                     Err(e) => {
-                        eprintln!("Failed to add Nextcloud settings: {}", e);
+                        error!("Failed to add Nextcloud settings: {}", e);
                         if let Err(e) = state.task_manager.fail_task(&task_id, format!("Failed to save Nextcloud settings: {}", e)).await {
-                            eprintln!("Failed to fail task: {}", e);
+                            error!("Failed to fail task: {}", e);
                         }
                     }
                 }
             } else {
-                eprintln!("Missing appPassword or loginName in credentials");
+                error!("Missing appPassword or loginName in credentials");
                 if let Err(e) = state.task_manager.fail_task(&task_id, "Missing credentials in Nextcloud response".to_string()).await {
-                    eprintln!("Failed to fail task: {}", e);
+                    error!("Failed to fail task: {}", e);
                 }
             }
         }
         Err(e) => {
-            eprintln!("Nextcloud authentication failed: {}", e);
+            error!("Nextcloud authentication failed: {}", e);
             if let Err(e) = state.task_manager.fail_task(&task_id, format!("Authentication failed: {}", e)).await {
-                eprintln!("Failed to fail task: {}", e);
+                error!("Failed to fail task: {}", e);
             }
         }
     }
@@ -2040,7 +2041,7 @@ async fn poll_for_auth_completion(
         let message = format!("Waiting for user to complete authentication... (attempt {})", poll_count);
         
         if let Err(e) = task_manager.update_task_progress(task_id, progress, Some(message)).await {
-            eprintln!("Failed to update task progress during polling: {}", e);
+            error!("Failed to update task progress during polling: {}", e);
         }
         
         match client
@@ -2054,7 +2055,7 @@ async fn poll_for_auth_completion(
                 match response.status().as_u16() {
                     200 => {
                         let credentials = response.json::<serde_json::Value>().await?;
-                        println!("Authentication successful: {:?}", credentials);
+                        info!("Authentication successful: {:?}", credentials);
                         return Ok(credentials);
                     }
                     404 => {
@@ -2062,13 +2063,13 @@ async fn poll_for_auth_completion(
                         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     }
                     status => {
-                        println!("Polling failed with status code {}", status);
+                        warn!("Polling failed with status code {}", status);
                         return Err(format!("Polling for Nextcloud authentication failed with status {}", status).into());
                     }
                 }
             }
             Err(e) => {
-                println!("Connection error, retrying: {}", e);
+                warn!("Connection error, retrying: {}", e);
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             }
         }
@@ -2406,7 +2407,7 @@ pub async fn add_custom_podcast(
                 feed_cutoff,
                 &state_clone
             ).await {
-                println!("Error processing YouTube channel {}: {}", channel_id_clone, e);
+                warn!("Error processing YouTube channel {}: {}", channel_id_clone, e);
             }
         });
 

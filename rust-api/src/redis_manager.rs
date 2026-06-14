@@ -1,5 +1,6 @@
 use serde_json::Value;
 use crate::{error::AppResult, redis_client::RedisClient};
+use tracing::{info, warn};
 
 pub struct ImportProgressManager {
     redis_client: RedisClient,
@@ -78,14 +79,14 @@ impl NotificationManager {
 
     // Send test notification - matches Python notification functionality
     pub async fn send_test_notification(&self, user_id: i32, platform: &str, settings: &serde_json::Value) -> AppResult<bool> {
-        println!("Sending test notification for user {} on platform {}", user_id, platform);
+        info!("Sending test notification for user {} on platform {}", user_id, platform);
         
         match platform {
             "ntfy" => self.send_ntfy_notification(settings).await,
             "gotify" => self.send_gotify_notification(settings).await,
             "http" => self.send_http_notification(settings).await,
             _ => {
-                println!("Unsupported notification platform: {}", platform);
+                info!("Unsupported notification platform: {}", platform);
                 Ok(false)
             }
         }
@@ -126,7 +127,7 @@ impl NotificationManager {
 
         if !is_success {
             let response_text = response.text().await.unwrap_or_default();
-            println!("Ntfy notification failed with status: {} - Response: {}", 
+            warn!("Ntfy notification failed with status: {} - Response: {}", 
                      status, response_text);
         }
 
@@ -166,7 +167,7 @@ impl NotificationManager {
         let http_method = settings.get("http_method").and_then(|v| v.as_str()).unwrap_or("POST");
         
         if http_url.is_empty() {
-            println!("HTTP URL is empty, cannot send notification");
+            info!("HTTP URL is empty, cannot send notification");
             return Ok(false);
         }
 
@@ -234,14 +235,14 @@ impl NotificationManager {
                 
                 if !is_success {
                     let response_text = response.text().await.unwrap_or_default();
-                    println!("HTTP notification failed with status: {} - Response: {}", 
+                    warn!("HTTP notification failed with status: {} - Response: {}", 
                              status, response_text);
                 }
                 
                 Ok(is_success)
             },
             Err(e) => {
-                println!("HTTP notification request failed: {}", e);
+                warn!("HTTP notification request failed: {}", e);
                 Ok(false)
             }
         }

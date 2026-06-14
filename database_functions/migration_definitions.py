@@ -4472,3 +4472,138 @@ def migration_043_add_episode_dedup_indexes(conn, db_type: str):
         raise
     finally:
         cursor.close()
+
+
+@register_migration("044", "add_feed_refresh_metadata", "Add HTTP caching (ETag/Last-Modified) and refresh failure-tracking columns to Podcasts", requires=["001"])
+def migration_044_add_feed_refresh_metadata(conn, db_type: str):
+    """Conditional-GET caching and failure backoff for the refresh system.
+
+    FeedETag / FeedLastModified let the refresher send If-None-Match / If-Modified-Since so
+    unchanged feeds short-circuit on a 304 instead of being fully re-downloaded and re-parsed.
+    LastRefreshAttempt/Success + ConsecutiveFailures + LastErrorMessage let the refresher back
+    off feeds that keep failing instead of retrying them at full cost every cycle."""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration to add feed refresh metadata columns to Podcasts...")
+
+        if db_type == "postgresql":
+            columns = [
+                ("feedetag", "TEXT"),
+                ("feedlastmodified", "TEXT"),
+                ("lastrefreshattempt", "TIMESTAMP"),
+                ("lastrefreshsuccess", "TIMESTAMP"),
+                ("consecutivefailures", "INT DEFAULT 0"),
+                ("lasterrormessage", "TEXT"),
+            ]
+            for col_name, col_def in columns:
+                cursor.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = 'Podcasts' AND column_name = %s
+                    """,
+                    (col_name,),
+                )
+                if cursor.fetchone():
+                    logger.info(f"Column {col_name} already exists in Podcasts (PostgreSQL)")
+                    continue
+                cursor.execute(f'ALTER TABLE "Podcasts" ADD COLUMN {col_name} {col_def}')
+                logger.info(f"Added column {col_name} to Podcasts (PostgreSQL)")
+            conn.commit()
+
+        else:  # MySQL/MariaDB
+            columns = [
+                ("FeedETag", "TEXT"),
+                ("FeedLastModified", "TEXT"),
+                ("LastRefreshAttempt", "DATETIME NULL DEFAULT NULL"),
+                ("LastRefreshSuccess", "DATETIME NULL DEFAULT NULL"),
+                ("ConsecutiveFailures", "INT DEFAULT 0"),
+                ("LastErrorMessage", "TEXT"),
+            ]
+            for col_name, col_def in columns:
+                cursor.execute(
+                    """
+                    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Podcasts' AND COLUMN_NAME = %s
+                    """,
+                    (col_name,),
+                )
+                if cursor.fetchone():
+                    logger.info(f"Column {col_name} already exists in Podcasts (MySQL)")
+                    continue
+                cursor.execute(f"ALTER TABLE Podcasts ADD COLUMN {col_name} {col_def}")
+                logger.info(f"Added column {col_name} to Podcasts (MySQL)")
+            conn.commit()
+
+        logger.info("Feed refresh metadata migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error adding feed refresh metadata columns to Podcasts: {e}")
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("045", "add_episode_guid", "Add EpisodeGUID column + index to Episodes for stable RSS GUID-based deduplication", requires=["001"])
+def migration_045_add_episode_guid(conn, db_type: str):
+    """RSS <guid> is the canonical, stable identity of an episode. Dedup previously relied on
+    audio-URL base / title only, which duplicates episodes when a feed migrates CDNs (URL change)
+    and collapses distinct episodes that share a title. Storing the feed GUID lets the refresher
+    dedup on GUID first, falling back to URL/title for legacy rows that have a NULL guid."""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration to add EpisodeGUID column to Episodes...")
+
+        if db_type == "postgresql":
+            cursor.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'Episodes' AND column_name = 'episodeguid'
+                """
+            )
+            if not cursor.fetchone():
+                cursor.execute('ALTER TABLE "Episodes" ADD COLUMN episodeguid TEXT')
+                logger.info("Added episodeguid column to Episodes (PostgreSQL)")
+            else:
+                logger.info("episodeguid column already exists in Episodes (PostgreSQL)")
+            conn.commit()
+
+            safe_add_index(
+                cursor, db_type,
+                'CREATE INDEX idx_episodes_podcastid_guid ON "Episodes"(PodcastID, EpisodeGUID)',
+                'idx_episodes_podcastid_guid'
+            )
+            conn.commit()
+
+        else:  # MySQL/MariaDB
+            cursor.execute(
+                """
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Episodes' AND COLUMN_NAME = 'EpisodeGUID'
+                """
+            )
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE Episodes ADD COLUMN EpisodeGUID TEXT")
+                logger.info("Added EpisodeGUID column to Episodes (MySQL)")
+            else:
+                logger.info("EpisodeGUID column already exists in Episodes (MySQL)")
+            conn.commit()
+
+            # MySQL cannot index a full TEXT column; use a prefix length.
+            safe_add_index(
+                cursor, db_type,
+                'CREATE INDEX idx_episodes_podcastid_guid ON Episodes(PodcastID, EpisodeGUID(255))',
+                'idx_episodes_podcastid_guid'
+            )
+            conn.commit()
+
+        logger.info("Episode GUID migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error adding EpisodeGUID column to Episodes: {e}")
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()

@@ -10,7 +10,7 @@ use tower_http::{
     compression::CompressionLayer,
     services::ServeDir,
 };
-use tracing::{info, warn, error};
+use tracing::{debug, error, info, warn};
 
 mod config;
 mod database;
@@ -55,7 +55,7 @@ async fn main() -> AppResult<()> {
         .with_env_filter(env_filter)
         .init();
 
-    println!("🚀 Starting PinePods Rust API...");
+    info!("🚀 Starting PinePods Rust API...");
     info!("Starting PinePods Rust API");
 
     // Load configuration
@@ -116,14 +116,14 @@ async fn main() -> AppResult<()> {
 
     // Determine the address to bind to
     let addr = SocketAddr::from(([0, 0, 0, 0], config.server.port));
-    println!("🌐 PinePods Rust API listening on http://{}", addr);
-    println!("📊 Health check available at: http://{}/api/health", addr);
-    println!("🔍 API check available at: http://{}/api/pinepods_check", addr);
+    info!("🌐 PinePods Rust API listening on http://{}", addr);
+    info!("📊 Health check available at: http://{}/api/health", addr);
+    debug!("🔍 API check available at: http://{}/api/pinepods_check", addr);
     info!("Server listening on {}", addr);
 
     // Start the server
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("✅ PinePods Rust API server started successfully!");
+    debug!("✅ PinePods Rust API server started successfully!");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;

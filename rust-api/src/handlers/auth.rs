@@ -15,6 +15,7 @@ use crate::{
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{debug, error};
 
 
 // Global storage for password-verified sessions pending MFA
@@ -388,13 +389,13 @@ pub async fn create_first_admin(
     
     // Add PinePods news feed to admin users (matches Python startup tasks)
     if let Err(e) = state.db_pool.add_news_feed_if_not_added().await {
-        eprintln!("Failed to add PinePods news feed during first admin creation: {}", e);
+        error!("Failed to add PinePods news feed during first admin creation: {}", e);
         // Don't fail the admin creation if news feed addition fails
     }
     
     // Create default playlists for the new admin user
     if let Err(e) = state.db_pool.create_missing_default_playlists().await {
-        eprintln!("Failed to create default playlists during first admin creation: {}", e);
+        error!("Failed to create default playlists during first admin creation: {}", e);
         // Don't fail the admin creation if playlist creation fails
     }
     
@@ -924,7 +925,7 @@ async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::Datab
     let podcast_values_map = db_pool.get_podcast_values(url, 0, None, None).await
         .map_err(|e| AppError::internal(&format!("Failed to parse podcast feed: {}", e)))?;
     
-    println!("🎙️  Parsed podcast: title='{}', author='{}', description_len={}", 
+    debug!("🎙️  Parsed podcast: title='{}', author='{}', description_len={}", 
         podcast_values_map.get("podcastname").unwrap_or(&"Unknown".to_string()),
         podcast_values_map.get("author").unwrap_or(&"Unknown".to_string()),
         podcast_values_map.get("description").unwrap_or(&"".to_string()).len());

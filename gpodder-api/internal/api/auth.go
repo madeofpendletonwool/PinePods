@@ -412,7 +412,7 @@ func handleLogin(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[DEBUG] handleLogin: Login successful for user: %s, created session token (first 8 chars): %s...",
+		debugf("handleLogin: Login successful for user: %s, created session token (first 8 chars): %s...",
 			username, sessionToken[:8])
 
 		// Set session cookie
@@ -426,7 +426,7 @@ func handleLogin(database *db.Database) gin.HandlerFunc {
 			true,                           // httpOnly (not accessible via JavaScript)
 		)
 
-		log.Printf("[DEBUG] handleLogin: Sending response with session expiry: %s",
+		debugf("handleLogin: Sending response with session expiry: %s",
 			expiresAt.Format(time.RFC3339))
 		// Return success with info
 		c.JSON(http.StatusOK, gin.H{
@@ -485,13 +485,13 @@ func handleLogout(database *db.Database) gin.HandlerFunc {
 // SessionMiddleware checks if a user is logged in via session
 func SessionMiddleware(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Printf("[DEBUG] SessionMiddleware processing request: %s %s",
+		debugf("SessionMiddleware processing request: %s %s",
 			c.Request.Method, c.Request.URL.Path)
 
 		// First, try to get user from Authorization header for direct API access
 		authHeader := c.GetHeader("Authorization")
 		if authHeader != "" {
-			log.Printf("[DEBUG] SessionMiddleware: Authorization header found, passing to next middleware")
+			debugf("SessionMiddleware: Authorization header found, passing to next middleware")
 			c.Next()
 			return
 		}
@@ -505,7 +505,7 @@ func SessionMiddleware(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[DEBUG] SessionMiddleware: Found session cookie, validating")
+		debugf("SessionMiddleware: Found session cookie, validating")
 
 		// Validate the session
 		userID, valid, err := validateSession(database, sessionToken)
@@ -525,7 +525,7 @@ func SessionMiddleware(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[DEBUG] SessionMiddleware: Session valid for userID: %d", userID)
+		debugf("SessionMiddleware: Session valid for userID: %d", userID)
 
 		// Get the username for the user ID
 		var username string
@@ -571,7 +571,7 @@ func SessionMiddleware(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[DEBUG] SessionMiddleware: Session authentication successful for user: %s", username)
+		debugf("SessionMiddleware: Session authentication successful for user: %s", username)
 		c.Next()
 	}
 }
@@ -579,7 +579,7 @@ func SessionMiddleware(database *db.Database) gin.HandlerFunc {
 // AuthenticationMiddleware with GPodder token handling
 func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Printf("[DEBUG] AuthenticationMiddleware processing request: %s %s",
+		debugf("AuthenticationMiddleware processing request: %s %s",
 			c.Request.Method, c.Request.URL.Path)
 
 		// Handle GPodder API standard .json suffix patterns
@@ -591,7 +591,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 			if strings.Contains(c.Request.URL.Path, "/episodes/") && len(parts) >= 3 {
 				usernameWithExt := parts[len(parts)-1]
 				username = strings.TrimSuffix(usernameWithExt, ".json")
-				log.Printf("[DEBUG] AuthenticationMiddleware: Extracted username '%s' from episode actions URL", username)
+				debugf("AuthenticationMiddleware: Extracted username '%s' from episode actions URL", username)
 			}
 			
 			// Handle /devices/username.json pattern  
@@ -600,7 +600,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 					if part == "devices" && i+1 < len(parts) {
 						usernameWithExt := parts[i+1]
 						username = strings.TrimSuffix(usernameWithExt, ".json")
-						log.Printf("[DEBUG] AuthenticationMiddleware: Extracted username '%s' from devices URL", username)
+						debugf("AuthenticationMiddleware: Extracted username '%s' from devices URL", username)
 						break
 					}
 				}
@@ -615,11 +615,11 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 		// First try session auth
 		sessionToken, err := c.Cookie("sessionid")
 		if err == nil && sessionToken != "" {
-			log.Printf("[DEBUG] AuthenticationMiddleware: Found session cookie, validating")
+			debugf("AuthenticationMiddleware: Found session cookie, validating")
 
 			userID, valid, err := validateSession(database, sessionToken)
 			if err == nil && valid {
-				log.Printf("[DEBUG] AuthenticationMiddleware: Session valid for userID: %d", userID)
+				debugf("AuthenticationMiddleware: Session valid for userID: %d", userID)
 
 				var username string
 				var query string
@@ -648,7 +648,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 						// Check if the path username matches the session username
 						pathUsername := c.Param("username")
 						if pathUsername == "" || strings.ToLower(pathUsername) == strings.ToLower(username) {
-							log.Printf("[DEBUG] AuthenticationMiddleware: Session auth successful for user: %s",
+							debugf("AuthenticationMiddleware: Session auth successful for user: %s",
 								username)
 							c.Set("userID", userID)
 							c.Set("username", username)
@@ -669,11 +669,11 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 				log.Printf("[ERROR] AuthenticationMiddleware: Invalid session: %v", err)
 			}
 		} else {
-			log.Printf("[DEBUG] AuthenticationMiddleware: No session cookie, falling back to basic auth")
+			debugf("AuthenticationMiddleware: No session cookie, falling back to basic auth")
 		}
 
 		// Try basic auth if session auth failed
-		log.Printf("[DEBUG] AuthenticationMiddleware: Attempting basic auth")
+		debugf("AuthenticationMiddleware: Attempting basic auth")
 
 		username := c.Param("username")
 		if username == "" {
@@ -685,7 +685,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 		// Check if this is an internal API call via X-GPodder-Token
 		gpodderTokenHeader := c.GetHeader("X-GPodder-Token")
 		if gpodderTokenHeader != "" {
-			log.Printf("[DEBUG] AuthenticationMiddleware: Found X-GPodder-Token header")
+			debugf("AuthenticationMiddleware: Found X-GPodder-Token header")
 
 			// Get user data
 			var userID int
@@ -720,7 +720,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 
 			// For internal calls with X-GPodder-Token header, validate token directly
 			if gpodderToken.Valid && gpodderToken.String == gpodderTokenHeader {
-				log.Printf("[DEBUG] AuthenticationMiddleware: X-GPodder-Token validated for user: %s", username)
+				debugf("AuthenticationMiddleware: X-GPodder-Token validated for user: %s", username)
 				c.Set("userID", userID)
 				c.Set("username", username)
 				c.Next()
@@ -812,13 +812,13 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 
 		// Check if this is a gpodder token authentication
 		if gpodderToken.Valid && gpodderToken.String == password {
-			log.Printf("[DEBUG] AuthenticationMiddleware: User authenticated with gpodder token: %s", username)
+			debugf("AuthenticationMiddleware: User authenticated with gpodder token: %s", username)
 			authenticated = true
 		}
 
 		// If token auth didn't succeed, try password authentication
 		if !authenticated && verifyPassword(password, hashedPassword) {
-			log.Printf("[DEBUG] AuthenticationMiddleware: User authenticated with password: %s", username)
+			debugf("AuthenticationMiddleware: User authenticated with password: %s", username)
 			authenticated = true
 		}
 

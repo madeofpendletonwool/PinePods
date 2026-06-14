@@ -5,6 +5,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::{debug, error, info, warn};
 
 use crate::{
     error::AppError,
@@ -1077,7 +1078,7 @@ pub async fn delete_episode(
     if let Some(path) = file_path {
         if tokio::fs::metadata(&path).await.is_ok() {
             if let Err(e) = tokio::fs::remove_file(&path).await {
-                eprintln!("Warning: could not delete episode file {}: {}", path, e);
+                error!("Warning: could not delete episode file {}: {}", path, e);
             }
         }
     }
@@ -2391,25 +2392,25 @@ pub async fn stream_episode(
     Query(query): Query<StreamQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let api_key = &query.api_key;
-    println!("Stream request for episode {} with api_key {} and user_id {}", episode_id, api_key, query.user_id);
+    info!("Stream request for episode {} with api_key {} and user_id {}", episode_id, api_key, query.user_id);
 
     // Try RSS key validation FIRST (RSS keys are used in RSS feeds for streaming)
     let mut is_valid = false;
     let mut is_web_key = false;
     let mut key_user_id = None;
 
-    println!("Trying RSS key validation first");
+    debug!("Trying RSS key validation first");
     match state.db_pool.get_rss_key_if_valid(api_key, None).await {
         Ok(Some(rss_info)) => {
-            println!("Valid RSS key for user {}", rss_info.user_id);
+            info!("Valid RSS key for user {}", rss_info.user_id);
             is_valid = true;
             // Don't set key_user_id for RSS keys - they don't need permission checks
         }
         Ok(None) => {
-            println!("Not an RSS key, trying regular API key");
+            debug!("Not an RSS key, trying regular API key");
         }
         Err(e) => {
-            println!("RSS key validation error: {}", e);
+            warn!("RSS key validation error: {}", e);
         }
     }
 
@@ -2417,22 +2418,22 @@ pub async fn stream_episode(
     if !is_valid {
         match validate_api_key(&state, api_key).await {
             Ok(_) => {
-                println!("Valid API key");
+                info!("Valid API key");
                 // Try to get user_id, but don't fail if it errors (might be cached RSS key)
                 match state.db_pool.get_user_id_from_api_key(api_key).await {
                     Ok(user_id) => {
-                        println!("API key user_id: {}", user_id);
+                        info!("API key user_id: {}", user_id);
                         is_valid = true;
                         is_web_key = state.db_pool.is_web_key(api_key).await?;
                         key_user_id = Some(user_id);
                     }
                     Err(e) => {
-                        println!("Failed to get user_id for API key (might be RSS key): {}", e);
+                        warn!("Failed to get user_id for API key (might be RSS key): {}", e);
                     }
                 }
             }
             Err(e) => {
-                println!("API key validation failed: {}", e);
+                warn!("API key validation failed: {}", e);
             }
         }
     }
@@ -2451,10 +2452,10 @@ pub async fn stream_episode(
 
     // Choose which lookup to use based on source_type
     let mut file_path = if query.source_type.as_deref() == Some("youtube") {
-        println!("Looking up YouTube video file path");
+        info!("Looking up YouTube video file path");
         state.db_pool.get_youtube_video_location(episode_id, query.user_id).await?
     } else {
-        println!("Looking up regular episode file path");
+        info!("Looking up regular episode file path");
         state.db_pool.get_download_location(episode_id, query.user_id).await?
     };
 
@@ -2465,14 +2466,14 @@ pub async fn stream_episode(
             if let Some(raw) = url.strip_prefix("local://") {
                 // validate_local_media_path canonicalizes and blocks path traversal outside the root
                 let resolved = crate::handlers::local_podcast::validate_local_media_path(raw)?;
-                println!("Resolved local-media episode to: {}", resolved.display());
+                info!("Resolved local-media episode to: {}", resolved.display());
                 file_path = Some(resolved.to_string_lossy().to_string());
             }
         }
     }
 
     if let Some(path) = file_path {
-        println!("Found file at: {}", path);
+        debug!("Found file at: {}", path);
         
         // Use tower_http's ServeFile for proper file serving with range support
         use tower_http::services::ServeFile;

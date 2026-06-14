@@ -6,6 +6,11 @@ on:
     paths:
       - 'Backend/**'
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional version tag to publish alongside latest (e.g. 0.9.0)"
+        required: false
+        type: string
 env:
   REGISTRY: docker.io
   IMAGE_NAME: madeofpendletonwool/pinepods_backend
@@ -29,8 +34,13 @@ jobs:
       - name: Build and push x86 image
         run: |
           cd Backend
+          VERSION="${{ github.event.inputs.version }}"
           docker build --platform linux/amd64 -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64 -f dockerfile .
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64
+          if [ -n "$VERSION" ]; then
+            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-amd64
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-amd64
+          fi
 
   build-and-push-arm64:
     runs-on: ubuntu-24.04-arm
@@ -51,8 +61,13 @@ jobs:
       - name: Build and push ARM64 image
         run: |
           cd Backend
+          VERSION="${{ github.event.inputs.version }}"
           docker build --platform linux/arm64 -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64 -f dockerfile .
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
+          if [ -n "$VERSION" ]; then
+            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-arm64
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-arm64
+          fi
 
   create-manifests:
     needs: [build-and-push-x86, build-and-push-arm64]
@@ -85,3 +100,14 @@ jobs:
             --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
 
           docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+          # If a version was supplied, publish a versioned manifest too
+          VERSION="${{ github.event.inputs.version }}"
+          if [ -n "$VERSION" ]; then
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-amd64
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-arm64
+            docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION} \
+              --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-amd64 \
+              --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-arm64
+            docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
+          fi

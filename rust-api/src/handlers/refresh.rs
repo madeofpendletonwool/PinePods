@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use sqlx::Row;
+use tracing::{debug, info, warn};
 
 use crate::{
     error::{AppError, AppResult},
@@ -63,7 +64,7 @@ lazy_static::lazy_static! {
 pub async fn refresh_pods_admin(
     State(state): State<AppState>,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
-    println!("Starting admin refresh process - background task (no WebSocket)");
+    info!("Starting admin refresh process - background task (no WebSocket)");
     
     // This is the background task version - NO WebSocket, just direct refresh like Python
     let state_clone = state.clone();
@@ -83,7 +84,7 @@ pub async fn refresh_pods_admin(
 pub async fn refresh_gpodder_subscriptions_admin(
     State(state): State<AppState>,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
-    println!("Starting admin gPodder sync process for all users");
+    info!("Starting admin gPodder sync process for all users");
     
     let state_clone = state.clone();
     let task_id = state.task_spawner.spawn_progress_task(
@@ -97,7 +98,7 @@ pub async fn refresh_gpodder_subscriptions_admin(
             let gpodder_users = state.db_pool.get_all_users_with_gpodder_sync().await
                 .map_err(|e| AppError::internal(&format!("Failed to get gPodder users: {}", e)))?;
             
-            println!("Found {} users with gPodder sync enabled", gpodder_users.len());
+            debug!("Found {} users with gPodder sync enabled", gpodder_users.len());
             
             let mut successful_syncs = 0;
             let mut failed_syncs = 0;
@@ -107,7 +108,7 @@ pub async fn refresh_gpodder_subscriptions_admin(
                 let progress = 10.0 + (80.0 * (index as f64) / (gpodder_users.len() as f64));
                 reporter.update_progress(progress, Some(format!("Syncing user {}/{}", index + 1, gpodder_users.len()))).await?;
                 
-                println!("Running gPodder sync for user {} ({}/{})", user_id, index + 1, gpodder_users.len());
+                info!("Running gPodder sync for user {} ({}/{})", user_id, index + 1, gpodder_users.len());
                 
                 // Get user's sync type
                 let gpodder_status = state.db_pool.gpodder_get_status(*user_id).await
@@ -118,22 +119,22 @@ pub async fn refresh_gpodder_subscriptions_admin(
                         Ok(sync_result) => {
                             successful_syncs += 1;
                             total_synced_podcasts += sync_result.synced_podcasts;
-                            println!("gPodder sync successful for user {}: {} podcasts", 
+                            info!("gPodder sync successful for user {}: {} podcasts", 
                                 user_id, sync_result.synced_podcasts);
                         }
                         Err(e) => {
                             failed_syncs += 1;
-                            println!("gPodder sync failed for user {}: {}", user_id, e);
+                            warn!("gPodder sync failed for user {}: {}", user_id, e);
                             tracing::error!("gPodder sync failed for user {}: {}", user_id, e);
                             // Continue with other users
                         }
                     }
                 } else {
-                    println!("gPodder sync not properly configured for user {}", user_id);
+                    info!("gPodder sync not properly configured for user {}", user_id);
                 }
             }
             
-            println!("Admin gPodder sync completed: {}/{} users successful, {} total podcasts synced", 
+            info!("Admin gPodder sync completed: {}/{} users successful, {} total podcasts synced", 
                 successful_syncs, gpodder_users.len(), total_synced_podcasts);
             
             reporter.update_progress(100.0, Some(format!(
@@ -156,9 +157,164 @@ pub async fn refresh_gpodder_subscriptions_admin(
     })))
 }
 
+// Max feeds refreshed in parallel. Shared by the background and per-user refresh paths.
+const REFRESH_CONCURRENCY: usize = 10;
+
+// One podcast row to refresh. Defined at module scope so the grouped/concurrent helpers below
+// can take owned values without borrowing the DB connection.
+#[derive(Clone)]
+struct PodcastRefreshItem {
+    podcast_id: i32,
+    feed_url: String,
+    artwork_url: Option<String>,
+    auto_download: bool,
+    username: Option<String>,
+    password: Option<String>,
+    is_youtube: bool,
+    user_id: i32,
+    feed_cutoff: Option<i32>,
+    etag: Option<String>,
+    last_modified: Option<String>,
+}
+
+/// Queue server-side auto-downloads for newly inserted episodes, if the podcast has auto-download
+/// enabled and server downloads are turned on. Shared by every refresh path.
+async fn queue_auto_downloads(
+    state: &AppState,
+    user_id: i32,
+    auto_download: bool,
+    new_episodes: &[crate::handlers::podcasts::Episode],
+) {
+    if !auto_download || new_episodes.is_empty() {
+        return;
+    }
+    if !state.db_pool.download_status().await.unwrap_or(false) {
+        debug!("Skipping auto-download — server downloads disabled");
+        return;
+    }
+    for episode in new_episodes {
+        let is_yt = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
+        let task_result = if is_yt {
+            state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
+        } else {
+            state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
+        };
+        match task_result {
+            Ok(task_id) => debug!("Auto-download task queued with ID: {}", task_id),
+            Err(e) => warn!("Failed to queue auto-download: {}", e),
+        }
+    }
+}
+
+/// Refresh one feed that may be shared by several subscriber podcasts (cross-user dedup). The feed
+/// is fetched (with conditional GET) and parsed ONCE, then applied to every subscriber's podcast
+/// row. Cache validators and success/failure state are recorded for the whole group.
+async fn refresh_feed_group(state: &AppState, group: &[PodcastRefreshItem]) -> usize {
+    let rep = &group[0];
+    let ids: Vec<i32> = group.iter().map(|i| i.podcast_id).collect();
+    let mut total_new = 0usize;
+
+    // Reuse any stored validator from the group (they converge after the first unified cycle).
+    let etag = group.iter().find_map(|i| i.etag.clone());
+    let last_modified = group.iter().find_map(|i| i.last_modified.clone());
+
+    match state
+        .db_pool
+        .fetch_feed_conditional(
+            &rep.feed_url,
+            rep.username.as_deref(),
+            rep.password.as_deref(),
+            etag.as_deref(),
+            last_modified.as_deref(),
+        )
+        .await
+    {
+        Ok(crate::database::FeedFetch::NotModified) => {
+            debug!("Feed unchanged (304), skipping parse: {}", rep.feed_url);
+            let _ = state.db_pool.record_refresh_success(&ids).await;
+        }
+        Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified }) => {
+            let artwork = rep.artwork_url.clone().unwrap_or_default();
+            match state.db_pool.parse_feed_body(&body, rep.podcast_id, &artwork).await {
+                Ok(parsed) => {
+                    for item in group {
+                        let art = item.artwork_url.as_deref().unwrap_or("");
+                        match state
+                            .db_pool
+                            .apply_parsed_episodes(item.podcast_id, &parsed, art, item.feed_cutoff, true)
+                            .await
+                        {
+                            Ok(new_eps) => {
+                                if !new_eps.is_empty() {
+                                    info!("Podcast {}: {} new episodes", item.podcast_id, new_eps.len());
+                                    total_new += new_eps.len();
+                                }
+                                queue_auto_downloads(state, item.user_id, item.auto_download, &new_eps).await;
+                            }
+                            Err(e) => warn!("Error applying feed to podcast {}: {}", item.podcast_id, e),
+                        }
+                    }
+                    let _ = state
+                        .db_pool
+                        .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref())
+                        .await;
+                    let _ = state.db_pool.record_refresh_success(&ids).await;
+                }
+                Err(e) => {
+                    warn!("Error parsing feed {}: {}", rep.feed_url, e);
+                    let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Error fetching feed {}: {}", rep.feed_url, e);
+            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
+        }
+    }
+
+    total_new
+}
+
+/// Refresh a single YouTube channel podcast.
+async fn refresh_youtube_item(state: &AppState, item: &PodcastRefreshItem) {
+    let channel_id = if item.feed_url.contains("channel/") {
+        item.feed_url
+            .split("channel/")
+            .nth(1)
+            .unwrap_or(&item.feed_url)
+            .split('/')
+            .next()
+            .unwrap_or(&item.feed_url)
+            .split('?')
+            .next()
+            .unwrap_or(&item.feed_url)
+            .to_string()
+    } else {
+        item.feed_url.clone()
+    };
+    let ids = [item.podcast_id];
+    match crate::handlers::youtube::process_youtube_channel(
+        item.podcast_id,
+        &channel_id,
+        item.feed_cutoff.unwrap_or(30),
+        state,
+    )
+    .await
+    {
+        Ok(_) => {
+            info!("Successfully refreshed YouTube channel {}", item.podcast_id);
+            let _ = state.db_pool.record_refresh_success(&ids).await;
+        }
+        Err(e) => {
+            warn!("Error refreshing YouTube channel {}: {}", item.podcast_id, e);
+            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
+        }
+    }
+}
+
 // Background refresh function that matches Python refresh_pods exactly - NO WebSocket
 async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
-    println!("Running refresh");
+    info!("Running refresh");
     
     // Get ALL podcasts from ALL users - matches Python exactly
     // Handle the different database types properly
@@ -177,30 +333,21 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
         }
     };
     
-    // Collect all podcast rows into plain owned structs first, then process in parallel.
-    // This releases the DB connection before spawning concurrent futures, and lets us
-    // share processing logic between Postgres and MySQL backends.
-    struct PodcastRefreshItem {
-        podcast_id: i32,
-        feed_url: String,
-        artwork_url: Option<String>,
-        auto_download: bool,
-        username: Option<String>,
-        password: Option<String>,
-        is_youtube: bool,
-        user_id: i32,
-        feed_cutoff: Option<i32>,
-    }
-
+    // Collect podcast rows into owned structs, skipping feeds that are in failure backoff. The
+    // backoff window grows with the consecutive-failure count (linear, capped at 24h) and is
+    // computed in SQL so we don't have to read/normalize timestamps across Postgres/MySQL.
     let mut refresh_items: Vec<PodcastRefreshItem> = Vec::with_capacity(total_podcasts);
 
     match &state.db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
             let rows = sqlx::query(
                 r#"SELECT podcastid, feedurl, artworkurl, autodownload, username, password,
-                          isyoutubechannel, userid, feedcutoffdays
+                          isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified
                    FROM "Podcasts"
-                   WHERE COALESCE(refreshpodcast, TRUE) = TRUE"#
+                   WHERE COALESCE(refreshpodcast, TRUE) = TRUE
+                     AND (COALESCE(consecutivefailures, 0) = 0
+                          OR lastrefreshattempt IS NULL
+                          OR lastrefreshattempt < NOW() - (INTERVAL '1 minute' * (30 * LEAST(COALESCE(consecutivefailures, 0), 48))))"#
             )
             .fetch_all(pool)
             .await?;
@@ -217,15 +364,20 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                     is_youtube: result.try_get("isyoutubechannel")?,
                     user_id: result.try_get("userid")?,
                     feed_cutoff: result.try_get("feedcutoffdays").ok(),
+                    etag: result.try_get::<Option<String>, _>("feedetag").ok().flatten(),
+                    last_modified: result.try_get::<Option<String>, _>("feedlastmodified").ok().flatten(),
                 });
             }
         }
         crate::database::DatabasePool::MySQL(pool) => {
             let rows = sqlx::query(
                 "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
-                        IsYouTubeChannel, UserID, FeedCutoffDays
+                        IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified
                  FROM Podcasts
-                 WHERE COALESCE(RefreshPodcast, 1) = 1"
+                 WHERE COALESCE(RefreshPodcast, 1) = 1
+                   AND (COALESCE(ConsecutiveFailures, 0) = 0
+                        OR LastRefreshAttempt IS NULL
+                        OR LastRefreshAttempt < NOW() - INTERVAL (30 * LEAST(COALESCE(ConsecutiveFailures, 0), 48)) MINUTE)"
             )
             .fetch_all(pool)
             .await?;
@@ -242,78 +394,59 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                     is_youtube: result.try_get("IsYouTubeChannel")?,
                     user_id: result.try_get("UserID")?,
                     feed_cutoff: result.try_get("FeedCutoffDays").ok(),
+                    etag: result.try_get::<Option<String>, _>("FeedETag").ok().flatten(),
+                    last_modified: result.try_get::<Option<String>, _>("FeedLastModified").ok().flatten(),
                 });
             }
         }
     }
 
-    println!("Running refresh for {} podcasts (concurrency=10)", refresh_items.len());
+    // Partition into YouTube items (refreshed per-podcast) and RSS feeds grouped by
+    // (feed_url, username, password) so a feed subscribed by many users is fetched + parsed ONCE.
+    use std::collections::HashMap;
+    let mut youtube_items: Vec<PodcastRefreshItem> = Vec::new();
+    let mut feed_groups: HashMap<(String, Option<String>, Option<String>), Vec<PodcastRefreshItem>> = HashMap::new();
 
-    // Process all podcasts with bounded concurrency. &AppState is Copy (shared ref) so it
-    // can be captured by each async block without any cloning overhead.
+    for item in refresh_items {
+        if item.feed_url.starts_with("local://") {
+            debug!("Skipping local podcast {} - not an RSS feed", item.podcast_id);
+            continue;
+        }
+        if item.is_youtube {
+            youtube_items.push(item);
+        } else {
+            let key = (item.feed_url.clone(), item.username.clone(), item.password.clone());
+            feed_groups.entry(key).or_default().push(item);
+        }
+    }
+
     use futures::stream::{self, StreamExt};
-    stream::iter(refresh_items)
-        .for_each_concurrent(Some(10), |item| async move {
-            if item.feed_url.starts_with("local://") {
-                println!("Skipping local podcast {} - not an RSS feed", item.podcast_id);
-                return;
-            }
 
-            if item.is_youtube {
-                let channel_id = if item.feed_url.contains("channel/") {
-                    item.feed_url.split("channel/").nth(1).unwrap_or(&item.feed_url)
-                        .split('/').next().unwrap_or(&item.feed_url)
-                        .split('?').next().unwrap_or(&item.feed_url)
-                        .to_string()
-                } else {
-                    item.feed_url.clone()
-                };
-                println!("Processing YouTube videos for channel: {}", channel_id);
-                match crate::handlers::youtube::process_youtube_channel(
-                    item.podcast_id,
-                    &channel_id,
-                    item.feed_cutoff.unwrap_or(30),
-                    state,
-                ).await {
-                    Ok(_) => println!("Successfully refreshed YouTube channel {}", item.podcast_id),
-                    Err(e) => println!("Error refreshing YouTube channel {}: {}", item.podcast_id, e),
-                }
-            } else {
-                match state.db_pool.add_episodes_with_new_list(
-                    item.podcast_id,
-                    &item.feed_url,
-                    item.artwork_url.as_deref().unwrap_or(""),
-                    item.username.as_deref(),
-                    item.password.as_deref(),
-                ).await {
-                    Ok(new_episodes) => {
-                        println!("Successfully refreshed podcast {}: {} new episodes", item.podcast_id, new_episodes.len());
-                        if item.auto_download && !new_episodes.is_empty() {
-                            let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
-                            if downloads_enabled {
-                                for episode in &new_episodes {
-                                    let is_yt = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
-                                    let task_result = if is_yt {
-                                        state.task_spawner.spawn_download_youtube_video(episode.episodeid, item.user_id).await
-                                    } else {
-                                        state.task_spawner.spawn_download_podcast_episode(episode.episodeid, item.user_id).await
-                                    };
-                                    match task_result {
-                                        Ok(task_id) => println!("Auto-download task queued with ID: {}", task_id),
-                                        Err(e) => println!("Failed to queue auto-download: {}", e),
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => println!("Error refreshing podcast {}: {}", item.podcast_id, e),
-                }
-            }
+    // Refresh unique RSS feeds with bounded concurrency.
+    let groups: Vec<Vec<PodcastRefreshItem>> = feed_groups.into_values().collect();
+    let subscription_count: usize = groups.iter().map(|g| g.len()).sum();
+    info!(
+        "Running refresh: {} unique RSS feeds ({} subscriptions), {} YouTube channels (concurrency={})",
+        groups.len(),
+        subscription_count,
+        youtube_items.len(),
+        REFRESH_CONCURRENCY
+    );
+    stream::iter(groups)
+        .for_each_concurrent(Some(REFRESH_CONCURRENCY), |group| async move {
+            refresh_feed_group(state, &group).await;
         })
         .await;
-    
+
+    // Refresh YouTube channels with bounded concurrency.
+    stream::iter(youtube_items)
+        .for_each_concurrent(Some(REFRESH_CONCURRENCY), |item| async move {
+            refresh_youtube_item(state, &item).await;
+        })
+        .await;
+
     // Run auto-complete check for all users with auto-complete enabled after episode refresh
-    println!("Running auto-complete threshold check for all users...");
+    info!("Running auto-complete threshold check for all users...");
     match state.db_pool.get_users_with_auto_complete_enabled().await {
         Ok(users_with_auto_complete) => {
             let mut total_completed = 0;
@@ -324,28 +457,28 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                 ).await {
                     Ok(completed_count) => {
                         if completed_count > 0 {
-                            println!("Auto-completed {} episodes for user {} (threshold: {}s)", 
+                            info!("Auto-completed {} episodes for user {} (threshold: {}s)", 
                                     completed_count, user_auto_complete.user_id, user_auto_complete.auto_complete_seconds);
                         }
                         total_completed += completed_count;
                     }
                     Err(e) => {
-                        println!("Failed to run auto-complete for user {}: {}", user_auto_complete.user_id, e);
+                        warn!("Failed to run auto-complete for user {}: {}", user_auto_complete.user_id, e);
                     }
                 }
             }
             if total_completed > 0 {
-                println!("Auto-complete threshold check completed: {} total episodes marked complete", total_completed);
+                info!("Auto-complete threshold check completed: {} total episodes marked complete", total_completed);
             } else {
-                println!("Auto-complete threshold check completed: no episodes needed completion");
+                info!("Auto-complete threshold check completed: no episodes needed completion");
             }
         }
         Err(e) => {
-            println!("Failed to get users with auto-complete enabled: {}", e);
+            warn!("Failed to get users with auto-complete enabled: {}", e);
         }
     }
     
-    println!("Refresh completed");
+    info!("Refresh completed");
     Ok(())
 }
 
@@ -520,11 +653,11 @@ async fn run_refresh_process(
     tx: tokio::sync::mpsc::Sender<RefreshMessage>,
     state: AppState,
 ) -> AppResult<()> {
-    println!("Starting refresh process for user_id: {}, nextcloud_refresh: {}", user_id, nextcloud_refresh);
+    info!("Starting refresh process for user_id: {}, nextcloud_refresh: {}", user_id, nextcloud_refresh);
     
     // PRE-REFRESH GPODDER SYNC - matches Python implementation exactly
     if nextcloud_refresh {
-        println!("Pre-refresh gPodder sync requested for user {}", user_id);
+        info!("Pre-refresh gPodder sync requested for user {}", user_id);
         
         let _ = tx.send(RefreshMessage::Status(RefreshStatus {
             progress: RefreshProgress {
@@ -538,7 +671,7 @@ async fn run_refresh_process(
         let gpodder_status = state.db_pool.gpodder_get_status(user_id).await?;
         
         if gpodder_status.sync_type != "None" && !gpodder_status.sync_type.is_empty() {
-            println!("gPodder sync is enabled for user {}, sync_type: {}", user_id, gpodder_status.sync_type);
+            info!("gPodder sync is enabled for user {}, sync_type: {}", user_id, gpodder_status.sync_type);
             
             let _ = tx.send(RefreshMessage::Status(RefreshStatus {
                 progress: RefreshProgress {
@@ -550,7 +683,7 @@ async fn run_refresh_process(
 
             match handle_gpodder_sync(&state, user_id, &gpodder_status.sync_type).await {
                 Ok(sync_result) => {
-                    println!("gPodder sync successful for user {}: {} podcasts, {} episodes", 
+                    info!("gPodder sync successful for user {}: {} podcasts, {} episodes", 
                         user_id, sync_result.synced_podcasts, sync_result.synced_episodes);
                     
                     let _ = tx.send(RefreshMessage::Status(RefreshStatus {
@@ -563,7 +696,7 @@ async fn run_refresh_process(
                     })).await;
                 }
                 Err(e) => {
-                    println!("gPodder sync failed for user {}: {}", user_id, e);
+                    warn!("gPodder sync failed for user {}: {}", user_id, e);
                     tracing::error!("gPodder sync failed for user {}: {}", user_id, e);
                     
                     let _ = tx.send(RefreshMessage::Status(RefreshStatus {
@@ -578,14 +711,14 @@ async fn run_refresh_process(
                 }
             }
         } else {
-            println!("gPodder sync not enabled for user {} (enabled: {}, type: {})", 
+            info!("gPodder sync not enabled for user {} (enabled: {}, type: {})", 
                 user_id, gpodder_status.sync_type != "None" && !gpodder_status.sync_type.is_empty(), gpodder_status.sync_type);
         }
     }
 
     // Get total podcast count for progress tracking
     let total_podcasts = state.db_pool.get_user_podcast_count(user_id).await?;
-    println!("Found {} podcasts to refresh for user {}", total_podcasts, user_id);
+    debug!("Found {} podcasts to refresh for user {}", total_podcasts, user_id);
     
     // Send initial progress
     let _ = tx.send(RefreshMessage::Status(RefreshStatus {
@@ -598,59 +731,62 @@ async fn run_refresh_process(
 
     // Get user's podcasts for refresh
     let podcasts = state.db_pool.get_user_podcasts_for_refresh(user_id).await?;
-    println!("Retrieved {} podcast details for refresh", podcasts.len());
+    info!("Retrieved {} podcast details for refresh", podcasts.len());
     
-    let mut current = 0;
-    let mut successful_refreshes = 0;
-    let mut failed_refreshes = 0;
-    let mut total_new_episodes = 0;
-    
-    for podcast in podcasts {
-        current += 1;
-        
-        println!("Refreshing podcast {}/{}: {} (ID: {}, is_youtube: {})", 
-            current, total_podcasts, podcast.name, podcast.id, podcast.is_youtube);
-        
-        // Send progress update via WebSocket - real-time progress like Python version
-        let _ = tx.send(RefreshMessage::Status(RefreshStatus {
-            progress: RefreshProgress {
-                current,
-                total: total_podcasts,
-                current_podcast: podcast.name.clone(),
-            },
-        })).await;
+    // Refresh the user's podcasts with bounded concurrency (previously sequential with a 100ms
+    // sleep between each). Progress + new episodes are streamed over the websocket as each podcast
+    // finishes; the shared refresh_single_podcast path applies cutoff, conditional-GET validators,
+    // and failure tracking identically to the background refresh.
+    use futures::stream::StreamExt;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
-        // Refresh individual podcast with error handling like Python version
-        // For user refresh (not background), pass the actual user_id for notifications
-        match refresh_single_podcast(&state, &podcast, user_id, nextcloud_refresh).await {
-            Ok(new_episodes) => {
-                let episode_count = new_episodes.len();
-                total_new_episodes += episode_count;
-                successful_refreshes += 1;
-                
-                println!("Successfully refreshed podcast '{}': {} new episodes", podcast.name, episode_count);
-                
-                // Send new episodes through WebSocket - matches Python websocket behavior
-                for episode in new_episodes {
-                    let _ = tx.send(RefreshMessage::NewEpisode(NewEpisode {
-                        new_episode: episode,
-                    })).await;
+    let total = podcasts.len() as u32;
+    let completed = AtomicU32::new(0);
+    let state_ref = &state;
+    let completed_ref = &completed;
+    let tx_ref = &tx;
+
+    let outcomes: Vec<(bool, usize)> = futures::stream::iter(podcasts.into_iter())
+        .map(|podcast| async move {
+            let result = refresh_single_podcast(state_ref, &podcast, user_id, nextcloud_refresh).await;
+            let done = completed_ref.fetch_add(1, Ordering::SeqCst) + 1;
+
+            let _ = tx_ref
+                .send(RefreshMessage::Status(RefreshStatus {
+                    progress: RefreshProgress {
+                        current: done,
+                        total,
+                        current_podcast: podcast.name.clone(),
+                    },
+                }))
+                .await;
+
+            match result {
+                Ok(new_episodes) => {
+                    let count = new_episodes.len();
+                    for episode in new_episodes {
+                        let _ = tx_ref
+                            .send(RefreshMessage::NewEpisode(NewEpisode { new_episode: episode }))
+                            .await;
+                    }
+                    (true, count)
+                }
+                Err(e) => {
+                    warn!("Error refreshing podcast '{}' (ID: {}): {}", podcast.name, podcast.id, e);
+                    (false, 0)
                 }
             }
-            Err(e) => {
-                failed_refreshes += 1;
-                println!("Error refreshing podcast '{}' (ID: {}): {}", podcast.name, podcast.id, e);
-                tracing::error!("Error refreshing podcast '{}' (ID: {}): {}", podcast.name, podcast.id, e);
-                // Continue with other podcasts - matches Python error handling
-            }
-        }
+        })
+        .buffer_unordered(REFRESH_CONCURRENCY)
+        .collect()
+        .await;
 
-        // Small delay to prevent overwhelming the system
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    }
+    let successful_refreshes = outcomes.iter().filter(|(ok, _)| *ok).count();
+    let failed_refreshes = outcomes.len() - successful_refreshes;
+    let total_new_episodes: usize = outcomes.iter().map(|(_, n)| n).sum();
 
     // Final completion summary - matches Python logging
-    println!("Refresh completed for user {}: {}/{} podcasts successful, {} failed, {} total new episodes", 
+    warn!("Refresh completed for user {}: {}/{} podcasts successful, {} failed, {} total new episodes", 
         user_id, successful_refreshes, total_podcasts, failed_refreshes, total_new_episodes);
 
     let _ = tx.send(RefreshMessage::Status(RefreshStatus {
@@ -685,22 +821,11 @@ async fn refresh_single_podcast(
     user_id: i32,
     _nextcloud_refresh: bool,
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
-    // This is a simplified version - the full implementation would:
-    // 1. Fetch the RSS feed
-    // 2. Parse episodes
-    // 3. Check for new episodes since last refresh
-    // 4. Insert new episodes into database
-    // 5. Handle YouTube channels differently
-    // 6. Handle auto-download if enabled
-    // 7. Apply feed cutoff days filter
-    
-    tracing::info!("Refreshing podcast: {} (ID: {})", podcast.name, podcast.id);
-    
+    info!("Refreshing podcast: {} (ID: {})", podcast.name, podcast.id);
+
     if podcast.is_youtube {
-        // Handle YouTube channel refresh
-        refresh_youtube_channel(state, podcast, user_id).await
+        refresh_youtube_channel(state, podcast).await
     } else {
-        // Handle regular RSS feed refresh
         refresh_rss_feed(state, podcast, user_id).await
     }
 }
@@ -710,89 +835,89 @@ async fn refresh_rss_feed(
     podcast: &PodcastForRefresh,
     user_id: i32,
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
-    tracing::info!("Refreshing RSS feed for podcast: {}", podcast.name);
-    
-    // Use the new function that returns newly inserted episodes - matches Python implementation exactly
-    let new_episodes = state.db_pool.add_episodes_with_new_list(
-        podcast.id, 
-        &podcast.feed_url, 
-        podcast.artwork_url.as_deref().unwrap_or(""), 
-        podcast.username.as_deref(),
-        podcast.password.as_deref()
-    ).await?;
-    
-    // Handle auto-download functionality - matches Python implementation exactly
-    if podcast.auto_download {
-        let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
-        if downloads_enabled {
-            tracing::info!("Auto-download enabled for podcast '{}' - processing {} new episodes",
-                podcast.name, new_episodes.len());
+    debug!("Refreshing RSS feed for podcast: {}", podcast.name);
 
-            // Auto-download ONLY the episodes that were just inserted - 100% reliable!
-            for episode in &new_episodes {
-                tracing::info!("Auto-downloading episode '{}' (ID: {}) for user {}",
-                    episode.episodetitle, episode.episodeid, user_id);
+    let ids = [podcast.id];
+    let artwork = podcast.artwork_url.as_deref().unwrap_or("");
 
-                // Determine if this is a YouTube episode
-                let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
-
-                // Spawn download task using the same task system as the API endpoint
-                let task_result = if is_youtube {
-                    state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
-                } else {
-                    state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
-                };
-
-                match task_result {
-                    Ok(task_id) => tracing::info!("Auto-download task queued with ID: {}", task_id),
-                    Err(e) => tracing::error!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
-                }
-            }
-        } else {
-            tracing::info!("Skipping auto-download for podcast '{}' - server downloads are disabled", podcast.name);
+    // A user-initiated refresh always does a full fetch (no stored validators passed) — the user
+    // explicitly asked to check for new episodes — but we still capture fresh ETag/Last-Modified
+    // so the scheduled background refresh can revalidate cheaply afterwards. The whole feed is
+    // fetched + parsed once and applied through the shared dedup/insert path, with the podcast's
+    // FeedCutoffDays honored (previously ignored for RSS).
+    let new_episodes = match state
+        .db_pool
+        .fetch_feed_conditional(
+            &podcast.feed_url,
+            podcast.username.as_deref(),
+            podcast.password.as_deref(),
+            None,
+            None,
+        )
+        .await
+    {
+        Ok(crate::database::FeedFetch::NotModified) => {
+            let _ = state.db_pool.record_refresh_success(&ids).await;
+            Vec::new()
         }
+        Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified }) => {
+            let parsed = state.db_pool.parse_feed_body(&body, podcast.id, artwork).await?;
+            let new_eps = state
+                .db_pool
+                .apply_parsed_episodes(podcast.id, &parsed, artwork, podcast.feed_cutoff_days, true)
+                .await?;
+            let _ = state
+                .db_pool
+                .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref())
+                .await;
+            let _ = state.db_pool.record_refresh_success(&ids).await;
+            new_eps
+        }
+        Err(e) => {
+            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
+            return Err(e);
+        }
+    };
+
+    queue_auto_downloads(state, user_id, podcast.auto_download, &new_episodes).await;
+
+    if !new_episodes.is_empty() {
+        info!("Refreshed podcast '{}' for user {}: {} new episodes", podcast.name, user_id, new_episodes.len());
     }
-    
-    // Send notifications for user-triggered refreshes (not admin background refreshes)
-    if user_id != 0 {
-        tracing::info!("Refreshed podcast '{}' for user {}: {} new episodes", 
-            podcast.name, user_id, new_episodes.len());
-    }
-    
-    // Return the newly inserted episodes for websocket updates
+
     Ok(new_episodes)
 }
-
 
 async fn refresh_youtube_channel(
     state: &AppState,
     podcast: &PodcastForRefresh,
-    user_id: i32,
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
-    tracing::info!("Refreshing YouTube channel: {}", podcast.name);
-    
-    // Extract channel ID from feed URL
+    debug!("Refreshing YouTube channel: {}", podcast.name);
+
     let channel_id = if podcast.feed_url.contains("channel/") {
         podcast.feed_url.split("channel/").nth(1).unwrap_or(&podcast.feed_url).split('/').next().unwrap_or(&podcast.feed_url).split('?').next().unwrap_or(&podcast.feed_url)
     } else {
         &podcast.feed_url
     };
-    
-    // Call YouTube processing function
+
+    let ids = [podcast.id];
     match crate::handlers::youtube::process_youtube_channel(
-        podcast.id, 
-        channel_id, 
-        podcast.feed_cutoff_days.unwrap_or(30), 
-        state
+        podcast.id,
+        channel_id,
+        podcast.feed_cutoff_days.unwrap_or(30),
+        state,
     ).await {
         Ok(_) => {
-            tracing::info!("Successfully refreshed YouTube channel: {}", podcast.name);
-            // For now, return empty vector since we're not tracking individual episodes
-            // In a full implementation, we'd query for recently added episodes
+            info!("Successfully refreshed YouTube channel: {}", podcast.name);
+            let _ = state.db_pool.record_refresh_success(&ids).await;
+            // YouTube new-episode surfacing over the websocket is not yet wired up
+            // (process_youtube_channel does not return the inserted rows); the channel is still
+            // refreshed and new videos appear on the next list load.
             Ok(Vec::new())
         }
         Err(e) => {
-            tracing::error!("Error refreshing YouTube channel {}: {}", podcast.name, e);
+            warn!("Error refreshing YouTube channel {}: {}", podcast.name, e);
+            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
             Err(e)
         }
     }
@@ -806,37 +931,37 @@ pub struct SyncResult {
 }
 
 async fn handle_gpodder_sync(state: &AppState, user_id: i32, sync_type: &str) -> AppResult<SyncResult> {
-    println!("Starting gPodder sync for user {}, sync_type: {}", user_id, sync_type);
+    info!("Starting gPodder sync for user {}, sync_type: {}", user_id, sync_type);
     
     // Determine which sync function to call based on sync type - matches Python logic exactly
     match sync_type {
         "nextcloud" => {
-            println!("Performing Nextcloud gPodder sync for user {}", user_id);
+            info!("Performing Nextcloud gPodder sync for user {}", user_id);
             
             // Use the nextcloud sync functionality - this handles the /index.php/apps/gpoddersync endpoints
             match state.db_pool.sync_with_nextcloud_for_user(user_id).await {
                 Ok(success) => {
                     if success {
-                        println!("Nextcloud sync successful for user {}", user_id);
+                        info!("Nextcloud sync successful for user {}", user_id);
                         Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
                     } else {
-                        println!("Nextcloud sync returned false for user {}", user_id);
+                        info!("Nextcloud sync returned false for user {}", user_id);
                         Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
                     }
                 }
                 Err(e) => {
-                    println!("Nextcloud sync failed for user {}: {}", user_id, e);
+                    warn!("Nextcloud sync failed for user {}: {}", user_id, e);
                     Err(e)
                 }
             }
         }
         "gpodder" | "external" | "both" => {
-            println!("Performing standard gPodder sync for user {}, type: {}", user_id, sync_type);
+            info!("Performing standard gPodder sync for user {}, type: {}", user_id, sync_type);
             
             // Use the standard gPodder sync functionality
             match state.db_pool.gpodder_sync(user_id).await {
                 Ok(sync_result) => {
-                    println!("Standard gPodder sync successful for user {}: {} podcasts, {} episodes", 
+                    info!("Standard gPodder sync successful for user {}: {} podcasts, {} episodes", 
                         user_id, sync_result.synced_podcasts, sync_result.synced_episodes);
                     
                     Ok(SyncResult {
@@ -845,13 +970,13 @@ async fn handle_gpodder_sync(state: &AppState, user_id: i32, sync_type: &str) ->
                     })
                 }
                 Err(e) => {
-                    println!("Standard gPodder sync failed for user {}: {}", user_id, e);
+                    warn!("Standard gPodder sync failed for user {}: {}", user_id, e);
                     Err(e)
                 }
             }
         }
         _ => {
-            println!("Unknown sync type '{}' for user {}, skipping sync", sync_type, user_id);
+            debug!("Unknown sync type '{}' for user {}, skipping sync", sync_type, user_id);
             Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
         }
     }
@@ -908,7 +1033,7 @@ pub async fn refresh_gpodder_subscriptions_admin_internal(state: &AppState) -> A
 pub async fn refresh_nextcloud_subscriptions_admin(
     State(state): State<AppState>,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
-    println!("Starting admin Nextcloud sync process for all users");
+    info!("Starting admin Nextcloud sync process for all users");
     
     let state_clone = state.clone();
     let task_id = state.task_spawner.spawn_progress_task(
@@ -922,7 +1047,7 @@ pub async fn refresh_nextcloud_subscriptions_admin(
             let nextcloud_users = state.db_pool.get_all_users_with_nextcloud_sync().await
                 .map_err(|e| AppError::internal(&format!("Failed to get Nextcloud users: {}", e)))?;
             
-            println!("Found {} users with Nextcloud sync enabled", nextcloud_users.len());
+            debug!("Found {} users with Nextcloud sync enabled", nextcloud_users.len());
             
             let mut successful_syncs = 0;
             let mut failed_syncs = 0;
@@ -945,15 +1070,15 @@ pub async fn refresh_nextcloud_subscriptions_admin(
                 match state.db_pool.sync_with_nextcloud_for_user(*user_id).await {
                     Ok(true) => {
                         successful_syncs += 1;
-                        println!("Nextcloud sync successful for user {}", user_id);
+                        info!("Nextcloud sync successful for user {}", user_id);
                     }
                     Ok(false) => {
-                        println!("Nextcloud sync for user {} - no changes", user_id);
+                        info!("Nextcloud sync for user {} - no changes", user_id);
                         successful_syncs += 1; // Count as success
                     }
                     Err(e) => {
                         failed_syncs += 1;
-                        println!("Nextcloud sync failed for user {}: {}", user_id, e);
+                        warn!("Nextcloud sync failed for user {}: {}", user_id, e);
                     }
                 }
             }

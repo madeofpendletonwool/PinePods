@@ -7,6 +7,7 @@ use futures::Future;
 use serde_json::Value;
 use std::sync::Arc;
 use sqlx::Row;
+use tracing::{debug, warn};
 
 // New function that actually downloads an episode and waits for completion
 async fn download_episode_and_wait(
@@ -968,7 +969,7 @@ impl TaskSpawner {
             user_id,
             move |task_id, task_manager, db_pool| {
                 Box::pin(async move {
-                    println!("Starting episode processing for podcast {} (user {})", podcast_id, user_id);
+                    debug!("Starting episode processing for podcast {} (user {})", podcast_id, user_id);
                     
                     // Update progress - starting
                     task_manager.update_task_progress(&task_id, 10.0, Some("Fetching podcast feed...".to_string())).await?;
@@ -1005,7 +1006,7 @@ impl TaskSpawner {
                             // Final progress update
                             task_manager.update_task_progress(&task_id, 100.0, Some(format!("Added {} episodes", episode_count))).await?;
                             
-                            println!("✅ Added {} episodes for podcast {} (user {})", episode_count, podcast_id, user_id);
+                            debug!("✅ Added {} episodes for podcast {} (user {})", episode_count, podcast_id, user_id);
                             
                             Ok(serde_json::json!({
                                 "podcast_id": podcast_id,
@@ -1016,7 +1017,7 @@ impl TaskSpawner {
                             }))
                         }
                         Err(e) => {
-                            println!("Failed to add episodes for podcast {}: {}", podcast_id, e);
+                            warn!("Failed to add episodes for podcast {}: {}", podcast_id, e);
                             task_manager.update_task_progress(&task_id, 0.0, Some(format!("Failed to add episodes: {}", e))).await?;
                             Err(e)
                         }

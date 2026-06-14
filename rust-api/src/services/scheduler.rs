@@ -20,9 +20,15 @@ impl BackgroundScheduler {
     pub async fn start(&self, app_state: Arc<AppState>) -> AppResult<()> {
         info!("🕒 Starting background task scheduler...");
 
-        // Schedule podcast refresh every 30 minutes
+        // Schedule podcast refresh. Interval is configurable via PINEPODS_REFRESH_CRON (a 6-field
+        // cron expression, sec min hour dom mon dow); defaults to every 30 minutes.
+        let refresh_cron = std::env::var("PINEPODS_REFRESH_CRON")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "0 */30 * * * *".to_string());
+        info!("📅 Podcast refresh schedule: {}", refresh_cron);
         let refresh_state = app_state.clone();
-        let refresh_job = Job::new_async("0 */30 * * * *", move |_uuid, _l| {
+        let refresh_job = Job::new_async(refresh_cron.as_str(), move |_uuid, _l| {
             let state = refresh_state.clone();
             Box::pin(async move {
                 info!("🔄 Running scheduled podcast refresh");

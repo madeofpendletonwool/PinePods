@@ -105,7 +105,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 		const MAX_EPISODE_ACTIONS = 25000 // Limit raised to 25k to handle power users while preventing DoS
 
 		// Log query performance info
-		log.Printf("[DEBUG] getEpisodeActions: Query for user %v with since=%d, device=%s, aggregated=%v",
+		debugf("getEpisodeActions: Query for user %v with since=%d, device=%s, aggregated=%v",
 			userID, since, deviceName, aggregated)
 		
 		// Build query based on parameters with performance optimizations
@@ -308,7 +308,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 		}
 		defer rows.Close()
 		
-		log.Printf("[DEBUG] getEpisodeActions: Query executed in %v", queryDuration)
+		debugf("getEpisodeActions: Query executed in %v", queryDuration)
 
 		// Build response
 		actions := make([]models.EpisodeAction, 0)
@@ -374,7 +374,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 
 		// Log performance results
 		totalDuration := time.Since(startTime)
-		log.Printf("[DEBUG] getEpisodeActions: Returning %d actions, total time: %v", len(actions), totalDuration)
+		debugf("getEpisodeActions: Returning %d actions, total time: %v", len(actions), totalDuration)
 
 		// Determine the timestamp the client should use as 'since' on its next request.
 		// If we hit the row limit there are more actions to fetch, so return the max timestamp
@@ -547,7 +547,7 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 						// Try parsing as ISO date (2025-04-23T12:18:51)
 						if parsedTime, err := time.Parse(time.RFC3339, t); err == nil {
 							actionTimestamp = parsedTime.Unix()
-							log.Printf("[DEBUG] uploadEpisodeActions: Parsed ISO timestamp '%s' to Unix timestamp %d", t, actionTimestamp)
+							debugf("uploadEpisodeActions: Parsed ISO timestamp '%s' to Unix timestamp %d", t, actionTimestamp)
 						} else {
 							// Try some other common formats
 							formats := []string{

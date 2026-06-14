@@ -162,6 +162,15 @@ ENV APP_ROOT=/pinepods
 ARG PINEPODS_VERSION
 # Write the Pinepods version to the current_version file
 RUN echo "${PINEPODS_VERSION}" > /pinepods/current_version
+# OCI image metadata (shown by registries and `docker inspect`)
+LABEL org.opencontainers.image.title="PinePods" \
+      org.opencontainers.image.description="Self-hosted podcast management server and player" \
+      org.opencontainers.image.version="${PINEPODS_VERSION}" \
+      org.opencontainers.image.url="https://pinepods.online" \
+      org.opencontainers.image.documentation="https://www.pinepods.online/docs/Introduction" \
+      org.opencontainers.image.source="https://github.com/madeofpendletonwool/PinePods" \
+      org.opencontainers.image.vendor="Gooseberry Development" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later"
 # Configure Nginx
 COPY startup/nginx.conf /etc/nginx/nginx.conf
 
@@ -174,6 +183,10 @@ RUN cp /usr/share/zoneinfo/UTC /etc/localtime && \
 
 # Expose ports (nginx web UI + gpodder API)
 EXPOSE 8040 8042
+
+# Container health: nginx proxies /api -> Rust API, which verifies DB connectivity.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fsS http://localhost:8040/api/health || exit 1
 
 # Start everything using the startup script
 ENTRYPOINT ["bash", "/startup.sh"]

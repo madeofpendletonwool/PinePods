@@ -86,6 +86,13 @@ A project created and written by Collin Pendleton
 collinp@gooseberrydevelopment.com
 EOF
 
+# Print version + project links beneath the logo
+PINEPODS_VERSION_DISPLAY="$(cat /pinepods/current_version 2>/dev/null || echo 'dev')"
+echo ""
+echo "  PinePods ${PINEPODS_VERSION_DISPLAY}"
+echo "  https://pinepods.online"
+echo ""
+
 # Configure timezone based on TZ environment variable
 if [ -n "$TZ" ]; then
     echo "Setting timezone to $TZ"
