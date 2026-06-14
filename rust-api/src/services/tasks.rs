@@ -89,8 +89,24 @@ async fn download_episode_and_wait(
     let filename = format!("{}_{}_{}_{}.mp3", pub_date_str, safe_episode_title, user_id, episode_id);
     let file_path = download_dir.join(&filename);
     
-    // Download the file
-    let client = reqwest::Client::new();
+    // SSRF guard: episode_url originates from the podcast RSS <enclosure url>,
+    // which is fully attacker-controlled. Reject loopback/private/link-local/
+    // reserved destinations before issuing any server-side request.
+    crate::services::url_guard::ensure_safe_public_url_async(&episode_url)
+        .await
+        .map_err(|reason| crate::error::AppError::Internal(format!("Refusing to download episode URL: {}", reason)))?;
+
+    // Download the file. Redirects are re-validated by the same guard so a
+    // public URL cannot 30x-redirect into the internal network.
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            match crate::services::url_guard::ensure_safe_public_url(attempt.url().as_str()) {
+                Ok(()) => attempt.follow(),
+                Err(_) => attempt.stop(),
+            }
+        }))
+        .build()
+        .map_err(|e| crate::error::AppError::Internal(format!("Failed to build HTTP client: {}", e)))?;
     let mut response = client.get(&episode_url)
         .header("Accept", "*/*")
         .header("User-Agent", "PinePods/1.0")
