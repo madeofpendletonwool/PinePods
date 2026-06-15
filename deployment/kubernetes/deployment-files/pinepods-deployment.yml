@@ -89,7 +89,7 @@ spec:
           periodSeconds: 30
         readinessProbe:
           httpGet:
-            path: /api/pinepods_check
+            path: /api/health
             port: 8040
           initialDelaySeconds: 60
           periodSeconds: 30

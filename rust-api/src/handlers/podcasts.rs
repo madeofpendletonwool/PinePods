@@ -141,6 +141,7 @@ pub struct ListQueryParams {
     pub sort_by: Option<String>,    // "date" | "duration" | "title"
     pub sort_order: Option<String>, // "asc" | "desc"
     pub filter: Option<String>,     // "all" | "completed" | "in_progress"
+    pub search: Option<String>,     // free-text term, matched against title and podcast name
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -928,6 +929,7 @@ pub async fn download_episode_list(
 // Get podcast-level download summary (no episodes, just counts per podcast)
 pub async fn get_podcast_download_summary(
     Path(user_id): Path<i32>,
+    Query(params): Query<ListQueryParams>,
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<PodcastDownloadSummaryResponse>, AppError> {
@@ -939,7 +941,9 @@ pub async fn get_podcast_download_summary(
     if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only get download summaries for yourself!"));
     }
-    let podcasts = state.db_pool.get_podcast_download_summary(user_id).await?;
+    let search = params.search.as_deref().unwrap_or("");
+    let filter = params.filter.as_deref().unwrap_or("all");
+    let podcasts = state.db_pool.get_podcast_download_summary(user_id, search, filter).await?;
     Ok(Json(PodcastDownloadSummaryResponse { podcasts }))
 }
 
@@ -960,7 +964,9 @@ pub async fn get_podcast_downloads_paged(
     }
     let limit = params.limit.unwrap_or(50).min(200).max(1);
     let offset = params.offset.unwrap_or(0).max(0);
-    let (episodes, total) = state.db_pool.get_podcast_downloads_paged(user_id, podcast_id, limit, offset).await?;
+    let search = params.search.as_deref().unwrap_or("");
+    let filter = params.filter.as_deref().unwrap_or("all");
+    let (episodes, total) = state.db_pool.get_podcast_downloads_paged(user_id, podcast_id, limit, offset, search, filter).await?;
     Ok(Json(DownloadedEpisodesPage { episodes, total }))
 }
 

@@ -52,11 +52,11 @@ func RegisterRoutes(router *gin.RouterGroup, database *db.Database) {
 	// Podcast Lists API
 	listsGroup := router.Group("/lists/:username")
 	{
-		listsGroup.GET(".json", getUserLists(database))
+		listsGroup.GET(".json", AuthenticationMiddleware(database), getUserLists(database))
 		listsGroup.POST("/create", AuthenticationMiddleware(database), createPodcastList(database))
 		listGroup := listsGroup.Group("/list/:listname")
 		{
-			listGroup.GET("", getPodcastList(database))
+			listGroup.GET("", AuthenticationMiddleware(database), getPodcastList(database))
 			listGroup.PUT("", AuthenticationMiddleware(database), updatePodcastList(database))
 			listGroup.DELETE("", AuthenticationMiddleware(database), deletePodcastList(database))
 		}

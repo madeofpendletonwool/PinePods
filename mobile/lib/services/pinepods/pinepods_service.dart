@@ -1,6 +1,7 @@
 // Create this file at lib/services/pinepods/pinepods_service.dart
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
@@ -8,6 +9,14 @@ import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/user_stats.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
+
+/// Debug-only logger: in release builds this compiles out, so request URLs and
+/// other diagnostics never reach the device console in production.
+void _devLog(Object? message) {
+  if (kDebugMode) {
+    print(message);
+  }
+}
 
 class PinepodsService {
   String? _server;
@@ -35,7 +44,7 @@ class PinepodsService {
       }
       return false;
     } catch (e) {
-      print('Error verifying PinePods instance: $e');
+      _devLog('Error verifying PinePods instance: $e');
       return false;
     }
   }
@@ -66,7 +75,7 @@ class PinepodsService {
       }
       return false;
     } catch (e) {
-      print('Login error: $e');
+      _devLog('Login error: $e');
       return false;
     }
   }
@@ -87,7 +96,7 @@ class PinepodsService {
       }
       return false;
     } catch (e) {
-      print('Error verifying API key: $e');
+      _devLog('Error verifying API key: $e');
       return false;
     }
   }
@@ -110,7 +119,7 @@ class PinepodsService {
       }
       return [];
     } catch (e) {
-      print('Error fetching podcasts: $e');
+      _devLog('Error fetching podcasts: $e');
       return [];
     }
   }
@@ -122,7 +131,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/return_pods/$userId');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
@@ -161,7 +170,7 @@ class PinepodsService {
         throw Exception('Failed to get user podcasts: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting user podcasts: $e');
+      _devLog('Error getting user podcasts: $e');
       rethrow;
     }
   }
@@ -230,7 +239,7 @@ class PinepodsService {
         throw Exception('Failed to get user podcasts: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting user podcasts with categories: $e');
+      _devLog('Error getting user podcasts with categories: $e');
       rethrow;
     }
   }
@@ -278,7 +287,7 @@ class PinepodsService {
         );
       }
     } catch (e) {
-      print('Error fetching recent episodes: $e');
+      _devLog('Error fetching recent episodes: $e');
       throw Exception('Error fetching recent episodes: $e');
     }
   }
@@ -326,7 +335,7 @@ class PinepodsService {
       }
       return false;
     } catch (e) {
-      print('Error checking episode in DB: $e');
+      _devLog('Error checking episode in DB: $e');
       return false;
     }
   }
@@ -356,7 +365,7 @@ class PinepodsService {
       }
       return 0;
     } catch (e) {
-      print('Error getting episode ID: $e');
+      _devLog('Error getting episode ID: $e');
       return 0;
     }
   }
@@ -373,7 +382,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/record_podcast_history');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -392,7 +401,7 @@ class PinepodsService {
       // History API response received
       return response.statusCode == 200;
     } catch (e) {
-      print('Error adding history: $e');
+      _devLog('Error adding history: $e');
       return false;
     }
   }
@@ -404,7 +413,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/queue_pod');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -422,7 +431,7 @@ class PinepodsService {
       // Queue API response received
       return response.statusCode == 200;
     } catch (e) {
-      print('Error queueing episode: $e');
+      _devLog('Error queueing episode: $e');
       return false;
     }
   }
@@ -434,17 +443,17 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/increment_played/$userId');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.put(url, headers: {'Api-Key': _apiKey!});
 
-      print(
+      _devLog(
         'Increment played response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error incrementing played: $e');
+      _devLog('Error incrementing played: $e');
       return false;
     }
   }
@@ -475,7 +484,7 @@ class PinepodsService {
       }
       return 0;
     } catch (e) {
-      print('Error getting podcast ID: $e');
+      _devLog('Error getting podcast ID: $e');
       return 0;
     }
   }
@@ -491,7 +500,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/get_play_episode_details');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -506,7 +515,7 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print(
+      _devLog(
         'Play episode details response: ${response.statusCode} - ${response.body}',
       );
       if (response.statusCode == 200) {
@@ -519,7 +528,7 @@ class PinepodsService {
       }
       return PlayEpisodeDetails(playbackSpeed: 1.0, startSkip: 0, endSkip: 0);
     } catch (e) {
-      print('Error getting play episode details: $e');
+      _devLog('Error getting play episode details: $e');
       return PlayEpisodeDetails(playbackSpeed: 1.0, startSkip: 0, endSkip: 0);
     }
   }
@@ -536,7 +545,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/record_listen_duration');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -552,12 +561,12 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print(
+      _devLog(
         'Record listen duration response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error recording listen duration: $e');
+      _devLog('Error recording listen duration: $e');
       return false;
     }
   }
@@ -569,17 +578,17 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/increment_listen_time/$userId');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.put(url, headers: {'Api-Key': _apiKey!});
 
-      print(
+      _devLog(
         'Increment listen time response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error incrementing listen time: $e');
+      _devLog('Error incrementing listen time: $e');
       return false;
     }
   }
@@ -591,7 +600,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/save_episode');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -609,7 +618,7 @@ class PinepodsService {
       // Save episode API response received
       return response.statusCode == 200;
     } catch (e) {
-      print('Error saving episode: $e');
+      _devLog('Error saving episode: $e');
       return false;
     }
   }
@@ -625,7 +634,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/remove_saved_episode');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -640,12 +649,12 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print(
+      _devLog(
         'Remove saved episode response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error removing saved episode: $e');
+      _devLog('Error removing saved episode: $e');
       return false;
     }
   }
@@ -661,7 +670,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/download_podcast');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -676,12 +685,12 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print(
+      _devLog(
         'Download episode response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error downloading episode: $e');
+      _devLog('Error downloading episode: $e');
       return false;
     }
   }
@@ -712,7 +721,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/delete_episode');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -727,12 +736,12 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print(
+      _devLog(
         'Delete episode response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error deleting episode: $e');
+      _devLog('Error deleting episode: $e');
       return false;
     }
   }
@@ -748,7 +757,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/mark_episode_completed');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -763,12 +772,12 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print(
+      _devLog(
         'Mark completed response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error marking episode completed: $e');
+      _devLog('Error marking episode completed: $e');
       return false;
     }
   }
@@ -784,7 +793,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/mark_episode_uncompleted');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -799,12 +808,12 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print(
+      _devLog(
         'Mark uncompleted response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error marking episode uncompleted: $e');
+      _devLog('Error marking episode uncompleted: $e');
       return false;
     }
   }
@@ -820,7 +829,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/remove_queued_pod');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -835,12 +844,12 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print(
+      _devLog(
         'Remove queued response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error removing queued episode: $e');
+      _devLog('Error removing queued episode: $e');
       return false;
     }
   }
@@ -852,7 +861,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/user_history/$userId');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
@@ -886,7 +895,7 @@ class PinepodsService {
         throw Exception('Failed to load user history: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting user history: $e');
+      _devLog('Error getting user history: $e');
       rethrow;
     }
   }
@@ -947,7 +956,7 @@ class PinepodsService {
         throw Exception('Failed to load user history: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting paged user history: $e');
+      _devLog('Error getting paged user history: $e');
       rethrow;
     }
   }
@@ -961,12 +970,12 @@ class PinepodsService {
     final url = Uri.parse(
       '$_server/api/data/get_queued_episodes?user_id=$userId',
     );
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print(
+      _devLog(
         'Queued episodes response: ${response.statusCode} - ${response.body}',
       );
 
@@ -1000,7 +1009,7 @@ class PinepodsService {
         );
       }
     } catch (e) {
-      print('Error getting queued episodes: $e');
+      _devLog('Error getting queued episodes: $e');
       rethrow;
     }
   }
@@ -1012,7 +1021,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/saved_episode_list/$userId');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
@@ -1050,7 +1059,7 @@ class PinepodsService {
         );
       }
     } catch (e) {
-      print('Error getting saved episodes: $e');
+      _devLog('Error getting saved episodes: $e');
       rethrow;
     }
   }
@@ -1111,7 +1120,7 @@ class PinepodsService {
         throw Exception('Failed to load saved episodes: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting paged saved episodes: $e');
+      _devLog('Error getting paged saved episodes: $e');
       rethrow;
     }
   }
@@ -1167,7 +1176,7 @@ class PinepodsService {
       }
       return null;
     } catch (e) {
-      print('Error getting episode metadata: $e');
+      _devLog('Error getting episode metadata: $e');
       return null;
     }
   }
@@ -1181,7 +1190,7 @@ class PinepodsService {
     final url = Uri.parse(
       '$_server/api/data/download_episode_list?user_id=$userId',
     );
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
@@ -1217,7 +1226,7 @@ class PinepodsService {
         );
       }
     } catch (e) {
-      print('Error getting server downloads: $e');
+      _devLog('Error getting server downloads: $e');
       rethrow;
     }
   }
@@ -1248,7 +1257,7 @@ class PinepodsService {
         throw Exception('Failed to load podcast download summary: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting podcast download summary: $e');
+      _devLog('Error getting podcast download summary: $e');
       rethrow;
     }
   }
@@ -1302,7 +1311,7 @@ class PinepodsService {
         throw Exception('Failed to load podcast downloads: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting podcast downloads paged: $e');
+      _devLog('Error getting podcast downloads paged: $e');
       rethrow;
     }
   }
@@ -1344,7 +1353,7 @@ class PinepodsService {
     );
 
     try {
-      print('Making search request to: $url');
+      _devLog('Making search request to: $url');
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
@@ -1355,7 +1364,7 @@ class PinepodsService {
         throw Exception('Failed to search podcasts: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error searching podcasts: $e');
+      _devLog('Error searching podcasts: $e');
       rethrow;
     }
   }
@@ -1387,7 +1396,7 @@ class PinepodsService {
       }
       return false;
     } catch (e) {
-      print('Error checking podcast exists: $e');
+      _devLog('Error checking podcast exists: $e');
       return false;
     }
   }
@@ -1428,7 +1437,7 @@ class PinepodsService {
       }
       return false;
     } catch (e) {
-      print('Error adding podcast: $e');
+      _devLog('Error adding podcast: $e');
       rethrow;
     }
   }
@@ -1463,7 +1472,7 @@ class PinepodsService {
       }
       return false;
     } catch (e) {
-      print('Error removing podcast: $e');
+      _devLog('Error removing podcast: $e');
       rethrow;
     }
   }
@@ -1506,7 +1515,7 @@ class PinepodsService {
         );
       }
     } catch (e) {
-      print('Error getting podcast details: $e');
+      _devLog('Error getting podcast details: $e');
       rethrow;
     }
   }
@@ -1528,7 +1537,7 @@ class PinepodsService {
     );
 
     try {
-      print('Getting podcast details by ID from: $url');
+      _devLog('Getting podcast details by ID from: $url');
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
@@ -1541,7 +1550,7 @@ class PinepodsService {
         );
       }
     } catch (e) {
-      print('Error getting podcast details by ID: $e');
+      _devLog('Error getting podcast details by ID: $e');
       rethrow;
     }
   }
@@ -1565,7 +1574,7 @@ class PinepodsService {
     );
 
     try {
-      print('Getting podcast ID from: $url');
+      _devLog('Getting podcast ID from: $url');
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
@@ -1580,7 +1589,7 @@ class PinepodsService {
         throw Exception('Failed to get podcast ID: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting podcast ID: $e');
+      _devLog('Error getting podcast ID: $e');
       return null;
     }
   }
@@ -1625,7 +1634,7 @@ class PinepodsService {
         );
       }
     } catch (e) {
-      print('Error getting podcast episodes: $e');
+      _devLog('Error getting podcast episodes: $e');
       rethrow;
     }
   }
@@ -1653,7 +1662,7 @@ class PinepodsService {
         throw Exception('Failed to get user stats: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting user stats: $e');
+      _devLog('Error getting user stats: $e');
       rethrow;
     }
   }
@@ -1681,7 +1690,7 @@ class PinepodsService {
         );
       }
     } catch (e) {
-      print('Error getting PinePods version: $e');
+      _devLog('Error getting PinePods version: $e');
       return 'Unknown';
     }
   }
@@ -1707,7 +1716,7 @@ class PinepodsService {
         throw Exception('Failed to get user details: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting user details: $e');
+      _devLog('Error getting user details: $e');
       return null;
     }
   }
@@ -1733,7 +1742,7 @@ class PinepodsService {
         throw Exception('Failed to get user ID: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting user ID: $e');
+      _devLog('Error getting user ID: $e');
       return null;
     }
   }
@@ -1745,7 +1754,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/home_overview?user_id=$userId');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(
@@ -1760,7 +1769,7 @@ class PinepodsService {
         throw Exception('Failed to load home overview: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting home overview: $e');
+      _devLog('Error getting home overview: $e');
       rethrow;
     }
   }
@@ -1772,7 +1781,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/get_playlists?user_id=$userId');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(
@@ -1789,7 +1798,7 @@ class PinepodsService {
         throw Exception('Failed to load playlists: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting playlists: $e');
+      _devLog('Error getting playlists: $e');
       rethrow;
     }
   }
@@ -1801,7 +1810,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/get_theme/$userId');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(
@@ -1818,7 +1827,7 @@ class PinepodsService {
         throw Exception('Failed to get user theme: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting user theme: $e');
+      _devLog('Error getting user theme: $e');
       return null;
     }
   }
@@ -1830,7 +1839,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/user/set_theme');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({'user_id': userId, 'new_theme': theme});
@@ -1850,7 +1859,7 @@ class PinepodsService {
         throw Exception('Failed to set user theme: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error setting user theme: $e');
+      _devLog('Error setting user theme: $e');
       return false;
     }
   }
@@ -1862,12 +1871,12 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/get_playlists?user_id=$userId');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print(
+      _devLog(
         'Get playlists response: ${response.statusCode} - ${response.body}',
       );
 
@@ -1885,7 +1894,7 @@ class PinepodsService {
         throw Exception('Failed to get playlists: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error getting playlists: $e');
+      _devLog('Error getting playlists: $e');
       rethrow;
     }
   }
@@ -1897,7 +1906,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/create_playlist');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.post(
@@ -1906,12 +1915,12 @@ class PinepodsService {
         body: jsonEncode(request.toJson()),
       );
 
-      print(
+      _devLog(
         'Create playlist response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error creating playlist: $e');
+      _devLog('Error creating playlist: $e');
       return false;
     }
   }
@@ -1923,7 +1932,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/delete_playlist');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.post(
@@ -1932,12 +1941,12 @@ class PinepodsService {
         body: jsonEncode({'user_id': userId, 'playlist_id': playlistId}),
       );
 
-      print(
+      _devLog(
         'Delete playlist response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error deleting playlist: $e');
+      _devLog('Error deleting playlist: $e');
       return false;
     }
   }
@@ -1956,12 +1965,12 @@ class PinepodsService {
     final url = Uri.parse(
       '$_server/api/data/get_playlist_episodes?user_id=$userId&playlist_id=$playlistId&limit=$limit&offset=$offset',
     );
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print(
+      _devLog(
         'Get playlist episodes response: ${response.statusCode} - ${response.body}',
       );
 
@@ -1974,7 +1983,7 @@ class PinepodsService {
         );
       }
     } catch (e) {
-      print('Error getting playlist episodes: $e');
+      _devLog('Error getting playlist episodes: $e');
       rethrow;
     }
   }
@@ -1986,7 +1995,7 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/reorder_queue?user_id=$userId');
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.post(
@@ -1995,12 +2004,12 @@ class PinepodsService {
         body: jsonEncode({'episode_ids': episodeIds}),
       );
 
-      print(
+      _devLog(
         'Reorder queue response: ${response.statusCode} - ${response.body}',
       );
       return response.statusCode == 200;
     } catch (e) {
-      print('Error reordering queue: $e');
+      _devLog('Error reordering queue: $e');
       return false;
     }
   }
@@ -2023,7 +2032,7 @@ class PinepodsService {
         'offset': offset.toString(),
       },
     );
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final body = <String, dynamic>{
@@ -2055,7 +2064,7 @@ class PinepodsService {
         throw Exception('Failed to search episodes: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error searching episodes: $e');
+      _devLog('Error searching episodes: $e');
       rethrow;
     }
   }
@@ -2076,12 +2085,12 @@ class PinepodsService {
       },
     );
 
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print(
+      _devLog(
         'Podcast 2.0 data response: ${response.statusCode} - ${response.body}',
       );
 
@@ -2089,11 +2098,11 @@ class PinepodsService {
         final data = jsonDecode(response.body);
         return data;
       } else {
-        print('Failed to fetch podcast 2.0 data: ${response.statusCode}');
+        _devLog('Failed to fetch podcast 2.0 data: ${response.statusCode}');
         return null;
       }
     } catch (e) {
-      print('Error fetching podcast 2.0 data: $e');
+      _devLog('Error fetching podcast 2.0 data: $e');
       return null;
     }
   }
@@ -2115,12 +2124,12 @@ class PinepodsService {
           },
         );
 
-    print('Making API call to: $url');
+    _devLog('Making API call to: $url');
 
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print(
+      _devLog(
         'Podcast 2.0 pod data response: ${response.statusCode} - ${response.body}',
       );
 
@@ -2128,11 +2137,11 @@ class PinepodsService {
         final data = jsonDecode(response.body);
         return data;
       } else {
-        print('Failed to fetch podcast 2.0 pod data: ${response.statusCode}');
+        _devLog('Failed to fetch podcast 2.0 pod data: ${response.statusCode}');
         return null;
       }
     } catch (e) {
-      print('Error fetching podcast 2.0 pod data: $e');
+      _devLog('Error fetching podcast 2.0 pod data: $e');
       return null;
     }
   }
@@ -2158,7 +2167,7 @@ class PinepodsService {
         return false;
       }
     } catch (e) {
-      print('Error getting auto-play-next status: $e');
+      _devLog('Error getting auto-play-next status: $e');
       return false;
     }
   }
@@ -2201,7 +2210,7 @@ class PinepodsService {
         return null;
       }
     } catch (e) {
-      print('Error getting next podcast episode: $e');
+      _devLog('Error getting next podcast episode: $e');
       return null;
     }
   }
@@ -2246,7 +2255,7 @@ class PinepodsService {
         return null;
       }
     } catch (e) {
-      print('Error getting next playlist episode: $e');
+      _devLog('Error getting next playlist episode: $e');
       return null;
     }
   }
@@ -2270,7 +2279,7 @@ class PinepodsService {
         return null;
       }
     } catch (e) {
-      print('Error getting podcast ID from episode: $e');
+      _devLog('Error getting podcast ID from episode: $e');
       return null;
     }
   }

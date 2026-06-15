@@ -3,6 +3,7 @@ package api
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"fmt"
@@ -17,6 +18,12 @@ import (
 	"github.com/fernet/fernet-go"
 	"github.com/gin-gonic/gin"
 )
+
+// secureTokenEqual compares two tokens in constant time to avoid leaking their
+// contents via response-timing differences.
+func secureTokenEqual(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
 
 // Define the parameters we use for Argon2id
 type argon2Params struct {
@@ -71,7 +78,7 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 			}
 
 			// For internal calls with X-GPodder-Token header, validate token directly
-			if gpodderToken.Valid && gpodderToken.String == gpodderTokenHeader {
+			if gpodderToken.Valid && secureTokenEqual(gpodderToken.String, gpodderTokenHeader) {
 				c.Set("userID", userID)
 				c.Set("username", username)
 				c.Next()
@@ -170,7 +177,7 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 
 		// Check if this is a gpodder token authentication
 		// Check if this is a gpodder token authentication
-		if gpodderToken.Valid && (gpodderToken.String == password || gpodderToken.String == gpodderTokenHeader) {
+		if gpodderToken.Valid && (secureTokenEqual(gpodderToken.String, password) || secureTokenEqual(gpodderToken.String, gpodderTokenHeader)) {
 			authenticated = true
 		}
 
@@ -719,7 +726,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 			}
 
 			// For internal calls with X-GPodder-Token header, validate token directly
-			if gpodderToken.Valid && gpodderToken.String == gpodderTokenHeader {
+			if gpodderToken.Valid && secureTokenEqual(gpodderToken.String, gpodderTokenHeader) {
 				debugf("AuthenticationMiddleware: X-GPodder-Token validated for user: %s", username)
 				c.Set("userID", userID)
 				c.Set("username", username)
@@ -811,7 +818,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 		authenticated := false
 
 		// Check if this is a gpodder token authentication
-		if gpodderToken.Valid && gpodderToken.String == password {
+		if gpodderToken.Valid && secureTokenEqual(gpodderToken.String, password) {
 			debugf("AuthenticationMiddleware: User authenticated with gpodder token: %s", username)
 			authenticated = true
 		}

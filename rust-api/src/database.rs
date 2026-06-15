@@ -527,7 +527,10 @@ impl DatabasePool {
                 Ok((episodes, total))
             }
             DatabasePool::MySQL(pool) => {
-                // MySQL: use SQL_CALC_FOUND_ROWS + FOUND_ROWS() for total count
+                // MySQL: use SQL_CALC_FOUND_ROWS + FOUND_ROWS() for total count.
+                // FOUND_ROWS() only reflects the previous query on the SAME connection,
+                // so acquire one connection and run both queries on it.
+                let mut conn = pool.acquire().await?;
                 let rows = sqlx::query(
                     "SELECT SQL_CALC_FOUND_ROWS * FROM (
                         SELECT
@@ -627,12 +630,12 @@ impl DatabasePool {
                 .bind(user_id)   // youtube Podcasts.UserID WHERE
                 .bind(limit)
                 .bind(offset)
-                .fetch_all(pool)
+                .fetch_all(&mut *conn)
                 .await?;
 
-                // Fetch total from FOUND_ROWS() — must happen in the same connection
+                // Fetch total from FOUND_ROWS() — runs on the same connection as the SELECT above
                 let total_row = sqlx::query("SELECT FOUND_ROWS() as total_count")
-                    .fetch_one(pool)
+                    .fetch_one(&mut *conn)
                     .await?;
                 let total: i64 = total_row.try_get("total_count").unwrap_or(0);
 
@@ -966,7 +969,7 @@ impl DatabasePool {
             DatabasePool::Postgres(pool) => {
                 // First get the podcast ID to cascade delete properly
                 let podcast_row = sqlx::query(
-                    r#"SELECT podcastid FROM "Podcasts" 
+                    r#"SELECT podcastid FROM "Podcasts"
                        WHERE podcastname = $1 AND feedurl = $2 AND userid = $3"#
                 )
                 .bind(podcast_name)
@@ -974,58 +977,64 @@ impl DatabasePool {
                 .bind(user_id)
                 .fetch_optional(pool)
                 .await?;
-                
+
                 if let Some(row) = podcast_row {
                     let podcast_id: i32 = row.try_get("podcastid")?;
-                    
+
+                    // Run all cascading deletes in one transaction so a partial failure
+                    // can't leave orphaned rows or a wrong UserStats count.
+                    let mut tx = pool.begin().await?;
+
                     // Delete in the proper order to handle foreign key constraints
                     // 1. PlaylistContents first
                     sqlx::query(r#"DELETE FROM "PlaylistContents" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 2. UserEpisodeHistory
                     sqlx::query(r#"DELETE FROM "UserEpisodeHistory" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 3. DownloadedEpisodes
                     sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 4. SavedEpisodes
                     sqlx::query(r#"DELETE FROM "SavedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 5. EpisodeQueue
                     sqlx::query(r#"DELETE FROM "EpisodeQueue" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 6. Episodes
                     sqlx::query(r#"DELETE FROM "Episodes" WHERE podcastid = $1"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 7. Finally delete the podcast itself
                     sqlx::query(r#"DELETE FROM "Podcasts" WHERE podcastid = $1"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // Update user stats
                     sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = $1"#)
                         .bind(user_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
+
+                    tx.commit().await?;
                 }
                 Ok(())
             }
@@ -1043,55 +1052,61 @@ impl DatabasePool {
                 
                 if let Some(row) = podcast_row {
                     let podcast_id: i32 = row.try_get("PodcastID")?;
-                    
+
+                    // Run all cascading deletes in one transaction so a partial failure
+                    // can't leave orphaned rows or a wrong UserStats count.
+                    let mut tx = pool.begin().await?;
+
                     // Delete in the proper order to handle foreign key constraints
                     // 1. PlaylistContents first
                     sqlx::query("DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 2. UserEpisodeHistory
                     sqlx::query("DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 3. DownloadedEpisodes
                     sqlx::query("DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 4. SavedEpisodes
                     sqlx::query("DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 5. EpisodeQueue
                     sqlx::query("DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 6. Episodes
                     sqlx::query("DELETE FROM Episodes WHERE PodcastID = ?")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 7. Finally delete the podcast itself
                     sqlx::query("DELETE FROM Podcasts WHERE PodcastID = ?")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // Update user stats
                     sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = ?")
                         .bind(user_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
+
+                    tx.commit().await?;
                 }
                 Ok(())
             }
@@ -7701,10 +7716,39 @@ impl DatabasePool {
         }
     }
 
-    pub async fn get_podcast_download_summary(&self, user_id: i32) -> AppResult<Vec<crate::handlers::podcasts::PodcastDownloadSummary>> {
+    pub async fn get_podcast_download_summary(
+        &self,
+        user_id: i32,
+        search: &str,
+        filter: &str,
+    ) -> AppResult<Vec<crate::handlers::podcasts::PodcastDownloadSummary>> {
+        // The summary feeds the downloads page's podcast list. Applying the same search/filter
+        // the per-podcast paged query uses keeps the list (and its episode counts) in sync with
+        // what actually shows when a podcast is expanded — without this the page can't filter
+        // out podcasts whose episodes aren't loaded yet.
+        let has_search = !search.is_empty();
+        let search_pattern = format!("%{}%", search);
         match self {
             DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+                // Search matches episode/video title OR the podcast name (a name match surfaces the
+                // whole podcast). Bound once as $3 and referenced from both UNION branches.
+                let ep_search = if has_search {
+                    " AND (e.episodetitle ILIKE $3 OR ep.podcastname ILIKE $3)"
+                } else { "" };
+                let yt_search = if has_search {
+                    " AND (yv.videotitle ILIKE $3 OR yp.podcastname ILIKE $3)"
+                } else { "" };
+                let ep_filter = match filter {
+                    "completed"   => " AND e.completed = TRUE",
+                    "in_progress" => " AND e.completed = FALSE AND ueh.listenduration IS NOT NULL AND ueh.listenduration > 0",
+                    _             => "",
+                };
+                let yt_filter = match filter {
+                    "completed"   => " AND yv.completed = TRUE",
+                    "in_progress" => " AND yv.completed = FALSE AND yv.listenposition IS NOT NULL AND yv.listenposition > 0",
+                    _             => "",
+                };
+                let sql = format!(
                     r#"SELECT
                         p.podcastid,
                         p.podcastname,
@@ -7714,23 +7758,36 @@ impl DatabasePool {
                         SELECT e.podcastid
                         FROM "DownloadedEpisodes" de
                         INNER JOIN "Episodes" e ON de.episodeid = e.episodeid
-                        WHERE de.userid = $1
+                        INNER JOIN "Podcasts" ep ON e.podcastid = ep.podcastid
+                        LEFT JOIN "UserEpisodeHistory" ueh ON de.episodeid = ueh.episodeid AND de.userid = ueh.userid
+                        WHERE de.userid = $1{ep_search}{ep_filter}
 
                         UNION ALL
 
                         SELECT yv.podcastid
                         FROM "DownloadedVideos" dv
                         INNER JOIN "YouTubeVideos" yv ON dv.videoid = yv.videoid
-                        WHERE dv.userid = $2
+                        INNER JOIN "Podcasts" yp ON yv.podcastid = yp.podcastid
+                        WHERE dv.userid = $2{yt_search}{yt_filter}
                     ) downloads
                     INNER JOIN "Podcasts" p ON downloads.podcastid = p.podcastid
                     GROUP BY p.podcastid, p.podcastname, p.artworkurl
-                    ORDER BY p.podcastname ASC"#
-                )
-                .bind(user_id)
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
+                    ORDER BY p.podcastname ASC"#,
+                    ep_search = ep_search,
+                    ep_filter = ep_filter,
+                    yt_search = yt_search,
+                    yt_filter = yt_filter,
+                );
+
+                // SAFETY: sql is built from static literals plus the validated has_search/filter
+                // dispatch above. User-supplied search text is bound as $3, never interpolated.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(user_id)
+                    .bind(user_id);
+                if has_search {
+                    q = q.bind(search_pattern.clone());
+                }
+                let rows = q.fetch_all(pool).await?;
 
                 let mut summaries = Vec::new();
                 for row in rows {
@@ -7744,7 +7801,25 @@ impl DatabasePool {
                 Ok(summaries)
             }
             DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query(
+                // MySQL has no `$n` reuse, so the search pattern is bound once per `?` in textual
+                // order: branch 1 (title, name), then branch 2 (title, name).
+                let ep_search = if has_search {
+                    " AND (Episodes.EpisodeTitle LIKE ? OR ep.PodcastName LIKE ?)"
+                } else { "" };
+                let yt_search = if has_search {
+                    " AND (YouTubeVideos.VideoTitle LIKE ? OR yp.PodcastName LIKE ?)"
+                } else { "" };
+                let ep_filter = match filter {
+                    "completed"   => " AND Episodes.Completed = 1",
+                    "in_progress" => " AND Episodes.Completed = 0 AND UserEpisodeHistory.ListenDuration IS NOT NULL AND UserEpisodeHistory.ListenDuration > 0",
+                    _             => "",
+                };
+                let yt_filter = match filter {
+                    "completed"   => " AND YouTubeVideos.Completed = 1",
+                    "in_progress" => " AND YouTubeVideos.Completed = 0 AND YouTubeVideos.ListenPosition IS NOT NULL AND YouTubeVideos.ListenPosition > 0",
+                    _             => "",
+                };
+                let sql = format!(
                     "SELECT
                         p.PodcastID as podcastid,
                         p.PodcastName as podcastname,
@@ -7754,23 +7829,38 @@ impl DatabasePool {
                         SELECT Episodes.PodcastID as podcastid
                         FROM DownloadedEpisodes
                         INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID
-                        WHERE DownloadedEpisodes.UserID = ?
+                        INNER JOIN Podcasts ep ON Episodes.PodcastID = ep.PodcastID
+                        LEFT JOIN UserEpisodeHistory ON DownloadedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID AND DownloadedEpisodes.UserID = UserEpisodeHistory.UserID
+                        WHERE DownloadedEpisodes.UserID = ?{ep_search}{ep_filter}
 
                         UNION ALL
 
                         SELECT YouTubeVideos.PodcastID as podcastid
                         FROM DownloadedVideos
                         INNER JOIN YouTubeVideos ON DownloadedVideos.VideoID = YouTubeVideos.VideoID
-                        WHERE DownloadedVideos.UserID = ?
+                        INNER JOIN Podcasts yp ON YouTubeVideos.PodcastID = yp.PodcastID
+                        WHERE DownloadedVideos.UserID = ?{yt_search}{yt_filter}
                     ) downloads
                     INNER JOIN Podcasts p ON downloads.podcastid = p.PodcastID
                     GROUP BY p.PodcastID, p.PodcastName, p.ArtworkURL
-                    ORDER BY p.PodcastName ASC"
-                )
-                .bind(user_id)
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
+                    ORDER BY p.PodcastName ASC",
+                    ep_search = ep_search,
+                    ep_filter = ep_filter,
+                    yt_search = yt_search,
+                    yt_filter = yt_filter,
+                );
+
+                // SAFETY: see Postgres branch — only validated literals are interpolated; the
+                // search text is always bound.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(user_id);
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                q = q.bind(user_id);
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                let rows = q.fetch_all(pool).await?;
 
                 let mut summaries = Vec::new();
                 for row in rows {
@@ -7792,10 +7882,28 @@ impl DatabasePool {
         podcast_id: i32,
         limit: i64,
         offset: i64,
+        search: &str,
+        filter: &str,
     ) -> AppResult<(Vec<crate::handlers::podcasts::DownloadedEpisode>, i64)> {
+        let has_search = !search.is_empty();
+        let search_pattern = format!("%{}%", search);
         match self {
             DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+                // Search ($11, bound after limit/offset) matches title OR podcast name; the
+                // completion filter is applied to the merged `combined` set so its `completed`
+                // and `listenduration` aliases cover both episodes and youtube videos.
+                let ep_search = if has_search {
+                    " AND (\"Episodes\".episodetitle ILIKE $11 OR \"Podcasts\".podcastname ILIKE $11)"
+                } else { "" };
+                let yt_search = if has_search {
+                    " AND (\"YouTubeVideos\".videotitle ILIKE $11 OR \"Podcasts\".podcastname ILIKE $11)"
+                } else { "" };
+                let filter_clause = match filter {
+                    "completed"   => " WHERE completed = TRUE",
+                    "in_progress" => " WHERE completed = FALSE AND listenduration IS NOT NULL AND listenduration > 0",
+                    _             => "",
+                };
+                let sql = format!(
                     r#"SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             "Podcasts".podcastid as podcastid,
@@ -7837,7 +7945,7 @@ impl DatabasePool {
                             AND "EpisodeQueue".userid = $2
                             AND "EpisodeQueue".is_youtube = FALSE
                         WHERE "DownloadedEpisodes".userid = $3
-                        AND "Podcasts".podcastid = $4
+                        AND "Podcasts".podcastid = $4{ep_search}
 
                         UNION ALL
 
@@ -7878,23 +7986,34 @@ impl DatabasePool {
                             AND "EpisodeQueue".userid = $6
                             AND "EpisodeQueue".is_youtube = TRUE
                         WHERE "DownloadedVideos".userid = $7
-                        AND "Podcasts".podcastid = $8
-                    ) combined
+                        AND "Podcasts".podcastid = $8{yt_search}
+                    ) combined{filter_clause}
                     ORDER BY episodepubdate DESC
-                    LIMIT $9 OFFSET $10"#
-                )
-                .bind(user_id)    // $1 SavedEpisodes join
-                .bind(user_id)    // $2 EpisodeQueue join
-                .bind(user_id)    // $3 DownloadedEpisodes WHERE
-                .bind(podcast_id) // $4 regular podcast filter
-                .bind(user_id)    // $5 SavedVideos join
-                .bind(user_id)    // $6 EpisodeQueue join
-                .bind(user_id)    // $7 DownloadedVideos WHERE
-                .bind(podcast_id) // $8 youtube podcast filter
-                .bind(limit)      // $9
-                .bind(offset)     // $10
-                .fetch_all(pool)
-                .await?;
+                    LIMIT $9 OFFSET $10"#,
+                    ep_search = ep_search,
+                    yt_search = yt_search,
+                    filter_clause = filter_clause,
+                );
+
+                // SAFETY: sql is built from static literals plus the validated has_search/filter
+                // dispatch; the search text is bound as $11, never interpolated.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(user_id)    // $1 SavedEpisodes join
+                    .bind(user_id)    // $2 EpisodeQueue join
+                    .bind(user_id)    // $3 DownloadedEpisodes WHERE
+                    .bind(podcast_id) // $4 regular podcast filter
+                    .bind(user_id)    // $5 SavedVideos join
+                    .bind(user_id)    // $6 EpisodeQueue join
+                    .bind(user_id)    // $7 DownloadedVideos WHERE
+                    .bind(podcast_id) // $8 youtube podcast filter
+                    .bind(limit)      // $9
+                    .bind(offset);    // $10
+                if has_search {
+                    q = q.bind(search_pattern.clone()); // $11
+                }
+                let rows = q
+                    .fetch_all(pool)
+                    .await?;
 
                 let total: i64 = rows.first()
                     .and_then(|r| r.try_get::<i64, _>("total_count").ok())
@@ -7931,7 +8050,21 @@ impl DatabasePool {
                 Ok((episodes, total))
             }
             DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query(
+                // Search patterns are bound in textual order: episode branch (title, name) then
+                // youtube branch (title, name). The completion filter is applied to the merged
+                // `combined` set (lowercase `completed`/`listenduration` aliases).
+                let ep_search = if has_search {
+                    " AND (Episodes.EpisodeTitle LIKE ? OR Podcasts.PodcastName LIKE ?)"
+                } else { "" };
+                let yt_search = if has_search {
+                    " AND (YouTubeVideos.VideoTitle LIKE ? OR Podcasts.PodcastName LIKE ?)"
+                } else { "" };
+                let filter_clause = match filter {
+                    "completed"   => " WHERE completed = 1",
+                    "in_progress" => " WHERE completed = 0 AND listenduration IS NOT NULL AND listenduration > 0",
+                    _             => "",
+                };
+                let sql = format!(
                     "SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             Podcasts.PodcastID as podcastid,
@@ -7973,7 +8106,7 @@ impl DatabasePool {
                             AND EpisodeQueue.UserID = ?
                             AND EpisodeQueue.is_youtube = FALSE
                         WHERE DownloadedEpisodes.UserID = ?
-                        AND Podcasts.PodcastID = ?
+                        AND Podcasts.PodcastID = ?{ep_search}
 
                         UNION ALL
 
@@ -8014,23 +8147,37 @@ impl DatabasePool {
                             AND EpisodeQueue.UserID = ?
                             AND EpisodeQueue.is_youtube = TRUE
                         WHERE DownloadedVideos.UserID = ?
-                        AND Podcasts.PodcastID = ?
-                    ) combined
+                        AND Podcasts.PodcastID = ?{yt_search}
+                    ) combined{filter_clause}
                     ORDER BY episodepubdate DESC
-                    LIMIT ? OFFSET ?"
-                )
-                .bind(user_id)    // SavedEpisodes join
-                .bind(user_id)    // EpisodeQueue join
-                .bind(user_id)    // DownloadedEpisodes WHERE
-                .bind(podcast_id) // regular podcast filter
-                .bind(user_id)    // SavedVideos join
-                .bind(user_id)    // EpisodeQueue join
-                .bind(user_id)    // DownloadedVideos WHERE
-                .bind(podcast_id) // youtube podcast filter
-                .bind(limit)
-                .bind(offset)
-                .fetch_all(pool)
-                .await?;
+                    LIMIT ? OFFSET ?",
+                    ep_search = ep_search,
+                    yt_search = yt_search,
+                    filter_clause = filter_clause,
+                );
+
+                // SAFETY: see Postgres branch — validated literals only; search text is bound.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(user_id)    // SavedEpisodes join
+                    .bind(user_id)    // EpisodeQueue join
+                    .bind(user_id)    // DownloadedEpisodes WHERE
+                    .bind(podcast_id); // regular podcast filter
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                q = q
+                    .bind(user_id)    // SavedVideos join
+                    .bind(user_id)    // EpisodeQueue join
+                    .bind(user_id)    // DownloadedVideos WHERE
+                    .bind(podcast_id); // youtube podcast filter
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                let rows = q
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(pool)
+                    .await?;
 
                 let total: i64 = rows.first()
                     .and_then(|r| r.try_get::<i64, _>("total_count").ok())
