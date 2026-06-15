@@ -156,7 +156,12 @@ impl BackgroundScheduler {
         if let Err(e) = state.db_pool.create_missing_default_playlists().await {
             warn!("⚠️ Creating missing default playlists failed: {}", e);
         }
-        
+
+        // Strip any blank/whitespace categories left on existing podcasts
+        if let Err(e) = state.db_pool.cleanup_blank_categories().await {
+            warn!("⚠️ Cleaning blank podcast categories failed: {}", e);
+        }
+
         // Run an immediate refresh to ensure data is current on startup
         if let Err(e) = Self::run_refresh_pods(state.clone()).await {
             warn!("⚠️ Initial startup refresh failed: {}", e);

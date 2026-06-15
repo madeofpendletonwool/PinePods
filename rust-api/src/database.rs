@@ -9919,7 +9919,72 @@ impl DatabasePool {
         Ok(())
     }
 
-    // Add category to podcast - matches Python add_category function  
+    // One-time cleanup: strip blank/whitespace category values that older adds
+    // could have stored (e.g. {"0": ""}). Idempotent - only rewrites rows that
+    // actually changed. Safe to run on every startup.
+    pub async fn cleanup_blank_categories(&self) -> AppResult<()> {
+        let mut cleaned = 0u32;
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"SELECT podcastid, categories FROM "Podcasts""#)
+                    .fetch_all(pool)
+                    .await?;
+
+                for row in rows {
+                    let podcast_id: i32 = row.try_get("podcastid")?;
+                    let current_categories_str: String = row.try_get("categories").unwrap_or_default();
+                    let mut categories = self.parse_categories_json(&current_categories_str).unwrap_or_default();
+
+                    let before = categories.len();
+                    categories.retain(|_key, value| !value.trim().is_empty());
+                    if categories.len() == before {
+                        continue;
+                    }
+
+                    let new_categories_json = serde_json::to_string(&categories)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    sqlx::query(r#"UPDATE "Podcasts" SET categories = $1 WHERE podcastid = $2"#)
+                        .bind(&new_categories_json)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    cleaned += 1;
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(r#"SELECT PodcastID, Categories FROM Podcasts"#)
+                    .fetch_all(pool)
+                    .await?;
+
+                for row in rows {
+                    let podcast_id: i32 = row.try_get("PodcastID")?;
+                    let current_categories_str: String = row.try_get("Categories").unwrap_or_default();
+                    let mut categories = self.parse_categories_json(&current_categories_str).unwrap_or_default();
+
+                    let before = categories.len();
+                    categories.retain(|_key, value| !value.trim().is_empty());
+                    if categories.len() == before {
+                        continue;
+                    }
+
+                    let new_categories_json = serde_json::to_string(&categories)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    sqlx::query("UPDATE Podcasts SET Categories = ? WHERE PodcastID = ?")
+                        .bind(&new_categories_json)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    cleaned += 1;
+                }
+            }
+        }
+        if cleaned > 0 {
+            info!("Cleaned blank categories from {} podcast(s)", cleaned);
+        }
+        Ok(())
+    }
+
+    // Add category to podcast - matches Python add_category function
     pub async fn add_category(&self, podcast_id: i32, user_id: i32, category: &str) -> AppResult<String> {
         match self {
             DatabasePool::Postgres(pool) => {
@@ -15918,12 +15983,19 @@ impl DatabasePool {
             .unwrap_or_default();
         podcast_values.insert("artworkurl".to_string(), artwork_url);
         
-        // Extract categories - convert to dict format like Python
-        let categories = if !feed.categories.is_empty() {
-            let cat_dict: std::collections::HashMap<String, String> = feed.categories
-                .iter()
+        // Extract categories - convert to dict format like Python.
+        // Skip empty/whitespace category terms so feeds with blank category
+        // elements don't produce a stray blank category (e.g. {"0": ""}).
+        let category_terms: Vec<String> = feed.categories
+            .iter()
+            .map(|cat| cat.term.trim().to_string())
+            .filter(|term| !term.is_empty())
+            .collect();
+        let categories = if !category_terms.is_empty() {
+            let cat_dict: std::collections::HashMap<String, String> = category_terms
+                .into_iter()
                 .enumerate()
-                .map(|(i, cat)| (i.to_string(), cat.term.clone()))
+                .map(|(i, term)| (i.to_string(), term))
                 .collect();
             serde_json::to_string(&cat_dict).unwrap_or_default()
         } else {
@@ -20435,10 +20507,15 @@ impl DatabasePool {
                 return Some(parsed);
             }
         } else {
-            // Fall back to comma-separated parsing like Python version
+            // Fall back to comma-separated parsing like Python version.
+            // Skip empty segments so blank/whitespace categories aren't created.
             let mut result = std::collections::HashMap::new();
-            for (i, cat) in categories_str.split(',').enumerate() {
-                result.insert(i.to_string(), cat.trim().to_string());
+            for cat in categories_str.split(',') {
+                let trimmed = cat.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                result.insert(result.len().to_string(), trimmed.to_string());
             }
             return Some(result);
         }

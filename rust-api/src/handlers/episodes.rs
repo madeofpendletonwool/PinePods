@@ -322,26 +322,42 @@ pub async fn download_episode_file(
 
     let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, _description, feed_username, feed_password) = episode_info;
 
-    // Download the episode file
+    // Download the episode file. Send a podcast-client User-Agent first; some hosts
+    // (e.g. Buzzsprout) reject requests without one with 403 Forbidden.
     let client = reqwest::Client::new();
-    let mut request = client.get(&episode_url);
-
-    // Apply basic auth if feed credentials are provided
-    if let (Some(ref username), Some(ref password)) = (&feed_username, &feed_password) {
-        if !username.is_empty() {
-            request = request.basic_auth(username, Some(password));
+    let build_request = |user_agent: &str| {
+        let mut request = client
+            .get(&episode_url)
+            .header("User-Agent", user_agent)
+            .header("Accept", "*/*");
+        if let (Some(ref username), Some(ref password)) = (&feed_username, &feed_password) {
+            if !username.is_empty() {
+                request = request.basic_auth(username, Some(password));
+            }
         }
-    }
+        request
+    };
 
-    let response = request
+    let mut response = build_request("PinePods/1.0")
         .send()
         .await
         .map_err(|e| AppError::internal(&format!("Failed to download episode: {}", e)))?;
-    
+
+    // If we get a 403, retry with a browser User-Agent as a fallback.
+    if response.status() == reqwest::StatusCode::FORBIDDEN {
+        let browser_response = build_request("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .send()
+            .await
+            .map_err(|e| AppError::internal(&format!("Failed to download episode: {}", e)))?;
+        if browser_response.status().is_success() {
+            response = browser_response;
+        }
+    }
+
     if !response.status().is_success() {
         return Err(AppError::internal(&format!("Server returned error: {}", response.status())));
     }
-    
+
     let audio_bytes = response.bytes()
         .await
         .map_err(|e| AppError::internal(&format!("Failed to download audio content: {}", e)))?;
