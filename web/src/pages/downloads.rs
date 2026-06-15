@@ -23,6 +23,19 @@ use yewdux::prelude::*;
 
 const PAGE_SIZE: i64 = 50;
 
+/// Collapse the two mutually-exclusive completion chips into the backend's filter vocabulary
+/// ("all" | "completed" | "in_progress"). Kept identical to the values the paged/summary
+/// download endpoints understand.
+fn downloads_filter(show_completed: bool, show_in_progress: bool) -> &'static str {
+    if show_completed {
+        "completed"
+    } else if show_in_progress {
+        "in_progress"
+    } else {
+        "all"
+    }
+}
+
 #[derive(Clone, PartialEq)]
 struct PodcastEpisodeState {
     episodes: Vec<Episode>,
@@ -68,6 +81,11 @@ pub fn downloads() -> Html {
     let i18n_load_more = i18n.t("downloads.load_more").to_string();
 
     let episode_search_term = use_state(|| String::new());
+    // Debounced view of episode_search_term. Keystrokes update episode_search_term immediately
+    // for input responsiveness; a 300 ms timer copies it into debounced_search_term, which the
+    // backend-reload effect watches. Search/filter run on the backend so the podcast list and
+    // its (paginated) episodes filter correctly even when episodes aren't loaded yet.
+    let debounced_search_term = use_state(|| String::new());
     let show_completed = use_state(|| false);
     let show_in_progress = use_state(|| false);
 
@@ -86,7 +104,27 @@ pub fn downloads() -> Html {
         .map(|ud| ud.server_name.clone());
     let loading = use_state(|| true);
 
-    // Load podcast summaries on mount
+    // Debounce the raw search input: a 300 ms timer copies episode_search_term into
+    // debounced_search_term, and only the latter feeds the backend-reload effect. Otherwise
+    // every keystroke would fire its own request.
+    {
+        let debounced_search_term = debounced_search_term.clone();
+        let term = (*episode_search_term).clone();
+        use_effect_with(term, move |t| {
+            let t = t.clone();
+            let debounced = debounced_search_term.clone();
+            let timeout = gloo_timers::callback::Timeout::new(300, move || {
+                debounced.set(t);
+            });
+            move || drop(timeout)
+        });
+    }
+
+    // Load (and reload) podcast summaries whenever auth, the debounced search term, or the
+    // completion filter changes. The summary endpoint applies the same search/filter as the
+    // paged endpoint, so the podcast list narrows to relevant podcasts and the counts reflect
+    // matching episodes. Any currently-expanded podcasts are refetched (sequentially, then set
+    // once) so their loaded episodes stay consistent with the active search/filter.
     let loading_ep = loading.clone();
     {
         let error = error.clone();
@@ -100,17 +138,46 @@ pub fn downloads() -> Html {
             .as_ref()
             .map(|ud| ud.server_name.clone());
         let podcast_summaries = podcast_summaries.clone();
+        let per_podcast_state = per_podcast_state.clone();
+        let expanded_state = expanded_state.clone();
+        let search_dep = (*debounced_search_term).clone();
+        let show_completed_dep = *show_completed;
+        let show_in_progress_dep = *show_in_progress;
 
         use_effect_with(
-            (api_key.clone(), user_id.clone(), server_name.clone()),
-            move |_| {
+            (
+                api_key.clone(),
+                user_id.clone(),
+                server_name.clone(),
+                search_dep,
+                show_completed_dep,
+                show_in_progress_dep,
+            ),
+            move |(api_key, user_id, server_name, search, show_completed, show_in_progress)| {
                 let error_clone = error.clone();
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
                     let podcast_summaries = podcast_summaries.clone();
+                    let per_podcast_state = per_podcast_state.clone();
+                    let search = search.clone();
+                    let filter = downloads_filter(*show_completed, *show_in_progress).to_string();
+                    // Snapshot which podcasts are currently expanded so we can refetch their
+                    // first page with the new search/filter.
+                    let expanded_ids: Vec<i32> = (*expanded_state)
+                        .iter()
+                        .filter_map(|(id, open)| if *open { Some(*id) } else { None })
+                        .collect();
                     wasm_bindgen_futures::spawn_local(async move {
-                        match call_get_podcast_download_summary(&server_name, &api_key, &user_id).await {
+                        match call_get_podcast_download_summary(
+                            &server_name,
+                            &api_key,
+                            &user_id,
+                            &search,
+                            &filter,
+                        )
+                        .await
+                        {
                             Ok(response) => {
                                 podcast_summaries.set(response.podcasts);
                                 loading_ep.set(false);
@@ -118,6 +185,43 @@ pub fn downloads() -> Html {
                             Err(e) => {
                                 error_clone.set(Some(e.to_string()));
                                 loading_ep.set(false);
+                            }
+                        }
+
+                        // Refetch expanded podcasts sequentially and commit once to avoid
+                        // concurrent set() calls clobbering each other.
+                        if !expanded_ids.is_empty() {
+                            let mut new_state: HashMap<i32, PodcastEpisodeState> = HashMap::new();
+                            for pid in expanded_ids {
+                                if let Ok(page) = call_get_podcast_downloads_paged(
+                                    &server_name,
+                                    &api_key,
+                                    &user_id,
+                                    pid,
+                                    PAGE_SIZE,
+                                    0,
+                                    &search,
+                                    &filter,
+                                )
+                                .await
+                                {
+                                    new_state.insert(
+                                        pid,
+                                        PodcastEpisodeState {
+                                            offset: page.episodes.len() as i64,
+                                            total: page.total,
+                                            episodes: page.episodes,
+                                            loading_more: false,
+                                        },
+                                    );
+                                }
+                            }
+                            per_podcast_state.set(new_state);
+                        } else {
+                            // No podcasts open — drop any stale per-podcast episodes so the next
+                            // expand refetches with the current search/filter.
+                            if !per_podcast_state.is_empty() {
+                                per_podcast_state.set(HashMap::new());
                             }
                         }
                     });
@@ -242,10 +346,15 @@ pub fn downloads() -> Html {
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
+        let debounced_search_term = debounced_search_term.clone();
+        let show_completed = show_completed.clone();
+        let show_in_progress = show_in_progress.clone();
 
         Callback::from(move |podcast_id: i32| {
             let currently_expanded = *expanded_state.get(&podcast_id).unwrap_or(&false);
             let new_expanded = !currently_expanded;
+            let search = (*debounced_search_term).clone();
+            let filter = downloads_filter(*show_completed, *show_in_progress).to_string();
 
             // Update expansion state
             expanded_state.set({
@@ -272,7 +381,7 @@ pub fn downloads() -> Html {
                     }
 
                     wasm_bindgen_futures::spawn_local(async move {
-                        match call_get_podcast_downloads_paged(&server_name, &api_key, &user_id, podcast_id, PAGE_SIZE, 0).await {
+                        match call_get_podcast_downloads_paged(&server_name, &api_key, &user_id, podcast_id, PAGE_SIZE, 0, &search, &filter).await {
                             Ok(page) => {
                                 let mut new_state = (*per_podcast_state).clone();
                                 new_state.insert(podcast_id, PodcastEpisodeState {
@@ -302,11 +411,16 @@ pub fn downloads() -> Html {
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
+        let debounced_search_term = debounced_search_term.clone();
+        let show_completed = show_completed.clone();
+        let show_in_progress = show_in_progress.clone();
 
         Callback::from(move |podcast_id: i32| {
             if let (Some(api_key), Some(user_id), Some(server_name)) =
                 (api_key.clone(), user_id.clone(), server_name.clone())
             {
+                let search = (*debounced_search_term).clone();
+                let filter = downloads_filter(*show_completed, *show_in_progress).to_string();
                 let current_offset = per_podcast_state
                     .get(&podcast_id)
                     .map(|s| s.offset)
@@ -332,7 +446,7 @@ pub fn downloads() -> Html {
                 }
 
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_get_podcast_downloads_paged(&server_name, &api_key, &user_id, podcast_id, PAGE_SIZE, current_offset).await {
+                    match call_get_podcast_downloads_paged(&server_name, &api_key, &user_id, podcast_id, PAGE_SIZE, current_offset, &search, &filter).await {
                         Ok(page) => {
                             let mut new_state = (*per_podcast_state).clone();
                             if let Some(pod_state) = new_state.get_mut(&podcast_id) {
@@ -493,27 +607,10 @@ pub fn downloads() -> Html {
                                         let offset = pod_state.as_ref().map(|s| s.offset).unwrap_or(0);
                                         let loading_more = pod_state.as_ref().map(|s| s.loading_more).unwrap_or(false);
 
-                                        // Apply client-side filter to loaded episodes
-                                        let filtered_episodes: Vec<Episode> = episodes_loaded.iter()
-                                            .filter(|episode| {
-                                                let matches_search = if !episode_search_term.is_empty() {
-                                                    episode.episodetitle.to_lowercase().contains(&episode_search_term.to_lowercase())
-                                                } else {
-                                                    true
-                                                };
-                                                let matches_completion = if *show_completed && *show_in_progress {
-                                                    true
-                                                } else if *show_completed {
-                                                    episode.completed
-                                                } else if *show_in_progress {
-                                                    !episode.completed && episode.listenduration > 0
-                                                } else {
-                                                    true
-                                                };
-                                                matches_search && matches_completion
-                                            })
-                                            .cloned()
-                                            .collect();
+                                        // Search/filter run on the backend (across the full
+                                        // paginated set), so the loaded episodes are already the
+                                        // filtered ones — no client-side re-filtering needed.
+                                        let filtered_episodes: Vec<Episode> = episodes_loaded;
 
                                         let toggle_expanded_closure = {
                                             toggle_pod_expanded.reform(move |_: MouseEvent| podcast_id)

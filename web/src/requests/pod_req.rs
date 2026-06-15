@@ -1274,10 +1274,15 @@ pub async fn call_get_podcast_download_summary(
     server_name: &str,
     api_key: &Option<String>,
     user_id: &i32,
+    search: &str,
+    filter: &str,
 ) -> Result<PodcastDownloadSummaryResponse, anyhow::Error> {
     let url = format!(
-        "{}/api/data/podcast_download_summary/{}",
-        server_name, user_id
+        "{}/api/data/podcast_download_summary/{}?search={}&filter={}",
+        server_name,
+        user_id,
+        urlencoding::encode(search),
+        filter,
     );
     let api_key_ref = api_key
         .as_deref()
@@ -1304,10 +1309,18 @@ pub async fn call_get_podcast_downloads_paged(
     podcast_id: i32,
     limit: i64,
     offset: i64,
+    search: &str,
+    filter: &str,
 ) -> Result<DownloadsPage, anyhow::Error> {
     let url = format!(
-        "{}/api/data/podcast_downloads_paged/{}/{}?limit={}&offset={}",
-        server_name, user_id, podcast_id, limit, offset
+        "{}/api/data/podcast_downloads_paged/{}/{}?limit={}&offset={}&search={}&filter={}",
+        server_name,
+        user_id,
+        podcast_id,
+        limit,
+        offset,
+        urlencoding::encode(search),
+        filter,
     );
     let api_key_ref = api_key
         .as_deref()

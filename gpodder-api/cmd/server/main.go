@@ -22,14 +22,18 @@ func main() {
 	// Load environment variables from .env file if it exists
 	_ = godotenv.Load()
 
-	// Debug log environment variables
-	fmt.Printf("Environment variables:\n")
-	fmt.Printf("DB_TYPE: %s\n", os.Getenv("DB_TYPE"))
-	fmt.Printf("DB_HOST: %s\n", os.Getenv("DB_HOST"))
-	fmt.Printf("DB_PORT: %s\n", os.Getenv("DB_PORT"))
-	fmt.Printf("DB_USER: %s\n", os.Getenv("DB_USER"))
-	fmt.Printf("DB_NAME: %s\n", os.Getenv("DB_NAME"))
-	fmt.Printf("DB_PASSWORD: [hidden]\n")
+	debugMode := os.Getenv("DEBUG_MODE") == "true"
+
+	// Log resolved DB connection settings only in debug mode (never the password).
+	if debugMode {
+		fmt.Printf("Environment variables:\n")
+		fmt.Printf("DB_TYPE: %s\n", os.Getenv("DB_TYPE"))
+		fmt.Printf("DB_HOST: %s\n", os.Getenv("DB_HOST"))
+		fmt.Printf("DB_PORT: %s\n", os.Getenv("DB_PORT"))
+		fmt.Printf("DB_USER: %s\n", os.Getenv("DB_USER"))
+		fmt.Printf("DB_NAME: %s\n", os.Getenv("DB_NAME"))
+		fmt.Printf("DB_PASSWORD: [hidden]\n")
+	}
 
 	// Initialize configuration
 	cfg, err := config.Load()
@@ -47,17 +51,15 @@ func main() {
 	}
 	defer database.Close()
 
-	// Set Gin mode
-	if cfg.Environment == "production" {
+	// Run Gin in release mode unless DEBUG_MODE is set: keeps the route table and
+	// per-request debug banners out of production logs.
+	if !debugMode {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Initialize router
+	// Initialize router. gin.Default() already attaches the Logger and Recovery
+	// middleware, so we must not add them again (doing so double-logs every request).
 	router := gin.Default()
-
-	// Setup middleware
-	router.Use(gin.Recovery())
-	router.Use(gin.Logger())
 
 	// Add CORS middleware
 	router.Use(func(c *gin.Context) {

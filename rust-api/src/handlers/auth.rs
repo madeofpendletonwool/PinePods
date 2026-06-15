@@ -15,13 +15,38 @@ use crate::{
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{debug, error};
 
 
 // Global storage for password-verified sessions pending MFA
 // Key: session_token, Value: (user_id, timestamp)
 lazy_static::lazy_static! {
-    static ref PENDING_MFA_SESSIONS: Arc<Mutex<HashMap<String, (i32, u64)>>> = 
+    static ref PENDING_MFA_SESSIONS: Arc<Mutex<HashMap<String, (i32, u64)>>> =
         Arc::new(Mutex::new(HashMap::new()));
+}
+
+/// Enforce a Redis-backed rate limit; returns 429 when the bucket is exceeded.
+/// Fails open if the cache is unavailable (availability over strictness for self-hosting).
+async fn enforce_rate_limit(
+    state: &AppState,
+    bucket: &str,
+    limit: u32,
+    window_seconds: u64,
+) -> AppResult<()> {
+    match state
+        .redis_client
+        .check_rate_limit(bucket, limit, window_seconds)
+        .await
+    {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(AppError::too_many_requests(
+            "Too many attempts. Please wait a moment and try again.",
+        )),
+        Err(e) => {
+            tracing::warn!("Rate limit check failed (allowing request): {}", e);
+            Ok(())
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -212,7 +237,10 @@ pub async fn get_key(
     }
 
     let (username, password) = extract_basic_auth(&headers)?;
-    
+
+    // Throttle login attempts per account to blunt brute-force / credential stuffing.
+    enforce_rate_limit(&state, &format!("login:{}", username.to_lowercase()), 10, 60).await?;
+
     // Verify password
     let is_valid = state.db_pool.verify_password(&username, &password).await?;
     if !is_valid {
@@ -388,13 +416,13 @@ pub async fn create_first_admin(
     
     // Add PinePods news feed to admin users (matches Python startup tasks)
     if let Err(e) = state.db_pool.add_news_feed_if_not_added().await {
-        eprintln!("Failed to add PinePods news feed during first admin creation: {}", e);
+        error!("Failed to add PinePods news feed during first admin creation: {}", e);
         // Don't fail the admin creation if news feed addition fails
     }
     
     // Create default playlists for the new admin user
     if let Err(e) = state.db_pool.create_missing_default_playlists().await {
-        eprintln!("Failed to create default playlists during first admin creation: {}", e);
+        error!("Failed to create default playlists during first admin creation: {}", e);
         // Don't fail the admin creation if playlist creation fails
     }
     
@@ -539,7 +567,10 @@ pub async fn verify_mfa_and_get_key(
 ) -> Result<Json<VerifyMfaLoginResponse>, AppError> {
     // Clean up expired sessions first
     cleanup_expired_mfa_sessions()?;
-    
+
+    // Throttle MFA code attempts per pending-login session to prevent TOTP brute force.
+    enforce_rate_limit(&state, &format!("mfa:{}", request.mfa_session_token), 5, 60).await?;
+
     // CRITICAL SECURITY CHECK: Validate session token from password authentication
     let user_id = {
         let mut sessions = PENDING_MFA_SESSIONS.lock()
@@ -924,7 +955,7 @@ async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::Datab
     let podcast_values_map = db_pool.get_podcast_values(url, 0, None, None).await
         .map_err(|e| AppError::internal(&format!("Failed to parse podcast feed: {}", e)))?;
     
-    println!("🎙️  Parsed podcast: title='{}', author='{}', description_len={}", 
+    debug!("🎙️  Parsed podcast: title='{}', author='{}', description_len={}", 
         podcast_values_map.get("podcastname").unwrap_or(&"Unknown".to_string()),
         podcast_values_map.get("author").unwrap_or(&"Unknown".to_string()),
         podcast_values_map.get("description").unwrap_or(&"".to_string()).len());
@@ -1244,7 +1275,8 @@ pub async fn oidc_callback(
         .filter(|s| !s.is_empty())
         .unwrap_or("email");
     
-    tracing::info!("OIDC Debug - email_claim: {:?}, email_field: {}, userinfo_response: {:?}", email_claim, email_field, userinfo_response);
+    // Avoid logging the full userinfo payload (PII) at info level; gate the detail behind debug.
+    tracing::debug!("OIDC Debug - email_claim: {:?}, email_field: {}, userinfo_response: {:?}", email_claim, email_field, userinfo_response);
     
     let mut email = userinfo_response.get(email_field).and_then(|v| v.as_str()).map(|s| s.to_string());
     
@@ -1578,6 +1610,8 @@ pub async fn reset_password_create_code(
     if state.config.oidc.disable_standard_login {
         return Err(AppError::forbidden("Password reset is disabled when using OIDC-only authentication. Please use your OIDC provider for password management."));
     }
+    // Throttle reset-code emails per address to prevent spamming a user's inbox.
+    enforce_rate_limit(&state, &format!("reset_create:{}", request.email.to_lowercase()), 3, 600).await?;
     // Get email settings to check if they're configured
     let email_settings = state.db_pool.get_email_settings().await?;
     if let Some(settings) = email_settings {
@@ -1623,6 +1657,8 @@ pub async fn verify_and_reset_password(
     if state.config.oidc.disable_standard_login {
         return Err(AppError::forbidden("Password reset is disabled when using OIDC-only authentication. Please use your OIDC provider for password management."));
     }
+    // Throttle reset-code verification per address to prevent brute-forcing the code.
+    enforce_rate_limit(&state, &format!("reset_verify:{}", request.email.to_lowercase()), 5, 300).await?;
     // Verify the reset code
     let code_valid = state.db_pool.verify_reset_code(&request.email, &request.reset_code).await?;
     

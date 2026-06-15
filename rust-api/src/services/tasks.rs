@@ -7,6 +7,7 @@ use futures::Future;
 use serde_json::Value;
 use std::sync::Arc;
 use sqlx::Row;
+use tracing::{debug, warn};
 
 // New function that actually downloads an episode and waits for completion
 async fn download_episode_and_wait(
@@ -388,26 +389,44 @@ impl TaskSpawner {
                 let status_message = format!("Connecting to {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 20.0, Some(status_message), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
                 
-                // Download the file
+                // Download the file. Send a podcast-client User-Agent first; some hosts
+                // (e.g. Buzzsprout) reject requests without one with 403 Forbidden.
                 let client = reqwest::Client::new();
-                let mut request = client.get(&episode_url);
-
-                // Apply basic auth if feed credentials are provided
-                if let (Some(ref username), Some(ref password)) = (&feed_username, &feed_password) {
-                    if !username.is_empty() {
-                        request = request.basic_auth(username, Some(password));
+                let build_request = |client: &reqwest::Client, user_agent: &str| {
+                    let mut request = client
+                        .get(&episode_url)
+                        .header("User-Agent", user_agent)
+                        .header("Accept", "*/*");
+                    if let (Some(ref username), Some(ref password)) = (&feed_username, &feed_password) {
+                        if !username.is_empty() {
+                            request = request.basic_auth(username, Some(password));
+                        }
                     }
-                }
+                    request
+                };
 
-                let mut response = request
+                let mut response = build_request(&client, "PinePods/1.0")
                     .send()
                     .await
                     .map_err(|e| crate::error::AppError::internal(&format!("Failed to start download: {}", e)))?;
-                
+
+                // If we get a 403, the host may be blocking podcast-client User-Agents.
+                // Retry with a browser User-Agent as a fallback (mirrors feed-refresh fetch).
+                if response.status() == reqwest::StatusCode::FORBIDDEN {
+                    tracing::debug!("Download got 403 for episode {}, retrying with browser User-Agent", episode_id);
+                    let browser_response = build_request(&client, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                        .send()
+                        .await
+                        .map_err(|e| crate::error::AppError::internal(&format!("Failed to start download: {}", e)))?;
+                    if browser_response.status().is_success() {
+                        response = browser_response;
+                    }
+                }
+
                 if !response.status().is_success() {
                     return Err(crate::error::AppError::internal(&format!("Server returned error: {}", response.status())));
                 }
-                
+
                 let total_size = response.content_length().unwrap_or(0);
                 let mut downloaded = 0;
                 let mut file = std::fs::File::create(&file_path)
@@ -984,7 +1003,7 @@ impl TaskSpawner {
             user_id,
             move |task_id, task_manager, db_pool| {
                 Box::pin(async move {
-                    println!("Starting episode processing for podcast {} (user {})", podcast_id, user_id);
+                    debug!("Starting episode processing for podcast {} (user {})", podcast_id, user_id);
                     
                     // Update progress - starting
                     task_manager.update_task_progress(&task_id, 10.0, Some("Fetching podcast feed...".to_string())).await?;
@@ -1021,7 +1040,7 @@ impl TaskSpawner {
                             // Final progress update
                             task_manager.update_task_progress(&task_id, 100.0, Some(format!("Added {} episodes", episode_count))).await?;
                             
-                            println!("✅ Added {} episodes for podcast {} (user {})", episode_count, podcast_id, user_id);
+                            debug!("✅ Added {} episodes for podcast {} (user {})", episode_count, podcast_id, user_id);
                             
                             Ok(serde_json::json!({
                                 "podcast_id": podcast_id,
@@ -1032,7 +1051,7 @@ impl TaskSpawner {
                             }))
                         }
                         Err(e) => {
-                            println!("Failed to add episodes for podcast {}: {}", podcast_id, e);
+                            warn!("Failed to add episodes for podcast {}: {}", podcast_id, e);
                             task_manager.update_task_progress(&task_id, 0.0, Some(format!("Failed to add episodes: {}", e))).await?;
                             Err(e)
                         }

@@ -5,8 +5,12 @@ if [ -f /path/to/env_file ]; then
     source /path/to/env_file
 fi
 
-# Log the environment variables to ensure they're set
-echo "API_KEY: ${API_KEY}, API_SECRET: ${API_SECRET}"
+# Confirm credentials are present without printing their values.
+if [ -n "${API_KEY}" ] && [ -n "${API_SECRET}" ]; then
+    echo "API credentials detected."
+else
+    echo "Warning: API_KEY/API_SECRET not set."
+fi
 
 # Start the Actix web application
 /usr/local/bin/pinepods_backend

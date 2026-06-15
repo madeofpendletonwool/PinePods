@@ -25,21 +25,7 @@ var ValidDeviceTypes = map[string]bool{
 
 func listDevices(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Printf("[DEBUG] listDevices handling request: %s %s", c.Request.Method, c.Request.URL.Path)
-
-		// Log headers for debugging
-		headers := c.Request.Header
-		for name, values := range headers {
-			for _, value := range values {
-				log.Printf("[DEBUG] Header: %s: %s", name, value)
-			}
-		}
-
-		// Log cookies
-		cookies := c.Request.Cookies()
-		for _, cookie := range cookies {
-			log.Printf("[DEBUG] Cookie: %s: %s", cookie.Name, cookie.Value)
-		}
+		debugf("listDevices handling request: %s %s", c.Request.Method, c.Request.URL.Path)
 
 		// Get user ID from context
 		userID, exists := c.Get("userID")
@@ -52,7 +38,7 @@ func listDevices(database *db.Database) gin.HandlerFunc {
 		// Fix for the listDevices function
 		// Replace the query code in listDevices function with this:
 
-		log.Printf("[DEBUG] listDevices: Querying devices for userID: %v", userID)
+		debugf("listDevices: Querying devices for userID: %v", userID)
 
 		var query string
 		var rows *sql.Rows
@@ -115,7 +101,7 @@ func listDevices(database *db.Database) gin.HandlerFunc {
 
 			// Only add active devices
 			if isActive {
-				log.Printf("[DEBUG] listDevices: Found active device: %s (ID: %d)",
+				debugf("listDevices: Found active device: %s (ID: %d)",
 					device.DeviceName, device.DeviceID)
 				devices = append(devices, device)
 			}
@@ -129,12 +115,12 @@ func listDevices(database *db.Database) gin.HandlerFunc {
 
 		// If no devices found, return empty array rather than error
 		if len(devices) == 0 {
-			log.Printf("[DEBUG] listDevices: No devices found for userID: %v", userID)
+			debugf("listDevices: No devices found for userID: %v", userID)
 			c.JSON(http.StatusOK, []models.GpodderDevice{})
 			return
 		}
 
-		log.Printf("[DEBUG] listDevices: Returning %d devices for userID: %v", len(devices), userID)
+		debugf("listDevices: Returning %d devices for userID: %v", len(devices), userID)
 
 		// Return the list of devices
 		c.JSON(http.StatusOK, devices)
@@ -144,7 +130,7 @@ func listDevices(database *db.Database) gin.HandlerFunc {
 // updateDeviceData handles POST /api/2/devices/{username}/{deviceid}.json
 func updateDeviceData(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Printf("[DEBUG] updateDeviceData handling request: %s %s", c.Request.Method, c.Request.URL.Path)
+		debugf("updateDeviceData handling request: %s %s", c.Request.Method, c.Request.URL.Path)
 
 		// Get user ID from context (set by AuthMiddleware)
 		userID, exists := c.Get("userID")
@@ -166,7 +152,7 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 			deviceName = strings.TrimSuffix(deviceName, ".json")
 		}
 
-		log.Printf("[DEBUG] updateDeviceData: Using device name: '%s'", deviceName)
+		debugf("updateDeviceData: Using device name: '%s'", deviceName)
 
 		if deviceName == "" {
 			log.Printf("[ERROR] updateDeviceData: Device ID is required")
@@ -186,7 +172,7 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[DEBUG] updateDeviceData: Device info - Name: %s, Caption: %s, Type: %s",
+		debugf("updateDeviceData: Device info - Name: %s, Caption: %s, Type: %s",
 			deviceName, req.Caption, req.Type)
 
 		// Validate device type if provided
@@ -221,7 +207,7 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 		var deviceID int
 		var query string
 
-		log.Printf("[DEBUG] updateDeviceData: Checking if device exists - UserID: %v, DeviceName: %s", userID, deviceName)
+		debugf("updateDeviceData: Checking if device exists - UserID: %v, DeviceName: %s", userID, deviceName)
 
 		if database.IsPostgreSQLDB() {
 			query = `SELECT DeviceID FROM "GpodderDevices" WHERE UserID = $1 AND DeviceName = $2`
@@ -234,7 +220,7 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 		if err != nil {
 			if err == sql.ErrNoRows {
 				// Device doesn't exist, create it
-				log.Printf("[DEBUG] updateDeviceData: Creating new device - UserID: %v, DeviceName: %s, Type: %s",
+				debugf("updateDeviceData: Creating new device - UserID: %v, DeviceName: %s, Type: %s",
 					userID, deviceName, req.Type)
 
 				if database.IsPostgreSQLDB() {
@@ -269,7 +255,7 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 					deviceID = int(lastID)
 				}
 
-				log.Printf("[DEBUG] updateDeviceData: Created new device with ID: %d", deviceID)
+				debugf("updateDeviceData: Created new device with ID: %d", deviceID)
 
 				// Also create entry in device state table, handling both PostgreSQL and MySQL syntax
 				if database.IsPostgreSQLDB() {
@@ -294,7 +280,7 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 			}
 		} else {
 			// Device exists, update it
-			log.Printf("[DEBUG] updateDeviceData: Updating existing device with ID: %d", deviceID)
+			debugf("updateDeviceData: Updating existing device with ID: %d", deviceID)
 
 			if database.IsPostgreSQLDB() {
 				query = `UPDATE "GpodderDevices" SET DeviceType = $1, DeviceCaption = $2, LastSync = $3, IsActive = true
@@ -321,7 +307,7 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 		}
 
 		// Return empty response with 200 status code as per gpodder API
-		log.Printf("[DEBUG] updateDeviceData: Successfully processed device request")
+		debugf("updateDeviceData: Successfully processed device request")
 		c.JSON(http.StatusOK, gin.H{})
 	}
 }
@@ -329,7 +315,7 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 // getDeviceUpdates handles GET /api/2/updates/{username}/{deviceid}.json
 func getDeviceUpdates(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Printf("[DEBUG] getDeviceUpdates: Processing request: %s %s",
+		debugf("getDeviceUpdates: Processing request: %s %s",
 			c.Request.Method, c.Request.URL.Path)
 		// Get user ID from context (set by AuthMiddleware)
 		userID, exists := c.Get("userID")
@@ -350,7 +336,7 @@ func getDeviceUpdates(database *db.Database) gin.HandlerFunc {
 			deviceName = strings.TrimSuffix(deviceName, ".json")
 		}
 
-		log.Printf("[DEBUG] getDeviceUpdates: Using device name: '%s'", deviceName)
+		debugf("getDeviceUpdates: Using device name: '%s'", deviceName)
 
 		// Parse query parameters
 		sinceStr := c.Query("since")
@@ -832,7 +818,7 @@ func deactivateDevice(database *db.PostgresDB) gin.HandlerFunc {
 			deviceName = strings.TrimSuffix(deviceName, ".json")
 		}
 
-		log.Printf("[DEBUG] deactivateDevice: Using device name: '%s'", deviceName)
+		debugf("deactivateDevice: Using device name: '%s'", deviceName)
 
 		// Get the device ID
 		var deviceID int

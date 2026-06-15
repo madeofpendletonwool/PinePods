@@ -1,7 +1,7 @@
 use crate::{error::AppResult, AppState, database::DatabasePool};
 use crate::handlers::refresh::PodcastForRefresh;
 use crate::handlers::youtube::process_youtube_channel;
-use tracing::{info, warn, error};
+use tracing::{debug, error, info, warn};
 use serde_json::Value;
 use sqlx::Row;
 
@@ -60,11 +60,11 @@ async fn refresh_podcast_internal(state: &AppState, podcast_id: i32) -> AppResul
 
 /// Refresh all podcasts - matches Python refresh_pods function exactly
 pub async fn refresh_all_podcasts(state: &AppState) -> AppResult<()> {
-    println!("🚀 Starting refresh process for all podcasts");
+    info!("🚀 Starting refresh process for all podcasts");
     
     // Get all podcasts from database
     let podcasts = get_all_podcasts_for_refresh(&state.db_pool).await?;
-    println!("📊 Found {} podcasts to refresh", podcasts.len());
+    debug!("📊 Found {} podcasts to refresh", podcasts.len());
     
     let mut successful_refreshes = 0;
     let mut failed_refreshes = 0;
@@ -76,18 +76,18 @@ pub async fn refresh_all_podcasts(state: &AppState) -> AppResult<()> {
             }
             Err(e) => {
                 failed_refreshes += 1;
-                println!("❌ Error refreshing podcast '{}' (ID: {}): {}", podcast.name, podcast.id, e);
+                error!("❌ Error refreshing podcast '{}' (ID: {}): {}", podcast.name, podcast.id, e);
             }
         }
     }
     
-    println!("🎯 Refresh process completed: {} successful, {} failed", successful_refreshes, failed_refreshes);
+    warn!("🎯 Refresh process completed: {} successful, {} failed", successful_refreshes, failed_refreshes);
     Ok(())
 }
 
 /// Refresh a single podcast - matches Python refresh logic
 async fn refresh_single_podcast(state: &AppState, podcast: &PodcastForRefresh) -> AppResult<()> {
-    println!("🔄 Starting refresh for podcast '{}' (ID: {})", podcast.name, podcast.id);
+    info!("🔄 Starting refresh for podcast '{}' (ID: {})", podcast.name, podcast.id);
 
     // Count episodes before refresh
     let episodes_before = match &state.db_pool {
@@ -138,9 +138,9 @@ async fn refresh_single_podcast(state: &AppState, podcast: &PodcastForRefresh) -
     
     let new_episodes = episodes_after - episodes_before;
     if new_episodes > 0 {
-        println!("✅ Completed refresh for podcast '{}' - added {} new episodes", podcast.name, new_episodes);
+        debug!("✅ Completed refresh for podcast '{}' - added {} new episodes", podcast.name, new_episodes);
     } else {
-        println!("✅ Completed refresh for podcast '{}' - no new episodes found", podcast.name);
+        debug!("✅ Completed refresh for podcast '{}' - no new episodes found", podcast.name);
     }
     
     Ok(())

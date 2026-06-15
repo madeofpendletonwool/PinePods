@@ -20,7 +20,7 @@ sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls", "postgres
 bigdecimal = "0.4.10"
 
 # Redis/Valkey
-redis = { version = "1.2.1", features = ["aio", "tokio-comp", "connection-manager"] }
+redis = { version = "1.2.3", features = ["aio", "tokio-comp", "connection-manager"] }
 
 # HTTP Client
 reqwest = { version = "0.13.4", features = ["json", "stream", "cookies", "query", "form"] }
@@ -34,8 +34,8 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 # Utilities
-uuid = { version = "1.23.1", features = ["v4", "serde"] }
-chrono = { version = "0.4.44", features = ["serde"] }
+uuid = { version = "1.23.3", features = ["v4", "serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
 chrono-tz = "0.10.0"
 anyhow = "1.0.102"
 thiserror = "2.0.18"
@@ -60,10 +60,10 @@ fernet = "0.2.2"
 # RSS/Feed Processing
 feed-rs = "2.3.1"
 url = "2.5.8"
-regex = "1.12.3"
+regex = "1.12.4"
 
 # Audio metadata tagging
-id3 = "1.16.4"
+id3 = "1.17.0"
 mp3-metadata = "0.4.0"
 quick-xml = "0.40.1"
 
@@ -71,7 +71,7 @@ quick-xml = "0.40.1"
 lettre = { version = "0.11.22", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
 
 # CORS and Security
-hyper = "1.9.0"
+hyper = "1.10.1"
 
 # Background Tasks and Task Management
 tokio-cron-scheduler = "0.15.1"

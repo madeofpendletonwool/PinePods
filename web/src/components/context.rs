@@ -422,6 +422,7 @@ pub struct UIState {
     pub episode_transcript: Option<Vec<Transcript>>,
     pub episode_page_people: Option<Vec<Person>>,
     pub episode_page_transcript: Option<Vec<Transcript>>,
+    pub episode_page_chapters: Option<Vec<Chapter>>,
     pub podcast_funding: Option<Vec<Funding>>,
     pub podcast_podroll: Option<Vec<PodrollItem>>,
     pub podcast_value4value: Option<Vec<Value>>,

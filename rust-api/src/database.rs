@@ -8,6 +8,7 @@ use bigdecimal::ToPrimitive;
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
 use base64;
+use tracing::{debug, error, info, warn};
 
 // Global temporary MFA secrets storage (matches Python temp_mfa_secrets)
 lazy_static! {
@@ -526,7 +527,10 @@ impl DatabasePool {
                 Ok((episodes, total))
             }
             DatabasePool::MySQL(pool) => {
-                // MySQL: use SQL_CALC_FOUND_ROWS + FOUND_ROWS() for total count
+                // MySQL: use SQL_CALC_FOUND_ROWS + FOUND_ROWS() for total count.
+                // FOUND_ROWS() only reflects the previous query on the SAME connection,
+                // so acquire one connection and run both queries on it.
+                let mut conn = pool.acquire().await?;
                 let rows = sqlx::query(
                     "SELECT SQL_CALC_FOUND_ROWS * FROM (
                         SELECT
@@ -626,12 +630,12 @@ impl DatabasePool {
                 .bind(user_id)   // youtube Podcasts.UserID WHERE
                 .bind(limit)
                 .bind(offset)
-                .fetch_all(pool)
+                .fetch_all(&mut *conn)
                 .await?;
 
-                // Fetch total from FOUND_ROWS() — must happen in the same connection
+                // Fetch total from FOUND_ROWS() — runs on the same connection as the SELECT above
                 let total_row = sqlx::query("SELECT FOUND_ROWS() as total_count")
-                    .fetch_one(pool)
+                    .fetch_one(&mut *conn)
                     .await?;
                 let total: i64 = total_row.try_get("total_count").unwrap_or(0);
 
@@ -748,7 +752,7 @@ impl DatabasePool {
                     .fetch_one(pool)
                     .await?;
                 
-                println!("✅ Added podcast '{}' for user {} with {} episodes", 
+                debug!("✅ Added podcast '{}' for user {} with {} episodes", 
                     podcast_values.pod_title, podcast_values.user_id, episode_count);
                 
                 Ok((podcast_id, first_episode_id))
@@ -827,7 +831,7 @@ impl DatabasePool {
                     .fetch_one(pool)
                     .await?;
                 
-                println!("✅ Added podcast '{}' for user {} with {} episodes", 
+                debug!("✅ Added podcast '{}' for user {} with {} episodes", 
                     podcast_values.pod_title, podcast_values.user_id, episode_count);
                 
                 Ok((podcast_id, first_episode_id))
@@ -893,7 +897,7 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
                 
-                println!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
+                debug!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
                     podcast_values.pod_title, podcast_values.user_id);
                 
                 Ok(podcast_id)
@@ -946,7 +950,7 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
                 
-                println!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
+                debug!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
                     podcast_values.pod_title, podcast_values.user_id);
                 
                 Ok(podcast_id)
@@ -965,7 +969,7 @@ impl DatabasePool {
             DatabasePool::Postgres(pool) => {
                 // First get the podcast ID to cascade delete properly
                 let podcast_row = sqlx::query(
-                    r#"SELECT podcastid FROM "Podcasts" 
+                    r#"SELECT podcastid FROM "Podcasts"
                        WHERE podcastname = $1 AND feedurl = $2 AND userid = $3"#
                 )
                 .bind(podcast_name)
@@ -973,58 +977,64 @@ impl DatabasePool {
                 .bind(user_id)
                 .fetch_optional(pool)
                 .await?;
-                
+
                 if let Some(row) = podcast_row {
                     let podcast_id: i32 = row.try_get("podcastid")?;
-                    
+
+                    // Run all cascading deletes in one transaction so a partial failure
+                    // can't leave orphaned rows or a wrong UserStats count.
+                    let mut tx = pool.begin().await?;
+
                     // Delete in the proper order to handle foreign key constraints
                     // 1. PlaylistContents first
                     sqlx::query(r#"DELETE FROM "PlaylistContents" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 2. UserEpisodeHistory
                     sqlx::query(r#"DELETE FROM "UserEpisodeHistory" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 3. DownloadedEpisodes
                     sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 4. SavedEpisodes
                     sqlx::query(r#"DELETE FROM "SavedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 5. EpisodeQueue
                     sqlx::query(r#"DELETE FROM "EpisodeQueue" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 6. Episodes
                     sqlx::query(r#"DELETE FROM "Episodes" WHERE podcastid = $1"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 7. Finally delete the podcast itself
                     sqlx::query(r#"DELETE FROM "Podcasts" WHERE podcastid = $1"#)
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // Update user stats
                     sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = $1"#)
                         .bind(user_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
+
+                    tx.commit().await?;
                 }
                 Ok(())
             }
@@ -1042,55 +1052,61 @@ impl DatabasePool {
                 
                 if let Some(row) = podcast_row {
                     let podcast_id: i32 = row.try_get("PodcastID")?;
-                    
+
+                    // Run all cascading deletes in one transaction so a partial failure
+                    // can't leave orphaned rows or a wrong UserStats count.
+                    let mut tx = pool.begin().await?;
+
                     // Delete in the proper order to handle foreign key constraints
                     // 1. PlaylistContents first
                     sqlx::query("DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 2. UserEpisodeHistory
                     sqlx::query("DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 3. DownloadedEpisodes
                     sqlx::query("DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 4. SavedEpisodes
                     sqlx::query("DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 5. EpisodeQueue
                     sqlx::query("DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 6. Episodes
                     sqlx::query("DELETE FROM Episodes WHERE PodcastID = ?")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // 7. Finally delete the podcast itself
                     sqlx::query("DELETE FROM Podcasts WHERE PodcastID = ?")
                         .bind(podcast_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
-                    
+
                     // Update user stats
                     sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = ?")
                         .bind(user_id)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
+
+                    tx.commit().await?;
                 }
                 Ok(())
             }
@@ -5493,242 +5509,16 @@ impl DatabasePool {
         // Fetch the RSS feed
         let content = self.try_fetch_feed(feed_url, username, password).await?;
         
-        // Parse the RSS feed - enable duration estimation for initial podcast adding
-        let episodes = self.parse_rss_feed_with_options(&content, podcast_id, artwork_url, true).await?;
-        
-        let mut first_episode_id = None;
-        let mut inserted_count: usize = 0;
-        let mut skipped_count: usize = 0;
-        let parsed_count = episodes.len();
-
-        // Batch dedup: one query per podcast instead of N per-episode SELECTs.
-        // Compare URLs without query parameters — some feeds regenerate tracking params
-        // like d= and size= on every fetch (e.g. NPR/Podtrac).
-        let url_bases: Vec<String> = episodes.iter()
-            .filter(|ep| !ep.url.is_empty())
-            .map(|ep| ep.url.split('?').next().unwrap_or(&ep.url).to_string())
-            .collect();
-        let titles_no_url: Vec<String> = episodes.iter()
-            .filter(|ep| ep.url.is_empty())
-            .map(|ep| ep.title.clone())
-            .collect();
-
-        let mut url_to_id: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
-        let mut title_to_id: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
-
-        match self {
-            DatabasePool::Postgres(pool) => {
-                if !url_bases.is_empty() {
-                    let rows = sqlx::query(
-                        r#"SELECT episodeid, split_part(episodeurl, '?', 1) AS url_base
-                           FROM "Episodes"
-                           WHERE podcastid = $1 AND split_part(episodeurl, '?', 1) = ANY($2)"#
-                    )
-                    .bind(podcast_id)
-                    .bind(&url_bases[..])
-                    .fetch_all(pool)
-                    .await?;
-                    for row in rows {
-                        if let (Ok(id), Ok(base)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("url_base")) {
-                            url_to_id.insert(base, id);
-                        }
-                    }
-                }
-                if !titles_no_url.is_empty() {
-                    let rows = sqlx::query(
-                        r#"SELECT episodeid, episodetitle FROM "Episodes" WHERE podcastid = $1 AND episodetitle = ANY($2)"#
-                    )
-                    .bind(podcast_id)
-                    .bind(&titles_no_url[..])
-                    .fetch_all(pool)
-                    .await?;
-                    for row in rows {
-                        if let (Ok(id), Ok(t)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("episodetitle")) {
-                            title_to_id.insert(t, id);
-                        }
-                    }
-                }
-            }
-            DatabasePool::MySQL(pool) => {
-                if !url_bases.is_empty() {
-                    let placeholders = url_bases.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                    let sql = format!(
-                        "SELECT EpisodeID, SUBSTRING_INDEX(EpisodeURL, '?', 1) AS url_base \
-                         FROM Episodes WHERE PodcastID = ? AND SUBSTRING_INDEX(EpisodeURL, '?', 1) IN ({})",
-                        placeholders
-                    );
-                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(podcast_id);
-                    for base in &url_bases { q = q.bind(base); }
-                    let rows = q.fetch_all(pool).await?;
-                    for row in rows {
-                        if let (Ok(id), Ok(base)) = (row.try_get::<i32, _>("EpisodeID"), row.try_get::<String, _>("url_base")) {
-                            url_to_id.insert(base, id);
-                        }
-                    }
-                }
-                if !titles_no_url.is_empty() {
-                    let placeholders = titles_no_url.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                    let sql = format!(
-                        "SELECT EpisodeID, EpisodeTitle FROM Episodes WHERE PodcastID = ? AND EpisodeTitle IN ({})",
-                        placeholders
-                    );
-                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(podcast_id);
-                    for t in &titles_no_url { q = q.bind(t); }
-                    let rows = q.fetch_all(pool).await?;
-                    for row in rows {
-                        if let (Ok(id), Ok(t)) = (row.try_get::<i32, _>("EpisodeID"), row.try_get::<String, _>("EpisodeTitle")) {
-                            title_to_id.insert(t, id);
-                        }
-                    }
-                }
-            }
-        }
-
-        for episode in episodes {
-            // Use pre-built maps — no per-episode DB round-trip needed.
-            let existing_episode_id = if episode.url.is_empty() {
-                title_to_id.get(&episode.title).copied()
-            } else {
-                let url_base = episode.url.split('?').next().unwrap_or(&episode.url);
-                url_to_id.get(url_base).copied()
-            };
-
-            if let Some(episode_id) = existing_episode_id {
-                // Episode already exists - UPDATE it with new metadata
-                match self {
-                    DatabasePool::Postgres(pool) => {
-                        sqlx::query(
-                            r#"UPDATE "Episodes"
-                               SET episodetitle = $1, episodedescription = $2, episodeurl = $3,
-                                   episodeartwork = $4, episodepubdate = $5, episodeduration = $6,
-                                   is_video = $7
-                               WHERE episodeid = $8"#
-                        )
-                        .bind(&episode.title)
-                        .bind(&episode.description)
-                        .bind(&episode.url)
-                        .bind(&episode.artwork_url)
-                        .bind(&episode.pub_date)
-                        .bind(episode.duration)
-                        .bind(episode.is_video)
-                        .bind(episode_id)
-                        .execute(pool)
-                        .await?;
-                    }
-                    DatabasePool::MySQL(pool) => {
-                        sqlx::query(
-                            "UPDATE Episodes
-                             SET EpisodeTitle = ?, EpisodeDescription = ?, EpisodeURL = ?,
-                                 EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?,
-                                 IsVideo = ?
-                             WHERE EpisodeID = ?"
-                        )
-                        .bind(&episode.title)
-                        .bind(&episode.description)
-                        .bind(&episode.url)
-                        .bind(&episode.artwork_url)
-                        .bind(&episode.pub_date)
-                        .bind(episode.duration)
-                        .bind(episode.is_video)
-                        .bind(episode_id)
-                        .execute(pool)
-                        .await?;
-                    }
-                }
-                // Skip to next episode - don't insert or send notification for updates
-                continue;
-            }
-
-            // Insert new episode (URL doesn't exist in this podcast).
-            // Use match instead of ? so a single bad episode logs and skips rather than
-            // aborting the entire batch — prevents partial-subscription silent failures.
-            let episode_id = match self {
-                DatabasePool::Postgres(pool) => {
-                    let row = match sqlx::query(
-                        r#"INSERT INTO "Episodes"
-                           (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration, is_video)
-                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                           RETURNING episodeid"#
-                    )
-                    .bind(podcast_id)
-                    .bind(&episode.title)
-                    .bind(&episode.description)
-                    .bind(&episode.url)
-                    .bind(&episode.artwork_url)
-                    .bind(&episode.pub_date)
-                    .bind(episode.duration)
-                    .bind(episode.is_video)
-                    .fetch_one(pool)
-                    .await {
-                        Ok(r) => r,
-                        Err(e) => {
-                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", episode.title, podcast_id, e);
-                            skipped_count += 1;
-                            continue;
-                        }
-                    };
-                    match row.try_get::<i32, _>("episodeid") {
-                        Ok(id) => id,
-                        Err(e) => {
-                            tracing::warn!("Failed to read episodeid for '{}': {}", episode.title, e);
-                            skipped_count += 1;
-                            continue;
-                        }
-                    }
-                }
-                DatabasePool::MySQL(pool) => {
-                    let result = match sqlx::query(
-                        "INSERT INTO Episodes
-                         (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, IsVideo)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-                    )
-                    .bind(podcast_id)
-                    .bind(&episode.title)
-                    .bind(&episode.description)
-                    .bind(&episode.url)
-                    .bind(&episode.artwork_url)
-                    .bind(&episode.pub_date)
-                    .bind(episode.duration)
-                    .bind(episode.is_video)
-                    .execute(pool)
-                    .await {
-                        Ok(r) => r,
-                        Err(e) => {
-                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", episode.title, podcast_id, e);
-                            skipped_count += 1;
-                            continue;
-                        }
-                    };
-                    result.last_insert_id() as i32
-                }
-            };
-
-            inserted_count += 1;
-
-            // Send notification for new episode - matches Python implementation exactly
-            if let Err(e) = self.check_and_send_notification(podcast_id, &episode.title).await {
-                tracing::warn!("Failed to send notification for episode '{}': {}", episode.title, e);
-            }
-
-            // Set first episode ID if not set
-            if first_episode_id.is_none() {
-                first_episode_id = Some(episode_id);
-            }
-        }
-
-        tracing::info!(
-            "Podcast {}: parsed={} inserted={} skipped={}",
-            podcast_id, parsed_count, inserted_count, skipped_count
-        );
-
-        // Only recount when something actually changed (saves 3 DB queries per no-op refresh)
-        if inserted_count > 0 {
-            self.update_episode_count(podcast_id).await?;
-        }
+        // Parse the RSS feed, then apply via the shared dedup/insert path (GUID→URL→title dedup,
+        // no-op UPDATE skipping, async duration estimation). Kept as a separate function from
+        // add_episodes_with_new_list only because callers here want the first episode id rather
+        // than the list of newly-inserted episodes.
+        let episodes = self.parse_rss_feed(&content, podcast_id, artwork_url).await?;
+        let _new = self.apply_parsed_episodes(podcast_id, &episodes, artwork_url, None, true).await?;
 
         // Get the actual first episode ID (earliest by pub date)
         let first_id = self.get_first_episode_id(podcast_id, false).await?;
-        
+
         Ok(first_id)
     }
 
@@ -5742,191 +5532,205 @@ impl DatabasePool {
         username: Option<&str>,
         password: Option<&str>,
     ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
-        // Fetch the RSS feed
+        // Thin wrapper retained for callers that don't need conditional-GET or per-podcast cutoff
+        // (initial add, gpodder import). The refresh paths instead call fetch_feed_conditional +
+        // parse_feed_episodes + apply_parsed_episodes directly so they can skip unchanged feeds,
+        // apply the feed cutoff, and (for multi-user instances) parse a shared feed only once.
         let content = self.try_fetch_feed(feed_url, username, password).await?;
-        
-        // Parse the RSS feed
         let episodes = self.parse_rss_feed(&content, podcast_id, artwork_url).await?;
-        
+        self.apply_parsed_episodes(podcast_id, &episodes, artwork_url, None, true).await
+    }
+
+    /// Public wrapper around the RSS parser so the refresh layer can parse a feed body once and
+    /// apply it to multiple subscriber podcasts (cross-user fetch dedup).
+    pub async fn parse_feed_body(
+        &self,
+        content: &str,
+        podcast_id: i32,
+        artwork_url: &str,
+    ) -> AppResult<Vec<EpisodeData>> {
+        self.parse_rss_feed(content, podcast_id, artwork_url).await
+    }
+
+    /// Apply a parsed episode list to a single podcast: dedup against existing rows, update
+    /// changed episodes, insert new ones, and return ONLY the newly inserted episodes.
+    ///
+    /// Dedup priority is GUID → URL-base → title. GUID is the stable RSS identity; URL-base
+    /// (URL without query string) handles feeds that regenerate tracking params; title is the
+    /// last resort for feeds with neither. Existing rows are only UPDATEd when a comparable field
+    /// actually changed (or to backfill a newly-available GUID), which eliminates the previous
+    /// write storm that re-UPDATEd the entire back-catalogue on every refresh cycle.
+    ///
+    /// `cutoff_days`: when Some(d) with d > 0, episodes older than `now - d days` are skipped.
+    pub async fn apply_parsed_episodes(
+        &self,
+        podcast_id: i32,
+        episodes: &[EpisodeData],
+        artwork_url: &str,
+        cutoff_days: Option<i32>,
+        notify: bool,
+    ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
+        // Apply feed cutoff (previously honored only for YouTube channels).
+        let cutoff_date = match cutoff_days {
+            Some(days) if days > 0 => Some(Utc::now() - chrono::Duration::days(days as i64)),
+            _ => None,
+        };
+        let candidates: Vec<&EpisodeData> = episodes
+            .iter()
+            .filter(|ep| cutoff_date.map_or(true, |cut| ep.pub_date >= cut))
+            .collect();
+
+        let parsed_count = candidates.len();
         let mut new_episodes = Vec::new();
         let mut skipped_count: usize = 0;
-        let parsed_count = episodes.len();
+        let mut updated_count: usize = 0;
 
-        // Batch dedup: one query per podcast instead of N per-episode SELECTs.
-        // Build url_base→id and title→id maps from existing DB rows, then look up in-memory.
-        let url_bases: Vec<String> = episodes.iter()
+        // Dedup key lists. url_bases/titles cover ALL candidates (not just guid-less ones) so a
+        // new episode that now carries a GUID can still match a legacy row stored before GUIDs
+        // existed (NULL guid) and backfill it instead of duplicating.
+        let guids: Vec<String> = candidates.iter().filter_map(|ep| ep.guid.clone()).collect();
+        let url_bases: Vec<String> = candidates
+            .iter()
             .filter(|ep| !ep.url.is_empty())
             .map(|ep| ep.url.split('?').next().unwrap_or(&ep.url).to_string())
             .collect();
-        let titles_no_url: Vec<String> = episodes.iter()
+        let titles_no_url: Vec<String> = candidates
+            .iter()
             .filter(|ep| ep.url.is_empty())
             .map(|ep| ep.title.clone())
             .collect();
 
-        let mut url_to_id: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
-        let mut title_to_id: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+        let existing = self
+            .fetch_existing_episodes(podcast_id, &guids, &url_bases, &titles_no_url)
+            .await?;
 
-        match self {
-            DatabasePool::Postgres(pool) => {
-                if !url_bases.is_empty() {
-                    let rows = sqlx::query(
-                        r#"SELECT episodeid, split_part(episodeurl, '?', 1) AS url_base
-                           FROM "Episodes"
-                           WHERE podcastid = $1 AND split_part(episodeurl, '?', 1) = ANY($2)"#
-                    )
-                    .bind(podcast_id)
-                    .bind(&url_bases[..])
-                    .fetch_all(pool)
-                    .await?;
-                    for row in rows {
-                        if let (Ok(id), Ok(base)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("url_base")) {
-                            url_to_id.insert(base, id);
-                        }
+        for ep in candidates {
+            // Resolve an existing row by GUID, then URL-base, then title.
+            let existing_id = ep
+                .guid
+                .as_ref()
+                .and_then(|g| existing.guid_to_id.get(g).copied())
+                .or_else(|| {
+                    if ep.url.is_empty() {
+                        existing.title_to_id.get(&ep.title).copied()
+                    } else {
+                        let base = ep.url.split('?').next().unwrap_or(&ep.url);
+                        existing.url_to_id.get(base).copied()
                     }
-                }
-                if !titles_no_url.is_empty() {
-                    let rows = sqlx::query(
-                        r#"SELECT episodeid, episodetitle FROM "Episodes" WHERE podcastid = $1 AND episodetitle = ANY($2)"#
-                    )
-                    .bind(podcast_id)
-                    .bind(&titles_no_url[..])
-                    .fetch_all(pool)
-                    .await?;
-                    for row in rows {
-                        if let (Ok(id), Ok(t)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("episodetitle")) {
-                            title_to_id.insert(t, id);
-                        }
-                    }
-                }
-            }
-            DatabasePool::MySQL(pool) => {
-                if !url_bases.is_empty() {
-                    let placeholders = url_bases.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                    let sql = format!(
-                        "SELECT EpisodeID, SUBSTRING_INDEX(EpisodeURL, '?', 1) AS url_base \
-                         FROM Episodes WHERE PodcastID = ? AND SUBSTRING_INDEX(EpisodeURL, '?', 1) IN ({})",
-                        placeholders
-                    );
-                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(podcast_id);
-                    for base in &url_bases { q = q.bind(base); }
-                    let rows = q.fetch_all(pool).await?;
-                    for row in rows {
-                        if let (Ok(id), Ok(base)) = (row.try_get::<i32, _>("EpisodeID"), row.try_get::<String, _>("url_base")) {
-                            url_to_id.insert(base, id);
-                        }
-                    }
-                }
-                if !titles_no_url.is_empty() {
-                    let placeholders = titles_no_url.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                    let sql = format!(
-                        "SELECT EpisodeID, EpisodeTitle FROM Episodes WHERE PodcastID = ? AND EpisodeTitle IN ({})",
-                        placeholders
-                    );
-                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(podcast_id);
-                    for t in &titles_no_url { q = q.bind(t); }
-                    let rows = q.fetch_all(pool).await?;
-                    for row in rows {
-                        if let (Ok(id), Ok(t)) = (row.try_get::<i32, _>("EpisodeID"), row.try_get::<String, _>("EpisodeTitle")) {
-                            title_to_id.insert(t, id);
-                        }
-                    }
-                }
-            }
-        }
+                });
 
-        for mut episode in episodes {
-            // Use pre-built maps — no per-episode DB round-trip needed.
-            let existing_episode_id = if episode.url.is_empty() {
-                title_to_id.get(&episode.title).copied()
-            } else {
-                let url_base = episode.url.split('?').next().unwrap_or(&episode.url);
-                url_to_id.get(url_base).copied()
-            };
+            // The artwork we would store, with the podcast fallback applied. Compare against THIS
+            // (not the raw parsed value) so an episode whose feed has no artwork doesn't look
+            // "changed" every cycle just because the stored row holds the fallback artwork.
+            let artwork = if ep.artwork_url.is_empty() { artwork_url } else { ep.artwork_url.as_str() };
 
-            if let Some(episode_id) = existing_episode_id {
-                // Episode already exists - UPDATE it with new metadata
-                match self {
-                    DatabasePool::Postgres(pool) => {
-                        sqlx::query(
-                            r#"UPDATE "Episodes"
-                               SET episodetitle = $1, episodedescription = $2, episodeurl = $3,
-                                   episodeartwork = $4, episodepubdate = $5, episodeduration = $6,
-                                   is_video = $7
-                               WHERE episodeid = $8"#
-                        )
-                        .bind(&episode.title)
-                        .bind(&episode.description)
-                        .bind(&episode.url)
-                        .bind(&episode.artwork_url)
-                        .bind(&episode.pub_date)
-                        .bind(episode.duration)
-                        .bind(episode.is_video)
-                        .bind(episode_id)
-                        .execute(pool)
-                        .await?;
+            if let Some(episode_id) = existing_id {
+                // Compare against the stored row; only UPDATE when something actually changed or we
+                // can backfill a GUID. pubdate is intentionally excluded from change detection to
+                // avoid timestamp-precision false positives — it virtually never changes for an
+                // already-published episode, and not rewriting it is harmless.
+                let needs_update = match existing.by_id.get(&episode_id) {
+                    Some(cur) => {
+                        // Compare URLs by base (without query string): many feeds regenerate
+                        // tracking params every fetch, and rewriting the row for that alone is the
+                        // write-amplification we're eliminating. A real URL change (e.g. CDN
+                        // migration) changes the base and still triggers an update.
+                        let cur_base = cur.url.split('?').next().unwrap_or(&cur.url);
+                        let new_base = ep.url.split('?').next().unwrap_or(&ep.url);
+                        cur.title != ep.title
+                            || cur.description != ep.description
+                            || cur_base != new_base
+                            || cur.artwork != artwork
+                            || cur.duration != ep.duration
+                            || cur.is_video != ep.is_video
+                            || (ep.guid.is_some() && cur.guid.as_deref() != ep.guid.as_deref())
                     }
-                    DatabasePool::MySQL(pool) => {
-                        sqlx::query(
-                            "UPDATE Episodes
-                             SET EpisodeTitle = ?, EpisodeDescription = ?, EpisodeURL = ?,
-                                 EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?,
-                                 IsVideo = ?
-                             WHERE EpisodeID = ?"
-                        )
-                        .bind(&episode.title)
-                        .bind(&episode.description)
-                        .bind(&episode.url)
-                        .bind(&episode.artwork_url)
-                        .bind(&episode.pub_date)
-                        .bind(episode.duration)
-                        .bind(episode.is_video)
-                        .bind(episode_id)
-                        .execute(pool)
-                        .await?;
+                    None => true,
+                };
+
+                if needs_update {
+                    match self {
+                        DatabasePool::Postgres(pool) => {
+                            sqlx::query(
+                                r#"UPDATE "Episodes"
+                                   SET episodetitle = $1, episodedescription = $2, episodeurl = $3,
+                                       episodeartwork = $4, episodepubdate = $5, episodeduration = $6,
+                                       is_video = $7, episodeguid = COALESCE($8, episodeguid)
+                                   WHERE episodeid = $9"#,
+                            )
+                            .bind(&ep.title)
+                            .bind(&ep.description)
+                            .bind(&ep.url)
+                            .bind(artwork)
+                            .bind(ep.pub_date)
+                            .bind(ep.duration)
+                            .bind(ep.is_video)
+                            .bind(ep.guid.as_deref())
+                            .bind(episode_id)
+                            .execute(pool)
+                            .await?;
+                        }
+                        DatabasePool::MySQL(pool) => {
+                            sqlx::query(
+                                "UPDATE Episodes
+                                 SET EpisodeTitle = ?, EpisodeDescription = ?, EpisodeURL = ?,
+                                     EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?,
+                                     IsVideo = ?, EpisodeGUID = COALESCE(?, EpisodeGUID)
+                                 WHERE EpisodeID = ?",
+                            )
+                            .bind(&ep.title)
+                            .bind(&ep.description)
+                            .bind(&ep.url)
+                            .bind(artwork)
+                            .bind(ep.pub_date)
+                            .bind(ep.duration)
+                            .bind(ep.is_video)
+                            .bind(ep.guid.as_deref())
+                            .bind(episode_id)
+                            .execute(pool)
+                            .await?;
+                        }
                     }
+                    updated_count += 1;
                 }
-                // Skip to next episode - don't add to new_episodes list for updates
+                // Existing episode — never returned as "new".
                 continue;
             }
 
-            // This is a NEW episode - estimate duration if missing
-            if episode.duration == 0 {
-                let audio_url = &episode.url;
-                if !audio_url.is_empty() {
-                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                        if let Some(estimated_duration) = tokio::task::block_in_place(|| {
-                            handle.block_on(self.estimate_duration_from_audio_url_async(audio_url))
-                        }) {
-                            episode.duration = estimated_duration;
-                            println!("Estimated duration {} seconds for new episode: {}", estimated_duration, episode.title);
-                        }
-                    }
+            // NEW episode. Estimate duration asynchronously (no block_in_place) when missing.
+            let mut duration = ep.duration;
+            if duration == 0 && !ep.url.is_empty() {
+                if let Some(est) = self.estimate_duration_from_audio_url_async(&ep.url).await {
+                    duration = est;
+                    debug!("Estimated duration {} seconds for new episode: {}", est, ep.title);
                 }
             }
 
-            // Insert new episode. Use match so a single bad episode logs and skips rather than
+            // Insert. Use match (not ?) so a single bad episode logs and skips rather than
             // aborting the entire batch — prevents partial-refresh silent failures.
             let episode_id = match self {
                 DatabasePool::Postgres(pool) => {
                     let row = match sqlx::query(
                         r#"INSERT INTO "Episodes"
-                           (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration, is_video)
-                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                           RETURNING episodeid"#
+                           (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration, is_video, episodeguid)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                           RETURNING episodeid"#,
                     )
                     .bind(podcast_id)
-                    .bind(&episode.title)
-                    .bind(&episode.description)
-                    .bind(&episode.url)
-                    .bind(&episode.artwork_url)
-                    .bind(&episode.pub_date)
-                    .bind(episode.duration)
-                    .bind(episode.is_video)
+                    .bind(&ep.title)
+                    .bind(&ep.description)
+                    .bind(&ep.url)
+                    .bind(artwork)
+                    .bind(ep.pub_date)
+                    .bind(duration)
+                    .bind(ep.is_video)
+                    .bind(ep.guid.as_deref())
                     .fetch_one(pool)
-                    .await {
+                    .await
+                    {
                         Ok(r) => r,
                         Err(e) => {
-                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", episode.title, podcast_id, e);
+                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", ep.title, podcast_id, e);
                             skipped_count += 1;
                             continue;
                         }
@@ -5934,7 +5738,7 @@ impl DatabasePool {
                     match row.try_get::<i32, _>("episodeid") {
                         Ok(id) => id,
                         Err(e) => {
-                            tracing::warn!("Failed to read episodeid for '{}': {}", episode.title, e);
+                            tracing::warn!("Failed to read episodeid for '{}': {}", ep.title, e);
                             skipped_count += 1;
                             continue;
                         }
@@ -5943,22 +5747,24 @@ impl DatabasePool {
                 DatabasePool::MySQL(pool) => {
                     let result = match sqlx::query(
                         "INSERT INTO Episodes
-                         (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, IsVideo)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                         (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, IsVideo, EpisodeGUID)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(podcast_id)
-                    .bind(&episode.title)
-                    .bind(&episode.description)
-                    .bind(&episode.url)
-                    .bind(&episode.artwork_url)
-                    .bind(&episode.pub_date)
-                    .bind(episode.duration)
-                    .bind(episode.is_video)
+                    .bind(&ep.title)
+                    .bind(&ep.description)
+                    .bind(&ep.url)
+                    .bind(artwork)
+                    .bind(ep.pub_date)
+                    .bind(duration)
+                    .bind(ep.is_video)
+                    .bind(ep.guid.as_deref())
                     .execute(pool)
-                    .await {
+                    .await
+                    {
                         Ok(r) => r,
                         Err(e) => {
-                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", episode.title, podcast_id, e);
+                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", ep.title, podcast_id, e);
                             skipped_count += 1;
                             continue;
                         }
@@ -5967,21 +5773,21 @@ impl DatabasePool {
                 }
             };
 
-            // Send notification for new episode - matches Python implementation exactly
-            if let Err(e) = self.check_and_send_notification(podcast_id, &episode.title).await {
-                tracing::warn!("Failed to send notification for episode '{}': {}", episode.title, e);
+            if notify {
+                if let Err(e) = self.check_and_send_notification(podcast_id, &ep.title).await {
+                    tracing::warn!("Failed to send notification for episode '{}': {}", ep.title, e);
+                }
             }
 
-            // Add to new episodes list - this tracks EXACTLY which episodes were just inserted
             new_episodes.push(crate::handlers::podcasts::Episode {
                 podcastid: podcast_id,
-                podcastname: "".to_string(), // Will be filled by the caller if needed
-                episodetitle: episode.title,
-                episodepubdate: episode.pub_date.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                episodedescription: episode.description,
-                episodeartwork: episode.artwork_url,
-                episodeurl: episode.url,
-                episodeduration: episode.duration,
+                podcastname: "".to_string(),
+                episodetitle: ep.title.clone(),
+                episodepubdate: ep.pub_date.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                episodedescription: ep.description.clone(),
+                episodeartwork: artwork.to_string(),
+                episodeurl: ep.url.clone(),
+                episodeduration: duration,
                 listenduration: None,
                 episodeid: episode_id,
                 completed: false,
@@ -5989,16 +5795,16 @@ impl DatabasePool {
                 queued: false,
                 downloaded: false,
                 is_youtube: false,
-                is_video: episode.is_video,
+                is_video: ep.is_video,
             });
         }
 
-        tracing::info!(
-            "Podcast {}: parsed={} inserted={} skipped={}",
-            podcast_id, parsed_count, new_episodes.len(), skipped_count
+        tracing::debug!(
+            "Podcast {}: parsed={} inserted={} updated={} skipped={}",
+            podcast_id, parsed_count, new_episodes.len(), updated_count, skipped_count
         );
 
-        // Only recount when something actually changed (saves 3 DB queries per no-op refresh)
+        // Only recount when something actually changed.
         if !new_episodes.is_empty() {
             self.update_episode_count(podcast_id).await?;
         }
@@ -6201,6 +6007,308 @@ impl DatabasePool {
         }
     }
 
+    /// Load existing episodes for a podcast that match any of the given GUIDs, URL bases, or
+    /// titles, returning lookup maps plus the comparable field values (for no-op change detection).
+    /// Runs at most three targeted queries instead of one scan per episode.
+    async fn fetch_existing_episodes(
+        &self,
+        podcast_id: i32,
+        guids: &[String],
+        url_bases: &[String],
+        titles_no_url: &[String],
+    ) -> AppResult<ExistingEpisodes> {
+        let mut out = ExistingEpisodes::default();
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                if !guids.is_empty() {
+                    let rows = sqlx::query(
+                        r#"SELECT episodeid, episodeguid, episodetitle, episodedescription, episodeurl,
+                                  episodeartwork, episodeduration, is_video
+                           FROM "Episodes"
+                           WHERE podcastid = $1 AND episodeguid = ANY($2)"#,
+                    )
+                    .bind(podcast_id)
+                    .bind(guids)
+                    .fetch_all(pool)
+                    .await?;
+                    for row in rows {
+                        if let Ok(id) = row.try_get::<i32, _>("episodeid") {
+                            let ex = pg_existing_from_row(&row);
+                            if let Some(g) = ex.guid.clone() { out.guid_to_id.insert(g, id); }
+                            out.by_id.insert(id, ex);
+                        }
+                    }
+                }
+                if !url_bases.is_empty() {
+                    let rows = sqlx::query(
+                        r#"SELECT episodeid, episodeguid, episodetitle, episodedescription, episodeurl,
+                                  episodeartwork, episodeduration, is_video,
+                                  split_part(episodeurl, '?', 1) AS url_base
+                           FROM "Episodes"
+                           WHERE podcastid = $1 AND split_part(episodeurl, '?', 1) = ANY($2)"#,
+                    )
+                    .bind(podcast_id)
+                    .bind(url_bases)
+                    .fetch_all(pool)
+                    .await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(base)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("url_base")) {
+                            out.url_to_id.insert(base, id);
+                            out.by_id.entry(id).or_insert_with(|| pg_existing_from_row(&row));
+                        }
+                    }
+                }
+                if !titles_no_url.is_empty() {
+                    let rows = sqlx::query(
+                        r#"SELECT episodeid, episodeguid, episodetitle, episodedescription, episodeurl,
+                                  episodeartwork, episodeduration, is_video
+                           FROM "Episodes"
+                           WHERE podcastid = $1 AND episodetitle = ANY($2)"#,
+                    )
+                    .bind(podcast_id)
+                    .bind(titles_no_url)
+                    .fetch_all(pool)
+                    .await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(t)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("episodetitle")) {
+                            out.title_to_id.insert(t, id);
+                            out.by_id.entry(id).or_insert_with(|| pg_existing_from_row(&row));
+                        }
+                    }
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                if !guids.is_empty() {
+                    let placeholders = guids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                    let sql = format!(
+                        "SELECT EpisodeID, EpisodeGUID, EpisodeTitle, EpisodeDescription, EpisodeURL, \
+                         EpisodeArtwork, EpisodeDuration, IsVideo \
+                         FROM Episodes WHERE PodcastID = ? AND EpisodeGUID IN ({})",
+                        placeholders
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(podcast_id);
+                    for g in guids { q = q.bind(g); }
+                    let rows = q.fetch_all(pool).await?;
+                    for row in rows {
+                        if let Ok(id) = row.try_get::<i32, _>("EpisodeID") {
+                            let ex = mysql_existing_from_row(&row);
+                            if let Some(g) = ex.guid.clone() { out.guid_to_id.insert(g, id); }
+                            out.by_id.insert(id, ex);
+                        }
+                    }
+                }
+                if !url_bases.is_empty() {
+                    let placeholders = url_bases.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                    let sql = format!(
+                        "SELECT EpisodeID, EpisodeGUID, EpisodeTitle, EpisodeDescription, EpisodeURL, \
+                         EpisodeArtwork, EpisodeDuration, IsVideo, \
+                         SUBSTRING_INDEX(EpisodeURL, '?', 1) AS url_base \
+                         FROM Episodes WHERE PodcastID = ? AND SUBSTRING_INDEX(EpisodeURL, '?', 1) IN ({})",
+                        placeholders
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(podcast_id);
+                    for base in url_bases { q = q.bind(base); }
+                    let rows = q.fetch_all(pool).await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(base)) = (row.try_get::<i32, _>("EpisodeID"), row.try_get::<String, _>("url_base")) {
+                            out.url_to_id.insert(base, id);
+                            out.by_id.entry(id).or_insert_with(|| mysql_existing_from_row(&row));
+                        }
+                    }
+                }
+                if !titles_no_url.is_empty() {
+                    let placeholders = titles_no_url.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                    let sql = format!(
+                        "SELECT EpisodeID, EpisodeGUID, EpisodeTitle, EpisodeDescription, EpisodeURL, \
+                         EpisodeArtwork, EpisodeDuration, IsVideo \
+                         FROM Episodes WHERE PodcastID = ? AND EpisodeTitle IN ({})",
+                        placeholders
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(podcast_id);
+                    for t in titles_no_url { q = q.bind(t); }
+                    let rows = q.fetch_all(pool).await?;
+                    for row in rows {
+                        if let (Ok(id), Ok(t)) = (row.try_get::<i32, _>("EpisodeID"), row.try_get::<String, _>("EpisodeTitle")) {
+                            out.title_to_id.insert(t, id);
+                            out.by_id.entry(id).or_insert_with(|| mysql_existing_from_row(&row));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(out)
+    }
+
+    /// Conditional feed fetch: sends If-None-Match / If-Modified-Since from previously stored
+    /// validators so an unchanged feed returns 304 and we skip the full download + parse entirely.
+    /// On a 200 the new ETag / Last-Modified are returned so the caller can persist them. Falls
+    /// back to the full `try_fetch_feed` (UA fallback, www/non-www) when the conditional request
+    /// errors or returns a non-success/non-304 status.
+    pub async fn fetch_feed_conditional(
+        &self,
+        url: &str,
+        username: Option<&str>,
+        password: Option<&str>,
+        prev_etag: Option<&str>,
+        prev_last_modified: Option<&str>,
+    ) -> AppResult<FeedFetch> {
+        // Always issue the request (even with no prior validators) so we can capture ETag /
+        // Last-Modified for next time. Conditional headers are only added when we have a prior
+        // value to revalidate against.
+        let client = reqwest::Client::builder()
+            .user_agent("PinePods/1.0")
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(AppError::Http)?;
+
+        let mut request = client.get(url);
+        if let (Some(user), Some(pass)) = (username, password) {
+            request = request.basic_auth(user, Some(pass));
+        }
+        if let Some(etag) = prev_etag {
+            request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+        }
+        if let Some(lm) = prev_last_modified {
+            request = request.header(reqwest::header::IF_MODIFIED_SINCE, lm);
+        }
+
+        match request.send().await {
+            Ok(response) if response.status() == reqwest::StatusCode::NOT_MODIFIED => {
+                debug!("Feed not modified (304): {}", url);
+                Ok(FeedFetch::NotModified)
+            }
+            Ok(response) if response.status().is_success() => {
+                let etag = response
+                    .headers()
+                    .get(reqwest::header::ETAG)
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string());
+                let last_modified = response
+                    .headers()
+                    .get(reqwest::header::LAST_MODIFIED)
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string());
+                let body = response.text().await.map_err(AppError::Http)?;
+                Ok(FeedFetch::Fetched { body, etag, last_modified })
+            }
+            // Non-success (e.g. 403) or transport error: fall back to the resilient full fetch,
+            // which has the UA + www/non-www retry logic. We don't carry validators through here.
+            _ => {
+                let body = self.try_fetch_feed(url, username, password).await?;
+                Ok(FeedFetch::Fetched { body, etag: None, last_modified: None })
+            }
+        }
+    }
+
+    /// Persist fresh conditional-GET validators (ETag / Last-Modified) for every podcast row that
+    /// shares this feed, so the next cycle can revalidate with a 304.
+    pub async fn store_feed_cache_validators(
+        &self,
+        podcast_ids: &[i32],
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> AppResult<()> {
+        if podcast_ids.is_empty() {
+            return Ok(());
+        }
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"UPDATE "Podcasts" SET feedetag = $1, feedlastmodified = $2 WHERE podcastid = ANY($3)"#,
+                )
+                .bind(etag)
+                .bind(last_modified)
+                .bind(podcast_ids)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let sql = format!(
+                    "UPDATE Podcasts SET FeedETag = ?, FeedLastModified = ? WHERE PodcastID IN ({})",
+                    placeholders
+                );
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(etag).bind(last_modified);
+                for id in podcast_ids { q = q.bind(id); }
+                q.execute(pool).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Mark a successful refresh for every podcast row sharing this feed: clears the failure
+    /// counter and records the timestamps used for backoff decisions.
+    pub async fn record_refresh_success(&self, podcast_ids: &[i32]) -> AppResult<()> {
+        if podcast_ids.is_empty() {
+            return Ok(());
+        }
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"UPDATE "Podcasts"
+                       SET lastrefreshattempt = NOW(), lastrefreshsuccess = NOW(),
+                           consecutivefailures = 0, lasterrormessage = NULL
+                       WHERE podcastid = ANY($1)"#,
+                )
+                .bind(podcast_ids)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let sql = format!(
+                    "UPDATE Podcasts SET LastRefreshAttempt = NOW(), LastRefreshSuccess = NOW(), \
+                     ConsecutiveFailures = 0, LastErrorMessage = NULL WHERE PodcastID IN ({})",
+                    placeholders
+                );
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
+                for id in podcast_ids { q = q.bind(id); }
+                q.execute(pool).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Record a failed refresh: bumps the consecutive-failure counter (used for backoff) and
+    /// stores the error for visibility.
+    pub async fn record_refresh_failure(&self, podcast_ids: &[i32], error: &str) -> AppResult<()> {
+        if podcast_ids.is_empty() {
+            return Ok(());
+        }
+        // Truncate overly long errors so a giant message can't bloat the row.
+        let error = if error.len() > 1000 { &error[..1000] } else { error };
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"UPDATE "Podcasts"
+                       SET lastrefreshattempt = NOW(),
+                           consecutivefailures = COALESCE(consecutivefailures, 0) + 1,
+                           lasterrormessage = $1
+                       WHERE podcastid = ANY($2)"#,
+                )
+                .bind(error)
+                .bind(podcast_ids)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let sql = format!(
+                    "UPDATE Podcasts SET LastRefreshAttempt = NOW(), \
+                     ConsecutiveFailures = COALESCE(ConsecutiveFailures, 0) + 1, LastErrorMessage = ? \
+                     WHERE PodcastID IN ({})",
+                    placeholders
+                );
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(error);
+                for id in podcast_ids { q = q.bind(id); }
+                q.execute(pool).await?;
+            }
+        }
+        Ok(())
+    }
+
     // Try to fetch RSS feed - matches Python try_fetch_feed function
     async fn try_fetch_feed(
         &self,
@@ -6208,11 +6316,11 @@ impl DatabasePool {
         username: Option<&str>,
         password: Option<&str>,
     ) -> AppResult<String> {
-        println!("try_fetch_feed called with URL: {}", url);
+        debug!("try_fetch_feed called with URL: {}", url);
         if let (Some(user), Some(pass)) = (username, password) {
-            println!("Using basic authentication for feed: {}", url);
+            debug!("Using basic authentication for feed: {}", url);
         } else {
-            println!("No authentication for feed: {}", url);
+            debug!("No authentication for feed: {}", url);
         }
         
         // Build HTTP client with proper configuration for container environment.
@@ -6223,20 +6331,20 @@ impl DatabasePool {
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| {
-                println!("Failed to build HTTP client: {}", e);
+                warn!("Failed to build HTTP client: {}", e);
                 AppError::Http(e)
             })?;
             
         let mut request = client.get(url);
         
         if let (Some(user), Some(pass)) = (username, password) {
-            println!("Adding basic auth to request for user: {}", user);
+            debug!("Adding basic authentication to feed request");
             request = request.basic_auth(user, Some(pass));
         }
         
-        println!("Sending HTTP request to: {}", url);
+        debug!("Sending HTTP request to: {}", url);
         let response = request.send().await.map_err(|e| {
-            println!("HTTP request failed for {}: {}", url, e);
+            warn!("HTTP request failed for {}: {}", url, e);
             AppError::Http(e)
         })?;
         
@@ -6244,38 +6352,38 @@ impl DatabasePool {
             // If we get a 403, the server might be blocking podcast client User-Agents.
             // Try with a browser User-Agent as a fallback.
             if response.status() == 403 {
-                println!("Got 403 Forbidden, retrying with browser User-Agent");
+                debug!("Got 403 Forbidden, retrying with browser User-Agent");
 
                 let podcast_client = reqwest::Client::builder()
                     .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     .timeout(std::time::Duration::from_secs(30))
                     .build()
                     .map_err(|e| {
-                        println!("Failed to build podcast client: {}", e);
+                        warn!("Failed to build podcast client: {}", e);
                         AppError::Http(e)
                     })?;
                 
                 let mut podcast_request = podcast_client.get(url);
                 
                 if let (Some(user), Some(pass)) = (username, password) {
-                    println!("Adding basic auth to podcast client request for user: {}", user);
+                    debug!("Adding basic authentication to podcast client request");
                     podcast_request = podcast_request.basic_auth(user, Some(pass));
                 }
                 
                 let podcast_response = podcast_request.send().await.map_err(|e| {
-                    println!("Podcast client request failed for {}: {}", url, e);
+                    warn!("Podcast client request failed for {}: {}", url, e);
                     AppError::Http(e)
                 })?;
                 
                 if podcast_response.status().is_success() {
-                    println!("Browser UA request succeeded with status: {}", podcast_response.status());
+                    debug!("Browser UA request succeeded with status: {}", podcast_response.status());
                     return Ok(podcast_response.text().await.map_err(|e| AppError::Http(e))?);
                 }
 
-                println!("Browser UA request also failed with status: {}", podcast_response.status());
+                warn!("Browser UA request also failed with status: {}", podcast_response.status());
             }
             
-            println!("Initial request failed with status: {}, trying alternate URL", response.status());
+            warn!("Initial request failed with status: {}, trying alternate URL", response.status());
             // Try alternate URL (www vs non-www)
             let alternate_url = if url.contains("://www.") {
                 url.replace("://www.", "://")
@@ -6283,29 +6391,29 @@ impl DatabasePool {
                 url.replace("://", "://www.")
             };
             
-            println!("Trying alternate URL: {}", alternate_url);
+            debug!("Trying alternate URL: {}", alternate_url);
             let mut alt_request = client.get(&alternate_url);
             
             if let (Some(user), Some(pass)) = (username, password) {
-                println!("Adding basic auth to alternate request for user: {}", user);
+                debug!("Adding basic authentication to alternate request");
                 alt_request = alt_request.basic_auth(user, Some(pass));
             }
             
             let alt_response = alt_request.send().await.map_err(|e| {
-                println!("Alternate HTTP request failed for {}: {}", alternate_url, e);
+                warn!("Alternate HTTP request failed for {}: {}", alternate_url, e);
                 AppError::Http(e)
             })?;
             
             if !alt_response.status().is_success() {
-                println!("Alternate request also failed with status: {}", alt_response.status());
+                warn!("Alternate request also failed with status: {}", alt_response.status());
                 return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", alt_response.status())));
             }
             
-            println!("Alternate request succeeded with status: {}", alt_response.status());
+            debug!("Alternate request succeeded with status: {}", alt_response.status());
             return Ok(alt_response.text().await.map_err(|e| AppError::Http(e))?);
         }
         
-        println!("Request succeeded with status: {}", response.status());
+        debug!("Request succeeded with status: {}", response.status());
         Ok(response.text().await.map_err(|e| AppError::Http(e))?)
     }
 
@@ -6394,7 +6502,14 @@ impl DatabasePool {
         // Extract raw iTunes durations before feed_rs processes them
         let raw_durations = Self::extract_raw_itunes_durations(content);
         
-        let feed = parser::parse(content.as_bytes())
+        // Use a custom id_generator that returns empty for guid-less entries. feed-rs's default
+        // synthesizes an id (link+title hash, or a RANDOM uuid when there's no link) which would
+        // make every refresh see a "new" guid and duplicate episodes. With this, entry.id is the
+        // real <guid> or empty, and dedup falls back to URL/title when there's no guid.
+        let feed = parser::Builder::new()
+            .id_generator(|_links, _title, _uri| String::new())
+            .build()
+            .parse(content.as_bytes())
             .map_err(|e| AppError::Internal(format!("RSS parsing error: {}", e)))?;
         
         let mut episodes = Vec::new();
@@ -6415,8 +6530,14 @@ impl DatabasePool {
                 pub_date: Utc::now(),
                 duration: 0,
                 is_video: false,
+                // Real <guid> only (empty id_generator above); None when the feed has no guid.
+                guid: if entry.id.trim().is_empty() {
+                    None
+                } else {
+                    Some(entry.id.trim().to_string())
+                },
             };
-            
+
             // Create data map to pass to Python-style parsing functions
             let mut episode_data = HashMap::new();
             
@@ -6456,11 +6577,11 @@ impl DatabasePool {
             // Published date - store under both keys for compatibility
             if let Some(published) = &entry.published {
                 let date_str = published.to_rfc3339();
-                // println!("📅 DEBUG: feed-rs extracted published date: {}", date_str);
+                // debug!("📅 DEBUG: feed-rs extracted published date: {}", date_str);
                 episode_data.insert("published".to_string(), date_str.clone());
                 episode_data.insert("pubDate".to_string(), date_str);
             } else {
-                // println!("⚠️  DEBUG: No published date found in feed-rs entry for episode: {:?}", entry.title);
+                // warn!("⚠️  DEBUG: No published date found in feed-rs entry for episode: {:?}", entry.title);
             }
             
             // Media extensions
@@ -6621,7 +6742,7 @@ impl DatabasePool {
     
     // Comprehensive publication date parsing
     fn parse_publication_date_comprehensive(&self, data: &HashMap<String, String>) -> DateTime<Utc> {
-        // println!("🔍 DEBUG: Date parsing - episode_data keys: {:?}", data.keys().collect::<Vec<_>>());
+        // debug!("🔍 DEBUG: Date parsing - episode_data keys: {:?}", data.keys().collect::<Vec<_>>());
         
         // Multiple date field sources
         let date_candidates = [
@@ -6635,7 +6756,7 @@ impl DatabasePool {
         
         for (i, date_str) in date_candidates.iter().enumerate() {
             if let Some(date_str) = date_str {
-                // println!("📅 DEBUG: Trying date candidate {}: '{}'", i, date_str);
+                // debug!("📅 DEBUG: Trying date candidate {}: '{}'", i, date_str);
                 if let Some(parsed_date) = self.try_parse_date(date_str) {
                     // Validate date is reasonable (not too far in future, not before 1990)
                     let now = Utc::now();
@@ -6643,41 +6764,41 @@ impl DatabasePool {
                     let one_year_future = now + chrono::Duration::days(365);
                     
                     if parsed_date >= year_1990 && parsed_date <= one_year_future {
-                        // println!("✅ DEBUG: Successfully parsed date: {}", parsed_date);
+                        // debug!("✅ DEBUG: Successfully parsed date: {}", parsed_date);
                         return parsed_date;
                     } else {
-                        // println!("❌ DEBUG: Date {} outside valid range", parsed_date);
+                        // error!("❌ DEBUG: Date {} outside valid range", parsed_date);
                     }
                 } else {
-                    // println!("❌ DEBUG: Failed to parse date string: '{}'", date_str);
+                    // error!("❌ DEBUG: Failed to parse date string: '{}'", date_str);
                 }
             }
         }
         
         // Fallback to current time like Python version
-        // println!("⚠️  DEBUG: No valid date found, falling back to current time");
+        // warn!("⚠️  DEBUG: No valid date found, falling back to current time");
         Utc::now()
     }
     
     // Try to parse a date string with multiple formats
     fn try_parse_date(&self, date_str: &str) -> Option<DateTime<Utc>> {
         let date_str = date_str.trim();
-        // println!("🔧 DEBUG: Attempting to parse date: '{}'", date_str);
+        // debug!("🔧 DEBUG: Attempting to parse date: '{}'", date_str);
         
         // RFC 2822 format (most common in RSS)
         if let Ok(parsed) = DateTime::parse_from_rfc2822(date_str) {
-            // println!("✅ DEBUG: Parsed as RFC 2822: {}", parsed);
+            // debug!("✅ DEBUG: Parsed as RFC 2822: {}", parsed);
             return Some(parsed.with_timezone(&Utc));
         } else {
-            // println!("❌ DEBUG: Failed to parse as RFC 2822");
+            // error!("❌ DEBUG: Failed to parse as RFC 2822");
         }
         
         // RFC 3339/ISO 8601 format
         if let Ok(parsed) = DateTime::parse_from_rfc3339(date_str) {
-            // println!("✅ DEBUG: Parsed as RFC 3339: {}", parsed);
+            // debug!("✅ DEBUG: Parsed as RFC 3339: {}", parsed);
             return Some(parsed.with_timezone(&Utc));
         } else {
-            // println!("❌ DEBUG: Failed to parse as RFC 3339");
+            // error!("❌ DEBUG: Failed to parse as RFC 3339");
         }
         
         // Common custom formats found in real feeds
@@ -6948,20 +7069,13 @@ impl DatabasePool {
             }
         }
         
-        // Only estimate duration from HTTP if we're adding a new episode AND the flag is enabled
-        if estimate_missing_durations {
-            if let Some(audio_url) = data.get("enclosure_url") {
-                // Check if we're in an async context and can make the HTTP request
-                if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                    if let Some(estimated_duration) = tokio::task::block_in_place(|| {
-                        handle.block_on(self.estimate_duration_from_audio_url_async(audio_url))
-                    }) {
-                        return estimated_duration;
-                    }
-                }
-            }
-        }
-        
+        // Network-based duration estimation (HTTP HEAD) is intentionally NOT done here. The parser
+        // is synchronous and was previously doing tokio::task::block_in_place to block a runtime
+        // worker on a nested block_on — an anti-pattern that can starve the async runtime under
+        // concurrent refresh. Estimation for genuinely new episodes now happens asynchronously in
+        // apply_parsed_episodes() instead.
+        let _ = estimate_missing_durations;
+
         // Default to 0 if no duration can be determined
         0
     }
@@ -7070,13 +7184,13 @@ impl DatabasePool {
     // NEW: Estimate duration by fetching HTTP HEAD request to get Content-Length
     // This is a fallback for when RSS feeds don't include duration or file size
     async fn estimate_duration_from_audio_url_async(&self, audio_url: &str) -> Option<i32> {
-        println!("Attempting to estimate duration from audio URL: {}", audio_url);
+        debug!("Attempting to estimate duration from audio URL: {}", audio_url);
 
         // SSRF guard: audio_url is the attacker-controlled RSS <enclosure url>.
         // Reject loopback/private/link-local/reserved destinations before any
         // server-side request (incl. redirect hops).
         if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(audio_url).await {
-            println!("Refusing to estimate duration for unsafe URL: {}", reason);
+            debug!("Refusing to estimate duration for unsafe URL: {}", reason);
             return None;
         }
 
@@ -7095,7 +7209,7 @@ impl DatabasePool {
         {
             Ok(client) => client,
             Err(e) => {
-                println!("Failed to build HTTP client for duration estimation: {}", e);
+                warn!("Failed to build HTTP client for duration estimation: {}", e);
                 return None;
             }
         };
@@ -7109,19 +7223,19 @@ impl DatabasePool {
                             if let Ok(file_size) = content_length_str.parse::<i64>() {
                                 if file_size > 1_000_000 { // > 1MB, reasonable audio file
                                     let estimated_duration = self.estimate_duration_from_file_size(file_size);
-                                    println!("Estimated duration from file size {}: {} seconds", file_size, estimated_duration);
+                                    debug!("Estimated duration from file size {}: {} seconds", file_size, estimated_duration);
                                     return Some(estimated_duration);
                                 }
                             }
                         }
                     }
-                    println!("No Content-Length header found in response");
+                    debug!("No Content-Length header found in response");
                 } else {
-                    println!("HEAD request failed with status: {}", response.status());
+                    warn!("HEAD request failed with status: {}", response.status());
                 }
             }
             Err(e) => {
-                println!("HTTP HEAD request failed for {}: {}", audio_url, e);
+                warn!("HTTP HEAD request failed for {}: {}", audio_url, e);
             }
         }
         
@@ -7602,10 +7716,39 @@ impl DatabasePool {
         }
     }
 
-    pub async fn get_podcast_download_summary(&self, user_id: i32) -> AppResult<Vec<crate::handlers::podcasts::PodcastDownloadSummary>> {
+    pub async fn get_podcast_download_summary(
+        &self,
+        user_id: i32,
+        search: &str,
+        filter: &str,
+    ) -> AppResult<Vec<crate::handlers::podcasts::PodcastDownloadSummary>> {
+        // The summary feeds the downloads page's podcast list. Applying the same search/filter
+        // the per-podcast paged query uses keeps the list (and its episode counts) in sync with
+        // what actually shows when a podcast is expanded — without this the page can't filter
+        // out podcasts whose episodes aren't loaded yet.
+        let has_search = !search.is_empty();
+        let search_pattern = format!("%{}%", search);
         match self {
             DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+                // Search matches episode/video title OR the podcast name (a name match surfaces the
+                // whole podcast). Bound once as $3 and referenced from both UNION branches.
+                let ep_search = if has_search {
+                    " AND (e.episodetitle ILIKE $3 OR ep.podcastname ILIKE $3)"
+                } else { "" };
+                let yt_search = if has_search {
+                    " AND (yv.videotitle ILIKE $3 OR yp.podcastname ILIKE $3)"
+                } else { "" };
+                let ep_filter = match filter {
+                    "completed"   => " AND e.completed = TRUE",
+                    "in_progress" => " AND e.completed = FALSE AND ueh.listenduration IS NOT NULL AND ueh.listenduration > 0",
+                    _             => "",
+                };
+                let yt_filter = match filter {
+                    "completed"   => " AND yv.completed = TRUE",
+                    "in_progress" => " AND yv.completed = FALSE AND yv.listenposition IS NOT NULL AND yv.listenposition > 0",
+                    _             => "",
+                };
+                let sql = format!(
                     r#"SELECT
                         p.podcastid,
                         p.podcastname,
@@ -7615,23 +7758,36 @@ impl DatabasePool {
                         SELECT e.podcastid
                         FROM "DownloadedEpisodes" de
                         INNER JOIN "Episodes" e ON de.episodeid = e.episodeid
-                        WHERE de.userid = $1
+                        INNER JOIN "Podcasts" ep ON e.podcastid = ep.podcastid
+                        LEFT JOIN "UserEpisodeHistory" ueh ON de.episodeid = ueh.episodeid AND de.userid = ueh.userid
+                        WHERE de.userid = $1{ep_search}{ep_filter}
 
                         UNION ALL
 
                         SELECT yv.podcastid
                         FROM "DownloadedVideos" dv
                         INNER JOIN "YouTubeVideos" yv ON dv.videoid = yv.videoid
-                        WHERE dv.userid = $2
+                        INNER JOIN "Podcasts" yp ON yv.podcastid = yp.podcastid
+                        WHERE dv.userid = $2{yt_search}{yt_filter}
                     ) downloads
                     INNER JOIN "Podcasts" p ON downloads.podcastid = p.podcastid
                     GROUP BY p.podcastid, p.podcastname, p.artworkurl
-                    ORDER BY p.podcastname ASC"#
-                )
-                .bind(user_id)
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
+                    ORDER BY p.podcastname ASC"#,
+                    ep_search = ep_search,
+                    ep_filter = ep_filter,
+                    yt_search = yt_search,
+                    yt_filter = yt_filter,
+                );
+
+                // SAFETY: sql is built from static literals plus the validated has_search/filter
+                // dispatch above. User-supplied search text is bound as $3, never interpolated.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(user_id)
+                    .bind(user_id);
+                if has_search {
+                    q = q.bind(search_pattern.clone());
+                }
+                let rows = q.fetch_all(pool).await?;
 
                 let mut summaries = Vec::new();
                 for row in rows {
@@ -7645,7 +7801,25 @@ impl DatabasePool {
                 Ok(summaries)
             }
             DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query(
+                // MySQL has no `$n` reuse, so the search pattern is bound once per `?` in textual
+                // order: branch 1 (title, name), then branch 2 (title, name).
+                let ep_search = if has_search {
+                    " AND (Episodes.EpisodeTitle LIKE ? OR ep.PodcastName LIKE ?)"
+                } else { "" };
+                let yt_search = if has_search {
+                    " AND (YouTubeVideos.VideoTitle LIKE ? OR yp.PodcastName LIKE ?)"
+                } else { "" };
+                let ep_filter = match filter {
+                    "completed"   => " AND Episodes.Completed = 1",
+                    "in_progress" => " AND Episodes.Completed = 0 AND UserEpisodeHistory.ListenDuration IS NOT NULL AND UserEpisodeHistory.ListenDuration > 0",
+                    _             => "",
+                };
+                let yt_filter = match filter {
+                    "completed"   => " AND YouTubeVideos.Completed = 1",
+                    "in_progress" => " AND YouTubeVideos.Completed = 0 AND YouTubeVideos.ListenPosition IS NOT NULL AND YouTubeVideos.ListenPosition > 0",
+                    _             => "",
+                };
+                let sql = format!(
                     "SELECT
                         p.PodcastID as podcastid,
                         p.PodcastName as podcastname,
@@ -7655,23 +7829,38 @@ impl DatabasePool {
                         SELECT Episodes.PodcastID as podcastid
                         FROM DownloadedEpisodes
                         INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID
-                        WHERE DownloadedEpisodes.UserID = ?
+                        INNER JOIN Podcasts ep ON Episodes.PodcastID = ep.PodcastID
+                        LEFT JOIN UserEpisodeHistory ON DownloadedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID AND DownloadedEpisodes.UserID = UserEpisodeHistory.UserID
+                        WHERE DownloadedEpisodes.UserID = ?{ep_search}{ep_filter}
 
                         UNION ALL
 
                         SELECT YouTubeVideos.PodcastID as podcastid
                         FROM DownloadedVideos
                         INNER JOIN YouTubeVideos ON DownloadedVideos.VideoID = YouTubeVideos.VideoID
-                        WHERE DownloadedVideos.UserID = ?
+                        INNER JOIN Podcasts yp ON YouTubeVideos.PodcastID = yp.PodcastID
+                        WHERE DownloadedVideos.UserID = ?{yt_search}{yt_filter}
                     ) downloads
                     INNER JOIN Podcasts p ON downloads.podcastid = p.PodcastID
                     GROUP BY p.PodcastID, p.PodcastName, p.ArtworkURL
-                    ORDER BY p.PodcastName ASC"
-                )
-                .bind(user_id)
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
+                    ORDER BY p.PodcastName ASC",
+                    ep_search = ep_search,
+                    ep_filter = ep_filter,
+                    yt_search = yt_search,
+                    yt_filter = yt_filter,
+                );
+
+                // SAFETY: see Postgres branch — only validated literals are interpolated; the
+                // search text is always bound.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(user_id);
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                q = q.bind(user_id);
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                let rows = q.fetch_all(pool).await?;
 
                 let mut summaries = Vec::new();
                 for row in rows {
@@ -7693,10 +7882,28 @@ impl DatabasePool {
         podcast_id: i32,
         limit: i64,
         offset: i64,
+        search: &str,
+        filter: &str,
     ) -> AppResult<(Vec<crate::handlers::podcasts::DownloadedEpisode>, i64)> {
+        let has_search = !search.is_empty();
+        let search_pattern = format!("%{}%", search);
         match self {
             DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+                // Search ($11, bound after limit/offset) matches title OR podcast name; the
+                // completion filter is applied to the merged `combined` set so its `completed`
+                // and `listenduration` aliases cover both episodes and youtube videos.
+                let ep_search = if has_search {
+                    " AND (\"Episodes\".episodetitle ILIKE $11 OR \"Podcasts\".podcastname ILIKE $11)"
+                } else { "" };
+                let yt_search = if has_search {
+                    " AND (\"YouTubeVideos\".videotitle ILIKE $11 OR \"Podcasts\".podcastname ILIKE $11)"
+                } else { "" };
+                let filter_clause = match filter {
+                    "completed"   => " WHERE completed = TRUE",
+                    "in_progress" => " WHERE completed = FALSE AND listenduration IS NOT NULL AND listenduration > 0",
+                    _             => "",
+                };
+                let sql = format!(
                     r#"SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             "Podcasts".podcastid as podcastid,
@@ -7738,7 +7945,7 @@ impl DatabasePool {
                             AND "EpisodeQueue".userid = $2
                             AND "EpisodeQueue".is_youtube = FALSE
                         WHERE "DownloadedEpisodes".userid = $3
-                        AND "Podcasts".podcastid = $4
+                        AND "Podcasts".podcastid = $4{ep_search}
 
                         UNION ALL
 
@@ -7779,23 +7986,34 @@ impl DatabasePool {
                             AND "EpisodeQueue".userid = $6
                             AND "EpisodeQueue".is_youtube = TRUE
                         WHERE "DownloadedVideos".userid = $7
-                        AND "Podcasts".podcastid = $8
-                    ) combined
+                        AND "Podcasts".podcastid = $8{yt_search}
+                    ) combined{filter_clause}
                     ORDER BY episodepubdate DESC
-                    LIMIT $9 OFFSET $10"#
-                )
-                .bind(user_id)    // $1 SavedEpisodes join
-                .bind(user_id)    // $2 EpisodeQueue join
-                .bind(user_id)    // $3 DownloadedEpisodes WHERE
-                .bind(podcast_id) // $4 regular podcast filter
-                .bind(user_id)    // $5 SavedVideos join
-                .bind(user_id)    // $6 EpisodeQueue join
-                .bind(user_id)    // $7 DownloadedVideos WHERE
-                .bind(podcast_id) // $8 youtube podcast filter
-                .bind(limit)      // $9
-                .bind(offset)     // $10
-                .fetch_all(pool)
-                .await?;
+                    LIMIT $9 OFFSET $10"#,
+                    ep_search = ep_search,
+                    yt_search = yt_search,
+                    filter_clause = filter_clause,
+                );
+
+                // SAFETY: sql is built from static literals plus the validated has_search/filter
+                // dispatch; the search text is bound as $11, never interpolated.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(user_id)    // $1 SavedEpisodes join
+                    .bind(user_id)    // $2 EpisodeQueue join
+                    .bind(user_id)    // $3 DownloadedEpisodes WHERE
+                    .bind(podcast_id) // $4 regular podcast filter
+                    .bind(user_id)    // $5 SavedVideos join
+                    .bind(user_id)    // $6 EpisodeQueue join
+                    .bind(user_id)    // $7 DownloadedVideos WHERE
+                    .bind(podcast_id) // $8 youtube podcast filter
+                    .bind(limit)      // $9
+                    .bind(offset);    // $10
+                if has_search {
+                    q = q.bind(search_pattern.clone()); // $11
+                }
+                let rows = q
+                    .fetch_all(pool)
+                    .await?;
 
                 let total: i64 = rows.first()
                     .and_then(|r| r.try_get::<i64, _>("total_count").ok())
@@ -7832,7 +8050,21 @@ impl DatabasePool {
                 Ok((episodes, total))
             }
             DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query(
+                // Search patterns are bound in textual order: episode branch (title, name) then
+                // youtube branch (title, name). The completion filter is applied to the merged
+                // `combined` set (lowercase `completed`/`listenduration` aliases).
+                let ep_search = if has_search {
+                    " AND (Episodes.EpisodeTitle LIKE ? OR Podcasts.PodcastName LIKE ?)"
+                } else { "" };
+                let yt_search = if has_search {
+                    " AND (YouTubeVideos.VideoTitle LIKE ? OR Podcasts.PodcastName LIKE ?)"
+                } else { "" };
+                let filter_clause = match filter {
+                    "completed"   => " WHERE completed = 1",
+                    "in_progress" => " WHERE completed = 0 AND listenduration IS NOT NULL AND listenduration > 0",
+                    _             => "",
+                };
+                let sql = format!(
                     "SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             Podcasts.PodcastID as podcastid,
@@ -7874,7 +8106,7 @@ impl DatabasePool {
                             AND EpisodeQueue.UserID = ?
                             AND EpisodeQueue.is_youtube = FALSE
                         WHERE DownloadedEpisodes.UserID = ?
-                        AND Podcasts.PodcastID = ?
+                        AND Podcasts.PodcastID = ?{ep_search}
 
                         UNION ALL
 
@@ -7915,23 +8147,37 @@ impl DatabasePool {
                             AND EpisodeQueue.UserID = ?
                             AND EpisodeQueue.is_youtube = TRUE
                         WHERE DownloadedVideos.UserID = ?
-                        AND Podcasts.PodcastID = ?
-                    ) combined
+                        AND Podcasts.PodcastID = ?{yt_search}
+                    ) combined{filter_clause}
                     ORDER BY episodepubdate DESC
-                    LIMIT ? OFFSET ?"
-                )
-                .bind(user_id)    // SavedEpisodes join
-                .bind(user_id)    // EpisodeQueue join
-                .bind(user_id)    // DownloadedEpisodes WHERE
-                .bind(podcast_id) // regular podcast filter
-                .bind(user_id)    // SavedVideos join
-                .bind(user_id)    // EpisodeQueue join
-                .bind(user_id)    // DownloadedVideos WHERE
-                .bind(podcast_id) // youtube podcast filter
-                .bind(limit)
-                .bind(offset)
-                .fetch_all(pool)
-                .await?;
+                    LIMIT ? OFFSET ?",
+                    ep_search = ep_search,
+                    yt_search = yt_search,
+                    filter_clause = filter_clause,
+                );
+
+                // SAFETY: see Postgres branch — validated literals only; search text is bound.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(user_id)    // SavedEpisodes join
+                    .bind(user_id)    // EpisodeQueue join
+                    .bind(user_id)    // DownloadedEpisodes WHERE
+                    .bind(podcast_id); // regular podcast filter
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                q = q
+                    .bind(user_id)    // SavedVideos join
+                    .bind(user_id)    // EpisodeQueue join
+                    .bind(user_id)    // DownloadedVideos WHERE
+                    .bind(podcast_id); // youtube podcast filter
+                if has_search {
+                    q = q.bind(search_pattern.clone()).bind(search_pattern.clone());
+                }
+                let rows = q
+                    .bind(limit)
+                    .bind(offset)
+                    .fetch_all(pool)
+                    .await?;
 
                 let total: i64 = rows.first()
                     .and_then(|r| r.try_get::<i64, _>("total_count").ok())
@@ -9673,7 +9919,72 @@ impl DatabasePool {
         Ok(())
     }
 
-    // Add category to podcast - matches Python add_category function  
+    // One-time cleanup: strip blank/whitespace category values that older adds
+    // could have stored (e.g. {"0": ""}). Idempotent - only rewrites rows that
+    // actually changed. Safe to run on every startup.
+    pub async fn cleanup_blank_categories(&self) -> AppResult<()> {
+        let mut cleaned = 0u32;
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"SELECT podcastid, categories FROM "Podcasts""#)
+                    .fetch_all(pool)
+                    .await?;
+
+                for row in rows {
+                    let podcast_id: i32 = row.try_get("podcastid")?;
+                    let current_categories_str: String = row.try_get("categories").unwrap_or_default();
+                    let mut categories = self.parse_categories_json(&current_categories_str).unwrap_or_default();
+
+                    let before = categories.len();
+                    categories.retain(|_key, value| !value.trim().is_empty());
+                    if categories.len() == before {
+                        continue;
+                    }
+
+                    let new_categories_json = serde_json::to_string(&categories)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    sqlx::query(r#"UPDATE "Podcasts" SET categories = $1 WHERE podcastid = $2"#)
+                        .bind(&new_categories_json)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    cleaned += 1;
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(r#"SELECT PodcastID, Categories FROM Podcasts"#)
+                    .fetch_all(pool)
+                    .await?;
+
+                for row in rows {
+                    let podcast_id: i32 = row.try_get("PodcastID")?;
+                    let current_categories_str: String = row.try_get("Categories").unwrap_or_default();
+                    let mut categories = self.parse_categories_json(&current_categories_str).unwrap_or_default();
+
+                    let before = categories.len();
+                    categories.retain(|_key, value| !value.trim().is_empty());
+                    if categories.len() == before {
+                        continue;
+                    }
+
+                    let new_categories_json = serde_json::to_string(&categories)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    sqlx::query("UPDATE Podcasts SET Categories = ? WHERE PodcastID = ?")
+                        .bind(&new_categories_json)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    cleaned += 1;
+                }
+            }
+        }
+        if cleaned > 0 {
+            info!("Cleaned blank categories from {} podcast(s)", cleaned);
+        }
+        Ok(())
+    }
+
+    // Add category to podcast - matches Python add_category function
     pub async fn add_category(&self, podcast_id: i32, user_id: i32, category: &str) -> AppResult<String> {
         match self {
             DatabasePool::Postgres(pool) => {
@@ -10683,10 +10994,10 @@ impl DatabasePool {
 
     // Record listen duration - matches Python record_listen_duration function exactly
     pub async fn record_listen_duration(&self, episode_id: i32, user_id: i32, listen_duration: f64) -> AppResult<()> {
-        println!("Recording listen duration: episode_id={}, user_id={}, duration={}", episode_id, user_id, listen_duration);
+        debug!("Recording listen duration: episode_id={}, user_id={}, duration={}", episode_id, user_id, listen_duration);
         
         if listen_duration < 0.0 {
-            println!("Skipped updating listen duration for user {} and episode {} due to invalid duration: {}", user_id, episode_id, listen_duration);
+            warn!("Skipped updating listen duration for user {} and episode {} due to invalid duration: {}", user_id, episode_id, listen_duration);
             return Ok(());
         }
         
@@ -10713,9 +11024,9 @@ impl DatabasePool {
                             .bind(episode_id)
                             .execute(pool)
                             .await?;
-                        println!("Updated listen duration for user {} episode {} from {} to {}", user_id, episode_id, existing_duration, listen_duration_int);
+                        debug!("Updated listen duration for user {} episode {} from {} to {}", user_id, episode_id, existing_duration, listen_duration_int);
                     } else {
-                        println!("No update required for user {} and episode {} as existing duration {} is greater than or equal to new duration {}", user_id, episode_id, existing_duration, listen_duration_int);
+                        debug!("No update required for user {} and episode {} as existing duration {} is greater than or equal to new duration {}", user_id, episode_id, existing_duration, listen_duration_int);
                     }
                 } else {
                     // Insert new record
@@ -10725,7 +11036,7 @@ impl DatabasePool {
                         .bind(listen_duration_int)
                         .execute(pool)
                         .await?;
-                    println!("Inserted new listen duration record for user {} episode {} with duration {}", user_id, episode_id, listen_duration_int);
+                    debug!("Inserted new listen duration record for user {} episode {} with duration {}", user_id, episode_id, listen_duration_int);
                 }
             }
             DatabasePool::MySQL(pool) => {
@@ -10748,9 +11059,9 @@ impl DatabasePool {
                             .bind(episode_id)
                             .execute(pool)
                             .await?;
-                        println!("Updated listen duration for user {} episode {} from {} to {}", user_id, episode_id, existing_duration, listen_duration_int);
+                        debug!("Updated listen duration for user {} episode {} from {} to {}", user_id, episode_id, existing_duration, listen_duration_int);
                     } else {
-                        println!("No update required for user {} and episode {} as existing duration {} is greater than or equal to new duration {}", user_id, episode_id, existing_duration, listen_duration_int);
+                        debug!("No update required for user {} and episode {} as existing duration {} is greater than or equal to new duration {}", user_id, episode_id, existing_duration, listen_duration_int);
                     }
                 } else {
                     // Insert new record
@@ -10760,7 +11071,7 @@ impl DatabasePool {
                         .bind(listen_duration_int)
                         .execute(pool)
                         .await?;
-                    println!("Inserted new listen duration record for user {} episode {} with duration {}", user_id, episode_id, listen_duration_int);
+                    debug!("Inserted new listen duration record for user {} episode {} with duration {}", user_id, episode_id, listen_duration_int);
                 }
             }
         }
@@ -10769,10 +11080,10 @@ impl DatabasePool {
 
     // Record YouTube listen duration - matches Python record_youtube_listen_duration function exactly  
     pub async fn record_youtube_listen_duration(&self, video_id: i32, user_id: i32, listen_duration: f64) -> AppResult<()> {
-        println!("Recording YouTube listen duration: video_id={}, user_id={}, duration={}", video_id, user_id, listen_duration);
+        debug!("Recording YouTube listen duration: video_id={}, user_id={}, duration={}", video_id, user_id, listen_duration);
         
         if listen_duration < 0.0 {
-            println!("Skipped updating listen duration for user {} and video {} due to invalid duration: {}", user_id, video_id, listen_duration);
+            warn!("Skipped updating listen duration for user {} and video {} due to invalid duration: {}", user_id, video_id, listen_duration);
             return Ok(());
         }
         
@@ -10799,9 +11110,9 @@ impl DatabasePool {
                             .bind(video_id)
                             .execute(pool)
                             .await?;
-                        println!("Updated YouTube listen duration for user {} video {} from {} to {}", user_id, video_id, existing_duration, listen_duration_int);
+                        debug!("Updated YouTube listen duration for user {} video {} from {} to {}", user_id, video_id, existing_duration, listen_duration_int);
                     } else {
-                        println!("No update required for user {} and video {} as existing duration {} is greater than or equal to new duration {}", user_id, video_id, existing_duration, listen_duration_int);
+                        debug!("No update required for user {} and video {} as existing duration {} is greater than or equal to new duration {}", user_id, video_id, existing_duration, listen_duration_int);
                     }
                 } else {
                     // Insert new record
@@ -10811,7 +11122,7 @@ impl DatabasePool {
                         .bind(listen_duration_int)
                         .execute(pool)
                         .await?;
-                    println!("Inserted new YouTube listen duration record for user {} video {} with duration {}", user_id, video_id, listen_duration_int);
+                    debug!("Inserted new YouTube listen duration record for user {} video {} with duration {}", user_id, video_id, listen_duration_int);
                 }
             }
             DatabasePool::MySQL(pool) => {
@@ -10834,9 +11145,9 @@ impl DatabasePool {
                             .bind(video_id)
                             .execute(pool)
                             .await?;
-                        println!("Updated YouTube listen duration for user {} video {} from {} to {}", user_id, video_id, existing_duration, listen_duration_int);
+                        debug!("Updated YouTube listen duration for user {} video {} from {} to {}", user_id, video_id, existing_duration, listen_duration_int);
                     } else {
-                        println!("No update required for user {} and video {} as existing duration {} is greater than or equal to new duration {}", user_id, video_id, existing_duration, listen_duration_int);
+                        debug!("No update required for user {} and video {} as existing duration {} is greater than or equal to new duration {}", user_id, video_id, existing_duration, listen_duration_int);
                     }
                 } else {
                     // Insert new record
@@ -10846,7 +11157,7 @@ impl DatabasePool {
                         .bind(listen_duration_int)
                         .execute(pool)
                         .await?;
-                    println!("Inserted new YouTube listen duration record for user {} video {} with duration {}", user_id, video_id, listen_duration_int);
+                    debug!("Inserted new YouTube listen duration record for user {} video {} with duration {}", user_id, video_id, listen_duration_int);
                 }
             }
         }
@@ -12265,6 +12576,67 @@ pub struct EpisodeData {
     pub pub_date: DateTime<Utc>,
     pub duration: i32,
     pub is_video: bool,
+    /// Stable RSS <guid> for this entry, when the feed supplies one. None when the feed has no
+    /// guid (we deliberately do NOT use feed-rs's synthesized id, which can be a random UUID and
+    /// would break dedup). Dedup falls back to URL/title when this is None.
+    pub guid: Option<String>,
+}
+
+/// Result of a conditional feed fetch (see `fetch_feed_conditional`).
+pub enum FeedFetch {
+    /// Server returned 304 Not Modified — the caller should skip parsing entirely.
+    NotModified,
+    /// Feed body plus any fresh cache validators to persist for next time.
+    Fetched {
+        body: String,
+        etag: Option<String>,
+        last_modified: Option<String>,
+    },
+}
+
+/// Comparable snapshot of an already-stored episode, used for no-op change detection during apply.
+struct ExistingEp {
+    guid: Option<String>,
+    title: String,
+    description: String,
+    url: String,
+    artwork: String,
+    duration: i32,
+    is_video: bool,
+}
+
+/// Lookup maps for existing episodes of a podcast, keyed by GUID / URL-base / title, plus the
+/// per-id comparable values.
+#[derive(Default)]
+struct ExistingEpisodes {
+    guid_to_id: std::collections::HashMap<String, i32>,
+    url_to_id: std::collections::HashMap<String, i32>,
+    title_to_id: std::collections::HashMap<String, i32>,
+    by_id: std::collections::HashMap<i32, ExistingEp>,
+}
+
+fn pg_existing_from_row(row: &sqlx::postgres::PgRow) -> ExistingEp {
+    ExistingEp {
+        guid: row.try_get::<Option<String>, _>("episodeguid").ok().flatten(),
+        title: row.try_get::<Option<String>, _>("episodetitle").ok().flatten().unwrap_or_default(),
+        description: row.try_get::<Option<String>, _>("episodedescription").ok().flatten().unwrap_or_default(),
+        url: row.try_get::<Option<String>, _>("episodeurl").ok().flatten().unwrap_or_default(),
+        artwork: row.try_get::<Option<String>, _>("episodeartwork").ok().flatten().unwrap_or_default(),
+        duration: row.try_get::<Option<i32>, _>("episodeduration").ok().flatten().unwrap_or(0),
+        is_video: row.try_get::<Option<bool>, _>("is_video").ok().flatten().unwrap_or(false),
+    }
+}
+
+fn mysql_existing_from_row(row: &sqlx::mysql::MySqlRow) -> ExistingEp {
+    ExistingEp {
+        guid: row.try_get::<Option<String>, _>("EpisodeGUID").ok().flatten(),
+        title: row.try_get::<Option<String>, _>("EpisodeTitle").ok().flatten().unwrap_or_default(),
+        description: row.try_get::<Option<String>, _>("EpisodeDescription").ok().flatten().unwrap_or_default(),
+        url: row.try_get::<Option<String>, _>("EpisodeURL").ok().flatten().unwrap_or_default(),
+        artwork: row.try_get::<Option<String>, _>("EpisodeArtwork").ok().flatten().unwrap_or_default(),
+        duration: row.try_get::<Option<i32>, _>("EpisodeDuration").ok().flatten().unwrap_or(0),
+        is_video: row.try_get::<Option<bool>, _>("IsVideo").ok().flatten().unwrap_or(false),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -13222,7 +13594,7 @@ impl DatabasePool {
 
     // Set default gPodder device by name - for frontend compatibility
     pub async fn gpodder_set_default_device_by_name(&self, user_id: i32, device_name: &str) -> AppResult<bool> {
-        println!("Setting default device: user_id={}, device_name='{}'", user_id, device_name);
+        info!("Setting default device: user_id={}, device_name='{}'", user_id, device_name);
         
         // Check sync type to determine which tables to update
         let sync_settings = self.get_user_sync_settings(user_id).await?;
@@ -13239,14 +13611,14 @@ impl DatabasePool {
                         .bind(user_id)
                         .execute(pool)
                         .await?;
-                    println!("Cleared {} devices for user {}", clear_result.rows_affected(), user_id);
+                    info!("Cleared {} devices for user {}", clear_result.rows_affected(), user_id);
                     
                     let result = sqlx::query(r#"UPDATE "GpodderDevices" SET isdefault = true WHERE devicename = $1 AND userid = $2"#)
                         .bind(device_name)
                         .bind(user_id)
                         .execute(pool)
                         .await?;
-                    println!("Set default result: {} rows affected", result.rows_affected());
+                    info!("Set default result: {} rows affected", result.rows_affected());
                 }
                 
                 // Always update Users table (for both internal and external)
@@ -13255,7 +13627,7 @@ impl DatabasePool {
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-                println!("Updated Users table with default device");
+                debug!("Updated Users table with default device");
                 
                 Ok(true)
             }
@@ -13266,14 +13638,14 @@ impl DatabasePool {
                         .bind(user_id)
                         .execute(pool)
                         .await?;
-                    println!("Cleared {} devices for user {}", clear_result.rows_affected(), user_id);
+                    info!("Cleared {} devices for user {}", clear_result.rows_affected(), user_id);
                     
                     let result = sqlx::query("UPDATE GpodderDevices SET IsDefault = true WHERE DeviceName = ? AND UserID = ?")
                         .bind(device_name)
                         .bind(user_id)
                         .execute(pool)
                         .await?;
-                    println!("Set default result: {} rows affected", result.rows_affected());
+                    info!("Set default result: {} rows affected", result.rows_affected());
                 }
                 
                 // Always update Users table (for both internal and external)
@@ -13282,7 +13654,7 @@ impl DatabasePool {
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-                println!("Updated Users table with default device");
+                debug!("Updated Users table with default device");
                 
                 Ok(true)
             }
@@ -15505,7 +15877,7 @@ impl DatabasePool {
         use reqwest::header::AUTHORIZATION;
         use feed_rs::parser;
         
-        println!("Fetching podcast values from feed URL: {}", feed_url);
+        debug!("Fetching podcast values from feed URL: {}", feed_url);
         
         // Build HTTP client with podcast client UA first — many hosts serve full feeds to
         // podcast apps but truncated versions to browser UAs.
@@ -15514,47 +15886,47 @@ impl DatabasePool {
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| {
-                println!("Failed to build HTTP client in get_podcast_values: {}", e);
+                warn!("Failed to build HTTP client in get_podcast_values: {}", e);
                 AppError::Http(e)
             })?;
 
         let mut request = client.get(feed_url);
 
         if let (Some(user), Some(pass)) = (username, password) {
-            println!("Using basic authentication for feed: {}", feed_url);
+            debug!("Using basic authentication for feed: {}", feed_url);
             use base64::Engine;
             let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
             request = request.header(AUTHORIZATION, format!("Basic {}", encoded));
         }
 
         // Fetch RSS feed with better error handling
-        println!("Sending HTTP request to: {}", feed_url);
+        debug!("Sending HTTP request to: {}", feed_url);
         let response = request.send().await
             .map_err(|e| {
-                println!("HTTP request failed for {}: {}", feed_url, e);
+                warn!("HTTP request failed for {}: {}", feed_url, e);
                 AppError::Http(e)
             })?;
 
-        println!("Received response with status: {}", response.status());
+        info!("Received response with status: {}", response.status());
         if !response.status().is_success() {
             // If we get a 403, the server might be blocking podcast client User-Agents.
             // Try with a browser User-Agent as fallback.
             if response.status() == 403 {
-                println!("Got 403 Forbidden, retrying with browser User-Agent");
+                debug!("Got 403 Forbidden, retrying with browser User-Agent");
 
                 let podcast_client = reqwest::Client::builder()
                     .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     .timeout(std::time::Duration::from_secs(30))
                     .build()
                     .map_err(|e| {
-                        println!("Failed to build podcast client in get_podcast_values: {}", e);
+                        warn!("Failed to build podcast client in get_podcast_values: {}", e);
                         AppError::Http(e)
                     })?;
                 
                 let mut podcast_request = podcast_client.get(feed_url);
                 
                 if let (Some(user), Some(pass)) = (username, password) {
-                    println!("Using basic authentication for podcast client request: {}", feed_url);
+                    debug!("Using basic authentication for podcast client request: {}", feed_url);
                     use base64::Engine;
                     let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
                     podcast_request = podcast_request.header(AUTHORIZATION, format!("Basic {}", encoded));
@@ -15562,19 +15934,19 @@ impl DatabasePool {
                 
                 let podcast_response = podcast_request.send().await
                     .map_err(|e| {
-                        println!("Podcast client request failed for {}: {}", feed_url, e);
+                        warn!("Podcast client request failed for {}: {}", feed_url, e);
                         AppError::Http(e)
                     })?;
                 
                 if podcast_response.status().is_success() {
-                    println!("Podcast client request succeeded with status: {}", podcast_response.status());
+                    debug!("Podcast client request succeeded with status: {}", podcast_response.status());
                     let content = podcast_response.text().await?;
                     
                     // Continue with the same parsing logic
                     return self.parse_feed_content_to_values(content, feed_url, user_id).await;
                 }
                 
-                println!("Podcast client request also failed with status: {}", podcast_response.status());
+                warn!("Podcast client request also failed with status: {}", podcast_response.status());
             }
             
             return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", response.status())));
@@ -15611,12 +15983,19 @@ impl DatabasePool {
             .unwrap_or_default();
         podcast_values.insert("artworkurl".to_string(), artwork_url);
         
-        // Extract categories - convert to dict format like Python
-        let categories = if !feed.categories.is_empty() {
-            let cat_dict: std::collections::HashMap<String, String> = feed.categories
-                .iter()
+        // Extract categories - convert to dict format like Python.
+        // Skip empty/whitespace category terms so feeds with blank category
+        // elements don't produce a stray blank category (e.g. {"0": ""}).
+        let category_terms: Vec<String> = feed.categories
+            .iter()
+            .map(|cat| cat.term.trim().to_string())
+            .filter(|term| !term.is_empty())
+            .collect();
+        let categories = if !category_terms.is_empty() {
+            let cat_dict: std::collections::HashMap<String, String> = category_terms
+                .into_iter()
                 .enumerate()
-                .map(|(i, cat)| (i.to_string(), cat.term.clone()))
+                .map(|(i, term)| (i.to_string(), term))
                 .collect();
             serde_json::to_string(&cat_dict).unwrap_or_default()
         } else {
@@ -15628,7 +16007,7 @@ impl DatabasePool {
         podcast_values.insert("podcastindexid".to_string(), "0".to_string());
         podcast_values.insert("episodeupdatecount".to_string(), "0".to_string());
         
-        println!("Successfully extracted podcast values: {}", podcast_values.get("podcastname").unwrap_or(&"Unknown".to_string()));
+        info!("Successfully extracted podcast values: {}", podcast_values.get("podcastname").unwrap_or(&"Unknown".to_string()));
         
         Ok(podcast_values)
     }
@@ -15652,7 +16031,7 @@ impl DatabasePool {
         
         // Add authentication if available
         if let (Some(user), Some(pass)) = (username.as_deref(), password.as_deref()) {
-            println!("Using stored authentication for feed: {}", feed_url);
+            debug!("Using stored authentication for feed: {}", feed_url);
             use base64::Engine;
             let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
             request = request.header(AUTHORIZATION, format!("Basic {}", encoded));
@@ -15771,7 +16150,7 @@ impl DatabasePool {
                 if let Some(title) = &entry.title {
                     if let Some(corrected_duration) = Self::extract_itunes_duration_from_raw(&content, &title.content) {
                         if corrected_duration != duration_seconds as u64 {
-                            println!("🔧 DURATION CORRECTED: '{}' feed-rs={} -> iTunes={}", 
+                            info!("🔧 DURATION CORRECTED: '{}' feed-rs={} -> iTunes={}", 
                                 title.content, duration_seconds, corrected_duration);
                             duration_seconds = corrected_duration as i32;
                         }
@@ -15947,7 +16326,7 @@ impl DatabasePool {
     
     // // Get podcast details - matches Python get_podcast_details function exactly
     // pub async fn get_podcast_details(&self, user_id: i32, podcast_id: i32) -> AppResult<Option<serde_json::Value>> {
-    //     println!("Getting podcast details for podcast {} and user {}", podcast_id, user_id);
+    //     info!("Getting podcast details for podcast {} and user {}", podcast_id, user_id);
         
     //     let details = match self {
     //         DatabasePool::Postgres(pool) => {
@@ -16061,9 +16440,9 @@ impl DatabasePool {
     //     };
         
     //     if let Some(ref result) = details {
-    //         println!("Found podcast details for: {}", result["podcast_name"]);
+    //         debug!("Found podcast details for: {}", result["podcast_name"]);
     //     } else {
-    //         println!("No podcast found with ID {} for user {}", podcast_id, user_id);
+    //         debug!("No podcast found with ID {} for user {}", podcast_id, user_id);
     //     }
         
     //     Ok(details)
@@ -16071,7 +16450,7 @@ impl DatabasePool {
     
     // Get notification settings - matches Python get_notification_settings function exactly
     pub async fn get_notification_settings(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
-        println!("Getting notification settings for user {}", user_id);
+        info!("Getting notification settings for user {}", user_id);
         
         let settings = match self {
             DatabasePool::Postgres(pool) => {
@@ -16137,13 +16516,13 @@ impl DatabasePool {
             }
         };
         
-        println!("Found {} notification settings for user {}", settings.len(), user_id);
+        debug!("Found {} notification settings for user {}", settings.len(), user_id);
         Ok(settings)
     }
     
     // Update notification settings - matches Python update_notification_settings function exactly
     pub async fn update_notification_settings(&self, user_id: i32, platform: &str, enabled: bool, ntfy_topic: Option<&str>, ntfy_server_url: Option<&str>, ntfy_username: Option<&str>, ntfy_password: Option<&str>, ntfy_access_token: Option<&str>, gotify_url: Option<&str>, gotify_token: Option<&str>, http_url: Option<&str>, http_token: Option<&str>, http_method: Option<&str>) -> AppResult<bool> {
-        println!("Updating notification settings for user {} platform {}", user_id, platform);
+        info!("Updating notification settings for user {} platform {}", user_id, platform);
         
         // Check if settings exist for this user/platform combination and perform update/insert
         let success = match self {
@@ -16263,13 +16642,13 @@ impl DatabasePool {
             }
         };
         
-        println!("Successfully updated notification settings for user {} platform {}: {}", user_id, platform, success);
+        debug!("Successfully updated notification settings for user {} platform {}: {}", user_id, platform, success);
         Ok(success)
     }
     
     // Add OIDC provider - matches Python add_oidc_provider function exactly
     pub async fn add_oidc_provider(&self, provider_name: &str, client_id: &str, client_secret: &str, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str, initialized_from_env: bool) -> AppResult<i32> {
-        println!("Adding OIDC provider: {}", provider_name);
+        debug!("Adding OIDC provider: {}", provider_name);
         
         let provider_id = match self {
             DatabasePool::Postgres(pool) => {
@@ -16339,13 +16718,13 @@ impl DatabasePool {
             }
         };
         
-        println!("Successfully added OIDC provider with ID: {}", provider_id);
+        debug!("Successfully added OIDC provider with ID: {}", provider_id);
         Ok(provider_id)
     }
     
     // List OIDC providers - matches Python list_oidc_providers function exactly
     pub async fn list_oidc_providers(&self) -> AppResult<Vec<serde_json::Value>> {
-        println!("Listing all OIDC providers");
+        info!("Listing all OIDC providers");
         
         let providers = match self {
             DatabasePool::Postgres(pool) => {
@@ -16432,13 +16811,13 @@ impl DatabasePool {
             }
         };
         
-        println!("Found {} OIDC providers", providers.len());
+        debug!("Found {} OIDC providers", providers.len());
         Ok(providers)
     }
     
     // Remove OIDC provider - matches Python remove_oidc_provider function exactly
     pub async fn remove_oidc_provider(&self, provider_id: i32) -> AppResult<bool> {
-        println!("Removing OIDC provider with ID: {}", provider_id);
+        info!("Removing OIDC provider with ID: {}", provider_id);
         
         let rows_affected = match self {
             DatabasePool::Postgres(pool) => {
@@ -16461,9 +16840,9 @@ impl DatabasePool {
         
         let success = rows_affected > 0;
         if success {
-            println!("Successfully removed OIDC provider with ID: {}", provider_id);
+            info!("Successfully removed OIDC provider with ID: {}", provider_id);
         } else {
-            println!("No OIDC provider found with ID: {}", provider_id);
+            debug!("No OIDC provider found with ID: {}", provider_id);
         }
         Ok(success)
     }
@@ -16471,7 +16850,7 @@ impl DatabasePool {
     // Initialize OIDC provider from environment variables on container startup
     pub async fn init_oidc_from_env(&self, oidc_config: &OIDCConfig) -> AppResult<()> {
         if !oidc_config.is_configured() {
-            println!("OIDC environment variables not configured, skipping initialization");
+            debug!("OIDC environment variables not configured, skipping initialization");
             return Ok(());
         }
 
@@ -16481,11 +16860,11 @@ impl DatabasePool {
         // Check if provider already exists
         let existing = self.get_oidc_provider_by_client_id(client_id).await?;
         if existing.is_some() {
-            println!("OIDC provider with client_id '{}' already exists, skipping initialization", client_id);
+            debug!("OIDC provider with client_id '{}' already exists, skipping initialization", client_id);
             return Ok(());
         }
 
-        println!("Initializing OIDC provider '{}' from environment variables", provider_name);
+        info!("Initializing OIDC provider '{}' from environment variables", provider_name);
 
         // Create the provider with all the configuration
         let provider_id = self.add_oidc_provider(
@@ -16509,7 +16888,7 @@ impl DatabasePool {
             true, // initialized_from_env = true
         ).await?;
 
-        println!("Successfully initialized OIDC provider '{}' with ID: {}", provider_name, provider_id);
+        info!("Successfully initialized OIDC provider '{}' with ID: {}", provider_name, provider_id);
         Ok(())
     }
 
@@ -16542,7 +16921,7 @@ impl DatabasePool {
     // Update OIDC provider - updates an existing provider with new values
     // If client_secret is None, the existing secret will be preserved
     pub async fn update_oidc_provider(&self, provider_id: i32, provider_name: &str, client_id: &str, client_secret: Option<&str>, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str) -> AppResult<bool> {
-        println!("Updating OIDC provider with ID: {}", provider_id);
+        info!("Updating OIDC provider with ID: {}", provider_id);
 
         let rows_affected = match self {
             DatabasePool::Postgres(pool) => {
@@ -16684,16 +17063,16 @@ impl DatabasePool {
         
         let success = rows_affected > 0;
         if success {
-            println!("Successfully updated OIDC provider with ID: {}", provider_id);
+            debug!("Successfully updated OIDC provider with ID: {}", provider_id);
         } else {
-            println!("No OIDC provider found with ID: {}", provider_id);
+            debug!("No OIDC provider found with ID: {}", provider_id);
         }
         Ok(success)
     }
     
     // Get user start page - matches Python get_user_startpage function exactly
     pub async fn get_user_startpage(&self, user_id: i32) -> AppResult<String> {
-        println!("Getting start page for user {}", user_id);
+        info!("Getting start page for user {}", user_id);
         
         let startpage = match self {
             DatabasePool::Postgres(pool) => {
@@ -16727,7 +17106,7 @@ impl DatabasePool {
     
     // Set user start page - matches Python set_user_startpage function exactly
     pub async fn set_user_startpage(&self, user_id: i32, startpage: &str) -> AppResult<bool> {
-        println!("Setting start page for user {} to {}", user_id, startpage);
+        info!("Setting start page for user {} to {}", user_id, startpage);
         
         // Check if user settings exist and perform update/insert
         let success = match self {
@@ -16785,7 +17164,7 @@ impl DatabasePool {
             }
         };
         
-        println!("Successfully set start page for user {} to {}: {}", user_id, startpage, success);
+        info!("Successfully set start page for user {} to {}: {}", user_id, startpage, success);
         Ok(success)
     }
 
@@ -16801,7 +17180,7 @@ impl DatabasePool {
 
     // Get user auto complete seconds setting
     pub async fn get_user_auto_complete_seconds(&self, user_id: i32) -> AppResult<i32> {
-        println!("Getting auto complete seconds for user {}", user_id);
+        info!("Getting auto complete seconds for user {}", user_id);
         
         let auto_complete_seconds = match self {
             DatabasePool::Postgres(pool) => {
@@ -16835,7 +17214,7 @@ impl DatabasePool {
     
     // Set user auto complete seconds setting
     pub async fn set_user_auto_complete_seconds(&self, user_id: i32, seconds: i32) -> AppResult<bool> {
-        println!("Setting auto complete seconds for user {} to {}", user_id, seconds);
+        info!("Setting auto complete seconds for user {} to {}", user_id, seconds);
         
         // Check if user settings exist and perform update/insert
         let success = match self {
@@ -16893,7 +17272,7 @@ impl DatabasePool {
             }
         };
         
-        println!("Successfully set auto complete seconds for user {} to {}: {}", user_id, seconds, success);
+        info!("Successfully set auto complete seconds for user {} to {}: {}", user_id, seconds, success);
         Ok(success)
     }
 
@@ -17101,7 +17480,7 @@ impl DatabasePool {
     
     // Subscribe to person - matches Python subscribe_to_person function exactly
     pub async fn subscribe_to_person(&self, user_id: i32, person_id: i32, person_name: &str, person_img: &str, podcast_id: i32) -> AppResult<i32> {
-        println!("Subscribing user {} to person {}: {}", user_id, person_id, person_name);
+        info!("Subscribing user {} to person {}: {}", user_id, person_id, person_name);
 
         // Check if person already exists for this user and handle accordingly
         let result = match self {
@@ -17148,7 +17527,7 @@ impl DatabasePool {
                         .execute(pool)
                         .await?;
                     
-                    println!("Updated existing person subscription with ID: {}", person_db_id);
+                    debug!("Updated existing person subscription with ID: {}", person_db_id);
                     person_db_id
                 } else {
                     // Insert new person subscription
@@ -17166,7 +17545,7 @@ impl DatabasePool {
                         .await?;
                     
                     let person_db_id: i32 = row.try_get("personid")?;
-                    println!("Successfully subscribed to person with ID: {}", person_db_id);
+                    info!("Successfully subscribed to person with ID: {}", person_db_id);
                     person_db_id
                 }
             }
@@ -17213,7 +17592,7 @@ impl DatabasePool {
                         .execute(pool)
                         .await?;
                     
-                    println!("Updated existing person subscription with ID: {}", person_db_id);
+                    debug!("Updated existing person subscription with ID: {}", person_db_id);
                     person_db_id
                 } else {
                     // Insert new person subscription
@@ -17230,7 +17609,7 @@ impl DatabasePool {
                         .await?;
                     
                     let person_db_id = result.last_insert_id() as i32;
-                    println!("Successfully subscribed to person with ID: {}", person_db_id);
+                    info!("Successfully subscribed to person with ID: {}", person_db_id);
                     person_db_id
                 }
             }
@@ -17241,7 +17620,7 @@ impl DatabasePool {
     
     // Unsubscribe from person - matches Python unsubscribe_from_person function exactly
     pub async fn unsubscribe_from_person(&self, user_id: i32, person_id: i32, person_name: &str) -> AppResult<bool> {
-        println!("Unsubscribing user {} from person {}: {}", user_id, person_id, person_name);
+        info!("Unsubscribing user {} from person {}: {}", user_id, person_id, person_name);
 
         // Resolve the actual personid (primary key) so we can delete child rows first.
         let resolved_id: Option<i32> = match self {
@@ -17286,7 +17665,7 @@ impl DatabasePool {
         };
 
         let Some(real_person_id) = resolved_id else {
-            println!("Person subscription not found for user {} and person {}", user_id, person_id);
+            debug!("Person subscription not found for user {} and person {}", user_id, person_id);
             return Ok(false);
         };
 
@@ -17314,13 +17693,13 @@ impl DatabasePool {
             }
         }
 
-        println!("Successfully unsubscribed from person {}", real_person_id);
+        info!("Successfully unsubscribed from person {}", real_person_id);
         Ok(true)
     }
     
     // Get person subscriptions - matches Python get_person_subscriptions function exactly
     pub async fn get_person_subscriptions(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
-        println!("Getting person subscriptions for user {}", user_id);
+        info!("Getting person subscriptions for user {}", user_id);
         
         let mut subscriptions = Vec::new();
         
@@ -17433,13 +17812,13 @@ impl DatabasePool {
             }
         }
         
-        println!("Found {} person subscriptions for user {}", subscriptions.len(), user_id);
+        debug!("Found {} person subscriptions for user {}", subscriptions.len(), user_id);
         Ok(subscriptions)
     }
     
     // Get person episodes - matches Python return_person_episodes function exactly
     pub async fn get_person_episodes(&self, user_id: i32, person_id: i32, limit: i64, offset: i64) -> AppResult<Vec<serde_json::Value>> {
-        println!("Getting episodes for user {} and person {}", user_id, person_id);
+        info!("Getting episodes for user {} and person {}", user_id, person_id);
         
         let mut episodes = Vec::new();
         
@@ -17632,13 +18011,13 @@ impl DatabasePool {
             }
         }
         
-        println!("Found {} episodes for user {} and person {}", episodes.len(), user_id, person_id);
+        debug!("Found {} episodes for user {} and person {}", episodes.len(), user_id, person_id);
         Ok(episodes)
     }
     
     // Check existing YouTube channel subscription - matches Python check_existing_channel_subscription function exactly
     pub async fn check_existing_channel_subscription(&self, channel_id: &str, user_id: i32) -> AppResult<Option<i32>> {
-        println!("Checking existing channel subscription for {} and user {}", channel_id, user_id);
+        debug!("Checking existing channel subscription for {} and user {}", channel_id, user_id);
         
         match self {
             DatabasePool::Postgres(pool) => {
@@ -17650,10 +18029,10 @@ impl DatabasePool {
                 
                 if let Some(row) = row {
                     let podcast_id: i32 = row.try_get("podcastid")?;
-                    println!("Found existing subscription with ID: {}", podcast_id);
+                    debug!("Found existing subscription with ID: {}", podcast_id);
                     Ok(Some(podcast_id))
                 } else {
-                    println!("No existing subscription found");
+                    info!("No existing subscription found");
                     Ok(None)
                 }
             }
@@ -17666,10 +18045,10 @@ impl DatabasePool {
                 
                 if let Some(row) = row {
                     let podcast_id: i32 = row.try_get("podcastid")?;
-                    println!("Found existing subscription with ID: {}", podcast_id);
+                    debug!("Found existing subscription with ID: {}", podcast_id);
                     Ok(Some(podcast_id))
                 } else {
-                    println!("No existing subscription found");
+                    info!("No existing subscription found");
                     Ok(None)
                 }
             }
@@ -17678,7 +18057,7 @@ impl DatabasePool {
     
     // Add YouTube channel - matches Python add_youtube_channel function exactly
     pub async fn add_youtube_channel(&self, channel_info: &std::collections::HashMap<String, String>, user_id: i32, feed_cutoff: i32) -> AppResult<i32> {
-        println!("Adding YouTube channel to database for user {}", user_id);
+        debug!("Adding YouTube channel to database for user {}", user_id);
         
         let channel_id = channel_info.get("channel_id").ok_or_else(|| AppError::bad_request("Channel ID is required"))?;
         let empty_string = String::new();
@@ -17762,7 +18141,7 @@ impl DatabasePool {
             }
         }
         
-        println!("Successfully added YouTube channel with ID: {}", podcast_id);
+        debug!("Successfully added YouTube channel with ID: {}", podcast_id);
         Ok(podcast_id)
     }
 
@@ -17800,7 +18179,7 @@ impl DatabasePool {
     
     // Remove old YouTube videos - deletes videos and all their references from dependent tables
     pub async fn remove_old_youtube_videos(&self, podcast_id: i32, cutoff_date: chrono::DateTime<chrono::Utc>) -> AppResult<()> {
-        println!("Removing old YouTube videos for podcast {} before {}", podcast_id, cutoff_date);
+        debug!("Removing old YouTube videos for podcast {} before {}", podcast_id, cutoff_date);
 
         let cutoff_naive = cutoff_date.naive_utc();
 
@@ -17859,13 +18238,13 @@ impl DatabasePool {
             }
         };
 
-        println!("Removed {} old YouTube videos", rows_affected);
+        debug!("Removed {} old YouTube videos", rows_affected);
         Ok(())
     }
     
     // Get existing YouTube videos - matches Python get_existing_youtube_videos function exactly
     pub async fn get_existing_youtube_videos(&self, podcast_id: i32) -> AppResult<Vec<String>> {
-        println!("Getting existing YouTube videos for podcast {}", podcast_id);
+        info!("Getting existing YouTube videos for podcast {}", podcast_id);
         
         let mut video_urls = Vec::new();
         
@@ -17894,13 +18273,13 @@ impl DatabasePool {
             }
         }
         
-        println!("Found {} existing videos", video_urls.len());
+        debug!("Found {} existing videos", video_urls.len());
         Ok(video_urls)
     }
     
     // Add YouTube videos - matches Python add_youtube_videos function exactly
     pub async fn add_youtube_videos(&self, podcast_id: i32, videos: &[serde_json::Value]) -> AppResult<()> {
-        println!("Adding {} YouTube videos for podcast {}", videos.len(), podcast_id);
+        debug!("Adding {} YouTube videos for podcast {}", videos.len(), podcast_id);
         
         for video in videos {
             let video_id = video.get("id").and_then(|v| v.as_str()).unwrap_or("");
@@ -17911,17 +18290,17 @@ impl DatabasePool {
             let url = video.get("url").and_then(|v| v.as_str()).unwrap_or("");
             let thumbnail = video.get("thumbnail").and_then(|v| v.as_str()).unwrap_or("");
             
-            println!("Processing video {} for database insertion", video_id);
-            println!("Video data: {:?}", video);
+            debug!("Processing video {} for database insertion", video_id);
+            info!("Video data: {:?}", video);
             
             let duration = if let Some(duration_str) = video.get("duration").and_then(|v| v.as_str()) {
-                println!("Duration as string: '{}'", duration_str);
+                info!("Duration as string: '{}'", duration_str);
                 let parsed = crate::handlers::youtube::parse_youtube_duration(duration_str).unwrap_or(0) as i32;
-                println!("Parsed duration: {}", parsed);
+                debug!("Parsed duration: {}", parsed);
                 parsed
             } else {
                 let int_duration = video.get("duration").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                println!("Duration as integer: {}", int_duration);
+                info!("Duration as integer: {}", int_duration);
                 int_duration
             };
             
@@ -17978,7 +18357,7 @@ impl DatabasePool {
             }
         }
         
-        println!("Successfully added {} YouTube videos", videos.len());
+        debug!("Successfully added {} YouTube videos", videos.len());
         Ok(())
     }
     
@@ -18013,7 +18392,7 @@ impl DatabasePool {
 
     // Update episode count for podcast - matches Python update_episode_count function exactly
     pub async fn update_episode_count(&self, podcast_id: i32) -> AppResult<()> {
-        println!("Updating episode count for podcast {}", podcast_id);
+        info!("Updating episode count for podcast {}", podcast_id);
         
         // Count episodes and YouTube videos
         let (episode_count, youtube_count) = match self {
@@ -18069,7 +18448,7 @@ impl DatabasePool {
             }
         }
         
-        println!("Updated episode count to {} ({} episodes + {} videos)", total_count, episode_count, youtube_count);
+        debug!("Updated episode count to {} ({} episodes + {} videos)", total_count, episode_count, youtube_count);
         Ok(())
     }
 
@@ -18451,7 +18830,7 @@ impl DatabasePool {
 
     // Update all playlists - matches Python update_all_playlists function exactly
     pub async fn update_all_playlists(&self) -> AppResult<()> {
-        tracing::info!("=================== PLAYLIST UPDATE STARTING ===================");
+        tracing::debug!("=================== PLAYLIST UPDATE STARTING ===================");
         tracing::info!("Starting to fetch all playlists");
         
         match self {
@@ -18519,13 +18898,13 @@ impl DatabasePool {
             }
         }
         
-        tracing::info!("=================== PLAYLIST UPDATE COMPLETED ===================");
+        tracing::debug!("=================== PLAYLIST UPDATE COMPLETED ===================");
         Ok(())
     }
 
     // Update playlist contents - matches Python update_playlist_contents function exactly
     pub async fn update_playlist_contents(&self, playlist_id: i32) -> AppResult<i32> {
-        tracing::info!("======= UPDATE PLAYLIST ID: {} =======", playlist_id);
+        tracing::debug!("======= UPDATE PLAYLIST ID: {} =======", playlist_id);
         
         match self {
             DatabasePool::Postgres(pool) => {
@@ -18912,7 +19291,7 @@ impl DatabasePool {
         let content = self.try_fetch_feed(feed_url, None, None).await?;
         let episodes = self.parse_rss_feed(&content, podcast_id, "").await?;
         
-        println!("Parsed {} episodes from feed for person {} with podcast ID {}", episodes.len(), person_id, podcast_id);
+        debug!("Parsed {} episodes from feed for person {} with podcast ID {}", episodes.len(), person_id, podcast_id);
         
         let mut added_count = 0;
         
@@ -18998,7 +19377,7 @@ impl DatabasePool {
             added_count += 1;
         }
         
-        println!("Successfully added {} new episodes for person {} from podcast {}", added_count, person_id, podcast_id);
+        debug!("Successfully added {} new episodes for person {} from podcast {}", added_count, person_id, podcast_id);
         Ok(())
     }
 
@@ -19784,10 +20163,10 @@ impl DatabasePool {
         
         // Add podcast filter (PostgreSQL IN clause support)
         if let Some(ref podcast_ids) = config.podcast_ids {
-            println!("Playlist {}: Applying podcast filter with IDs: {:?}", playlist_id, podcast_ids);
+            info!("Playlist {}: Applying podcast filter with IDs: {:?}", playlist_id, podcast_ids);
             if !podcast_ids.is_empty() {
                 if podcast_ids.len() == 1 {
-                    println!("PostgreSQL single podcast filter: p.podcastid = {}", podcast_ids[0]);
+                    info!("PostgreSQL single podcast filter: p.podcastid = {}", podcast_ids[0]);
                     select_query.push_str(&format!(" AND p.podcastid = ${}", param_index));
                     all_params.push(podcast_ids[0]);
                     param_index += 1;
@@ -19796,7 +20175,7 @@ impl DatabasePool {
                         .map(|i| format!("${}", param_index + i))
                         .collect::<Vec<_>>()
                         .join(",");
-                    println!("PostgreSQL multiple podcast filter: p.podcastid IN ({})", placeholders);
+                    info!("PostgreSQL multiple podcast filter: p.podcastid IN ({})", placeholders);
                     select_query.push_str(&format!(" AND p.podcastid IN ({})", placeholders));
                     all_params.extend(podcast_ids);
                     param_index += podcast_ids.len();
@@ -19804,11 +20183,11 @@ impl DatabasePool {
             } else {
                 // If podcast_ids is Some but empty, user selected specific podcasts but list is empty
                 // This should return no results (exclude all podcasts)
-                println!("PostgreSQL podcast filter is empty - excluding all podcasts");
+                info!("PostgreSQL podcast filter is empty - excluding all podcasts");
                 select_query.push_str(" AND FALSE");
             }
         } else {
-            println!("PostgreSQL no podcast filter applied - config.podcast_ids is None");
+            info!("PostgreSQL no podcast filter applied - config.podcast_ids is None");
         }
         
         // Add duration filters
@@ -19834,13 +20213,13 @@ impl DatabasePool {
         }
         
         // Add play state filters - EXACT PYTHON LOGIC
-        println!("Playlist {}: Applying play state filters - unplayed: {}, partially_played: {}, played: {}", 
+        info!("Playlist {}: Applying play state filters - unplayed: {}, partially_played: {}, played: {}", 
                 playlist_id, config.include_unplayed, config.include_partially_played, config.include_played);
         let mut play_state_conditions = Vec::new();
         
         if config.include_unplayed {
             play_state_conditions.push("(h.listenduration IS NULL AND e.completed IS NOT TRUE)".to_string());
-            println!("Playlist {}: Added unplayed episode filter", playlist_id);
+            debug!("Playlist {}: Added unplayed episode filter", playlist_id);
         }
         
         if config.include_partially_played {
@@ -19885,15 +20264,15 @@ impl DatabasePool {
         }
         
         // Now wrap the SELECT query in INSERT with ROW_NUMBER() - FIXED ALIAS SCOPING
-        println!("Playlist {}: group_by_podcast setting: {}", playlist_id, config.group_by_podcast);
+        info!("Playlist {}: group_by_podcast setting: {}", playlist_id, config.group_by_podcast);
         let sort_for_insert = if config.group_by_podcast {
             let sort_with_grouping = format!("ORDER BY episodes.podcastid, {}", config.get_postgres_outer_sort_order().replace("ORDER BY ", ""));
-            println!("Playlist {}: Using grouped sort: {}", playlist_id, sort_with_grouping);
+            info!("Playlist {}: Using grouped sort: {}", playlist_id, sort_with_grouping);
             sort_with_grouping
         } else {
             let sort_without_grouping = config.get_postgres_outer_sort_order();
-            println!("Playlist {}: Using non-grouped sort: {}", playlist_id, sort_without_grouping);
-            println!("Playlist {}: Debug - raw sort_order: '{}'", playlist_id, config.sort_order);
+            info!("Playlist {}: Using non-grouped sort: {}", playlist_id, sort_without_grouping);
+            debug!("Playlist {}: Debug - raw sort_order: '{}'", playlist_id, config.sort_order);
             sort_without_grouping
         };
         
@@ -19903,7 +20282,7 @@ impl DatabasePool {
             FROM ({}) episodes
         "#, sort_for_insert, select_query);
         
-        println!("Playlist {}: Final insert query: {}", playlist_id, insert_query);
+        info!("Playlist {}: Final insert query: {}", playlist_id, insert_query);
         
         // Final params: playlist_id first, then all query params
         let mut final_params = vec![playlist_id];
@@ -19933,25 +20312,25 @@ impl DatabasePool {
         // Add podcast filter (MySQL JSON/IN support)
         if let Some(ref podcast_ids) = config.podcast_ids {
             if !podcast_ids.is_empty() {
-                println!("MySQL applying podcast filter with IDs: {:?}", podcast_ids);
+                info!("MySQL applying podcast filter with IDs: {:?}", podcast_ids);
                 if podcast_ids.len() == 1 {
                     select_query.push_str(" AND p.PodcastID = ?");
                     all_params.push(podcast_ids[0]);
-                    println!("MySQL single podcast filter: p.PodcastID = {}", podcast_ids[0]);
+                    info!("MySQL single podcast filter: p.PodcastID = {}", podcast_ids[0]);
                 } else {
                     let placeholders: String = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
                     select_query.push_str(&format!(" AND p.PodcastID IN ({})", placeholders));
                     all_params.extend(podcast_ids);
-                    println!("MySQL multiple podcast filter: p.PodcastID IN ({})", placeholders);
+                    info!("MySQL multiple podcast filter: p.PodcastID IN ({})", placeholders);
                 }
             } else {
                 // If podcast_ids is Some but empty, user selected specific podcasts but list is empty
                 // This should return no results (exclude all podcasts)
-                println!("MySQL podcast filter is empty - excluding all podcasts");
+                info!("MySQL podcast filter is empty - excluding all podcasts");
                 select_query.push_str(" AND FALSE");
             }
         } else {
-            println!("MySQL no podcast_ids specified, no filter applied");
+            info!("MySQL no podcast_ids specified, no filter applied");
         }
         
         // Add duration filters
@@ -20019,14 +20398,14 @@ impl DatabasePool {
         }
         
         // Now wrap the SELECT query in INSERT with ROW_NUMBER() - FIXED ALIAS SCOPING
-        println!("Playlist {}: group_by_podcast setting: {}", playlist_id, config.group_by_podcast);
+        info!("Playlist {}: group_by_podcast setting: {}", playlist_id, config.group_by_podcast);
         let sort_for_insert = if config.group_by_podcast {
             let sort_with_grouping = format!("ORDER BY episodes.PodcastID, {}", config.get_mysql_outer_sort_order().replace("ORDER BY ", ""));
-            println!("Playlist {}: Using grouped sort: {}", playlist_id, sort_with_grouping);
+            info!("Playlist {}: Using grouped sort: {}", playlist_id, sort_with_grouping);
             sort_with_grouping
         } else {
             let sort_without_grouping = config.get_mysql_outer_sort_order();
-            println!("Playlist {}: Using non-grouped sort: {}", playlist_id, sort_without_grouping);
+            info!("Playlist {}: Using non-grouped sort: {}", playlist_id, sort_without_grouping);
             sort_without_grouping
         };
         
@@ -20128,10 +20507,15 @@ impl DatabasePool {
                 return Some(parsed);
             }
         } else {
-            // Fall back to comma-separated parsing like Python version
+            // Fall back to comma-separated parsing like Python version.
+            // Skip empty segments so blank/whitespace categories aren't created.
             let mut result = std::collections::HashMap::new();
-            for (i, cat) in categories_str.split(',').enumerate() {
-                result.insert(i.to_string(), cat.trim().to_string());
+            for cat in categories_str.split(',') {
+                let trimmed = cat.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                result.insert(result.len().to_string(), trimmed.to_string());
             }
             return Some(result);
         }
@@ -20142,9 +20526,9 @@ impl DatabasePool {
 
     // Execute the final playlist query for PostgreSQL - FIXED VERSION
     async fn execute_playlist_query_postgres(&self, pool: &Pool<Postgres>, query: &str, params: &[i32], _playlist_id: i32) -> AppResult<i32> {
-        println!("PostgreSQL executing playlist query with {} parameters", params.len());
-        println!("PostgreSQL Query: {}", query);
-        println!("PostgreSQL Params: {:?}", params);
+        info!("PostgreSQL executing playlist query with {} parameters", params.len());
+        info!("PostgreSQL Query: {}", query);
+        info!("PostgreSQL Params: {:?}", params);
         
         // Build query with proper parameter binding
         let query_owned = query.to_owned();
@@ -20154,7 +20538,7 @@ impl DatabasePool {
         }
 
         let result = sqlx_query.execute(pool).await?;
-        println!("PostgreSQL playlist query affected {} rows", result.rows_affected());
+        info!("PostgreSQL playlist query affected {} rows", result.rows_affected());
         Ok(result.rows_affected() as i32)
     }
 
@@ -21308,12 +21692,12 @@ impl DatabasePool {
                     Ok(podcast_values) => {
                         let feed_cutoff = 30; // Default cutoff like Python
                         if let Err(e) = self.add_podcast_from_values(&podcast_values, user_id, feed_cutoff, None, None).await {
-                            eprintln!("Failed to add PinePods news feed for user {}: {}", user_id, e);
+                            error!("Failed to add PinePods news feed for user {}: {}", user_id, e);
                             // Continue with other users even if one fails
                         }
                     },
                     Err(e) => {
-                        eprintln!("Failed to get podcast values for PinePods news feed for user {}: {}", user_id, e);
+                        error!("Failed to get podcast values for PinePods news feed for user {}: {}", user_id, e);
                         // Continue with other users even if one fails
                     }
                 }
@@ -21329,7 +21713,7 @@ impl DatabasePool {
         episode_id: i32,
         user_id: i32,
     ) -> AppResult<Option<String>> {
-        println!("Looking up YouTube video location for episode_id: {}, user_id: {}", episode_id, user_id);
+        info!("Looking up YouTube video location for episode_id: {}, user_id: {}", episode_id, user_id);
         
         let youtube_id = match self {
             DatabasePool::Postgres(pool) => {
@@ -21370,21 +21754,21 @@ impl DatabasePool {
             }
         };
 
-        println!("Found YouTube ID: {}", youtube_id);
+        debug!("Found YouTube ID: {}", youtube_id);
 
         let file_path = format!("/opt/pinepods/downloads/youtube/{}.mp3", youtube_id);
         let file_path_double = format!("/opt/pinepods/downloads/youtube/{}.mp3.mp3", youtube_id);
 
-        println!("Checking paths: {} and {}", file_path, file_path_double);
+        debug!("Checking paths: {} and {}", file_path, file_path_double);
 
         if tokio::fs::metadata(&file_path).await.is_ok() {
-            println!("Found file at {}", file_path);
+            debug!("Found file at {}", file_path);
             Ok(Some(file_path))
         } else if tokio::fs::metadata(&file_path_double).await.is_ok() {
-            println!("Found file at {}", file_path_double);
+            debug!("Found file at {}", file_path_double);
             Ok(Some(file_path_double))
         } else {
-            println!("No file found for YouTube ID: {}", youtube_id);
+            debug!("No file found for YouTube ID: {}", youtube_id);
             Ok(None)
         }
     }
@@ -21395,7 +21779,7 @@ impl DatabasePool {
         episode_id: i32,
         user_id: i32,
     ) -> AppResult<Option<String>> {
-        println!("Looking up download location for episode_id: {}, user_id: {}", episode_id, user_id);
+        info!("Looking up download location for episode_id: {}, user_id: {}", episode_id, user_id);
         
         match self {
             DatabasePool::Postgres(pool) => {
@@ -21407,10 +21791,10 @@ impl DatabasePool {
                 
                 if let Some(row) = row {
                     let location: String = row.try_get("downloadedlocation")?;
-                    println!("DownloadedLocation found: {}", location);
+                    debug!("DownloadedLocation found: {}", location);
                     Ok(Some(location))
                 } else {
-                    println!("No DownloadedLocation found for the given EpisodeID and UserID");
+                    debug!("No DownloadedLocation found for the given EpisodeID and UserID");
                     Ok(None)
                 }
             }
@@ -21423,10 +21807,10 @@ impl DatabasePool {
                 
                 if let Some(row) = row {
                     let location: String = row.try_get("DownloadedLocation")?;
-                    println!("DownloadedLocation found: {}", location);
+                    debug!("DownloadedLocation found: {}", location);
                     Ok(Some(location))
                 } else {
-                    println!("No DownloadedLocation found for the given EpisodeID and UserID");
+                    debug!("No DownloadedLocation found for the given EpisodeID and UserID");
                     Ok(None)
                 }
             }
@@ -21472,7 +21856,7 @@ impl DatabasePool {
 
     // Update YouTube video duration after download - updates duration from MP3 file
     pub async fn update_youtube_video_duration(&self, video_id: &str, duration_seconds: i32) -> AppResult<()> {
-        println!("Updating duration for YouTube video {} to {} seconds", video_id, duration_seconds);
+        info!("Updating duration for YouTube video {} to {} seconds", video_id, duration_seconds);
         
         match self {
             DatabasePool::Postgres(pool) => {
@@ -21491,7 +21875,7 @@ impl DatabasePool {
             }
         }
         
-        println!("Successfully updated duration for YouTube video {}", video_id);
+        debug!("Successfully updated duration for YouTube video {}", video_id);
         Ok(())
     }
 }
@@ -21534,7 +21918,7 @@ impl PlaylistConfig {
         // Parse podcast IDs from PostgreSQL int4 array - can be NULL or {29,57} format
         let podcast_ids = match row.try_get::<Option<Vec<i32>>, _>("podcastids") {
             Ok(Some(ids)) => {
-                println!("PostgreSQL got podcastids array: {:?}", ids);
+                info!("PostgreSQL got podcastids array: {:?}", ids);
                 if ids.is_empty() {
                     None
                 } else {
@@ -21542,11 +21926,11 @@ impl PlaylistConfig {
                 }
             }
             Ok(None) => {
-                println!("PostgreSQL podcastids is NULL");
+                info!("PostgreSQL podcastids is NULL");
                 None
             }
             Err(_) => {
-                println!("PostgreSQL failed to get podcastids as array");
+                warn!("PostgreSQL failed to get podcastids as array");
                 None
             }
         };
@@ -21579,7 +21963,7 @@ impl PlaylistConfig {
         let podcast_ids = match row.try_get::<Option<Vec<u8>>, _>("PodcastIDs") {
             Ok(Some(ids_bytes)) => {
                 let ids_str = String::from_utf8_lossy(&ids_bytes);
-                println!("Got PodcastIDs from BLOB: '{}'", ids_str);
+                info!("Got PodcastIDs from BLOB: '{}'", ids_str);
                 if ids_str.is_empty() || ids_str == "null" || ids_str == "[]" {
                     None
                 } else {
@@ -21592,14 +21976,14 @@ impl PlaylistConfig {
                 }
             }
             Ok(None) => {
-                println!("PodcastIDs is NULL");
+                info!("PodcastIDs is NULL");
                 None
             }
             Err(_) => {
                 // Fallback to try as String for older records
                 match row.try_get::<Option<String>, _>("PodcastIDs") {
                     Ok(Some(ids_str)) => {
-                        println!("Got PodcastIDs as String: '{}'", ids_str);
+                        info!("Got PodcastIDs as String: '{}'", ids_str);
                         if ids_str.is_empty() || ids_str == "null" || ids_str == "[]" {
                             None
                         } else {
@@ -22624,7 +23008,7 @@ impl DatabasePool {
         channel_url: &str,
         user_id: i32,
     ) -> AppResult<()> {
-        println!("got to remove youtube channel");
+        info!("got to remove youtube channel");
         
         // Get the PodcastID first
         let podcast_id = match self {
@@ -22716,8 +23100,8 @@ impl DatabasePool {
             for file_path in file_paths {
                 if tokio::fs::metadata(&file_path).await.is_ok() {
                     match tokio::fs::remove_file(&file_path).await {
-                        Ok(_) => println!("Deleted file: {}", file_path),
-                        Err(e) => println!("Failed to delete file {}: {}", file_path, e),
+                        Ok(_) => info!("Deleted file: {}", file_path),
+                        Err(e) => warn!("Failed to delete file {}: {}", file_path, e),
                     }
                 }
             }
@@ -26369,7 +26753,6 @@ impl DatabasePool {
 
     // Create missing default playlists for existing users
     pub async fn create_missing_default_playlists(&self) -> AppResult<()> {
-        use tracing::{info, warn, error};
         
         info!("🎵 Checking for missing default playlists for existing users...");
         
@@ -26474,7 +26857,6 @@ impl DatabasePool {
 
     // Create default playlists for a single user - shared by user creation and startup check
     async fn create_default_playlists_for_user(&self, user_id: i32) -> AppResult<()> {
-        use tracing::{info, warn};
         
         // Define default playlists (same as migration 032)
         let default_playlists = vec![
@@ -26554,7 +26936,6 @@ impl DatabasePool {
 
     // Update episode counts for all playlists - replaces complex playlist content updates
     pub async fn update_playlist_episode_counts(&self) -> AppResult<()> {
-        use tracing::{info, warn, debug};
         
         info!("📊 Starting playlist episode count updates...");
         
@@ -26648,7 +27029,6 @@ impl DatabasePool {
 
     // Count episodes for a playlist using the same dynamic logic (without pagination)
     async fn count_playlist_episodes_dynamic(&self, playlist_id: i32, user_id: i32) -> AppResult<i32> {
-        use tracing::{debug, warn};
         
         match self {
             DatabasePool::Postgres(pool) => {
@@ -26960,7 +27340,6 @@ impl DatabasePool {
         limit: i64,
         offset: i64,
     ) -> AppResult<crate::models::PlaylistEpisodesResponse> {
-        use tracing::{info, debug, warn};
         
         debug!("🎵 Getting dynamic playlist episodes for playlist {} user {}", playlist_id, user_id);
         

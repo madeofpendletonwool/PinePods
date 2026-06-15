@@ -7,7 +7,6 @@ use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTo
 use crate::components::gen_funcs::{
     format_error_message, get_default_sort_direction, get_filter_preference, set_filter_preference,
 };
-use crate::components::host_component::HostDropdown;
 use crate::components::loading::Loading;
 use crate::components::episode_list_view::EpisodeListView;
 use crate::pages::podcast_layout::ClickedFeedURL;
@@ -4050,169 +4049,219 @@ pub fn episode_layout() -> Html {
                                             }
                                         } else {
                                             let pod_link = podcast_info.feedurl.clone();
+                                            let server = server_name.clone().unwrap_or_default();
+                                            let subscribed = podcast_state.podcast_added.unwrap_or(false);
+                                            let backdrop_style = format!("background-image: url('{}');", &podcast_info.artworkurl);
+                                            let eyebrow_text = match podcast_info.categories.as_ref().and_then(|c| c.values().next()) {
+                                                Some(cat) => format!("{} · {}", i18n.t("episodes_layout.podcast"), cat),
+                                                None => i18n.t("episodes_layout.podcast").to_string(),
+                                            };
+                                            let sub_label = if *is_subscribing {
+                                                i18n.t("episodes_layout.subscribing").to_string()
+                                            } else if subscribed {
+                                                i18n.t("episodes_layout.subscribed").to_string()
+                                            } else {
+                                                i18n.t("episodes_layout.subscribe").to_string()
+                                            };
+                                            let primary_class = if subscribed { "pd-btn-primary is-subscribed" } else { "pd-btn-primary" };
                                             html! {
-                                                <div class="item-header">
-                                                    <FallbackImage
-                                                        src={podcast_info.artworkurl.clone()}
-                                                        // onclick={on_title_click.clone()}
-                                                        alt={format!("Cover for {}", &podcast_info.podcastname)}
-                                                        class={"item-header-cover"}
-                                                    />
-                                                    <div class="item-header-info">
-                                                        <div class="title-button-container">
-                                                            <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
-                                                            { if is_video_podcast {
-                                                                html! {
-                                                                    <span class="inline-flex items-center gap-1 bg-opacity-80 bg-gray-700 text-white text-xs px-2 py-1 rounded-full self-center">
-                                                                        <i class="ph ph-television"></i>
-                                                                        { &i18n_video }
-                                                                    </span>
-                                                                }
-                                                            } else { html! {} }}
-                                                            {
-                                                                if podcast_state.podcast_added.unwrap_or(false) {
-                                                                    html! {
-                                                                        <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                            { download_all }
-                                                                        </button>
-                                                                    }
-                                                                } else {
-                                                                    html! {}
-                                                                }
-                                                            }
-                                                            <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button font-bold py-2 px-4 rounded-full self-center mr-4"} style="width: 60px; height: 60px;">
-                                                                { button_content }
-                                                            </button>
-                                                            {
-                                                                if podcast_state.podcast_added.unwrap_or(false) {
-                                                                    html! {
-                                                                        <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                            { setting_content }
-                                                                        </button>
-                                                                    }
-                                                                } else {
-                                                                    html! {}
-                                                                }
-                                                            }
+                                                <div class="pd-banner">
+                                                    <div class="pd-banner-backdrop" style={backdrop_style}></div>
+                                                    <div class="pd-banner-scrim"></div>
+                                                    <div class="pd-banner-inner">
+                                                        <div class="pd-banner-top">
+                                                            <FallbackImage
+                                                                src={podcast_info.artworkurl.clone()}
+                                                                alt={format!("Cover for {}", &podcast_info.podcastname)}
+                                                                class={"pd-banner-cover"}
+                                                            />
+                                                            <div class="pd-banner-head">
+                                                                <div class="pd-eyebrow">
+                                                                    <i class="ph ph-microphone-stage"></i>
+                                                                    <span>{ eyebrow_text }</span>
+                                                                </div>
+                                                                <div class="pd-banner-title-row">
+                                                                    <h2 class="pd-banner-title">{ &podcast_info.podcastname }</h2>
+                                                                    { if is_video_podcast {
+                                                                        html! {
+                                                                            <span class="inline-flex items-center gap-1 bg-opacity-80 bg-gray-700 text-white text-xs px-2 py-1 rounded-full self-center">
+                                                                                <i class="ph ph-television"></i>
+                                                                                { &i18n_video }
+                                                                            </span>
+                                                                        }
+                                                                    } else { html! {} }}
+                                                                </div>
+                                                                <div class="pd-banner-meta">
+                                                                    <span class="pd-author">{ &i18n_authors }<strong>{ &podcast_info.author }</strong></span>
+                                                                    <span class="pd-dot">{"•"}</span>
+                                                                    <span class="pd-stat"><i class="ph ph-stack"></i>{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</span>
+                                                                    <span class="pd-dot">{"•"}</span>
+                                                                    <span class="pd-stat">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</span>
+                                                                </div>
+                                                                <div class="pd-banner-actions">
+                                                                    <button onclick={toggle_podcast} title={i18n.t("episodes_layout.add_remove_podcast").to_string()} class={primary_class}>
+                                                                        { button_content }
+                                                                        <span>{ sub_label }</span>
+                                                                    </button>
+                                                                    { if subscribed {
+                                                                        html! {
+                                                                            <button onclick={toggle_download} title={i18n.t("episodes_layout.download_all_episodes").to_string()} class="pd-icon-btn">
+                                                                                { download_all }
+                                                                            </button>
+                                                                        }
+                                                                    } else { html! {} } }
+                                                                    <button
+                                                                        onclick={Callback::from(move |_| web_link.clone().emit(pod_link.to_string()))}
+                                                                        title="Visit external podcast website" class="pd-icon-btn">
+                                                                        { website_icon }
+                                                                    </button>
+                                                                    { if subscribed {
+                                                                        html! {
+                                                                            <button onclick={toggle_settings} title={i18n.t("episodes_layout.podcast_specific_settings").to_string()} class="pd-icon-btn">
+                                                                                { setting_content }
+                                                                            </button>
+                                                                        }
+                                                                    } else { html! {} } }
+                                                                    { if subscribed {
+                                                                        html! {
+                                                                            <button
+                                                                                onclick={
+                                                                                    let page_state = page_state.clone();
+                                                                                    Callback::from(move |_| { page_state.set(PageState::RSSFeed); })
+                                                                                }
+                                                                                title="Get RSS Feed URL"
+                                                                                class="pd-icon-btn">
+                                                                                { rss_icon }
+                                                                            </button>
+                                                                        }
+                                                                    } else { html! {} } }
+                                                                    { if let Some(funding_list) = &state.podcast_funding {
+                                                                        if !funding_list.is_empty() {
+                                                                            let funding_list_clone = funding_list.clone();
+                                                                            html! {
+                                                                                <>
+                                                                                { for funding_list_clone.iter().map(|funding| {
+                                                                                    let open_in_new_tab = open_in_new_tab.clone();
+                                                                                    let payment_icon = payment_icon.clone();
+                                                                                    let url = funding.url.clone();
+                                                                                    html! {
+                                                                                        <button
+                                                                                            onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
+                                                                                            title={funding.description.clone()}
+                                                                                            class="pd-icon-btn"
+                                                                                        >
+                                                                                            { payment_icon }
+                                                                                        </button>
+                                                                                    }
+                                                                                })}
+                                                                                </>
+                                                                            }
+                                                                        } else { html! {} }
+                                                                    } else { html! {} } }
+                                                                </div>
+                                                            </div>
                                                         </div>
 
-                                                        // <p class="item-header-description">{ &podcast_info.podcast_description }</p>
-                                                        <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
+                                                        <div class="item-header-description desc-collapsed pd-banner-desc" id={desc_id.clone()} onclick={toggle_description.clone()}>
                                                             { sanitized_description }
                                                             <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
                                                         </div>
-                                                        <button
-                                                            onclick={Callback::from(move |_| web_link.clone().emit(pod_link.to_string()))}
-                                                            title="Visit external podcast website" class={"item-container-button font-bold rounded-full self-center mr-4"} style="width: 30px; height: 30px;">
-                                                            { website_icon }
-                                                        </button>
-                                                        {
-                                                            if let Some(funding_list) = &state.podcast_funding {
-                                                                if !funding_list.is_empty() {
-                                                                    let funding_list_clone = funding_list.clone();
-                                                                    html! {
-                                                                        <>
-                                                                        { for funding_list_clone.iter().map(|funding| {
-                                                                            let open_in_new_tab = open_in_new_tab.clone();
-                                                                            let payment_icon = payment_icon.clone();
-                                                                            let url = funding.url.clone();
-                                                                            html! {
-                                                                                <button
-                                                                                    onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
-                                                                                    title={funding.description.clone()}
-                                                                                    class="item-container-button font-bold rounded-full self-center mr-4"
-                                                                                    style="width: 30px; height: 30px;"
-                                                                                >
-                                                                                    { payment_icon } // Replace with your payment_icon component
-                                                                                </button>
-                                                                            }
-                                                                        })}
-                                                                        </>
-                                                                    }
-                                                                } else {
-                                                                    html! {}
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        {
-                                                            if podcast_state.podcast_added.unwrap_or(false) {
-                                                                html! {
-                                                                    <button
-                                                                        onclick={
-                                                                            let page_state = page_state.clone();
-                                                                            Callback::from(move |_| {
-                                                                                page_state.set(PageState::RSSFeed);
-                                                                            })
-                                                                        }
-                                                                        title="Get RSS Feed URL"
-                                                                        class={"item-container-button font-bold rounded-full self-center mr-4"}
-                                                                        style="width: 30px; height: 30px;">
-                                                                        { rss_icon }
-                                                                    </button>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        <div class="item-header-info">
 
-                                                            <p class="header-text">{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</p>
-                                                            <p class="header-text">{ format!("{}{}", i18n_authors, &podcast_info.author) }</p>
-                                                            <p class="header-text">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</p>
-                                                        {
+                                                        { if !podcast_info.is_youtube.unwrap_or(false) {
                                                             if podcast_info.podcastindexid == 0 {
                                                                 html! {
-                                                                    <div class="import-box mt-2">
-                                                                        <p class="item_container-text text-sm">
-                                                                            {"⚠️ This podcast isn't matched to Podcast Index. "}
-                                                                            <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
-                                                                                {&i18n.t("episodes_layout.match_it_here")}
-                                                                            </a>
-                                                                            {" to enable host and guest information."}
-                                                                        </p>
+                                                                    <div class="pd-banner-warning">
+                                                                        <div class="import-box">
+                                                                            <p class="item_container-text text-sm">
+                                                                                {"⚠️ This podcast isn't matched to Podcast Index. "}
+                                                                                <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
+                                                                                    {&i18n.t("episodes_layout.match_it_here")}
+                                                                                </a>
+                                                                                {" to enable host and guest information."}
+                                                                            </p>
+                                                                        </div>
                                                                     </div>
                                                                 }
                                                             } else if let Some(people) = &state.podcast_people {
                                                                 if !people.is_empty() {
-                                                                    html! {
-                                                                        <div class="header-info relative" style="max-width: 100%; min-width: 0;">  // Added min-width: 0 to allow shrinking
-                                                                            <div class="max-w-full overflow-x-auto">
-                                                                                <HostDropdown
-                                                                                    title="Hosts"
-                                                                                    hosts={people.clone()}
-                                                                                    podcast_feed_url={podcast_info.feedurl}
-                                                                                    podcast_id={*podcast_id}
-                                                                                    podcast_index_id={podcast_info.podcastindexid}
-                                                                                />
-                                                                            </div>
-                                                                        </div>
-                                                                    }
-                                                                } else {
-                                                                    html! {}
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                            <div>
-                                                                {
-                                                                    if let Some(categories) = &podcast_info.categories {
+                                                                    let has_unknown_host = people.len() == 1
+                                                                        && people[0].name == "Unknown Host"
+                                                                        && people[0].role == Some("Host".to_string());
+                                                                    if has_unknown_host {
+                                                                        let people_url = search_state.server_details.as_ref()
+                                                                            .and_then(|sd| sd.people_url.as_ref())
+                                                                            .cloned()
+                                                                            .unwrap_or_default();
+                                                                        let host_url = format!("{}/podcast/{}", people_url, podcast_info.podcastindexid);
                                                                         html! {
-                                                                            <>
-                                                                            { for categories.values().map(|category_name| {
-                                                                                html! { <span class="category-box">{ category_name }</span> }
-                                                                            }) }
-                                                                            </>
+                                                                            <div class="pd-banner-nohosts">
+                                                                                <span class="pd-host-by">{ &i18n_hosts }</span>
+                                                                                <p class="pd-banner-nohosts-msg">
+                                                                                    { i18n.t("host_component.no_hosts_found") }
+                                                                                    <a href={host_url} target="_blank" class="pd-banner-nohosts-link">
+                                                                                        { i18n.t("host_component.add_hosts_here") }
+                                                                                    </a>
+                                                                                </p>
+                                                                            </div>
                                                                         }
                                                                     } else {
-                                                                        html! {}
+                                                                        let names: Vec<String> = people.iter().map(|p| p.name.clone()).collect();
+                                                                        let names_joined = match names.len() {
+                                                                            0 => String::new(),
+                                                                            1 => names[0].clone(),
+                                                                            2 => format!("{} & {}", names[0], names[1]),
+                                                                            _ => {
+                                                                                let (last, rest) = names.split_last().unwrap();
+                                                                                format!("{} & {}", rest.join(", "), last)
+                                                                            }
+                                                                        };
+                                                                        let server2 = server.clone();
+                                                                        html! {
+                                                                            <div class="pd-banner-hosts">
+                                                                                <div class="pd-host-stack">
+                                                                                    { for people.iter().take(6).map(|person| {
+                                                                                        let name = person.name.clone();
+                                                                                        let img_url = person.img.as_ref().map(|url| {
+                                                                                            format!("{}/api/proxy/image?url={}", server2, urlencoding::encode(url))
+                                                                                        });
+                                                                                        let hist = history.clone();
+                                                                                        let nav_name = name.clone();
+                                                                                        let on_chip_click = Callback::from(move |_: MouseEvent| {
+                                                                                            hist.push(format!("/person/{}", nav_name));
+                                                                                        });
+                                                                                        html! {
+                                                                                            <div class="pd-host-avatar-wrap" title={name.clone()} onclick={on_chip_click}>
+                                                                                                { if let Some(src) = img_url {
+                                                                                                    html! { <img src={src} alt={name.clone()} class="pd-host-avatar" /> }
+                                                                                                } else {
+                                                                                                    html! { <div class="pd-host-avatar pd-host-avatar-ph"><i class="ph ph-user"></i></div> }
+                                                                                                }}
+                                                                                            </div>
+                                                                                        }
+                                                                                    })}
+                                                                                </div>
+                                                                                <div class="pd-host-label">
+                                                                                    <span class="pd-host-by">{ i18n.t("episodes_layout.hosted_by") }</span>
+                                                                                    <span class="pd-host-names">{ names_joined }</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        }
                                                                     }
-                                                                }
-                                                            </div>
+                                                                } else { html! {} }
+                                                            } else { html! {} }
+                                                        } else { html! {} } }
 
-                                                        </div>
+                                                        { if let Some(categories) = &podcast_info.categories {
+                                                            if !categories.is_empty() {
+                                                                html! {
+                                                                    <div class="pd-banner-cats">
+                                                                        { for categories.values().map(|category_name| {
+                                                                            html! { <span class="category-box">{ category_name }</span> }
+                                                                        }) }
+                                                                    </div>
+                                                                }
+                                                            } else { html! {} }
+                                                        } else { html! {} } }
                                                     </div>
                                                 </div>
                                             }

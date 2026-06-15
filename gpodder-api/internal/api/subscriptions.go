@@ -66,7 +66,7 @@ func sanitizeURL(rawURL string) (string, error) {
 // getSubscriptions handles GET /api/2/subscriptions/{username}/{deviceid}
 func getSubscriptions(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Printf("[DEBUG] getSubscriptions: Starting request processing - %s %s", c.Request.Method, c.Request.URL.Path)
+		debugf("getSubscriptions: Starting request processing - %s %s", c.Request.Method, c.Request.URL.Path)
 
 		// Get user ID from middleware
 		userID, exists := c.Get("userID")
@@ -75,7 +75,7 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
-		log.Printf("[DEBUG] getSubscriptions: userID found: %v", userID)
+		debugf("getSubscriptions: userID found: %v", userID)
 
 		// Get device ID from URL - with fix for .json suffix
 		deviceName := c.Param("deviceid")
@@ -84,7 +84,7 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 			deviceName = strings.TrimSuffix(deviceName, ".json")
 		}
 
-		log.Printf("[DEBUG] getSubscriptions: Using device name: '%s'", deviceName)
+		debugf("getSubscriptions: Using device name: '%s'", deviceName)
 
 		if deviceName == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Device ID is required"})
@@ -104,7 +104,7 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 				return
 			}
 
-			log.Printf("[DEBUG] getSubscriptions: Processing as subscription changes request with since: %d", since)
+			debugf("getSubscriptions: Processing as subscription changes request with since: %d", since)
 
 			// Get device ID from database
 			var deviceID int
@@ -127,7 +127,7 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 			if err != nil {
 				if err == sql.ErrNoRows {
 					// Device doesn't exist, create it
-					log.Printf("[DEBUG] getSubscriptions: Device not found, creating new device")
+					debugf("getSubscriptions: Device not found, creating new device")
 
 					if database.IsPostgreSQLDB() {
 						query = `
@@ -241,7 +241,7 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 					"timestamp": time.Now().Unix(),
 				}
 
-				log.Printf("[DEBUG] getSubscriptions: Returning initial subscription list with %d podcasts", len(podcasts))
+				debugf("getSubscriptions: Returning initial subscription list with %d podcasts", len(podcasts))
 				c.Header("Content-Type", "application/json")
 				c.JSON(http.StatusOK, response)
 				return
@@ -263,7 +263,7 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 					ORDER BY MAX(s.Timestamp) DESC
 					LIMIT $4
                 `
-				log.Printf("[DEBUG] getSubscriptions: Executing add query with limit %d", MAX_SUBSCRIPTION_CHANGES)
+				debugf("getSubscriptions: Executing add query with limit %d", MAX_SUBSCRIPTION_CHANGES)
 				addRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
 			} else {
 				query = `
@@ -277,7 +277,7 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 					ORDER BY MAX(s.Timestamp) DESC
 					LIMIT ?
                 `
-				log.Printf("[DEBUG] getSubscriptions: Executing add query with limit %d", MAX_SUBSCRIPTION_CHANGES)
+				debugf("getSubscriptions: Executing add query with limit %d", MAX_SUBSCRIPTION_CHANGES)
 				addRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
 			}
 
@@ -386,7 +386,7 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 				"timestamp": timestamp,
 			}
 
-			log.Printf("[DEBUG] getSubscriptions: Returning subscription changes - add: %d, remove: %d, timestamp: %d",
+			debugf("getSubscriptions: Returning subscription changes - add: %d, remove: %d, timestamp: %d",
 				len(addList), len(removeList), timestamp)
 
 			c.Header("Content-Type", "application/json")
@@ -501,7 +501,7 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[DEBUG] Found %d podcast subscriptions in database for userID %v", len(urls), userID)
+		debugf("Found %d podcast subscriptions in database for userID %v", len(urls), userID)
 
 		// Update device's last sync time
 		if database.IsPostgreSQLDB() {
@@ -526,10 +526,10 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 		}
 
 		// Log before returning
-		log.Printf("[DEBUG] getSubscriptions: Returning %d subscription URLs to client", len(urls))
+		debugf("getSubscriptions: Returning %d subscription URLs to client", len(urls))
 		for i, url := range urls {
 			if i < 5 { // Only log first 5 to avoid flooding logs
-				log.Printf("[DEBUG] Subscription URL %d: %s", i, url)
+				debugf("Subscription URL %d: %s", i, url)
 			}
 		}
 
@@ -865,7 +865,7 @@ func updateSubscriptions(database *db.Database) gin.HandlerFunc {
 // Updated version of uploadSubscriptionChanges to ensure update_urls is always in the response
 func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Printf("[DEBUG] uploadSubscriptionChanges: Processing request: %s %s",
+		debugf("uploadSubscriptionChanges: Processing request: %s %s",
 			c.Request.Method, c.Request.URL.Path)
 
 		// Get parameters
@@ -884,7 +884,7 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 			deviceName = strings.TrimSuffix(deviceName, ".json")
 		}
 
-		log.Printf("[DEBUG] uploadSubscriptionChanges: For user %s (ID: %v), device: %s",
+		debugf("uploadSubscriptionChanges: For user %s (ID: %v), device: %s",
 			username, userID, deviceName)
 
 		// Parse request
@@ -895,7 +895,7 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[DEBUG] uploadSubscriptionChanges: Received changes - add: %d, remove: %d",
+		debugf("uploadSubscriptionChanges: Received changes - add: %d, remove: %d",
 			len(changes.Add), len(changes.Remove))
 
 		// Validate request (ensure no duplicate URLs between add and remove)
@@ -942,7 +942,7 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 		if err != nil {
 			if err == sql.ErrNoRows {
 				// Device doesn't exist, create it
-				log.Printf("[DEBUG] uploadSubscriptionChanges: Creating new device for user %v: %s", userID, deviceName)
+				debugf("uploadSubscriptionChanges: Creating new device for user %v: %s", userID, deviceName)
 
 				if database.IsPostgreSQLDB() {
 					query = `
@@ -978,14 +978,14 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
 					return
 				}
-				log.Printf("[DEBUG] uploadSubscriptionChanges: Created new device with ID: %d", deviceID)
+				debugf("uploadSubscriptionChanges: Created new device with ID: %d", deviceID)
 			} else {
 				log.Printf("[ERROR] uploadSubscriptionChanges: Error checking device existence: %v", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check device"})
 				return
 			}
 		} else {
-			log.Printf("[DEBUG] uploadSubscriptionChanges: Using existing device with ID: %d", deviceID)
+			debugf("uploadSubscriptionChanges: Using existing device with ID: %d", deviceID)
 		}
 
 		// Begin transaction
@@ -1247,7 +1247,7 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[DEBUG] uploadSubscriptionChanges: Successfully processed changes - add: %d, remove: %d",
+		debugf("uploadSubscriptionChanges: Successfully processed changes - add: %d, remove: %d",
 			len(changes.Add), len(changes.Remove))
 
 		// CRITICAL: Always include update_urls in response, even if empty
@@ -1266,7 +1266,7 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 			}
 		}
 
-		log.Printf("[DEBUG] uploadSubscriptionChanges: Returning response with timestamp %d and %d update URLs",
+		debugf("uploadSubscriptionChanges: Returning response with timestamp %d and %d update URLs",
 			timestamp, len(updateURLs))
 
 		// Return response

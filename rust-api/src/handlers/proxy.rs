@@ -4,6 +4,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
+use std::net::IpAddr;
 
 #[derive(Deserialize)]
 pub struct ImageProxyQuery {
@@ -21,8 +22,30 @@ pub async fn proxy_image(
         return Err(StatusCode::BAD_REQUEST);
     }
 
+    // SSRF guard: refuse to fetch from loopback/private/link-local/etc. addresses
+    // (e.g. cloud metadata at 169.254.169.254 or internal-network services).
+    if !host_is_public(&query.url).await {
+        tracing::warn!("Blocked image proxy request to non-public host");
+        return Err(StatusCode::FORBIDDEN);
+    }
+
     let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::limited(10))
+        // Re-validate redirect targets so a public URL can't bounce us to an IP-literal
+        // internal address. (Hostname-based rebinding on redirect is a residual edge case.)
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.previous().len() >= 5 {
+                return attempt.error("too many redirects");
+            }
+            match attempt.url().host() {
+                Some(url::Host::Ipv4(ip)) if is_blocked_ip(IpAddr::V4(ip)) => {
+                    attempt.error("redirect to blocked address")
+                }
+                Some(url::Host::Ipv6(ip)) if is_blocked_ip(IpAddr::V6(ip)) => {
+                    attempt.error("redirect to blocked address")
+                }
+                _ => attempt.follow(),
+            }
+        }))
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -48,7 +71,7 @@ pub async fn proxy_image(
         .unwrap_or("")
         .to_string();
 
-    tracing::info!("Content type: {}", content_type);
+    tracing::debug!("Content type: {}", content_type);
 
     if !content_type.starts_with("image/") && content_type != "application/octet-stream" {
         tracing::error!("Invalid content type: {}", content_type);
@@ -58,7 +81,9 @@ pub async fn proxy_image(
     let bytes = response.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
     let mut headers = HeaderMap::new();
-    headers.insert("content-type", content_type.parse().unwrap());
+    if let Ok(ct) = content_type.parse() {
+        headers.insert("content-type", ct);
+    }
     headers.insert("cache-control", "public, max-age=86400".parse().unwrap());
     headers.insert("access-control-allow-origin", "*".parse().unwrap());
     headers.insert("x-content-type-options", "nosniff".parse().unwrap());
@@ -74,6 +99,61 @@ fn is_valid_image_url(url: &str) -> bool {
         matches!(parsed_url.scheme(), "http" | "https")
     } else {
         false
+    }
+}
+
+/// IPs the proxy must never reach (SSRF protection): loopback, private/RFC1918,
+/// link-local (incl. 169.254.169.254 cloud metadata), CGNAT, unique-local, etc.
+fn is_blocked_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_unspecified()
+                || v4.is_documentation()
+                || v4.octets()[0] == 0 // 0.0.0.0/8
+                || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 64) // 100.64.0.0/10 CGNAT
+        }
+        IpAddr::V6(v6) => {
+            if let Some(mapped) = v6.to_ipv4_mapped() {
+                return is_blocked_ip(IpAddr::V4(mapped));
+            }
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || (v6.segments()[0] & 0xfe00) == 0xfc00 // fc00::/7 unique-local
+                || (v6.segments()[0] & 0xffc0) == 0xfe80 // fe80::/10 link-local
+        }
+    }
+}
+
+/// Resolve the URL's host and ensure EVERY resolved address is public.
+async fn host_is_public(url_str: &str) -> bool {
+    let parsed = match url::Url::parse(url_str) {
+        Ok(u) => u,
+        Err(_) => return false,
+    };
+    let host = match parsed.host_str() {
+        Some(h) => h.to_string(),
+        None => return false,
+    };
+    let port = parsed.port_or_known_default().unwrap_or(80);
+    // url's host_str() already brackets IPv6 literals, so "host:port" is valid here.
+    let authority = format!("{}:{}", host, port);
+
+    match tokio::net::lookup_host(authority).await {
+        Ok(addrs) => {
+            let mut resolved_any = false;
+            for addr in addrs {
+                resolved_any = true;
+                if is_blocked_ip(addr.ip()) {
+                    return false;
+                }
+            }
+            resolved_any
+        }
+        Err(_) => false,
     }
 }
 

@@ -12,7 +12,7 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::console;
 use yewdux::prelude::*;
 
-use crate::components::context::{AppState, NotificationState};
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState};
 use crate::components::notification_center::TaskProgress;
 
 // Response structs
@@ -356,6 +356,44 @@ pub async fn connect_to_task_websocket(
                                                 None
                                             },
                                         };
+
+                                        // If a podcast download failed, revert the optimistic
+                                        // "downloaded" marker the UI set when the task was queued.
+                                        // The failure payload omits item_id and uses the stored
+                                        // task type ("download_episode"), so recover the episode
+                                        // id from the task entry recorded during earlier progress
+                                        // updates (which carried item_id + "podcast_download").
+                                        if task.status == "FAILED"
+                                            && (task.r#type == "download_episode"
+                                                || task.r#type == "podcast_download")
+                                        {
+                                            let episode_id = task
+                                                .item_id
+                                                .as_deref()
+                                                .and_then(|id| id.parse::<i32>().ok())
+                                                .or_else(|| {
+                                                    dispatch_clone
+                                                        .get()
+                                                        .active_tasks
+                                                        .as_ref()
+                                                        .and_then(|tasks| {
+                                                            tasks
+                                                                .iter()
+                                                                .find(|t| t.task_id == task.task_id)
+                                                                .and_then(|t| t.item_id.as_deref())
+                                                                .and_then(|id| {
+                                                                    id.parse::<i32>().ok()
+                                                                })
+                                                        })
+                                                });
+                                            if let Some(episode_id) = episode_id {
+                                                Dispatch::<EpisodeStatusState>::global()
+                                                    .reduce_mut(|s| {
+                                                        s.downloaded_episodes
+                                                            .remove_server(episode_id);
+                                                    });
+                                            }
+                                        }
 
                                         dispatch_clone.reduce_mut(|state| {
                                             let mut tasks =
