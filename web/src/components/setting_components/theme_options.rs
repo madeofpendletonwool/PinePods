@@ -141,7 +141,7 @@ pub fn theme(props: &ThemeOptionsProps) -> Html {
         let dispatch = dispatch.clone();
 
         Callback::from(move |theme_name: String| {
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
 
             changeTheme(&theme_name);
 
@@ -181,7 +181,7 @@ pub fn theme(props: &ThemeOptionsProps) -> Html {
         let custom_themes = custom_themes.clone();
 
         Callback::from(move |(theme_name, theme_id): (String, i32)| {
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
 
             // Find the custom theme data and apply its colors directly
             if let Some(ct) = (*custom_themes).iter().find(|t| t.themeid == theme_id) {
@@ -246,7 +246,7 @@ pub fn theme(props: &ThemeOptionsProps) -> Html {
         Callback::from(move |(theme_id, theme_name): (i32, String)| {
             let custom_themes = custom_themes.clone();
             let selected_theme = selected_theme.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
 
             // Optimistically remove from list
             let prev = (*custom_themes).clone();

@@ -72,7 +72,7 @@ pub fn custom_feed() -> Html {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let feed_url = feed_url.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             is_loading_call.set(true);
             let is_loading_wasm = is_loading_call.clone();
             let unstate_pod_user = (*pod_user).clone();
@@ -131,7 +131,7 @@ pub fn custom_feed() -> Html {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let youtube_url = youtube_url.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             is_loading_call.set(true);
             let is_loading_wasm = is_loading_call.clone();
             wasm_bindgen_futures::spawn_local(async move {

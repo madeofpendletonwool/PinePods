@@ -129,7 +129,7 @@ pub fn import_options() -> Html {
 
                                 let success_msg_clone = success_msg.clone();
                                 let callback = Closure::wrap(Box::new(move || {
-                                    let dispatch_wasm = dispatch_wasm_call.clone();
+                                    let _dispatch_wasm = dispatch_wasm_call.clone();
                                     let server_name = server_name.clone();
                                     let api_key = api_key.clone();
                                     let user_id = user_id;

@@ -11,7 +11,6 @@ use crate::requests::pod_req::{self, PlaylistInfo, Podcast, UpdatePlaylistReques
 use gloo_timers::future::TimeoutFuture;
 use i18nrs::yew::use_translation;
 use std::rc::Rc;
-use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;

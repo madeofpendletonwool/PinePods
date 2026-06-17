@@ -4,7 +4,6 @@ use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, FilterState, NotificationState, UIState};
 use crate::components::episode_list_view::EpisodeListView;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
-use crate::components::gen_funcs::format_time;
 use crate::requests::episode::Episode;
 use crate::requests::pod_req::{
     call_bulk_download_episodes, call_bulk_mark_episodes_completed, call_bulk_queue_episodes,
@@ -23,8 +22,8 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
-use yew::{function_component, html, use_node_ref, AttrValue, Callback, Html, Properties};
-use yew_router::history::{BrowserHistory, History};
+use yew::{function_component, html, use_node_ref, Callback, Html, Properties};
+use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 use wasm_bindgen::closure::Closure;
 
@@ -900,7 +899,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                 let api_key_tile = api_key.clone();
                                 let server_tile = server_name.clone().unwrap_or_default();
                                 let history_tile = history.clone();
-                                let dispatch_tile = dispatch.clone();
+                                let _dispatch_tile = dispatch.clone();
                                 let on_click = create_on_title_click(
                                     server_tile,
                                     api_key_tile,

@@ -123,7 +123,7 @@ fn render_podcasts(
                         let server_name_iter = server_name.clone().unwrap();
                         let history_clone = history.clone();
 
-                        let dispatch_clone = dispatch.clone();
+                        let _dispatch_clone = dispatch.clone();
                         let podcast_id_loop = podcast.podcastid.clone();
                         let podcast_feed_loop = podcast.feedurl.clone();
                         let podcast_description_clone = podcast.description.clone();
@@ -400,7 +400,7 @@ pub fn podcasts() -> Html {
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
-                    let dispatch = effect_dispatch.clone();
+                    let _dispatch = effect_dispatch.clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_podcasts_extra(&server_name, &api_key, &user_id)
@@ -491,7 +491,7 @@ pub fn podcasts() -> Html {
             let feed_url = (*podcast_to_delete_feed).clone();
 
             if let (Some(pid), Some(url)) = (podcast_id, feed_url) {
-                let dispatch_call = dispatch_remove.clone();
+                let _dispatch_call = dispatch_remove.clone();
                 let api_key_call = api_key_rm.clone();
                 let server_name_call = server_name.clone();
                 let user_id_call = user_id.unwrap();
@@ -619,7 +619,7 @@ pub fn podcasts() -> Html {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id;
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(server_name), Some(Some(api_key)), Some(user_id)) =
                     (server_name, api_key, user_id)
@@ -702,7 +702,7 @@ pub fn podcasts() -> Html {
         let error_prefix = i18n_failed_to_add_podcast.clone();
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
-            let dispatch_call = dispatch_remove.clone();
+            let _dispatch_call = dispatch_remove.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let feed_url = feed_url.clone();
@@ -772,7 +772,7 @@ pub fn podcasts() -> Html {
         let error_prefix = i18n_failed_to_add_podcast.clone();
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
-            let dispatch_call = dispatch_remove.clone();
+            let _dispatch_call = dispatch_remove.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let youtube_url = youtube_url.clone();

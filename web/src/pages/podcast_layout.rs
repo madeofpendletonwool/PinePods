@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use web_sys::MouseEvent;
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
-use yew_router::history::{BrowserHistory, History};
+use yew_router::history::BrowserHistory;
 use yewdux::dispatch::Dispatch;
 use yewdux::use_store;
 
@@ -60,7 +60,7 @@ impl ClickedFeedURL {
 #[function_component(PodLayout)]
 pub fn pod_layout() -> Html {
     let (i18n, _) = use_translation();
-    let (state, _dispatch) = use_store::<AppState>();
+    let (_state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let (search_state, _) = use_store::<SearchState>();
     let search_results = search_state.search_results.clone();
@@ -276,7 +276,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let podcast_url = podcast.url.clone();
             let is_loading = is_loading.clone();
             let podcast_dispatch = podcast_dispatch.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             let podcast_removed_msg = podcast_removed_msg.clone();
             let remove_error_msg = remove_error_msg.clone();
             let podcast_added_msg = podcast_added_msg.clone();

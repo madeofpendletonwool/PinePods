@@ -91,7 +91,7 @@ pub fn backup_server() -> Html {
         Callback::from(move |_| {
             let empty_password_msg = empty_password_msg.clone();
             let backup_error_prefix = backup_error_prefix.clone();
-            let dispatch_call = dispatch_call.clone();
+            let _dispatch_call = dispatch_call.clone();
             let db_pass = (*database_password).trim().to_string();
             if db_pass.is_empty() {
                 Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {

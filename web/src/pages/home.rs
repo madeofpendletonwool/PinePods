@@ -1,15 +1,11 @@
 use crate::components::app_drawer::App_drawer;
-use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{
     AppState, EpisodeStatusState, HomePageState, PlaylistDataState, UIState,
 };
-use crate::components::context_menu_button::ContextMenuButton;
 use crate::components::episode_list_item::EpisodeListItem;
-use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
-use crate::components::gen_funcs::{format_datetime, format_time, match_date_format, parse_date};
 use crate::components::loading::Loading;
 use crate::pages::routes::Route;
 use crate::requests::episode::Episode;
@@ -363,7 +359,7 @@ pub fn home() -> Html {
                                 let api_key_clone = api_key.clone();
                                 let server_name_clone = server_name.clone();
                                 let history_clone = history.clone();
-                                let dispatch_clone = dispatch.clone();
+                                let _dispatch_clone = dispatch.clone();
 
                                 let on_title_click = create_on_title_click(
                                     server_name_clone.unwrap_or_default(),

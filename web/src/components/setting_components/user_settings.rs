@@ -373,7 +373,7 @@ pub fn user_settings() -> Html {
         </div>
     };
 
-    let user_dispatch = ui_user.clone();
+    let _user_dispatch = ui_user.clone();
     let edit_admin_call = admin_edit_status.clone();
     let on_user_row_click = {
         let selected_user_id = selected_user_id.clone();
@@ -411,7 +411,7 @@ pub fn user_settings() -> Html {
                 let server_name = server_name.clone();
                 let api_key = api_key.clone();
                 let page_state = page_state.clone();
-                let user_dispatch = user_dispatch.clone();
+                let _user_dispatch = user_dispatch.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_delete_user(server_name.unwrap(), api_key.unwrap().unwrap(), user_id)
                         .await
@@ -473,7 +473,7 @@ pub fn user_settings() -> Html {
             e.prevent_default();
 
             // Check if each field has input and call the corresponding API function
-            let fullname_dispatch = dispatch_wasm.clone();
+            let _fullname_dispatch = dispatch_wasm.clone();
             let page_state_name = page_state.clone();
             let page_state_user = page_state.clone();
             let page_state_pass = page_state.clone();

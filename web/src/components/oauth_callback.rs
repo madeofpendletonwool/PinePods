@@ -122,7 +122,7 @@ pub fn oauth_callback() -> Html {
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             web_sys::console::log_1(&"Time zone submit clicked".into());
-            let call_dispatch = dispatch.clone();
+            let _call_dispatch = dispatch.clone();
             let call_history = history.clone();
             let call_page_state = page_state.clone();
             let i18n_failed_set_timezone = i18n_failed_set_timezone_callback.clone();

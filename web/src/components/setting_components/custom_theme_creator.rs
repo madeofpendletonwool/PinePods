@@ -282,7 +282,7 @@ pub fn custom_theme_creator(props: &CustomThemeCreatorProps) -> Html {
                 let saving = saving.clone();
                 let theme_name = theme_name.clone();
                 let on_created = on_created.clone();
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
 
                 let req = CreateCustomThemeRequest {
                     user_id,

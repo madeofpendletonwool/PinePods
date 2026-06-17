@@ -58,7 +58,7 @@ impl PodcastEpisodeState {
 #[function_component(Downloads)]
 pub fn downloads() -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, dispatch) = use_store::<AppState>();
     let expanded_state: UseStateHandle<HashMap<i32, bool>> = use_state(HashMap::new);
     let per_podcast_state: UseStateHandle<HashMap<i32, PodcastEpisodeState>> = use_state(HashMap::new);
     let podcast_summaries: UseStateHandle<Vec<PodcastDownloadSummary>> = use_state(Vec::new);
@@ -71,7 +71,7 @@ pub fn downloads() -> Html {
     let i18n_in_progress = i18n.t("downloads.in_progress").to_string();
     let i18n_search_downloaded_episodes =
         i18n.t("downloads.search_downloaded_episodes").to_string();
-    let i18n_no_downloaded_episodes_found =
+    let _i18n_no_downloaded_episodes_found =
         i18n.t("downloads.no_downloaded_episodes_found").to_string();
     let i18n_no_downloaded_episodes_description = i18n
         .t("downloads.no_downloaded_episodes_description")
@@ -91,7 +91,7 @@ pub fn downloads() -> Html {
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let page_state = use_state(|| PageState::Normal);
     let api_key = post_state
         .auth_details
@@ -273,7 +273,7 @@ pub fn downloads() -> Html {
         let per_podcast_state = per_podcast_state.clone();
 
         Callback::from(move |_: MouseEvent| {
-            let dispatch_cloned = dispatch.clone();
+            let _dispatch_cloned = dispatch.clone();
             let page_state_cloned = page_state.clone();
             let server_name_cloned = server_name.clone().unwrap();
             let api_key_cloned = api_key.clone().unwrap();

@@ -93,7 +93,7 @@ pub fn email_settings() -> Html {
                 let form_auth_required = form_auth_required.clone();
                 let api_key = api_key.clone();
                 let server_name = server_name.clone();
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
 
                 spawn_local(async move {
                     if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
@@ -219,7 +219,7 @@ pub fn email_settings() -> Html {
             let form_auth_required = form_auth_required.clone();
             let is_testing = is_testing.clone();
             let test_success = test_success.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             let api_key = api_key.clone();
             let server_name = server_name.clone();
             let user_email = user_email.clone();
@@ -289,7 +289,7 @@ pub fn email_settings() -> Html {
             let form_password = form_password.clone();
             let form_auth_required = form_auth_required.clone();
             let is_saving = is_saving.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             let api_key = api_key.clone();
             let server_name = server_name.clone();
 

@@ -1,4 +1,6 @@
-use crate::components::context::{AppState, EpisodeStatusState, NotificationState, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState};
+#[cfg(not(feature = "server_build"))]
+use crate::components::context::UIState;
 #[cfg(not(feature = "server_build"))]
 use crate::pages::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
@@ -6,9 +8,6 @@ use crate::pages::downloads_tauri::{
 use crate::requests::episode::Episode;
 
 use crate::components::gen_funcs::format_error_message;
-use crate::components::gen_funcs::format_time;
-use crate::components::notification_center::{NotificationCenter, ToastNotification};
-use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req::{
     call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
     call_queue_episode, call_remove_downloaded_episode, call_remove_queued_episode,
@@ -19,19 +18,13 @@ use crate::requests::pod_req::{
 use crate::requests::pod_req::{
     call_get_episode_metadata, call_get_podcast_details, EpisodeRequest,
 };
-use crate::requests::search_pods::{
-    call_get_podcast_info, call_youtube_search, test_connection, YouTubeSearchResults,
-};
 use gloo_events::EventListener;
-use gloo_timers::callback::Timeout;
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
 use i18nrs::yew::use_translation;
-use web_sys::{window, Element, HtmlInputElement, MouseEvent, TouchEvent};
+use web_sys::{window, MouseEvent, TouchEvent};
 use yew::prelude::*;
 use yew::Callback;
-use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 
 /// Specific page types for unique ctx menu implementations
@@ -61,7 +54,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let (i18n, _) = use_translation();
     let i18n_remove_downloaded_episode = i18n.t("context_menu_button.remove_downloaded_episode").to_string();
     let i18n_download_episode = i18n.t("context_menu_button.download_episode").to_string();
+    #[cfg(not(feature = "server_build"))]
     let i18n_delete_local_download = i18n.t("context_menu_button.delete_local_download").to_string();
+    #[cfg(not(feature = "server_build"))]
     let i18n_local_download = i18n.t("context_menu_button.local_download").to_string();
     let i18n_remove_from_queue = i18n.t("context_menu_button.remove_from_queue").to_string();
     let i18n_queue_episode = i18n.t("context_menu_button.queue_episode").to_string();
@@ -367,7 +362,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let remove_saved_server_name = server_name.clone();
     let on_remove_saved_episode = {
         let episode = props.episode.clone();
-        let episode_id = props.episode.episodeid;
+        let _episode_id = props.episode.episodeid;
         Callback::from(move |_| {
             let server_name_copy = remove_saved_server_name.clone();
             let api_key_copy = remove_saved_api_key.clone();
@@ -465,7 +460,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let remove_download_server_name = server_name.clone();
     let on_remove_downloaded_episode = {
         let episode = props.episode.clone();
-        let episode_id = props.episode.episodeid;
+        let _episode_id = props.episode.episodeid;
         Callback::from(move |_| {
             let server_name_copy = remove_download_server_name.clone();
             let api_key_copy = remove_download_api_key.clone();

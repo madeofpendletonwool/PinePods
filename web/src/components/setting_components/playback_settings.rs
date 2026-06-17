@@ -160,7 +160,7 @@ pub fn playback_settings() -> Html {
     {
         let default_playback_speed = default_playback_speed.clone();
         let is_loading = is_loading.clone();
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
 
         use_effect_with(
             (api_key.clone(), server_name.clone()),
@@ -202,7 +202,7 @@ pub fn playback_settings() -> Html {
     {
         let auto_complete_seconds = auto_complete_seconds.clone();
         let auto_complete_loading = auto_complete_loading.clone();
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
 
         use_effect_with(
             (api_key.clone(), server_name.clone()),
@@ -275,7 +275,7 @@ pub fn playback_settings() -> Html {
                 let speed = *default_playback_speed;
                 let show_success = show_success.clone();
                 let success_message = success_message.clone();
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_set_user_playback_speed(&server_name, &api_key, user_id, speed).await
@@ -344,7 +344,7 @@ pub fn playback_settings() -> Html {
                 let seconds = *auto_complete_seconds;
                 let show_success = show_success.clone();
                 let success_message = success_message.clone();
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_update_auto_complete_seconds(server_name, api_key.unwrap(), user_id, seconds).await

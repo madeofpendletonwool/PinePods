@@ -1,4 +1,6 @@
-use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PodcastFeedState, UIState};
+use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, PodcastFeedState, UIState};
+#[cfg(not(feature = "server_build"))]
+use crate::components::context::NotificationState;
 use crate::components::gen_components::{EpisodeModal, FallbackImage};
 use crate::components::gen_funcs::format_time_rm_hour;
 #[cfg(not(feature = "server_build"))]
@@ -26,7 +28,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{window, HtmlAudioElement, HtmlVideoElement, HtmlElement, HtmlInputElement, TouchEvent};
+use web_sys::{window, HtmlAudioElement, HtmlElement, HtmlInputElement, TouchEvent};
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
@@ -170,7 +172,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let show_modal = use_state(|| false);
 
     // Memoize the audio playing state to reduce re-renders
-    let is_playing = use_memo(
+    let _is_playing = use_memo(
         audio_state.audio_playing.unwrap_or(false),
         |state| *state
     );
@@ -180,8 +182,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let i18n_close_modal = i18n.t("common.close_modal").to_string();
     let i18n_no_audio_playing = i18n.t("audio.no_audio_playing").to_string();
     let i18n_no_chapters_available = i18n.t("audio.no_chapters_available").to_string();
-    let i18n_shownotes = i18n.t("audio.shownotes").to_string();
-    let i18n_shownotes_unavailable = i18n.t("audio.shownotes_unavailable").to_string();
+    let _i18n_shownotes = i18n.t("audio.shownotes").to_string();
+    let _i18n_shownotes_unavailable = i18n.t("audio.shownotes_unavailable").to_string();
     let i18n_now_playing = i18n.t("audio.now_playing").to_string();
     let on_modal_close = {
         let show_modal = show_modal.clone();
@@ -1835,7 +1837,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         Callback::from(move |e: MouseEvent| {
                             show_modal.set(false);  // Close modal before navigation
                             title_click.emit(e);
-                            let dispatch_clone = dispatch.clone();
+                            let _dispatch_clone = dispatch.clone();
                             let history_clone = history.clone();
                             let props = props.clone();
                             wasm_bindgen_futures::spawn_local(async move {
@@ -1917,7 +1919,7 @@ pub fn on_play_pause(
     server_name: String,
     audio_dispatch: Dispatch<UIState>,
     audio_state: Rc<UIState>,
-    app_state: Rc<AppState>,
+    _app_state: Rc<AppState>,
 ) -> Callback<MouseEvent> {
     let ep_status = Dispatch::<EpisodeStatusState>::global().get();
     let podcast_feed_state = Dispatch::<PodcastFeedState>::global().get();
@@ -2455,7 +2457,7 @@ pub fn on_play_click_offline(
     Callback::from(move |_: MouseEvent| {
         let episode_info_for_closure = episode.clone();
         let audio_dispatch = audio_dispatch.clone();
-        let app_dispatch = app_dispatch.clone();
+        let _app_dispatch = app_dispatch.clone();
 
         // Early return if downloadedlocation is None
         let file_path = match episode_info_for_closure.downloadedlocation {

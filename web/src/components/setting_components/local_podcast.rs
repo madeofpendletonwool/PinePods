@@ -322,7 +322,7 @@ pub fn local_podcast() -> Html {
             let api_key = api_key.clone();
             let server_name = server_name.clone();
             let user_id_val = user_id.clone().unwrap_or_default();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             let is_refreshing = is_refreshing.clone();
 
             is_refreshing.set(true);

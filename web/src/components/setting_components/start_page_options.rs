@@ -108,7 +108,7 @@ pub fn startpage() -> Html {
         Callback::from(move |_| {
             let success_msg = success_msg.clone();
             let error_prefix = error_prefix.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             let startpage = (*selected_startpage).clone();
 
             if startpage.is_empty() {
@@ -162,7 +162,7 @@ pub fn startpage() -> Html {
                 use_podcast_covers.set(new_value);
                 let success_msg = success_msg.clone();
                 let error_prefix = error_prefix.clone();
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
                 if let (Some(api_key), Some(user_id), Some(server_name)) = (
                     state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
                     state.user_details.as_ref().map(|d| d.UserID),

@@ -798,7 +798,7 @@ pub fn playlists() -> Html {
                 user_id.clone(),
                 server_name.clone(),
             ) {
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
                 let modal_state = modal_state.clone();
                 let delete_success_msg = delete_success_msg.clone();
                 let delete_failed_msg = delete_failed_msg.clone();
@@ -871,7 +871,7 @@ pub fn playlists() -> Html {
                     return;
                 }
 
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
                 let modal_state = modal_state.clone();
                 let is_loading_delete = is_loading_delete.clone();
                 let is_selection_mode = is_selection_mode.clone();
@@ -1021,7 +1021,7 @@ pub fn playlists() -> Html {
                     time_filter_hours: time_filter_call.parse().ok(),
                 };
 
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
                 let modal_state = modal_state.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
@@ -1521,7 +1521,7 @@ pub fn playlists() -> Html {
                                             let modal_state = modal_state.clone();
                                             let is_selected = selected_playlists.contains(&playlist_id);
                                             let on_toggle_select = on_toggle_select_playlist.clone();
-                                            let playlist_clone = playlist.clone();
+                                            let _playlist_clone = playlist.clone();
 
                                             let on_delete = Callback::from(move |e: MouseEvent| {
                                                 e.stop_propagation();

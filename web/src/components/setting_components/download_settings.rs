@@ -14,7 +14,7 @@ pub fn download_settings() -> Html {
     let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let download_status = use_state(|| false);
-    let dispatch_effect = _dispatch.clone();
+    let _dispatch_effect = _dispatch.clone();
 
     // Capture i18n strings before they get moved
     let i18n_enable_server_downloads = i18n.t("download_settings.enable_server_downloads").to_string();

@@ -399,7 +399,7 @@ pub fn oidc_settings() -> Html {
     let i18n_submit = i18n.t("common.submit").to_string();
     let i18n_add = i18n.t("common.add").to_string();
     let i18n_update = i18n.t("common.update").to_string();
-    let i18n_oidc_provider_management = i18n.t("oidc.oidc_provider_management").to_string();
+    let _i18n_oidc_provider_management = i18n.t("oidc.oidc_provider_management").to_string();
     let i18n_add_provider = i18n.t("oidc.add_provider").to_string();
     let i18n_no_oidc_providers_configured = i18n.t("oidc.no_oidc_providers_configured").to_string();
     let i18n_remove = i18n.t("common.remove").to_string();
@@ -870,7 +870,7 @@ pub fn oidc_settings() -> Html {
             let i18n_failed_to_update_provider = i18n_failed_to_update_provider.clone();
             let call_trigger = update_trigger.clone();
             let call_page_state = page_state.clone();
-            let call_dispatch = _dispatch.clone();
+            let _call_dispatch = _dispatch.clone();
             e.prevent_default();
 
             // Calculate detected_provider inside the callback so it uses current values

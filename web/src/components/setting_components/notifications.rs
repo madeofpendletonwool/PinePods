@@ -242,7 +242,7 @@ pub fn notification_settings() -> Html {
             let update_trig = update_trigger.clone();
             let success_call = show_success.clone();
             let success_call_message = success_message.clone();
-            let dispatch_call = _dispatch.clone();
+            let _dispatch_call = _dispatch.clone();
             let server_submit = submit_server.clone();
             let key_submit = submit_api.clone();
             let id_submit = submit_user.clone();
@@ -303,7 +303,7 @@ pub fn notification_settings() -> Html {
         Callback::from(move |_| {
             let i18n_test_notification_sent = i18n_test_notification_sent.clone();
             let i18n_failed_to_send_test_notification = i18n_failed_to_send_test_notification.clone();
-            let dispatch = _dispatch.clone();
+            let _dispatch = _dispatch.clone();
             let platform_value = (*platform).clone();
             let test_server = server_name.clone();
             let test_api = api_key.clone();

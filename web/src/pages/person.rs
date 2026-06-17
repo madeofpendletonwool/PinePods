@@ -1,17 +1,12 @@
 use crate::components::app_drawer::App_drawer;
-use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::episode_list_view::EpisodeListView;
 use crate::components::context::ExpandedDescriptions;
 use crate::components::context::{AppState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
-use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
-use crate::components::gen_funcs::{
-    format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
-    strip_images_from_html, truncate_description, unix_timestamp_to_datetime_string,
-};
+use crate::components::gen_funcs::strip_images_from_html;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::people_req::{
     call_get_person_subscriptions, call_subscribe_to_person, call_unsubscribe_from_person,
@@ -82,13 +77,13 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
     let i18n_error_adding_podcast = i18n.t("person.error_adding_podcast").to_string();
     let i18n_loading_podcasts = i18n.t("person.loading_podcasts").to_string();
 
-    let (app_state, dispatch) = use_store::<AppState>();
+    let (_app_state, dispatch) = use_store::<AppState>();
     let (podcast_state, podcast_dispatch) = use_store::<PodcastFeedState>();
     let (search_data, _search_data_dispatch) = use_store::<SearchState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let person_ids = use_state(|| HashMap::<String, i32>::new());
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -217,7 +212,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let user_id = user_id.clone();
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
         let page_loading = page_loading.clone();
         let name_str = (*name).clone();
 
@@ -333,7 +328,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         let server_name = server_name.clone();
         let dispatch = dispatch.clone();
         let state_callback = podcast_state.clone();
-        let dispatch_podcast = podcast_dispatch.clone();
+        let _dispatch_podcast = podcast_dispatch.clone();
 
         Callback::from(move |podcast_id: i32| {
             Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
@@ -342,7 +337,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
             let api_key_callback = api_key.clone();
             let user_id_callback = user_id.clone();
             let added_podcasts_callback = added_podcasts.clone();
-            let dispatch_callback = dispatch.clone();
+            let _dispatch_callback = dispatch.clone();
             let i18n_podcast_removed = i18n_podcast_removed.clone();
             let i18n_error_removing_podcast = i18n_error_removing_podcast.clone();
             let i18n_podcast_added = i18n_podcast_added.clone();
@@ -797,7 +792,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         let server_name_iter = server_name.clone().unwrap();
                                         let history = history_clone.clone();
 
-                                        let dispatch = dispatch.clone();
+                                        let _dispatch = dispatch.clone();
                                         let podcast_description_clone = podcast.description.clone();
 
                                         let on_title_click = create_on_title_click(
