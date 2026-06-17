@@ -2773,6 +2773,14 @@ pub struct ScheduleBackupRequest {
     pub user_id: i32,
     pub cron_schedule: String,
     pub enabled: bool,
+    // Number of scheduled backups to keep; None/0 = keep all
+    pub retention_count: Option<i32>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DeleteBackupFileRequest {
+    pub user_id: i32,
+    pub backup_filename: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -2798,12 +2806,14 @@ pub async fn call_schedule_backup(
     user_id: i32,
     cron_schedule: &str,
     enabled: bool,
+    retention_count: Option<i32>,
 ) -> Result<serde_json::Value, Error> {
     let url = format!("{}/api/data/schedule_backup", server_name);
     let request_data = ScheduleBackupRequest {
         user_id,
         cron_schedule: cron_schedule.to_string(),
         enabled,
+        retention_count,
     };
 
     let response = Request::post(&url)
@@ -2900,6 +2910,36 @@ pub async fn call_restore_backup_file(
     } else {
         Err(Error::msg(format!(
             "Error restoring from backup file: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// Delete a backup file from the server backup directory
+pub async fn call_delete_backup_file(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    backup_filename: &str,
+) -> Result<serde_json::Value, Error> {
+    let url = format!("{}/api/data/delete_backup_file", server_name);
+    let request_data = DeleteBackupFileRequest {
+        user_id,
+        backup_filename: backup_filename.to_string(),
+    };
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_data)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| Error::msg(e.to_string()))
+    } else {
+        Err(Error::msg(format!(
+            "Error deleting backup file: {}",
             response.status_text()
         )))
     }

@@ -4607,3 +4607,85 @@ def migration_045_add_episode_guid(conn, db_type: str):
         raise
     finally:
         cursor.close()
+
+
+@register_migration("046", "add_home_overview_history_index", "Add composite (UserID, ListenDate) index on UserEpisodeHistory for the home overview in-progress sort and weekly-stats window", requires=["006"])
+def migration_046_add_home_overview_history_index(conn, db_type: str):
+    """The home overview's in-progress section orders UserEpisodeHistory by ListenDate DESC
+    per user, and the new weekly-stats widget sums listenduration over a 7-day ListenDate
+    window. Existing UserEpisodeHistory indexes cover (UserID) and (UserID, EpisodeID) but
+    not ListenDate, forcing a filter+sort. A composite (UserID, ListenDate DESC) makes both
+    the recent-history sort and the time-window scan index-friendly."""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting home overview history index migration")
+
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+
+        safe_add_index(
+            cursor, db_type,
+            f'CREATE INDEX idx_userepisodehistory_userid_listendate ON {table_prefix}UserEpisodeHistory{table_suffix}(UserID, ListenDate DESC)',
+            'idx_userepisodehistory_userid_listendate'
+        )
+
+        logger.info("Home overview history index migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in home overview history index migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("047", "add_scheduled_backup_retention", "Add retention_count and last_run columns to ScheduledBackups for working scheduled backups + retention", requires=["027"])
+def migration_047_add_scheduled_backup_retention(conn, db_type: str):
+    """Scheduled backups now actually run via the background scheduler, which needs a
+    last_run timestamp to decide when a schedule is due, and an optional retention_count
+    so old scheduled backups can be pruned automatically (NULL/0 = keep all)."""
+    logger.info("Starting migration 047: Add retention/last_run columns to ScheduledBackups")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "ScheduledBackups"
+                ADD COLUMN IF NOT EXISTS retention_count INTEGER
+            ''', conn=conn)
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "ScheduledBackups"
+                ADD COLUMN IF NOT EXISTS last_run TIMESTAMP
+            ''', conn=conn)
+            logger.info("Added retention_count and last_run columns to ScheduledBackups (PostgreSQL)")
+
+        else:  # MySQL
+            for column_name, column_def in (
+                ('RetentionCount', 'INT NULL'),
+                ('LastRun', 'TIMESTAMP NULL'),
+            ):
+                safe_execute_sql(cursor, f'''
+                    SELECT COUNT(*)
+                    FROM information_schema.columns
+                    WHERE table_name = 'ScheduledBackups'
+                    AND column_name = '{column_name}'
+                    AND table_schema = DATABASE()
+                ''', conn=conn)
+
+                result = cursor.fetchone()
+                if result[0] == 0:
+                    safe_execute_sql(cursor, f'''
+                        ALTER TABLE ScheduledBackups
+                        ADD COLUMN {column_name} {column_def}
+                    ''', conn=conn)
+                    logger.info(f"Added {column_name} column to ScheduledBackups (MySQL)")
+                else:
+                    logger.info(f"{column_name} column already exists in ScheduledBackups (MySQL)")
+
+        logger.info("ScheduledBackups retention/last_run migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in ScheduledBackups retention/last_run migration: {e}")
+        raise
+    finally:
+        cursor.close()

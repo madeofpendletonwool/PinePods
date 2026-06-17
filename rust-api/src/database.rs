@@ -21,6 +21,16 @@ pub enum DatabasePool {
     MySQL(Pool<MySql>),
 }
 
+// A single enabled scheduled-backup row, used by the background scheduler to decide
+// when a backup is due. retention_count: None/0 = keep all backups.
+#[derive(Debug, Clone)]
+pub struct ScheduledBackupRow {
+    pub user_id: i32,
+    pub cron_schedule: String,
+    pub retention_count: Option<i32>,
+    pub last_run: Option<DateTime<Utc>>,
+}
+
 impl DatabasePool {
     pub async fn new(config: &Config) -> AppResult<Self> {
         let database_url = config.database_url();
@@ -3732,14 +3742,28 @@ impl DatabasePool {
     pub async fn get_home_overview(&self, user_id: i32) -> AppResult<serde_json::Value> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let mut home_data = serde_json::json!({
-                    "recent_episodes": [],
-                    "in_progress_episodes": [],
-                    "top_podcasts": [],
-                    "saved_count": 0,
-                    "downloaded_count": 0,
-                    "queue_count": 0
-                });
+                // Shared row -> JSON mapping for the episode-list sections (recent,
+                // in-progress, queue preview). All three queries alias to these columns.
+                let map_episode_row = |row: &sqlx::postgres::PgRow| -> AppResult<serde_json::Value> {
+                    let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
+                    Ok(serde_json::json!({
+                        "episodeid": row.try_get::<i32, _>("episodeid")?,
+                        "episodetitle": row.try_get::<String, _>("episodetitle")?,
+                        "episodepubdate": naive.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                        "episodedescription": row.try_get::<String, _>("episodedescription")?,
+                        "episodeartwork": row.try_get::<String, _>("episodeartwork")?,
+                        "episodeurl": row.try_get::<String, _>("episodeurl")?,
+                        "episodeduration": row.try_get::<i32, _>("episodeduration")?,
+                        "completed": row.try_get::<bool, _>("completed")?,
+                        "podcastname": row.try_get::<String, _>("podcastname")?,
+                        "podcastid": row.try_get::<i32, _>("podcastid")?,
+                        "is_youtube": row.try_get::<bool, _>("is_youtube")?,
+                        "listenduration": row.try_get::<Option<i32>, _>("listenduration")?,
+                        "saved": row.try_get::<bool, _>("saved")?,
+                        "queued": row.try_get::<bool, _>("queued")?,
+                        "downloaded": row.try_get::<bool, _>("downloaded")?
+                    }))
+                };
 
                 // Recent Episodes query
                 let recent_query = r#"
@@ -3784,53 +3808,21 @@ impl DatabasePool {
                     LIMIT 10
                 "#;
 
-                let recent_rows = sqlx::query(recent_query)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .fetch_all(pool)
-                    .await?;
-
-                let mut recent_episodes = Vec::new();
-                for row in recent_rows {
-                    let episodeid: i32 = row.try_get("episodeid")?;
-                    let episodetitle: String = row.try_get("episodetitle")?;
-                    let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
-                    let episodepubdate = naive.format("%Y-%m-%dT%H:%M:%S").to_string();
-                    let episodedescription: String = row.try_get("episodedescription")?;
-                    let episodeartwork: String = row.try_get("episodeartwork")?;
-                    let episodeurl: String = row.try_get("episodeurl")?;
-                    let episodeduration: i32 = row.try_get("episodeduration")?;
-                    let completed: bool = row.try_get("completed")?;
-                    let podcastname: String = row.try_get("podcastname")?;
-                    let podcastid: i32 = row.try_get("podcastid")?;
-                    let is_youtube: bool = row.try_get("is_youtube")?;
-                    let listenduration: Option<i32> = row.try_get("listenduration")?;
-                    let saved: bool = row.try_get("saved")?;
-                    let queued: bool = row.try_get("queued")?;
-                    let downloaded: bool = row.try_get("downloaded")?;
-
-                    recent_episodes.push(serde_json::json!({
-                        "episodeid": episodeid,
-                        "episodetitle": episodetitle,
-                        "episodepubdate": episodepubdate,
-                        "episodedescription": episodedescription,
-                        "episodeartwork": episodeartwork,
-                        "episodeurl": episodeurl,
-                        "episodeduration": episodeduration,
-                        "completed": completed,
-                        "podcastname": podcastname,
-                        "podcastid": podcastid,
-                        "is_youtube": is_youtube,
-                        "listenduration": listenduration,
-                        "saved": saved,
-                        "queued": queued,
-                        "downloaded": downloaded
-                    }));
-                }
-                home_data["recent_episodes"] = serde_json::Value::Array(recent_episodes);
+                let recent_fut = async {
+                    let rows = sqlx::query(recent_query)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .fetch_all(pool)
+                        .await?;
+                    let mut episodes = Vec::with_capacity(rows.len());
+                    for row in &rows {
+                        episodes.push(map_episode_row(row)?);
+                    }
+                    Ok::<serde_json::Value, AppError>(serde_json::Value::Array(episodes))
+                };
 
                 // In Progress Episodes query
                 let in_progress_query = r#"
@@ -3874,54 +3866,79 @@ impl DatabasePool {
                     LIMIT 10
                 "#;
 
-                let in_progress_rows = sqlx::query(in_progress_query)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .fetch_all(pool)
-                    .await?;
+                let in_progress_fut = async {
+                    let rows = sqlx::query(in_progress_query)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .fetch_all(pool)
+                        .await?;
+                    let mut episodes = Vec::with_capacity(rows.len());
+                    for row in &rows {
+                        episodes.push(map_episode_row(row)?);
+                    }
+                    Ok::<serde_json::Value, AppError>(serde_json::Value::Array(episodes))
+                };
 
-                let mut in_progress_episodes = Vec::new();
-                for row in in_progress_rows {
-                    let episodeid: i32 = row.try_get("episodeid")?;
-                    let episodetitle: String = row.try_get("episodetitle")?;
-                    let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
-                    let episodepubdate = naive.format("%Y-%m-%dT%H:%M:%S").to_string();
-                    let episodedescription: String = row.try_get("episodedescription")?;
-                    let episodeartwork: String = row.try_get("episodeartwork")?;
-                    let episodeurl: String = row.try_get("episodeurl")?;
-                    let episodeduration: i32 = row.try_get("episodeduration")?;
-                    let completed: bool = row.try_get("completed")?;
-                    let podcastname: String = row.try_get("podcastname")?;
-                    let podcastid: i32 = row.try_get("podcastid")?;
-                    let is_youtube: bool = row.try_get("is_youtube")?;
-                    let listenduration: Option<i32> = row.try_get("listenduration")?;
-                    let saved: bool = row.try_get("saved")?;
-                    let queued: bool = row.try_get("queued")?;
-                    let downloaded: bool = row.try_get("downloaded")?;
+                // Queue preview query (next few queued episodes, same shape as the lists above)
+                let queue_preview_query = r#"
+                    SELECT
+                        "Episodes".episodeid,
+                        "Episodes".episodetitle,
+                        "Episodes".episodepubdate,
+                        "Episodes".episodedescription,
+                        CASE
+                            WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            ELSE "Episodes".episodeartwork
+                        END as episodeartwork,
+                        "Episodes".episodeurl,
+                        "Episodes".episodeduration,
+                        "Episodes".completed,
+                        "Podcasts".podcastname,
+                        "Podcasts".podcastid,
+                        "Podcasts".isyoutubechannel as is_youtube,
+                        "UserEpisodeHistory".listenduration,
+                        CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                        TRUE as queued,
+                        CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
+                    FROM "EpisodeQueue"
+                    INNER JOIN "Episodes" ON "EpisodeQueue".episodeid = "Episodes".episodeid
+                    INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                    LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
+                    LEFT JOIN "UserEpisodeHistory" ON
+                        "EpisodeQueue".episodeid = "UserEpisodeHistory".episodeid
+                        AND "UserEpisodeHistory".userid = $1
+                    LEFT JOIN "SavedEpisodes" ON
+                        "Episodes".episodeid = "SavedEpisodes".episodeid
+                        AND "SavedEpisodes".userid = $2
+                    LEFT JOIN "DownloadedEpisodes" ON
+                        "Episodes".episodeid = "DownloadedEpisodes".episodeid
+                        AND "DownloadedEpisodes".userid = $3
+                    WHERE "EpisodeQueue".userid = $4 AND "EpisodeQueue".is_youtube = FALSE
+                    ORDER BY "EpisodeQueue".queueposition ASC
+                    LIMIT 3
+                "#;
 
-                    in_progress_episodes.push(serde_json::json!({
-                        "episodeid": episodeid,
-                        "episodetitle": episodetitle,
-                        "episodepubdate": episodepubdate,
-                        "episodedescription": episodedescription,
-                        "episodeartwork": episodeartwork,
-                        "episodeurl": episodeurl,
-                        "episodeduration": episodeduration,
-                        "completed": completed,
-                        "podcastname": podcastname,
-                        "podcastid": podcastid,
-                        "is_youtube": is_youtube,
-                        "listenduration": listenduration,
-                        "saved": saved,
-                        "queued": queued,
-                        "downloaded": downloaded
-                    }));
-                }
-                home_data["in_progress_episodes"] = serde_json::Value::Array(in_progress_episodes);
+                let queue_preview_fut = async {
+                    let rows = sqlx::query(queue_preview_query)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .fetch_all(pool)
+                        .await?;
+                    let mut episodes = Vec::with_capacity(rows.len());
+                    for row in &rows {
+                        episodes.push(map_episode_row(row)?);
+                    }
+                    Ok::<serde_json::Value, AppError>(serde_json::Value::Array(episodes))
+                };
 
-                // Top Podcasts query
+                // Top Podcasts query. Aggregate the user's listen history first (only rows they
+                // actually listened to) and then join podcast metadata, instead of scanning every
+                // episode of every podcast and grouping afterwards.
                 let top_podcasts_query = r#"
                     SELECT
                         "Podcasts".podcastid,
@@ -3936,89 +3953,157 @@ impl DatabasePool {
                         "Podcasts".websiteurl,
                         "Podcasts".explicit,
                         "Podcasts".isyoutubechannel as is_youtube,
-                        COUNT(DISTINCT "UserEpisodeHistory".episodeid) as play_count,
-                        SUM("UserEpisodeHistory".listenduration) as total_listen_time
+                        COALESCE(stats.play_count, 0) as play_count,
+                        stats.total_listen_time as total_listen_time
                     FROM "Podcasts"
-                    LEFT JOIN "Episodes" ON "Podcasts".podcastid = "Episodes".podcastid
-                    LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid
-                    WHERE "Podcasts".userid = $1
-                    GROUP BY "Podcasts".podcastid
-                    ORDER BY total_listen_time DESC NULLS LAST
+                    LEFT JOIN (
+                        SELECT "Episodes".podcastid as podcastid,
+                               COUNT(DISTINCT "UserEpisodeHistory".episodeid) as play_count,
+                               SUM("UserEpisodeHistory".listenduration) as total_listen_time
+                        FROM "UserEpisodeHistory"
+                        JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
+                        WHERE "UserEpisodeHistory".userid = $1
+                        GROUP BY "Episodes".podcastid
+                    ) stats ON "Podcasts".podcastid = stats.podcastid
+                    WHERE "Podcasts".userid = $2
+                    ORDER BY stats.total_listen_time DESC NULLS LAST
                     LIMIT 6
                 "#;
 
-                let top_podcasts_rows = sqlx::query(top_podcasts_query)
-                    .bind(user_id)
-                    .fetch_all(pool)
-                    .await?;
+                let top_podcasts_fut = async {
+                    let rows = sqlx::query(top_podcasts_query)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .fetch_all(pool)
+                        .await?;
+                    let mut top_podcasts = Vec::with_capacity(rows.len());
+                    for row in &rows {
+                        let podcastid: i32 = row.try_get("podcastid").unwrap_or(0);
+                        let podcastname: String = row.try_get("podcastname").unwrap_or_default();
+                        let podcastindexid: Option<i32> = row.try_get("podcastindexid").ok();
+                        let artworkurl: String = row.try_get("artworkurl").unwrap_or_default();
+                        let author: String = row.try_get("author").unwrap_or_default();
+                        let categories_str: String = row.try_get("categories").unwrap_or_default();
+                        let categories = self.parse_categories_json(&categories_str).unwrap_or_default();
+                        let description: String = row.try_get("description").unwrap_or_default();
+                        let episodecount: i32 = row.try_get("episodecount").unwrap_or(0);
+                        let feedurl: String = row.try_get("feedurl").unwrap_or_default();
+                        let websiteurl: String = row.try_get("websiteurl").unwrap_or_default();
+                        let explicit: bool = row.try_get("explicit").unwrap_or(false);
+                        let is_youtube: bool = row.try_get("is_youtube").unwrap_or(false);
+                        let play_count: i64 = row.try_get("play_count").unwrap_or(0);
+                        let total_listen_time: Option<i64> = row.try_get("total_listen_time").ok();
 
-                let mut top_podcasts = Vec::new();
-                for row in top_podcasts_rows {
-                    let podcastid: i32 = row.try_get("podcastid").unwrap_or(0);
-                    let podcastname: String = row.try_get("podcastname").unwrap_or_default();
-                    let podcastindexid: Option<i32> = row.try_get("podcastindexid").ok();
-                    let artworkurl: String = row.try_get("artworkurl").unwrap_or_default();
-                    let author: String = row.try_get("author").unwrap_or_default();
-                    let categories_str: String = row.try_get("categories").unwrap_or_default();
-                    let categories = self.parse_categories_json(&categories_str).unwrap_or_default();
-                    let description: String = row.try_get("description").unwrap_or_default();
-                    let episodecount: i32 = row.try_get("episodecount").unwrap_or(0);
-                    let feedurl: String = row.try_get("feedurl").unwrap_or_default();
-                    let websiteurl: String = row.try_get("websiteurl").unwrap_or_default();
-                    let explicit: bool = row.try_get("explicit").unwrap_or(false);
-                    let is_youtube: bool = row.try_get("is_youtube").unwrap_or(false);
-                    let play_count: i64 = row.try_get("play_count").unwrap_or(0);
-                    let total_listen_time: Option<i64> = row.try_get("total_listen_time").ok();
+                        top_podcasts.push(serde_json::json!({
+                            "podcastid": podcastid,
+                            "podcastname": podcastname,
+                            "podcastindexid": podcastindexid,
+                            "artworkurl": artworkurl,
+                            "author": author,
+                            "categories": serde_json::to_value(categories).unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+                            "description": description,
+                            "episodecount": episodecount,
+                            "feedurl": feedurl,
+                            "websiteurl": websiteurl,
+                            "explicit": explicit,
+                            "is_youtube": is_youtube,
+                            "play_count": play_count,
+                            "total_listen_time": total_listen_time
+                        }));
+                    }
+                    Ok::<serde_json::Value, AppError>(serde_json::Value::Array(top_podcasts))
+                };
 
-                    top_podcasts.push(serde_json::json!({
-                        "podcastid": podcastid,
-                        "podcastname": podcastname,
-                        "podcastindexid": podcastindexid,
-                        "artworkurl": artworkurl,
-                        "author": author,
-                        "categories": serde_json::to_value(categories).unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
-                        "description": description,
-                        "episodecount": episodecount,
-                        "feedurl": feedurl,
-                        "websiteurl": websiteurl,
-                        "explicit": explicit,
-                        "is_youtube": is_youtube,
-                        "play_count": play_count,
-                        "total_listen_time": total_listen_time
-                    }));
-                }
-                home_data["top_podcasts"] = serde_json::Value::Array(top_podcasts);
-
-                // Get counts
-                let saved_count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "SavedEpisodes" WHERE userid = $1"#)
-                    .bind(user_id)
-                    .fetch_one(pool)
-                    .await?;
-                home_data["saved_count"] = serde_json::Value::Number(serde_json::Number::from(saved_count));
-
-                let downloaded_count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "DownloadedEpisodes" WHERE userid = $1"#)
-                    .bind(user_id)
-                    .fetch_one(pool)
-                    .await?;
-                home_data["downloaded_count"] = serde_json::Value::Number(serde_json::Number::from(downloaded_count));
-
-                let queue_count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "EpisodeQueue" WHERE userid = $1"#)
+                // Counts (folded into a single round-trip) and weekly listening stats.
+                let counts_fut = async {
+                    let row = sqlx::query(
+                        r#"SELECT
+                            (SELECT COUNT(*) FROM "SavedEpisodes" WHERE userid = $1) AS saved_count,
+                            (SELECT COUNT(*) FROM "DownloadedEpisodes" WHERE userid = $1) AS downloaded_count,
+                            (SELECT COUNT(*) FROM "EpisodeQueue" WHERE userid = $1) AS queue_count"#,
+                    )
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
-                home_data["queue_count"] = serde_json::Value::Number(serde_json::Number::from(queue_count));
+                    let saved_count: i64 = row.try_get("saved_count")?;
+                    let downloaded_count: i64 = row.try_get("downloaded_count")?;
+                    let queue_count: i64 = row.try_get("queue_count")?;
+                    Ok::<(i64, i64, i64), AppError>((saved_count, downloaded_count, queue_count))
+                };
 
-                Ok(home_data)
+                let weekly_fut = async {
+                    let row = sqlx::query(
+                        r#"SELECT
+                            COALESCE(SUM("UserEpisodeHistory".listenduration), 0)::bigint AS seconds_listened,
+                            COUNT(*) FILTER (WHERE "Episodes".completed = TRUE) AS episodes_completed
+                        FROM "UserEpisodeHistory"
+                        JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
+                        WHERE "UserEpisodeHistory".userid = $1
+                          AND "UserEpisodeHistory".listendate >= NOW() - INTERVAL '7 days'"#,
+                    )
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                    let seconds_listened: i64 = row.try_get("seconds_listened")?;
+                    let episodes_completed: i64 = row.try_get("episodes_completed")?;
+                    Ok::<serde_json::Value, AppError>(serde_json::json!({
+                        "seconds_listened": seconds_listened,
+                        "episodes_completed": episodes_completed
+                    }))
+                };
+
+                // Run all independent reads concurrently instead of serially.
+                let (
+                    recent_episodes,
+                    in_progress_episodes,
+                    queue_preview,
+                    top_podcasts,
+                    counts,
+                    weekly_stats,
+                ) = tokio::try_join!(
+                    recent_fut,
+                    in_progress_fut,
+                    queue_preview_fut,
+                    top_podcasts_fut,
+                    counts_fut,
+                    weekly_fut
+                )?;
+                let (saved_count, downloaded_count, queue_count) = counts;
+
+                Ok(serde_json::json!({
+                    "recent_episodes": recent_episodes,
+                    "in_progress_episodes": in_progress_episodes,
+                    "queue_preview": queue_preview,
+                    "top_podcasts": top_podcasts,
+                    "saved_count": saved_count,
+                    "downloaded_count": downloaded_count,
+                    "queue_count": queue_count,
+                    "weekly_stats": weekly_stats
+                }))
             }
             DatabasePool::MySQL(pool) => {
-                let mut home_data = serde_json::json!({
-                    "recent_episodes": [],
-                    "in_progress_episodes": [],
-                    "top_podcasts": [],
-                    "saved_count": 0,
-                    "downloaded_count": 0,
-                    "queue_count": 0
-                });
+                // Shared row -> JSON mapping for the episode-list sections (recent,
+                // in-progress, queue preview). All three queries alias to these columns.
+                let map_episode_row = |row: &sqlx::mysql::MySqlRow| -> AppResult<serde_json::Value> {
+                    let naive = row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate")?;
+                    Ok(serde_json::json!({
+                        "episodeid": row.try_get::<i32, _>("EpisodeID")?,
+                        "episodetitle": row.try_get::<String, _>("EpisodeTitle")?,
+                        "episodepubdate": naive.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                        "episodedescription": row.try_get::<String, _>("EpisodeDescription")?,
+                        "episodeartwork": row.try_get::<String, _>("EpisodeArtwork")?,
+                        "episodeurl": row.try_get::<String, _>("EpisodeURL")?,
+                        "episodeduration": row.try_get::<i32, _>("EpisodeDuration")?,
+                        "completed": row.try_get::<i8, _>("Completed")? != 0,
+                        "podcastname": row.try_get::<String, _>("PodcastName")?,
+                        "podcastid": row.try_get::<i32, _>("PodcastID")?,
+                        "is_youtube": row.try_get::<i8, _>("is_youtube")? != 0,
+                        "listenduration": row.try_get::<Option<i32>, _>("ListenDuration")?,
+                        "saved": row.try_get::<i8, _>("saved")? != 0,
+                        "queued": row.try_get::<i8, _>("queued")? != 0,
+                        "downloaded": row.try_get::<i8, _>("downloaded")? != 0
+                    }))
+                };
 
                 // Recent Episodes query for MySQL
                 let recent_query = r#"
@@ -4063,53 +4148,21 @@ impl DatabasePool {
                     LIMIT 10
                 "#;
 
-                let recent_rows = sqlx::query(recent_query)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .fetch_all(pool)
-                    .await?;
-
-                let mut recent_episodes = Vec::new();
-                for row in recent_rows {
-                    let episodeid: i32 = row.try_get("EpisodeID")?;
-                    let episodetitle: String = row.try_get("EpisodeTitle")?;
-                    let naive = row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate")?;
-                    let episodepubdate = naive.format("%Y-%m-%dT%H:%M:%S").to_string();
-                    let episodedescription: String = row.try_get("EpisodeDescription")?;
-                    let episodeartwork: String = row.try_get("EpisodeArtwork")?;
-                    let episodeurl: String = row.try_get("EpisodeURL")?;
-                    let episodeduration: i32 = row.try_get("EpisodeDuration")?;
-                    let completed: bool = row.try_get::<i8, _>("Completed")? != 0;
-                    let podcastname: String = row.try_get("PodcastName")?;
-                    let podcastid: i32 = row.try_get("PodcastID")?;
-                    let is_youtube: bool = row.try_get::<i8, _>("is_youtube")? != 0;
-                    let listenduration: Option<i32> = row.try_get("ListenDuration")?;
-                    let saved: bool = row.try_get::<i8, _>("saved")? != 0;
-                    let queued: bool = row.try_get::<i8, _>("queued")? != 0;
-                    let downloaded: bool = row.try_get::<i8, _>("downloaded")? != 0;
-
-                    recent_episodes.push(serde_json::json!({
-                        "episodeid": episodeid,
-                        "episodetitle": episodetitle,
-                        "episodepubdate": episodepubdate,
-                        "episodedescription": episodedescription,
-                        "episodeartwork": episodeartwork,
-                        "episodeurl": episodeurl,
-                        "episodeduration": episodeduration,
-                        "completed": completed,
-                        "podcastname": podcastname,
-                        "podcastid": podcastid,
-                        "is_youtube": is_youtube,
-                        "listenduration": listenduration,
-                        "saved": saved,
-                        "queued": queued,
-                        "downloaded": downloaded
-                    }));
-                }
-                home_data["recent_episodes"] = serde_json::Value::Array(recent_episodes);
+                let recent_fut = async {
+                    let rows = sqlx::query(recent_query)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .fetch_all(pool)
+                        .await?;
+                    let mut episodes = Vec::with_capacity(rows.len());
+                    for row in &rows {
+                        episodes.push(map_episode_row(row)?);
+                    }
+                    Ok::<serde_json::Value, AppError>(serde_json::Value::Array(episodes))
+                };
 
                 // In Progress Episodes query for MySQL
                 let in_progress_query = r#"
@@ -4153,54 +4206,78 @@ impl DatabasePool {
                     LIMIT 10
                 "#;
 
-                let in_progress_rows = sqlx::query(in_progress_query)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .fetch_all(pool)
-                    .await?;
+                let in_progress_fut = async {
+                    let rows = sqlx::query(in_progress_query)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .fetch_all(pool)
+                        .await?;
+                    let mut episodes = Vec::with_capacity(rows.len());
+                    for row in &rows {
+                        episodes.push(map_episode_row(row)?);
+                    }
+                    Ok::<serde_json::Value, AppError>(serde_json::Value::Array(episodes))
+                };
 
-                let mut in_progress_episodes = Vec::new();
-                for row in in_progress_rows {
-                    let episodeid: i32 = row.try_get("EpisodeID")?;
-                    let episodetitle: String = row.try_get("EpisodeTitle")?;
-                    let naive = row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate")?;
-                    let episodepubdate = naive.format("%Y-%m-%dT%H:%M:%S").to_string();
-                    let episodedescription: String = row.try_get("EpisodeDescription")?;
-                    let episodeartwork: String = row.try_get("EpisodeArtwork")?;
-                    let episodeurl: String = row.try_get("EpisodeURL")?;
-                    let episodeduration: i32 = row.try_get("EpisodeDuration")?;
-                    let completed: bool = row.try_get::<i8, _>("Completed")? != 0;
-                    let podcastname: String = row.try_get("PodcastName")?;
-                    let podcastid: i32 = row.try_get("PodcastID")?;
-                    let is_youtube: bool = row.try_get::<i8, _>("is_youtube")? != 0;
-                    let listenduration: Option<i32> = row.try_get("ListenDuration")?;
-                    let saved: bool = row.try_get::<i8, _>("saved")? != 0;
-                    let queued: bool = row.try_get::<i8, _>("queued")? != 0;
-                    let downloaded: bool = row.try_get::<i8, _>("downloaded")? != 0;
+                // Queue preview query (next few queued episodes, same shape as the lists above)
+                let queue_preview_query = r#"
+                    SELECT
+                        Episodes.EpisodeID,
+                        Episodes.EpisodeTitle,
+                        Episodes.EpisodePubDate,
+                        Episodes.EpisodeDescription,
+                        CASE
+                            WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                            WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                            ELSE Episodes.EpisodeArtwork
+                        END as EpisodeArtwork,
+                        Episodes.EpisodeURL,
+                        Episodes.EpisodeDuration,
+                        Episodes.Completed,
+                        Podcasts.PodcastName,
+                        Podcasts.PodcastID,
+                        Podcasts.IsYouTubeChannel as is_youtube,
+                        UserEpisodeHistory.ListenDuration,
+                        CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                        TRUE as queued,
+                        CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
+                    FROM EpisodeQueue
+                    INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
+                    INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                    LEFT JOIN Users ON Podcasts.UserID = Users.UserID
+                    LEFT JOIN UserEpisodeHistory ON
+                        EpisodeQueue.EpisodeID = UserEpisodeHistory.EpisodeID
+                        AND UserEpisodeHistory.UserID = ?
+                    LEFT JOIN SavedEpisodes ON
+                        Episodes.EpisodeID = SavedEpisodes.EpisodeID
+                        AND SavedEpisodes.UserID = ?
+                    LEFT JOIN DownloadedEpisodes ON
+                        Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
+                        AND DownloadedEpisodes.UserID = ?
+                    WHERE EpisodeQueue.UserID = ? AND EpisodeQueue.is_youtube = FALSE
+                    ORDER BY EpisodeQueue.QueuePosition ASC
+                    LIMIT 3
+                "#;
 
-                    in_progress_episodes.push(serde_json::json!({
-                        "episodeid": episodeid,
-                        "episodetitle": episodetitle,
-                        "episodepubdate": episodepubdate,
-                        "episodedescription": episodedescription,
-                        "episodeartwork": episodeartwork,
-                        "episodeurl": episodeurl,
-                        "episodeduration": episodeduration,
-                        "completed": completed,
-                        "podcastname": podcastname,
-                        "podcastid": podcastid,
-                        "is_youtube": is_youtube,
-                        "listenduration": listenduration,
-                        "saved": saved,
-                        "queued": queued,
-                        "downloaded": downloaded
-                    }));
-                }
-                home_data["in_progress_episodes"] = serde_json::Value::Array(in_progress_episodes);
+                let queue_preview_fut = async {
+                    let rows = sqlx::query(queue_preview_query)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .fetch_all(pool)
+                        .await?;
+                    let mut episodes = Vec::with_capacity(rows.len());
+                    for row in &rows {
+                        episodes.push(map_episode_row(row)?);
+                    }
+                    Ok::<serde_json::Value, AppError>(serde_json::Value::Array(episodes))
+                };
 
-                // Top Podcasts query for MySQL
+                // Top Podcasts query for MySQL. Aggregate listen history first (only rows actually
+                // listened to), then join podcast metadata, instead of scanning every episode.
                 let top_podcasts_query = r#"
                     SELECT
                         Podcasts.PodcastID,
@@ -4215,79 +4292,135 @@ impl DatabasePool {
                         Podcasts.WebsiteURL,
                         Podcasts.Explicit,
                         Podcasts.IsYouTubeChannel as is_youtube,
-                        COUNT(DISTINCT UserEpisodeHistory.EpisodeID) as play_count,
-                        SUM(UserEpisodeHistory.ListenDuration) as total_listen_time
+                        COALESCE(stats.play_count, 0) as play_count,
+                        stats.total_listen_time as total_listen_time
                     FROM Podcasts
-                    LEFT JOIN Episodes ON Podcasts.PodcastID = Episodes.PodcastID
-                    LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                    LEFT JOIN (
+                        SELECT Episodes.PodcastID as PodcastID,
+                               COUNT(DISTINCT UserEpisodeHistory.EpisodeID) as play_count,
+                               SUM(UserEpisodeHistory.ListenDuration) as total_listen_time
+                        FROM UserEpisodeHistory
+                        JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID
+                        WHERE UserEpisodeHistory.UserID = ?
+                        GROUP BY Episodes.PodcastID
+                    ) stats ON Podcasts.PodcastID = stats.PodcastID
                     WHERE Podcasts.UserID = ?
-                    GROUP BY Podcasts.PodcastID
-                    ORDER BY total_listen_time DESC
+                    ORDER BY stats.total_listen_time DESC
                     LIMIT 5
                 "#;
 
-                let top_podcasts_rows = sqlx::query(top_podcasts_query)
+                let top_podcasts_fut = async {
+                    let rows = sqlx::query(top_podcasts_query)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .fetch_all(pool)
+                        .await?;
+                    let mut top_podcasts = Vec::with_capacity(rows.len());
+                    for row in &rows {
+                        let podcastid: i32 = row.try_get("PodcastID").unwrap_or(0);
+                        let podcastname: String = row.try_get("PodcastName").unwrap_or_default();
+                        let podcastindexid: Option<i32> = row.try_get("PodcastIndexID").ok();
+                        let artworkurl: String = row.try_get("ArtworkURL").unwrap_or_default();
+                        let author: String = row.try_get("Author").unwrap_or_default();
+                        let categories_str: String = row.try_get("Categories").unwrap_or_default();
+                        let categories = self.parse_categories_json(&categories_str).unwrap_or_default();
+                        let description: String = row.try_get("Description").unwrap_or_default();
+                        let episodecount: i32 = row.try_get("EpisodeCount").unwrap_or(0);
+                        let feedurl: String = row.try_get("FeedURL").unwrap_or_default();
+                        let websiteurl: String = row.try_get("WebsiteURL").unwrap_or_default();
+                        let explicit: bool = row.try_get::<i8, _>("Explicit").unwrap_or(0) != 0;
+                        let is_youtube: bool = row.try_get::<i8, _>("is_youtube").unwrap_or(0) != 0;
+                        let play_count: i64 = row.try_get("play_count").unwrap_or(0);
+                        let total_listen_time: Option<i64> = row.try_get("total_listen_time").ok();
+
+                        top_podcasts.push(serde_json::json!({
+                            "podcastid": podcastid,
+                            "podcastname": podcastname,
+                            "podcastindexid": podcastindexid,
+                            "artworkurl": artworkurl,
+                            "author": author,
+                            "categories": serde_json::to_value(categories).unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+                            "description": description,
+                            "episodecount": episodecount,
+                            "feedurl": feedurl,
+                            "websiteurl": websiteurl,
+                            "explicit": explicit,
+                            "is_youtube": is_youtube,
+                            "play_count": play_count,
+                            "total_listen_time": total_listen_time
+                        }));
+                    }
+                    Ok::<serde_json::Value, AppError>(serde_json::Value::Array(top_podcasts))
+                };
+
+                // Counts (folded into a single round-trip) and weekly listening stats.
+                let counts_fut = async {
+                    let row = sqlx::query(
+                        "SELECT \
+                            (SELECT COUNT(*) FROM SavedEpisodes WHERE UserID = ?) AS saved_count, \
+                            (SELECT COUNT(*) FROM DownloadedEpisodes WHERE UserID = ?) AS downloaded_count, \
+                            (SELECT COUNT(*) FROM EpisodeQueue WHERE UserID = ?) AS queue_count",
+                    )
                     .bind(user_id)
-                    .fetch_all(pool)
-                    .await?;
-
-                let mut top_podcasts = Vec::new();
-                for row in top_podcasts_rows {
-                    let podcastid: i32 = row.try_get("PodcastID").unwrap_or(0);
-                    let podcastname: String = row.try_get("PodcastName").unwrap_or_default();
-                    let podcastindexid: Option<i32> = row.try_get("PodcastIndexID").ok();
-                    let artworkurl: String = row.try_get("ArtworkURL").unwrap_or_default();
-                    let author: String = row.try_get("Author").unwrap_or_default();
-                    let categories_str: String = row.try_get("Categories").unwrap_or_default();
-                    let categories = self.parse_categories_json(&categories_str).unwrap_or_default();
-                    let description: String = row.try_get("Description").unwrap_or_default();
-                    let episodecount: i32 = row.try_get("EpisodeCount").unwrap_or(0);
-                    let feedurl: String = row.try_get("FeedURL").unwrap_or_default();
-                    let websiteurl: String = row.try_get("WebsiteURL").unwrap_or_default();
-                    let explicit: bool = row.try_get::<i8, _>("Explicit").unwrap_or(0) != 0;
-                    let is_youtube: bool = row.try_get::<i8, _>("is_youtube").unwrap_or(0) != 0;
-                    let play_count: i64 = row.try_get("play_count").unwrap_or(0);
-                    let total_listen_time: Option<i64> = row.try_get("total_listen_time").ok();
-
-                    top_podcasts.push(serde_json::json!({
-                        "podcastid": podcastid,
-                        "podcastname": podcastname,
-                        "podcastindexid": podcastindexid,
-                        "artworkurl": artworkurl,
-                        "author": author,
-                        "categories": serde_json::to_value(categories).unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
-                        "description": description,
-                        "episodecount": episodecount,
-                        "feedurl": feedurl,
-                        "websiteurl": websiteurl,
-                        "explicit": explicit,
-                        "is_youtube": is_youtube,
-                        "play_count": play_count,
-                        "total_listen_time": total_listen_time
-                    }));
-                }
-                home_data["top_podcasts"] = serde_json::Value::Array(top_podcasts);
-
-                // Get counts for MySQL
-                let saved_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM SavedEpisodes WHERE UserID = ?")
                     .bind(user_id)
-                    .fetch_one(pool)
-                    .await?;
-                home_data["saved_count"] = serde_json::Value::Number(serde_json::Number::from(saved_count));
-
-                let downloaded_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM DownloadedEpisodes WHERE UserID = ?")
-                    .bind(user_id)
-                    .fetch_one(pool)
-                    .await?;
-                home_data["downloaded_count"] = serde_json::Value::Number(serde_json::Number::from(downloaded_count));
-
-                let queue_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM EpisodeQueue WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
-                home_data["queue_count"] = serde_json::Value::Number(serde_json::Number::from(queue_count));
+                    let saved_count: i64 = row.try_get("saved_count")?;
+                    let downloaded_count: i64 = row.try_get("downloaded_count")?;
+                    let queue_count: i64 = row.try_get("queue_count")?;
+                    Ok::<(i64, i64, i64), AppError>((saved_count, downloaded_count, queue_count))
+                };
 
-                Ok(home_data)
+                let weekly_fut = async {
+                    let row = sqlx::query(
+                        "SELECT \
+                            CAST(COALESCE(SUM(UserEpisodeHistory.ListenDuration), 0) AS SIGNED) AS seconds_listened, \
+                            CAST(SUM(CASE WHEN Episodes.Completed = 1 THEN 1 ELSE 0 END) AS SIGNED) AS episodes_completed \
+                        FROM UserEpisodeHistory \
+                        JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID \
+                        WHERE UserEpisodeHistory.UserID = ? \
+                          AND UserEpisodeHistory.ListenDate >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
+                    )
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                    let seconds_listened: i64 = row.try_get("seconds_listened")?;
+                    let episodes_completed: i64 = row.try_get("episodes_completed")?;
+                    Ok::<serde_json::Value, AppError>(serde_json::json!({
+                        "seconds_listened": seconds_listened,
+                        "episodes_completed": episodes_completed
+                    }))
+                };
+
+                // Run all independent reads concurrently instead of serially.
+                let (
+                    recent_episodes,
+                    in_progress_episodes,
+                    queue_preview,
+                    top_podcasts,
+                    counts,
+                    weekly_stats,
+                ) = tokio::try_join!(
+                    recent_fut,
+                    in_progress_fut,
+                    queue_preview_fut,
+                    top_podcasts_fut,
+                    counts_fut,
+                    weekly_fut
+                )?;
+                let (saved_count, downloaded_count, queue_count) = counts;
+
+                Ok(serde_json::json!({
+                    "recent_episodes": recent_episodes,
+                    "in_progress_episodes": in_progress_episodes,
+                    "queue_preview": queue_preview,
+                    "top_podcasts": top_podcasts,
+                    "saved_count": saved_count,
+                    "downloaded_count": downloaded_count,
+                    "queue_count": queue_count,
+                    "weekly_stats": weekly_stats
+                }))
             }
         }
     }
@@ -24094,9 +24227,12 @@ impl DatabasePool {
             }
         }
 
-        // Test 3: Get episode actions from GPodder API  
-        let episodes_url = format!("{}/api/2/episodes/{}.json?since=0&device={}", 
-            gpodder_url.trim_end_matches('/'), username, device_name);
+        // Test 3: Get the most recent episode actions from the GPodder API.
+        // order=desc + limit=10 returns the newest actions; we intentionally do NOT filter by
+        // device, because Pinepods uploads play actions with a NULL device, so a device filter
+        // would hide all of them and only surface old device-tagged rows.
+        let episodes_url = format!("{}/api/2/episodes/{}.json?since=0&order=desc&limit=10",
+            gpodder_url.trim_end_matches('/'), username);
         let start = Instant::now();
 
         let episodes_response = if session.authenticated {
@@ -24110,7 +24246,7 @@ impl DatabasePool {
             Ok(resp) if resp.status().is_success() => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/episodes/{username}.json?since=0&device={device}".to_string(),
+                    endpoint: "GET /api/2/episodes/{username}.json?since=0&order=desc&limit=10".to_string(),
                     status: "success".to_string(),
                     response_time_ms: Some(duration),
                     error: None,
@@ -24139,7 +24275,7 @@ impl DatabasePool {
             Ok(resp) => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/episodes/{username}.json?since=0&device={device}".to_string(),
+                    endpoint: "GET /api/2/episodes/{username}.json?since=0&order=desc&limit=10".to_string(),
                     status: "failed".to_string(),
                     response_time_ms: Some(duration),
                     error: Some(format!("HTTP {}", resp.status())),
@@ -24148,7 +24284,7 @@ impl DatabasePool {
             Err(e) => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/episodes/{username}.json?since=0&device={device}".to_string(),
+                    endpoint: "GET /api/2/episodes/{username}.json?since=0&order=desc&limit=10".to_string(),
                     status: "failed".to_string(),
                     response_time_ms: Some(duration),
                     error: Some(e.to_string()),
@@ -25146,37 +25282,41 @@ impl DatabasePool {
         }
     }
 
-    // Set scheduled backup configuration
-    pub async fn set_scheduled_backup(&self, user_id: i32, cron_schedule: &str, enabled: bool) -> AppResult<()> {
+    // Set scheduled backup configuration. retention_count: None/Some(0) = keep all backups.
+    pub async fn set_scheduled_backup(&self, user_id: i32, cron_schedule: &str, enabled: bool, retention_count: Option<i32>) -> AppResult<()> {
         match self {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(r#"
-                    INSERT INTO "ScheduledBackups" (userid, cron_schedule, enabled, created_at, updated_at)
-                    VALUES ($1, $2, $3, NOW(), NOW())
+                    INSERT INTO "ScheduledBackups" (userid, cron_schedule, enabled, retention_count, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, NOW(), NOW())
                     ON CONFLICT (userid)
-                    DO UPDATE SET 
+                    DO UPDATE SET
                         cron_schedule = EXCLUDED.cron_schedule,
                         enabled = EXCLUDED.enabled,
+                        retention_count = EXCLUDED.retention_count,
                         updated_at = NOW()
                 "#)
                 .bind(user_id)
                 .bind(cron_schedule)
                 .bind(enabled)
+                .bind(retention_count)
                 .execute(pool)
                 .await?;
             }
             DatabasePool::MySQL(pool) => {
                 sqlx::query(r#"
-                    INSERT INTO ScheduledBackups (UserID, CronSchedule, Enabled, CreatedAt, UpdatedAt)
-                    VALUES (?, ?, ?, NOW(), NOW())
-                    ON DUPLICATE KEY UPDATE 
+                    INSERT INTO ScheduledBackups (UserID, CronSchedule, Enabled, RetentionCount, CreatedAt, UpdatedAt)
+                    VALUES (?, ?, ?, ?, NOW(), NOW())
+                    ON DUPLICATE KEY UPDATE
                         CronSchedule = VALUES(CronSchedule),
                         Enabled = VALUES(Enabled),
+                        RetentionCount = VALUES(RetentionCount),
                         UpdatedAt = NOW()
                 "#)
                 .bind(user_id)
                 .bind(cron_schedule)
                 .bind(enabled)
+                .bind(retention_count)
                 .execute(pool)
                 .await?;
             }
@@ -25189,7 +25329,7 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let row = sqlx::query(r#"
-                    SELECT cron_schedule, enabled, created_at, updated_at
+                    SELECT cron_schedule, enabled, retention_count, created_at, updated_at
                     FROM "ScheduledBackups"
                     WHERE userid = $1
                 "#)
@@ -25201,6 +25341,7 @@ impl DatabasePool {
                     Ok(serde_json::json!({
                         "schedule": row.get::<String, _>("cron_schedule"),
                         "enabled": row.get::<bool, _>("enabled"),
+                        "retention_count": row.get::<Option<i32>, _>("retention_count"),
                         "created_at": row.get::<chrono::NaiveDateTime, _>("created_at").format("%Y-%m-%dT%H:%M:%S").to_string(),
                         "updated_at": row.get::<chrono::NaiveDateTime, _>("updated_at").format("%Y-%m-%dT%H:%M:%S").to_string()
                     }))
@@ -25208,6 +25349,7 @@ impl DatabasePool {
                     Ok(serde_json::json!({
                         "schedule": null,
                         "enabled": false,
+                        "retention_count": null,
                         "created_at": null,
                         "updated_at": null
                     }))
@@ -25215,7 +25357,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let row = sqlx::query(r#"
-                    SELECT CronSchedule, Enabled, CreatedAt, UpdatedAt
+                    SELECT CronSchedule, Enabled, RetentionCount, CreatedAt, UpdatedAt
                     FROM ScheduledBackups
                     WHERE UserID = ?
                 "#)
@@ -25226,10 +25368,11 @@ impl DatabasePool {
                 if let Some(row) = row {
                     let created_datetime = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("CreatedAt")?;
                     let updated_datetime = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("UpdatedAt")?;
-                    
+
                     Ok(serde_json::json!({
                         "schedule": row.try_get::<String, _>("CronSchedule")?,
                         "enabled": row.try_get::<bool, _>("Enabled")?,
+                        "retention_count": row.try_get::<Option<i32>, _>("RetentionCount")?,
                         "created_at": created_datetime.format("%Y-%m-%dT%H:%M:%S").to_string(),
                         "updated_at": updated_datetime.format("%Y-%m-%dT%H:%M:%S").to_string()
                     }))
@@ -25237,12 +25380,79 @@ impl DatabasePool {
                     Ok(serde_json::json!({
                         "schedule": null,
                         "enabled": false,
+                        "retention_count": null,
                         "created_at": null,
                         "updated_at": null
                     }))
                 }
             }
         }
+    }
+
+    // Get all enabled scheduled backups (used by the background scheduler to decide what is due)
+    pub async fn get_enabled_scheduled_backups(&self) -> AppResult<Vec<ScheduledBackupRow>> {
+        let mut backups = Vec::new();
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT userid, cron_schedule, retention_count, last_run
+                    FROM "ScheduledBackups"
+                    WHERE enabled = TRUE
+                "#)
+                .fetch_all(pool)
+                .await?;
+
+                for row in rows {
+                    backups.push(ScheduledBackupRow {
+                        user_id: row.get::<i32, _>("userid"),
+                        cron_schedule: row.get::<String, _>("cron_schedule"),
+                        retention_count: row.get::<Option<i32>, _>("retention_count"),
+                        last_run: row.get::<Option<chrono::NaiveDateTime>, _>("last_run")
+                            .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc)),
+                    });
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT UserID, CronSchedule, RetentionCount, LastRun
+                    FROM ScheduledBackups
+                    WHERE Enabled = TRUE
+                "#)
+                .fetch_all(pool)
+                .await?;
+
+                for row in rows {
+                    backups.push(ScheduledBackupRow {
+                        user_id: row.try_get::<i32, _>("UserID")?,
+                        cron_schedule: row.try_get::<String, _>("CronSchedule")?,
+                        retention_count: row.try_get::<Option<i32>, _>("RetentionCount")?,
+                        last_run: row.try_get::<Option<DateTime<Utc>>, _>("LastRun")?,
+                    });
+                }
+            }
+        }
+        Ok(backups)
+    }
+
+    // Record the time the scheduler last ran a given user's scheduled backup
+    pub async fn update_scheduled_backup_last_run(&self, user_id: i32, ts: DateTime<Utc>) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "ScheduledBackups" SET last_run = $1 WHERE userid = $2"#)
+                    .bind(ts.naive_utc())
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(r#"UPDATE ScheduledBackups SET LastRun = ? WHERE UserID = ?"#)
+                    .bind(ts)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     // Execute backup to file (called by scheduler)
@@ -25255,6 +25465,11 @@ impl DatabasePool {
         let backup_filename = format!("scheduled_backup_{}.sql", timestamp);
         let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
 
+        // Ensure backup directory exists (matches manual_backup_to_directory)
+        if let Err(e) = std::fs::create_dir_all("/opt/pinepods/backups") {
+            return Err(AppError::internal(&format!("Failed to create backup directory: {}", e)));
+        }
+
         // Get database password from environment
         let db_password = std::env::var("DB_PASSWORD")
             .map_err(|_| AppError::internal("Database password not found in environment"))?;
@@ -25266,13 +25481,18 @@ impl DatabasePool {
                 let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
                 let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_database".to_string());
 
+                // Use the same restore-safe flags as manual_backup_to_directory so the
+                // resulting dump can be cleanly restored via `psql -f`.
                 let mut cmd = Command::new("pg_dump");
                 cmd.arg("-h").arg(&db_host)
                    .arg("-p").arg(&db_port)
                    .arg("-U").arg(&db_user)
                    .arg("-d").arg(&db_name)
+                   .arg("--clean")
+                   .arg("--if-exists")
+                   .arg("--no-owner")
+                   .arg("--no-privileges")
                    .arg("-f").arg(&backup_path)
-                   .arg("--verbose")
                    .env("PGPASSWORD", &db_password);
 
                 let output = cmd.output().await

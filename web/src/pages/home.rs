@@ -23,6 +23,53 @@ struct QuickLinkProps {
     route: Route,
     icon: &'static str,
     label: String,
+    #[prop_or_default]
+    count: Option<i32>,
+}
+
+#[derive(Properties, PartialEq, Clone)]
+struct WeeklyStatsProps {
+    seconds_listened: i64,
+    episodes_completed: i32,
+}
+
+#[function_component(WeeklyStatsCard)]
+fn weekly_stats_card(props: &WeeklyStatsProps) -> Html {
+    let (i18n, _) = use_translation();
+    let this_week = i18n.t("home.this_week").to_string();
+    let listened = i18n.t("home.listened").to_string();
+    let completed = i18n.t("home.completed").to_string();
+
+    let secs = props.seconds_listened;
+    let hours = secs / 3600;
+    let mins = (secs % 3600) / 60;
+    let time_str = if hours > 0 {
+        format!("{}h {}m", hours, mins)
+    } else {
+        format!("{}m", mins)
+    };
+
+    html! {
+        <div class="section-container">
+            <h2 class="text-2xl font-bold mb-4 item_container-text">{ this_week }</h2>
+            <div class="weekly-stats-grid grid grid-cols-2 gap-2 md:gap-4">
+                <div class="weekly-stat-card quick-link-card rounded-lg">
+                    <i class="ph ph-clock"></i>
+                    <div class="weekly-stat-text">
+                        <span class="weekly-stat-value">{ time_str }</span>
+                        <span class="weekly-stat-label">{ listened }</span>
+                    </div>
+                </div>
+                <div class="weekly-stat-card quick-link-card rounded-lg">
+                    <i class="ph ph-check-circle"></i>
+                    <div class="weekly-stat-text">
+                        <span class="weekly-stat-value">{ props.episodes_completed }</span>
+                        <span class="weekly-stat-label">{ completed }</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 }
 
 #[function_component(QuickLink)]
@@ -31,6 +78,12 @@ fn quick_link(props: &QuickLinkProps) -> Html {
         <Link<Route> to={props.route.clone()} classes="quick-link-card rounded-lg">
             <i class={classes!("ph", props.icon)}></i>
             <span>{ props.label.clone() }</span>
+            {
+                match props.count {
+                    Some(count) if count > 0 => html! { <span class="quick-link-badge">{ count }</span> },
+                    _ => html! {},
+                }
+            }
         </Link<Route>>
     }
 }
@@ -172,6 +225,7 @@ pub fn home() -> Html {
     let i18n_feed = i18n.t("app_drawer.feed").to_string();
     let i18n_podcasts = i18n.t("app_drawer.podcasts").to_string();
     let i18n_continue_listening = i18n.t("home.continue_listening").to_string();
+    let i18n_up_next = i18n.t("home.up_next").to_string();
     let i18n_top_podcasts = i18n.t("home.top_podcasts").to_string();
     let i18n_smart_playlists = i18n.t("home.smart_playlists").to_string();
     let i18n_no_playlists_available = i18n.t("home.no_playlists_available").to_string();
@@ -210,7 +264,8 @@ pub fn home() -> Html {
                                 let all_episodes = home_data
                                     .recent_episodes
                                     .iter()
-                                    .chain(home_data.in_progress_episodes.iter());
+                                    .chain(home_data.in_progress_episodes.iter())
+                                    .chain(home_data.queue_preview.iter());
 
                                 // Extract episode state information
                                 let completed_episode_ids: std::collections::HashSet<i32> =
@@ -320,14 +375,20 @@ pub fn home() -> Html {
                         <div class="section-container">
                             <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_quick_links}</h2>
                             <div class="grid grid-cols-3 gap-2 md:gap-4">
-                                <QuickLink route={Route::Saved} icon="ph-star" label={i18n_saved.clone()} />
-                                <QuickLink route={Route::Downloads} icon="ph-download-simple" label={i18n_downloads.clone()} />
+                                <QuickLink route={Route::Saved} icon="ph-star" label={i18n_saved.clone()} count={Some(home_data.saved_count)} />
+                                <QuickLink route={Route::Downloads} icon="ph-download-simple" label={i18n_downloads.clone()} count={Some(home_data.downloaded_count)} />
                                 <QuickLink route={Route::Playlists} icon="ph-playlist" label={i18n_smart_playlists.clone()} />
                                 <QuickLink route={Route::PodHistory} icon="ph-clock-counter-clockwise" label={i18n_history.clone()} />
                                 <QuickLink route={Route::Feed} icon="ph-bell-ringing" label={i18n_feed.clone()} />
                                 <QuickLink route={Route::Podcasts} icon="ph-microphone-stage" label={i18n_podcasts.clone()} />
                             </div>
                         </div>
+
+                        // This Week stats widget
+                        <WeeklyStatsCard
+                            seconds_listened={home_data.weekly_stats.seconds_listened}
+                            episodes_completed={home_data.weekly_stats.episodes_completed}
+                        />
 
                         {
                             if !home_data.in_progress_episodes.is_empty() {
@@ -336,6 +397,31 @@ pub fn home() -> Html {
                                         <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_continue_listening}</h2>
                                         <div class="space-y-4">
                                             { for home_data.in_progress_episodes.iter().take(3).map(|episode| {
+                                                html! {
+                                                    <EpisodeListItem
+                                                        key={episode.episodeid}
+                                                        episode={ episode.clone() }
+                                                    />
+                                                }
+                                            })}
+                                        </div>
+                                    </div>
+                                }
+                            } else {
+                                html! {}
+                            }
+                        }
+
+                        // Up Next Section (queue preview)
+                        {
+                            if !home_data.queue_preview.is_empty() {
+                                html! {
+                                    <div class="section-container">
+                                        <h2 class="text-2xl font-bold mb-4 item_container-text">
+                                            { format!("{} ({})", &i18n_up_next, home_data.queue_count) }
+                                        </h2>
+                                        <div class="space-y-4">
+                                            { for home_data.queue_preview.iter().map(|episode| {
                                                 html! {
                                                     <EpisodeListItem
                                                         key={episode.episodeid}

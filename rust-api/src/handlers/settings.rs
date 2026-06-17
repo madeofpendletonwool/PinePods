@@ -2864,6 +2864,14 @@ pub struct ScheduleBackupRequest {
     pub user_id: i32,
     pub cron_schedule: String, // e.g., "0 2 * * *" for daily at 2 AM
     pub enabled: bool,
+    // Number of scheduled backups to keep; None/0 = keep all
+    #[serde(default)]
+    pub retention_count: Option<i32>,
+}
+
+#[derive(Deserialize)]
+pub struct DeleteBackupFileRequest {
+    pub backup_filename: String,
 }
 
 #[derive(Deserialize)]
@@ -2903,12 +2911,13 @@ pub async fn schedule_backup(
     }
 
     // Store the schedule in database
-    state.db_pool.set_scheduled_backup(request.user_id, &request.cron_schedule, request.enabled).await?;
+    state.db_pool.set_scheduled_backup(request.user_id, &request.cron_schedule, request.enabled, request.retention_count).await?;
 
-    Ok(Json(serde_json::json!({ 
+    Ok(Json(serde_json::json!({
         "detail": "Backup schedule updated successfully",
         "schedule": request.cron_schedule,
-        "enabled": request.enabled
+        "enabled": request.enabled,
+        "retention_count": request.retention_count
     })))
 }
 
@@ -3115,6 +3124,44 @@ pub async fn restore_from_backup_file(
     Ok(Json(serde_json::json!({
         "detail": "Restoration started",
         "task_id": task_id
+    })))
+}
+
+// Delete a backup file from the mounted backup directory - admin only
+pub async fn delete_backup_file(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<DeleteBackupFileRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
+
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+
+    // Validate filename to prevent path traversal
+    let backup_filename = request.backup_filename.clone();
+    if backup_filename.contains("..") || backup_filename.contains('/') || !backup_filename.ends_with(".sql") {
+        return Err(AppError::bad_request("Invalid backup filename"));
+    }
+
+    let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
+
+    if !std::path::Path::new(&backup_path).exists() {
+        return Err(AppError::not_found("Backup file not found"));
+    }
+
+    std::fs::remove_file(&backup_path)
+        .map_err(|e| AppError::internal(&format!("Failed to delete backup file: {}", e)))?;
+
+    Ok(Json(serde_json::json!({
+        "detail": "Backup file deleted",
+        "filename": backup_filename
     })))
 }
 
