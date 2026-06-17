@@ -16,11 +16,6 @@ pub struct UpdateGpodderSyncRequest {
     pub enabled: bool,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct RemoveSyncRequest {
-    pub user_id: i32,
-}
-
 // Set default gPodder device - accepts device name for frontend compatibility
 pub async fn gpodder_set_default(
     State(state): State<AppState>,
@@ -226,7 +221,7 @@ pub async fn gpodder_toggle(
     
     // Get current user status to match Python logic
     let user_status = state.db_pool.gpodder_get_status(user_id).await?;
-    let current_sync_type = &user_status.sync_type;
+    let _current_sync_type = &user_status.sync_type;
     
     let mut device_info: Option<serde_json::Value> = None;
     

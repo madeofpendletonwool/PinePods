@@ -6317,7 +6317,7 @@ impl DatabasePool {
         password: Option<&str>,
     ) -> AppResult<String> {
         debug!("try_fetch_feed called with URL: {}", url);
-        if let (Some(user), Some(pass)) = (username, password) {
+        if let (Some(_user), Some(_pass)) = (username, password) {
             debug!("Using basic authentication for feed: {}", url);
         } else {
             debug!("No authentication for feed: {}", url);
@@ -6684,7 +6684,7 @@ impl DatabasePool {
         // Truncate if too long (reasonable limit) - use char_indices for Unicode safety
         if title.chars().count() > 200 {
             let mut truncated = String::new();
-            for (i, ch) in title.char_indices() {
+            for (_i, ch) in title.char_indices() {
                 if truncated.chars().count() >= 197 {
                     break;
                 }
@@ -6754,7 +6754,7 @@ impl DatabasePool {
             data.get("date"),
         ];
         
-        for (i, date_str) in date_candidates.iter().enumerate() {
+        for (_i, date_str) in date_candidates.iter().enumerate() {
             if let Some(date_str) = date_str {
                 // debug!("📅 DEBUG: Trying date candidate {}: '{}'", i, date_str);
                 if let Some(parsed_date) = self.try_parse_date(date_str) {
@@ -6918,98 +6918,8 @@ impl DatabasePool {
     //     url_lower.contains("spotify.com")
     // }
     
-    // Extract audio URLs from episode descriptions/content
-    fn extract_audio_url_from_description(&self, data: &HashMap<String, String>) -> Option<String> {
-        let content_fields = [
-            data.get("content:encoded"),
-            data.get("content"),
-            data.get("description"),
-            data.get("summary"),
-        ];
-        
-        for content in content_fields.iter().flatten() {
-            // Look for common audio file patterns in HTML content
-            let patterns = [
-                r#"src="([^"]*\.mp3[^"]*)""#,
-                r#"src="([^"]*\.m4a[^"]*)""#,
-                r#"href="([^"]*\.mp3[^"]*)""#,
-                r#"href="([^"]*\.m4a[^"]*)""#,
-                r#"url="([^"]*\.mp3[^"]*)""#,
-                r#"url="([^"]*\.m4a[^"]*)""#,
-            ];
-            
-            for pattern in &patterns {
-                // Simple regex-like matching (basic implementation)
-                if let Some(url) = self.extract_url_from_pattern(content, pattern) {
-                    if self.is_audio_url(&url) {
-                        return Some(url);
-                    }
-                }
-            }
-            
-            // Look for direct URLs in plain text
-            if let Some(url) = self.extract_direct_audio_url(content) {
-                return Some(url);
-            }
-        }
-        
-        None
-    }
     
-    // Extract URL from pattern (simple implementation)
-    fn extract_url_from_pattern(&self, content: &str, pattern: &str) -> Option<String> {
-        // Very basic pattern matching - look for quoted URLs containing audio extensions
-        let content_lower = content.to_lowercase();
-        let audio_extensions = [".mp3", ".m4a", ".wav", ".ogg", ".aac"];
-        
-        for ext in &audio_extensions {
-            if let Some(ext_pos) = content_lower.find(ext) {
-                // Look backwards for quote or space
-                let mut start_pos = 0;
-                for (i, ch) in content[..ext_pos].char_indices().rev() {
-                    if ch == '"' || ch == '\'' || ch == ' ' || ch == '>' {
-                        start_pos = i + 1;
-                        break;
-                    }
-                }
-                
-                // Look forwards for quote or space after extension
-                let mut end_pos = content.len();
-                let search_start = ext_pos + ext.len();
-                if search_start < content.len() {
-                    for (i, ch) in content[search_start..].char_indices() {
-                        if ch == '"' || ch == '\'' || ch == ' ' || ch == '<' || ch == '?' {
-                            end_pos = search_start + i;
-                            break;
-                        }
-                    }
-                }
-                
-                if start_pos < end_pos {
-                    let potential_url = &content[start_pos..end_pos];
-                    if potential_url.starts_with("http") && self.is_audio_url(potential_url) {
-                        return Some(potential_url.to_string());
-                    }
-                }
-            }
-        }
-        
-        None
-    }
     
-    // Extract direct audio URLs from plain text
-    fn extract_direct_audio_url(&self, content: &str) -> Option<String> {
-        // Split by whitespace and look for URLs
-        for word in content.split_whitespace() {
-            if word.starts_with("http") && self.is_audio_url(word) {
-                // Clean up the URL (remove trailing punctuation)
-                let cleaned = word.trim_end_matches(&['.', ',', '!', '?', ')', ']', '}']);
-                return Some(cleaned.to_string());
-            }
-        }
-        
-        None
-    }
 
     
     // Strip HTML tags (basic but effective)
@@ -7032,14 +6942,6 @@ impl DatabasePool {
         result
     }
     
-    // Normalize whitespace
-    fn normalize_whitespace(&self, text: &str) -> String {
-        text.split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .trim()
-            .to_string()
-    }
     
     // Comprehensive duration parsing matching Python logic
     fn parse_duration_comprehensive(&self, data: &HashMap<String, String>, estimate_missing_durations: bool) -> i32 {
@@ -7118,60 +7020,7 @@ impl DatabasePool {
         None
     }
     
-    // Parse human-readable duration formats
-    fn parse_human_readable_duration(&self, duration_str: &str) -> Option<i32> {
-        let duration_str = duration_str.to_lowercase();
-        let mut total_seconds = 0;
-        
-        // Extract hours
-        if let Some(hours_match) = self.extract_time_component(&duration_str, &["h", "hr", "hour", "hours"]) {
-            total_seconds += hours_match * 3600;
-        }
-        
-        // Extract minutes
-        if let Some(minutes_match) = self.extract_time_component(&duration_str, &["m", "min", "mins", "minute", "minutes"]) {
-            total_seconds += minutes_match * 60;
-        }
-        
-        // Extract seconds
-        if let Some(seconds_match) = self.extract_time_component(&duration_str, &["s", "sec", "secs", "second", "seconds"]) {
-            total_seconds += seconds_match;
-        }
-        
-        if total_seconds > 0 {
-            Some(total_seconds)
-        } else {
-            None
-        }
-    }
     
-    // Extract time component (e.g., "30" from "30min")
-    fn extract_time_component(&self, text: &str, suffixes: &[&str]) -> Option<i32> {
-        for suffix in suffixes {
-            if let Some(pos) = text.find(suffix) {
-                // Look backwards from position to find the number
-                let before = &text[..pos];
-                
-                // Find the last sequence of digits
-                let mut number_start = pos;
-                for (i, ch) in before.char_indices().rev() {
-                    if ch.is_ascii_digit() {
-                        number_start = i;
-                    } else if number_start < pos {
-                        // Found start of number sequence
-                        break;
-                    }
-                }
-                
-                if number_start < pos {
-                    if let Ok(number) = before[number_start..].trim().parse::<i32>() {
-                        return Some(number);
-                    }
-                }
-            }
-        }
-        None
-    }
     
     // Estimate duration from file size like Python version
     fn estimate_duration_from_file_size(&self, file_size_bytes: i64) -> i32 {
@@ -11165,30 +11014,6 @@ impl DatabasePool {
     }
 
 
-    // Helper function to check if a URL is likely an audio file
-    fn is_audio_url(&self, url: &str) -> bool {
-        let url_lower = url.to_lowercase();
-        url_lower.contains(".mp3") || 
-        url_lower.contains(".m4a") || 
-        url_lower.contains(".wav") || 
-        url_lower.contains(".ogg") || 
-        url_lower.contains(".aac") || 
-        url_lower.contains(".flac") || 
-        url_lower.contains(".opus") ||
-        url_lower.contains("audio") ||
-        url_lower.contains("podcast") ||
-        url_lower.contains("media") ||
-        // Common podcast hosting patterns
-        url_lower.contains("feeds.feedburner.com") ||
-        url_lower.contains("anchor.fm") ||
-        url_lower.contains("buzzsprout.com") ||
-        url_lower.contains("libsyn.com") ||
-        url_lower.contains("soundcloud.com") ||
-        url_lower.contains("podomatic.com") ||
-        url_lower.contains("blubrry.com") ||
-        url_lower.contains("simplecast.com") ||
-        url_lower.contains("podbean.com")
-    }
 
     // Extract audio URL from description/content HTML - matches Python logic
     // fn extract_audio_url_from_description(&self, data: &std::collections::HashMap<String, String>) -> Option<String> {
@@ -11203,31 +11028,6 @@ impl DatabasePool {
     //     None
     // }
 
-    fn find_audio_url_in_text<'a>(&self, text: &'a str) -> Option<&'a str> {
-        // Look for href= or src= attributes
-        for pattern in ["href=\"", "src=\"", "url=\""] {
-            // Use lowercase only for finding pattern positions
-            if let Some(start) = text.to_lowercase().find(pattern) {
-                // Match same index in original text
-                let url_start = start + pattern.len();
-                if let Some(end) = text[url_start..].find('\"') {
-                    let url = &text[url_start..url_start + end];
-                    if self.is_audio_url(url) {
-                        return Some(url);
-                    }
-                }
-            }
-        }
-
-        // Look for standalone URLs
-        for word in text.split_whitespace() {
-            if word.starts_with("http") && self.is_audio_url(word) {
-                return Some(word);
-            }
-        }
-
-        None
-    }
 
 
     // Set user theme - matches Python set_theme function exactly
@@ -12711,23 +12511,10 @@ pub struct UserAutoComplete {
     pub auto_complete_seconds: i32,
 }
 
-// gPodder device structure
-#[derive(Debug, Clone)]
-pub struct GpodderDevice {
-    pub device_id: i32,
-    pub device_name: String,
-    pub device_type: String,
-    pub device_caption: Option<String>,
-    pub is_default: bool,
-    pub is_remote: bool,
-    pub user_id: i32,
-}
-
 // gPodder session structure for authentication
 #[derive(Debug, Clone)]
 pub struct GpodderSession {
     pub client: reqwest::Client,
-    pub session_id: Option<String>,
     pub authenticated: bool,
 }
 
@@ -12892,82 +12679,6 @@ impl DatabasePool {
         Ok(())
     }
 
-    // Helper function to parse SQL statements more carefully
-    fn parse_sql_statements(&self, sql_content: &str) -> AppResult<Vec<String>> {
-        let mut statements = Vec::new();
-        let mut current_statement = String::new();
-        let mut in_string = false;
-        let mut string_delimiter = None;
-        let mut escape_next = false;
-        
-        let chars: Vec<char> = sql_content.chars().collect();
-        let mut i = 0;
-        
-        while i < chars.len() {
-            let ch = chars[i];
-            
-            if escape_next {
-                current_statement.push(ch);
-                escape_next = false;
-                i += 1;
-                continue;
-            }
-            
-            if ch == '\\' && in_string {
-                escape_next = true;
-                current_statement.push(ch);
-                i += 1;
-                continue;
-            }
-            
-            if !in_string {
-                // Check for start of string literals
-                if ch == '\'' || ch == '"' {
-                    in_string = true;
-                    string_delimiter = Some(ch);
-                    current_statement.push(ch);
-                } else if ch == ';' {
-                    // End of statement
-                    let trimmed = current_statement.trim();
-                    if !trimmed.is_empty() && 
-                       !trimmed.starts_with("--") && 
-                       !trimmed.to_lowercase().starts_with("/*!") {
-                        // Allow SET statements for PostgreSQL configuration
-                        statements.push(current_statement.clone());
-                    }
-                    current_statement.clear();
-                } else if ch == '-' && i + 1 < chars.len() && chars[i + 1] == '-' {
-                    // Skip single-line comments
-                    while i < chars.len() && chars[i] != '\n' {
-                        i += 1;
-                    }
-                    continue;
-                } else {
-                    current_statement.push(ch);
-                }
-            } else {
-                // Inside string literal
-                if ch == string_delimiter.unwrap() {
-                    in_string = false;
-                    string_delimiter = None;
-                }
-                current_statement.push(ch);
-            }
-            
-            i += 1;
-        }
-        
-        // Add final statement if any
-        let trimmed = current_statement.trim();
-        if !trimmed.is_empty() && 
-           !trimmed.starts_with("--") && 
-           !trimmed.to_lowercase().starts_with("/*!") {
-            // Allow SET statements for PostgreSQL configuration
-            statements.push(current_statement);
-        }
-        
-        Ok(statements)
-    }
 
     // Generate MFA secret with QR code - matches Python generate_mfa_secret function exactly
     pub async fn generate_mfa_secret(&self, user_id: i32) -> AppResult<(String, String)> {
@@ -13719,53 +13430,6 @@ impl DatabasePool {
         }
     }
 
-    // Get local devices only - internal helper
-    async fn get_local_devices(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"SELECT deviceid, devicename, devicetype, isdefault FROM "GpodderDevices" WHERE userid = $1 ORDER BY devicename"#)
-                    .bind(user_id)
-                    .fetch_all(pool)
-                    .await?;
-                
-                let mut devices = Vec::new();
-                for row in rows {
-                    devices.push(serde_json::json!({
-                        "id": row.try_get::<i32, _>("deviceid")?,
-                        "name": row.try_get::<String, _>("devicename")?,
-                        "type": row.try_get::<String, _>("devicetype")?,
-                        "caption": Option::<String>::None, // Local devices don't have captions
-                        "last_sync": Option::<String>::None,
-                        "is_active": true,
-                        "is_default": row.try_get::<bool, _>("isdefault")?,
-                        "is_remote": false
-                    }));
-                }
-                Ok(devices)
-            }
-            DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query("SELECT DeviceID, DeviceName, DeviceType, IsDefault FROM GpodderDevices WHERE UserID = ? ORDER BY DeviceName")
-                    .bind(user_id)
-                    .fetch_all(pool)
-                    .await?;
-                
-                let mut devices = Vec::new();
-                for row in rows {
-                    devices.push(serde_json::json!({
-                        "id": row.try_get::<i32, _>("DeviceID")?,
-                        "name": row.try_get::<String, _>("DeviceName")?,
-                        "type": row.try_get::<String, _>("DeviceType")?,
-                        "caption": Option::<String>::None,
-                        "last_sync": Option::<String>::None,
-                        "is_active": true,
-                        "is_default": row.try_get::<bool, _>("IsDefault")?,
-                        "is_remote": false
-                    }));
-                }
-                Ok(devices)
-            }
-        }
-    }
 
     // Fetch devices from GPodder API server - works for both internal and external
     async fn fetch_devices_from_gpodder_api(&self, settings: &UserSyncSettings) -> AppResult<Vec<serde_json::Value>> {
@@ -13835,47 +13499,6 @@ impl DatabasePool {
         }
     }
 
-    // Create gPodder session with authentication - matches Python session handling
-    async fn create_gpodder_session(&self, settings: &UserSyncSettings) -> AppResult<GpodderSession> {
-        let client = reqwest::Client::builder()
-            .build()
-            .map_err(|e| AppError::internal(&format!("Failed to create HTTP client: {}", e)))?;
-        
-        let password = if settings.url == "http://localhost:8042" {
-            // Internal API uses encrypted token directly
-            settings.token.clone()
-        } else {
-            // External API needs decrypted password
-            self.decrypt_password(&settings.token).await?
-        };
-        
-        // Try session-based authentication first - matches Python login flow
-        let login_url = format!("{}/api/2/auth/{}/login.json", 
-            settings.url.trim_end_matches('/'), settings.username);
-        
-        let login_response = client
-            .post(&login_url)
-            .basic_auth(&settings.username, Some(&password))
-            .send()
-            .await;
-        
-        let session_authenticated = match login_response {
-            Ok(response) if response.status().is_success() => {
-                tracing::info!("gPodder session authentication successful");
-                true
-            }
-            _ => {
-                tracing::warn!("gPodder session authentication failed, will use basic auth");
-                false
-            }
-        };
-        
-        Ok(GpodderSession {
-            client,
-            session_id: None,
-            authenticated: session_authenticated,
-        })
-    }
 
     // Create gPodder session with already-decrypted password (avoids double decryption)
     async fn create_gpodder_session_with_password(&self, gpodder_url: &str, username: &str, password: &str) -> AppResult<GpodderSession> {
@@ -13908,7 +13531,6 @@ impl DatabasePool {
         
         Ok(GpodderSession {
             client,
-            session_id: None,
             authenticated: session_authenticated,
         })
     }
@@ -14711,48 +14333,6 @@ impl DatabasePool {
         }
     }
     
-    // Upload subscriptions with session support and error handling
-    async fn upload_subscriptions_to_gpodder_with_session(&self, session: &GpodderSession, gpodder_url: &str, username: &str, password: &str, device_name: &str, subscriptions: &[String]) -> AppResult<()> {
-        let upload_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
-        
-        // Format subscription changes according to GPodder API spec
-        let subscription_changes = serde_json::json!({
-            "add": subscriptions,
-            "remove": []
-        });
-        
-        let response = if session.authenticated {
-            session.client
-                .post(&upload_url)
-                .json(&subscription_changes)
-                .send()
-                .await
-        } else {
-            session.client
-                .post(&upload_url)
-                .basic_auth(username, Some(password))
-                .json(&subscription_changes)
-                .send()
-                .await
-        };
-        
-        match response {
-            Ok(resp) if resp.status().is_success() => {
-                tracing::info!("Successfully uploaded {} subscriptions to gPodder service", subscriptions.len());
-                Ok(())
-            }
-            Ok(resp) => {
-                tracing::warn!("Failed to upload subscriptions: {}", resp.status());
-                // Don't fail sync for upload failures - log and continue
-                Ok(())
-            }
-            Err(e) => {
-                tracing::warn!("Error uploading subscriptions: {}", e);
-                // Don't fail sync for upload failures - log and continue
-                Ok(())
-            }
-        }
-    }
 
     // Process gPodder subscriptions and add missing podcasts
     async fn process_gpodder_subscriptions(&self, user_id: i32, subscriptions: &[String]) -> AppResult<()> {
@@ -14818,36 +14398,6 @@ impl DatabasePool {
         Ok(())
     }
 
-    // Detect and remove orphaned local podcasts that are not in the remote subscription list
-    async fn sync_local_podcast_removals(&self, user_id: i32, remote_subscriptions: &[String]) -> AppResult<Vec<String>> {
-        let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
-        let remote_set: std::collections::HashSet<String> = remote_subscriptions.iter().cloned().collect();
-        
-        let mut removed_podcasts = Vec::new();
-        
-        // Find podcasts that exist locally but not in remote subscriptions
-        for local_feed in &local_subscriptions {
-            if !remote_set.contains(local_feed) {
-                tracing::info!("Local podcast {} not found in remote subscriptions, removing", local_feed);
-                
-                match self.remove_podcast_by_url(user_id, local_feed).await {
-                    Ok(_) => {
-                        removed_podcasts.push(local_feed.clone());
-                        tracing::info!("Successfully removed orphaned local podcast: {}", local_feed);
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to remove orphaned local podcast {}: {}", local_feed, e);
-                    }
-                }
-            }
-        }
-        
-        if !removed_podcasts.is_empty() {
-            tracing::info!("Removed {} orphaned local podcasts", removed_podcasts.len());
-        }
-        
-        Ok(removed_podcasts)
-    }
 
     // Upload local subscriptions to gPodder service - matches GPodder API spec POST /api/2/subscriptions/{username}/{device}.json
     async fn upload_subscriptions_to_gpodder(&self, gpodder_url: &str, username: &str, password: &str, device_name: &str, subscriptions: &[String]) -> AppResult<()> {
@@ -15061,7 +14611,7 @@ impl DatabasePool {
                         // Handle both integer Unix timestamps and string timestamps
                         let timestamp_opt = if let Some(timestamp_int) = action["timestamp"].as_i64() {
                             // Unix timestamp as integer (gpodder standard format)
-                            Some(chrono::NaiveDateTime::from_timestamp_opt(timestamp_int, 0).unwrap_or_else(|| chrono::Utc::now().naive_utc()))
+                            Some(chrono::DateTime::from_timestamp(timestamp_int, 0).map(|dt| dt.naive_utc()).unwrap_or_else(|| chrono::Utc::now().naive_utc()))
                         } else if let Some(timestamp_str) = action["timestamp"].as_str() {
                             // String timestamp (alternative format)
                             if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(timestamp_str) {
@@ -15875,7 +15425,7 @@ impl DatabasePool {
     // Get podcast values from RSS feed - matches Python get_podcast_values function exactly
     pub async fn get_podcast_values(&self, feed_url: &str, user_id: i32, username: Option<&str>, password: Option<&str>) -> AppResult<std::collections::HashMap<String, String>> {
         use reqwest::header::AUTHORIZATION;
-        use feed_rs::parser;
+        
         
         debug!("Fetching podcast values from feed URL: {}", feed_url);
         
@@ -19381,30 +18931,6 @@ impl DatabasePool {
         Ok(())
     }
 
-    // Helper function to parse duration from string
-    fn parse_duration(&self, duration_str: &str) -> Option<i64> {
-        if duration_str.contains(':') {
-            let parts: Vec<&str> = duration_str.split(':').collect();
-            match parts.len() {
-                2 => {
-                    let minutes: i64 = parts[0].parse().ok()?;
-                    let seconds: i64 = parts[1].parse().ok()?;
-                    Some(minutes * 60 + seconds)
-                }
-                3 => {
-                    let hours: i64 = parts[0].parse().ok()?;
-                    let minutes: i64 = parts[1].parse().ok()?;
-                    let seconds: i64 = parts[2].parse().ok()?;
-                    Some(hours * 3600 + minutes * 60 + seconds)
-                }
-                _ => None,
-            }
-        } else if let Ok(duration) = duration_str.parse::<i64>() {
-            Some(duration)
-        } else {
-            None
-        }
-    }
 
     // Add person podcast from values map - matches Python add_person_podcast function exactly  
     pub async fn add_person_podcast_from_values(&self, podcast_values: &std::collections::HashMap<String, String>, user_id: i32) -> AppResult<bool> {
@@ -20145,7 +19671,7 @@ impl DatabasePool {
     // Build complete PostgreSQL query with all filters - EXACT PYTHON MATCH
     fn build_complete_postgres_query(&self, base_query: String, params: Vec<i32>, config: &PlaylistConfig, playlist_id: i32) -> AppResult<(String, Vec<i32>)> {
         // Build proper SELECT query first - need to include columns for ordering in subquery
-        let mut select_columns = vec![
+        let select_columns = vec![
             "e.episodeid".to_string(),
             "p.podcastid".to_string(),
             "e.episodepubdate".to_string(),
@@ -20200,9 +19726,8 @@ impl DatabasePool {
         if let Some(max_duration) = config.max_duration {
             select_query.push_str(&format!(" AND e.episodeduration <= ${}", param_index));
             all_params.push(max_duration);
-            param_index += 1;
         }
-        
+
         // Add time filter with timezone awareness
         if let Some(time_filter_hours) = config.time_filter_hours {
             select_query.push_str(&format!(
@@ -20294,7 +19819,7 @@ impl DatabasePool {
     // Build complete MySQL query with all filters - EXACT PYTHON MATCH
     fn build_complete_mysql_query(&self, base_query: String, params: Vec<i32>, config: &PlaylistConfig, playlist_id: i32) -> AppResult<(String, Vec<i32>)> {
         // Build proper SELECT query first - need to include columns for ordering in subquery
-        let mut select_columns = vec![
+        let select_columns = vec![
             "e.EpisodeID".to_string(),
             "p.PodcastID".to_string(),
             "e.EpisodePubDate".to_string(),
@@ -20422,78 +19947,8 @@ impl DatabasePool {
         Ok((insert_query, final_params))
     }
 
-    // Add play state filters for PostgreSQL
-    fn add_play_state_filters_postgres(&self, query: &mut String, params: &mut Vec<i32>, param_index: &mut usize, config: &PlaylistConfig) -> AppResult<()> {
-        let mut play_state_conditions = Vec::new();
-        
-        if config.include_unplayed {
-            play_state_conditions.push("h.listenduration IS NULL".to_string());
-        }
-        
-        if config.include_partially_played {
-            let mut partial_condition = "(h.listenduration > 0 AND h.listenduration < e.episodeduration AND e.completed = FALSE)".to_string();
-            
-            if let Some(min_progress) = config.play_progress_min {
-                partial_condition.push_str(&format!(" AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) >= {}", min_progress / 100.0));
-            }
-            
-            if let Some(max_progress) = config.play_progress_max {
-                partial_condition.push_str(&format!(" AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) <= {}", max_progress / 100.0));
-            }
-            
-            play_state_conditions.push(partial_condition);
-        }
-        
-        if config.include_played {
-            play_state_conditions.push("h.listenduration >= e.episodeduration".to_string());
-        }
-        
-        if !play_state_conditions.is_empty() {
-            query.push_str(&format!(" AND ({})", play_state_conditions.join(" OR ")));
-        }
-        
-        Ok(())
-    }
 
-    // Add play state filters for MySQL
-    fn add_play_state_filters_mysql(&self, query: &mut String, config: &PlaylistConfig) -> AppResult<()> {
-        let mut play_state_conditions = Vec::new();
-        
-        if config.include_unplayed {
-            play_state_conditions.push("h.ListenDuration IS NULL".to_string());
-        }
-        
-        if config.include_partially_played {
-            let mut partial_condition = "(h.ListenDuration > 0 AND h.ListenDuration < e.EpisodeDuration AND e.Completed = FALSE)".to_string();
-            
-            if let Some(min_progress) = config.play_progress_min {
-                partial_condition.push_str(&format!(" AND (h.ListenDuration / NULLIF(e.EpisodeDuration, 0)) >= {}", min_progress / 100.0));
-            }
-            
-            if let Some(max_progress) = config.play_progress_max {
-                partial_condition.push_str(&format!(" AND (h.ListenDuration / NULLIF(e.EpisodeDuration, 0)) <= {}", max_progress / 100.0));
-            }
-            
-            play_state_conditions.push(partial_condition);
-        }
-        
-        if config.include_played {
-            play_state_conditions.push("h.ListenDuration >= e.EpisodeDuration".to_string());
-        }
-        
-        if !play_state_conditions.is_empty() {
-            query.push_str(&format!(" AND ({})", play_state_conditions.join(" OR ")));
-        }
-        
-        Ok(())
-    }
 
-    // Add common filters for PostgreSQL (simplified helper)
-    fn add_common_filters_postgres(&self, _query: &mut String, _params: &mut Vec<Box<dyn sqlx::Encode<'_, Postgres> + Send + 'static>>, _param_index: &mut usize, _config: &PlaylistConfig, _user_id: i32) -> AppResult<()> {
-        // Implementation for duration, time, podcast filters
-        // Simplified for now due to complexity of dynamic parameters
-        Ok(())
-    }
 
     // Helper function to parse categories JSON string into HashMap - matches Python version
     fn parse_categories_json(&self, categories_str: &str) -> Option<std::collections::HashMap<String, String>> {
@@ -21880,21 +21335,9 @@ impl DatabasePool {
     }
 }
 
-#[derive(Debug)]
-pub struct PodcastValues {
-    pub pod_title: String,
-    pub pod_description: String, 
-    pub pod_artwork: String,
-    pub pod_feed_url: String,
-    pub user_id: i32,
-}
-
 // Playlist configuration struct - matches Python playlist data structure exactly
 #[derive(Debug, Clone)]
 pub struct PlaylistConfig {
-    pub playlist_id: i32,
-    pub name: String,
-    pub user_id: i32,
     pub podcast_ids: Option<Vec<i32>>,
     pub include_unplayed: bool,
     pub include_partially_played: bool,
@@ -21907,7 +21350,6 @@ pub struct PlaylistConfig {
     pub sort_order: String,
     pub group_by_podcast: bool,
     pub max_episodes: Option<i32>,
-    pub is_system_playlist: bool,
 }
 
 impl PlaylistConfig {
@@ -21936,9 +21378,6 @@ impl PlaylistConfig {
         };
         
         Ok(PlaylistConfig {
-            playlist_id: row.try_get("playlistid")?,
-            name: row.try_get("name")?,
-            user_id: row.try_get("userid")?,
             podcast_ids,
             include_unplayed: row.try_get("includeunplayed").unwrap_or(true),
             include_partially_played: row.try_get("includepartiallyplayed").unwrap_or(true),
@@ -21951,7 +21390,6 @@ impl PlaylistConfig {
             sort_order: row.try_get("sortorder").unwrap_or_else(|_| "date_desc".to_string()),
             group_by_podcast: row.try_get("groupbypodcast").unwrap_or(false),
             max_episodes: row.try_get("maxepisodes").ok(),
-            is_system_playlist: row.try_get("issystemplaylist").unwrap_or(false),
         })
     }
     
@@ -21997,9 +21435,6 @@ impl PlaylistConfig {
         };
         
         Ok(PlaylistConfig {
-            playlist_id: row.try_get("PlaylistID")?,
-            name: row.try_get("Name")?,
-            user_id: row.try_get("UserID")?,
             podcast_ids,
             include_unplayed: row.try_get("IncludeUnplayed").unwrap_or(true),
             include_partially_played: row.try_get("IncludePartiallyPlayed").unwrap_or(true),
@@ -22012,7 +21447,6 @@ impl PlaylistConfig {
             sort_order: row.try_get("SortOrder").unwrap_or_else(|_| "date_desc".to_string()),
             group_by_podcast: row.try_get("GroupByPodcast").unwrap_or(false),
             max_episodes: row.try_get("MaxEpisodes").ok(),
-            is_system_playlist: row.try_get("IsSystemPlaylist").unwrap_or(false),
         })
     }
     
@@ -22068,38 +21502,6 @@ impl PlaylistConfig {
         }
     }
     
-    // Check if this is an "Almost Done" playlist - matches Python logic
-    pub fn is_almost_done(&self) -> bool {
-        self.name == "Almost Done" || 
-        (self.include_partially_played && 
-         !self.include_unplayed && 
-         !self.include_played &&
-         self.play_progress_min.map_or(false, |min| min >= 75.0))
-    }
-    
-    // Check if this is a "Currently Listening" playlist - matches Python logic
-    pub fn is_currently_listening(&self) -> bool {
-        self.name == "Currently Listening" ||
-        (self.include_partially_played && 
-         !self.include_unplayed && 
-         !self.include_played &&
-         self.play_progress_min.is_none() &&
-         self.play_progress_max.is_none())
-    }
-    
-    // Check if this is a "Fresh Releases" playlist - matches Python logic
-    pub fn is_fresh_releases(&self) -> bool {
-        self.name == "Fresh Releases" && self.is_system_playlist
-    }
-    
-    // Get effective time filter hours - Fresh Releases defaults to 24 if not set
-    pub fn get_effective_time_filter_hours(&self) -> Option<i32> {
-        if self.is_fresh_releases() && self.time_filter_hours.is_none() {
-            Some(24) // Default 24 hours for Fresh Releases
-        } else {
-            self.time_filter_hours
-        }
-    }
 }
 
 impl DatabasePool {
@@ -27377,7 +26779,7 @@ impl DatabasePool {
                 // Build the comprehensive dynamic query
                 let mut query_parts = Vec::new();
                 let mut where_conditions = Vec::new();
-                let mut bind_values: Vec<Box<dyn std::fmt::Debug + Send + Sync>> = Vec::new();
+                let _bind_values: Vec<Box<dyn std::fmt::Debug + Send + Sync>> = Vec::new();
                 
                 // Base SELECT with all episode data needed for SavedEpisode model including podcastid
                 query_parts.push(format!(r#"

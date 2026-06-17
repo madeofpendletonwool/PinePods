@@ -330,15 +330,6 @@ pub async fn cleanup_tasks_internal(state: &AppState) -> AppResult<()> {
     Ok(())
 }
 
-pub async fn update_playlists_internal(state: &AppState) -> AppResult<()> {
-    tracing::info!("Starting internal playlist update (scheduler)");
-    
-    state.db_pool.update_all_playlists().await?;
-    tracing::info!("Playlist update completed successfully");
-    
-    Ok(())
-}
-
 pub async fn refresh_hosts_internal(state: &AppState) -> AppResult<()> {
     tracing::info!("Starting internal host refresh (scheduler)");
     

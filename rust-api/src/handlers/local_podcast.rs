@@ -3,7 +3,7 @@ use axum::{
     http::HeaderMap,
     response::Json,
 };
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use id3::TagLike;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -193,7 +193,7 @@ pub fn scan_local_directory(dir: &Path) -> Result<Vec<LocalEpisodeCandidate>, Ap
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .ok()?
                                     .as_secs() as i64;
-                                NaiveDateTime::from_timestamp_opt(secs, 0)
+                                DateTime::from_timestamp(secs, 0).map(|dt| dt.naive_utc())
                             })
                     })
                     .unwrap_or_else(|| Utc::now().naive_utc());
@@ -222,7 +222,7 @@ pub fn scan_local_directory(dir: &Path) -> Result<Vec<LocalEpisodeCandidate>, Ap
                             .duration_since(std::time::UNIX_EPOCH)
                             .ok()?
                             .as_secs() as i64;
-                        NaiveDateTime::from_timestamp_opt(secs, 0)
+                        DateTime::from_timestamp(secs, 0).map(|dt| dt.naive_utc())
                     })
                     .unwrap_or_else(|| Utc::now().naive_utc());
 

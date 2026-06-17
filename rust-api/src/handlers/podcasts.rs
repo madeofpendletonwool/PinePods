@@ -182,7 +182,6 @@ pub struct RemovePodcastRequest {
 pub struct RemovePodcastIdRequest {
     pub user_id: i32,
     pub podcast_id: i32,
-    pub is_youtube: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -219,24 +218,6 @@ pub struct GetPodcastDetailsQuery {
     pub podcast_id: i32,
 }
 
-// Response struct for get_podcast_details - matches Python ClickedFeedURL model
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[allow(non_snake_case)]
-pub struct PodcastDetails {
-    pub podcastid: i32,
-    pub podcastname: String,
-    pub feedurl: String,
-    pub description: String,
-    pub author: String,
-    pub artworkurl: String,
-    pub explicit: bool,
-    pub episodecount: i32,
-    pub categories: Option<HashMap<String, String>>,
-    pub websiteurl: String,
-    pub podcastindexid: i32,
-    pub is_youtube: Option<bool>,
-}
-
 // Get episodes for a user - matches Python return_episodes endpoint
 pub async fn return_episodes(
     Path(user_id): Path<i32>,
@@ -260,7 +241,7 @@ pub async fn return_episodes(
     // Parse since; default to epoch so the SQL clause is always present without dynamic strings
     let since = params.since.as_deref()
         .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").ok())
-        .unwrap_or(chrono::NaiveDateTime::UNIX_EPOCH);
+        .unwrap_or(chrono::DateTime::UNIX_EPOCH.naive_utc());
 
     let (episodes, total) = state.db_pool.return_episodes(user_id, limit, offset, since).await?;
 
@@ -666,7 +647,7 @@ pub async fn get_queued_episodes(
     }
 
     // Check authorization - users can only get their own queued episodes
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let _requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, query.user_id).await? {
@@ -834,31 +815,6 @@ pub async fn add_history(
     Ok(Json(crate::models::HistoryResponse {
         detail: "History recorded successfully.".to_string(),
     }))
-}
-
-// Get user history - matches call_get_user_history from frontend
-pub async fn get_user_history(
-    Path(user_id): Path<i32>,
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Result<Json<crate::models::UserHistoryResponse>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    
-    // Verify API key
-    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
-    if !is_valid {
-        return Err(AppError::unauthorized("Invalid API key"));
-    }
-
-    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
-    if !check_user_access(&state, &api_key, user_id).await? {
-        return Err(AppError::forbidden("You can only get your own history!"));
-    }
-
-    // Get user history from database
-    let data = state.db_pool.get_user_history(user_id).await?;
-    
-    Ok(Json(crate::models::UserHistoryResponse { data }))
 }
 
 // Query parameters for get_podcast_id
@@ -1247,10 +1203,8 @@ pub async fn get_podcast_id_from_ep_name(
 // Query parameters for get_episode_id_ep_name
 #[derive(Deserialize)]
 pub struct GetEpisodeIdFromEpNameQuery {
-    pub episode_title: String,
     pub episode_url: String,
     pub user_id: i32,
-    pub is_youtube: bool,
 }
 
 // Get episode ID from episode URL - matches frontend call_get_episode_id function

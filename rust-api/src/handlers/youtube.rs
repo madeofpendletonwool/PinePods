@@ -44,14 +44,6 @@ pub struct YouTubeVideo {
     pub url: String,
 }
 
-// Request struct for YouTube channel subscription
-#[derive(Deserialize)]
-pub struct YouTubeSubscribeRequest {
-    pub channel_id: String,
-    pub user_id: i32,
-    pub feed_cutoff: Option<i32>,
-}
-
 // Query struct for YouTube subscription endpoint
 #[derive(Deserialize)]
 pub struct YouTubeSubscribeQuery {

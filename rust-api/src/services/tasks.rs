@@ -347,7 +347,7 @@ impl TaskSpawner {
                     }
                 };
 
-                let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, description, feed_username, feed_password) = episode_info;
+                let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, _description, feed_username, feed_password) = episode_info;
 
                 task_manager.set_task_metadata(&task_id_clone, Some(episode_title.clone()), Some(podcast_name.clone())).await?;
 
@@ -659,7 +659,7 @@ impl TaskSpawner {
         // Create the task first
         let task_id = self.task_manager.create_task("download_all_episodes".to_string(), user_id).await?;
         let task_manager = self.task_manager.clone();
-        let task_spawner = self.clone();
+        let _task_spawner = self.clone();
         let db_pool = self.db_pool.clone();
         let task_id_clone = task_id.clone();
         let task_manager_for_completion = task_manager.clone();

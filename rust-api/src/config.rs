@@ -203,7 +203,7 @@ impl Config {
             port: {
                 let port_str = env::var("DB_PORT").unwrap();
                 port_str.trim().parse()
-                    .map_err(|e| AppError::Config(format!("Invalid DB_PORT '{}': Must be a valid port number (e.g., 5432 for PostgreSQL, 3306 for MariaDB)", port_str)))?
+                    .map_err(|_e| AppError::Config(format!("Invalid DB_PORT '{}': Must be a valid port number (e.g., 5432 for PostgreSQL, 3306 for MariaDB)", port_str)))?
             },
             username: env::var("DB_USER").unwrap(),
             password: env::var("DB_PASSWORD").unwrap(),
@@ -248,7 +248,7 @@ impl Config {
             let host = env::var("VALKEY_HOST").or_else(|_| env::var("REDIS_HOST")).unwrap();
             let port_str = env::var("VALKEY_PORT").or_else(|_| env::var("REDIS_PORT")).unwrap();
             let port = port_str.trim().parse()
-                .map_err(|e| AppError::Config(format!("Invalid port '{}': Must be a valid port number (e.g., 6379)", port_str)))?;
+                .map_err(|_e| AppError::Config(format!("Invalid port '{}': Must be a valid port number (e.g., 6379)", port_str)))?;
             let password = env::var("VALKEY_PASSWORD").ok().or_else(|| env::var("REDIS_PASSWORD").ok());
             let username = env::var("VALKEY_USERNAME").ok().or_else(|| env::var("REDIS_USERNAME").ok());
             let database = env::var("VALKEY_DATABASE").ok()

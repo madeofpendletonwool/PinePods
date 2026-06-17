@@ -21,7 +21,7 @@ pub struct FeedQuery {
 // Get RSS feed for user - matches Python get_user_feed function exactly
 pub async fn get_user_feed(
     State(state): State<AppState>,
-    Path(user_id): Path<i32>,
+    Path(_user_id): Path<i32>,
     Query(query): Query<FeedQuery>,
     request: Request<axum::body::Body>,
 ) -> Result<Response<String>, AppError> {

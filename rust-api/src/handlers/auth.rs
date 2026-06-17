@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::HeaderMap,
     response::{Json, Html, IntoResponse},
 };
 use serde::{Deserialize, Serialize};
@@ -56,13 +56,6 @@ pub struct LoginResponse {
     mfa_required: Option<bool>,
     user_id: Option<i32>,
     mfa_session_token: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct MfaRequiredResponse {
-    status: String,
-    mfa_required: bool,
-    user_id: i32,
 }
 
 #[derive(Serialize)]
@@ -498,34 +491,6 @@ pub async fn first_login_done(
     })))
 }
 
-// Check MFA enabled - matches Python check_mfa_enabled
-pub async fn check_mfa_enabled(
-    Path(user_id): Path<i32>,
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    
-    // Verify API key
-    if !state.db_pool.verify_api_key(&api_key).await? {
-        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
-    }
-    
-    // Get user ID from API key for authorization check
-    let key_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // Allow the action if the API key belongs to the user (Python checks this)
-    if key_user_id != user_id {
-        return Err(AppError::forbidden("You are not authorized to check mfa status for other users."));
-    }
-    
-    let is_enabled = state.db_pool.check_mfa_enabled(user_id).await?;
-    
-    Ok(Json(json!({
-        "mfa_enabled": is_enabled
-    })))
-}
-
 // NEW SECURE MFA ENDPOINT: Verify MFA code and return API key during login
 // CRITICAL SECURITY: This is the second phase of secure MFA authentication flow
 // It REQUIRES a valid session token from successful password authentication
@@ -681,40 +646,6 @@ pub async fn get_theme(
     })))
 }
 
-// Get user startpage - matches Python get_user_startpage
-pub async fn get_user_startpage(
-    Query(params): Query<std::collections::HashMap<String, String>>,
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    
-    // Verify API key
-    if !state.db_pool.verify_api_key(&api_key).await? {
-        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
-    }
-    
-    // Get user_id from query parameter
-    let user_id: i32 = params.get("user_id")
-        .ok_or_else(|| AppError::bad_request("Missing user_id parameter"))?
-        .parse()
-        .map_err(|_| AppError::bad_request("Invalid user_id parameter"))?;
-    
-    // Get user ID from API key for authorization check
-    let key_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // Allow the action if the API key belongs to the user (Python checks this)
-    if key_user_id != user_id {
-        return Err(AppError::forbidden("You can only view your own StartPage setting!"));
-    }
-    
-    let startpage = state.db_pool.get_user_startpage(user_id).await?;
-    
-    Ok(Json(json!({
-        "StartPage": startpage
-    })))
-}
-
 // Setup time info - matches Python setup_timezone_info
 pub async fn setup_time_info(
     headers: HeaderMap,
@@ -847,7 +778,7 @@ pub async fn import_opml(
     ).await?;
     
     // Spawn the import task
-    let task_spawner = state.task_spawner.clone();
+    let _task_spawner = state.task_spawner.clone();
     let db_pool = state.db_pool.clone();
     let task_manager = state.task_manager.clone();
     let redis_client = state.redis_client.clone();
@@ -1197,7 +1128,7 @@ pub async fn oidc_callback(
     };
 
     // Unpack provider details - EXACT match to Python unpacking
-    let (provider_id, _client_id, client_secret, token_url, userinfo_url, name_claim, email_claim, username_claim, roles_claim, user_role, admin_role) = provider_tuple;
+    let (_provider_id, _client_id, client_secret, token_url, userinfo_url, name_claim, email_claim, username_claim, roles_claim, user_role, admin_role) = provider_tuple;
 
     // Exchange authorization code for access token - EXACT match to Python
     let client = reqwest::Client::new();
@@ -1372,7 +1303,7 @@ pub async fn oidc_callback(
         state.db_pool.set_fullname(user_id, &fullname).await?;
 
         // Update username if changed - EXACT match to Python
-        if let (Some(username_claim), Some(new_username)) = (username_claim.as_ref().filter(|s| !s.is_empty()), username.as_ref()) {
+        if let (Some(_username_claim), Some(new_username)) = (username_claim.as_ref().filter(|s| !s.is_empty()), username.as_ref()) {
             if Some(new_username) != current_username.as_ref() {
                 if !state.db_pool.check_usernames(new_username).await? {
                     state.db_pool.set_username(user_id, new_username).await?;
@@ -1415,7 +1346,7 @@ pub async fn oidc_callback(
         // Create user - EXACT match to Python
         match state.db_pool.create_oidc_user(&email, &fullname, &final_username).await {
             Ok(user_id) => {
-                let api_key = state.db_pool.create_api_key(user_id).await?;
+                let _api_key = state.db_pool.create_api_key(user_id).await?;
                 
                 // Set admin role for new user - EXACT match to Python
                 if let (Some(roles_claim), Some(admin_role)) = (roles_claim.as_ref().filter(|s| !s.is_empty()), admin_role.as_ref().filter(|s| !s.is_empty())) {

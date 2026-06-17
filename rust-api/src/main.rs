@@ -78,7 +78,7 @@ async fn main() -> AppResult<()> {
     let task_spawner = Arc::new(TaskSpawner::new(task_manager.clone(), db_pool.clone()));
     let websocket_manager = Arc::new(WebSocketManager::new());
     let import_progress_manager = Arc::new(ImportProgressManager::new(redis_client.clone()));
-    let notification_manager = Arc::new(NotificationManager::new(redis_client.clone()));
+    let notification_manager = Arc::new(NotificationManager::new());
     info!("Task management system initialized");
 
     // Create shared application state
