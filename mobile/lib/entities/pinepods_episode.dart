@@ -1,3 +1,5 @@
+import 'package:pinepods_mobile/core/date_utils.dart';
+
 class PinepodsEpisode {
   final String podcastName;
   final String episodeTitle;
@@ -121,28 +123,9 @@ class PinepodsEpisode {
     }
   }
 
-  /// Format the publish date to a more readable format
-  String get formattedPubDate {
-    try {
-      final date = DateTime.parse(episodePubDate);
-      final now = DateTime.now();
-      final difference = now.difference(date);
-      
-      if (difference.inDays == 0) {
-        return 'Today';
-      } else if (difference.inDays == 1) {
-        return 'Yesterday';
-      } else if (difference.inDays < 7) {
-        return '${difference.inDays} days ago';
-      } else if (difference.inDays < 30) {
-        final weeks = (difference.inDays / 7).floor();
-        return weeks == 1 ? '1 week ago' : '$weeks weeks ago';
-      } else {
-        final months = (difference.inDays / 30).floor();
-        return months == 1 ? '1 month ago' : '$months months ago';
-      }
-    } catch (e) {
-      return episodePubDate;
-    }
-  }
+  /// Format the publish date to a more readable format.
+  ///
+  /// Uses device-local calendar dates so "Today" snaps to local midnight (see
+  /// [relativePubDateLabel] in core/date_utils.dart).
+  String get formattedPubDate => relativePubDateLabel(episodePubDate);
 }

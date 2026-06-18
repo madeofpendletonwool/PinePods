@@ -658,6 +658,19 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                   const SizedBox(height: 24),
                 ],
 
+                // Up Next Section (queue preview) - kept below the fold so the
+                // Library / Continue Listening / Top Podcasts overview is unchanged.
+                if (_homeData!.queuePreview.isNotEmpty) ...[
+                  _buildUpNextSection(),
+                  const SizedBox(height: 24),
+                ],
+
+                // This Week listening stats (only when there is activity)
+                if (_homeData!.weeklyStats.hasActivity) ...[
+                  _buildWeeklyStatsSection(),
+                  const SizedBox(height: 24),
+                ],
+
                 // Smart Playlists Section
                 if (_playlistData?.playlists.isNotEmpty == true) ...[
                   _buildPlaylistsSection(),
@@ -805,6 +818,93 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               );
             },
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUpNextSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Up Next',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        ...(_homeData!.queuePreview.map((episode) =>
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _EpisodeCard(
+              episode: episode,
+              onTap: () {
+                final pinepodsEpisode = PinepodsEpisode(
+                  podcastName: episode.podcastName,
+                  episodeTitle: episode.episodeTitle,
+                  episodePubDate: episode.episodePubDate,
+                  episodeDescription: episode.episodeDescription ?? '',
+                  episodeArtwork: episode.episodeArtwork,
+                  episodeUrl: episode.episodeUrl,
+                  episodeDuration: episode.episodeDuration,
+                  listenDuration: episode.listenDuration,
+                  episodeId: episode.episodeId,
+                  completed: episode.completed,
+                  saved: episode.saved,
+                  queued: episode.queued,
+                  downloaded: episode.downloaded,
+                  isYoutube: episode.isYoutube,
+                );
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PinepodsEpisodeDetails(
+                      initialEpisode: pinepodsEpisode,
+                    ),
+                  ),
+                );
+              },
+              onPlayPressed: () => _playEpisode(episode),
+            ),
+          ),
+        )),
+      ],
+    );
+  }
+
+  Widget _buildWeeklyStatsSection() {
+    final stats = _homeData!.weeklyStats;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'This Week',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _WeeklyStatCard(
+                title: 'Listened',
+                value: stats.formattedListened,
+                icon: Icons.headphones,
+                color: Colors.purple,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _WeeklyStatCard(
+                title: 'Completed',
+                value: stats.episodesCompleted.toString(),
+                icon: Icons.check_circle,
+                color: Colors.green,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1004,6 +1104,52 @@ class _StatCard extends StatelessWidget {
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WeeklyStatCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  const _WeeklyStatCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
               ),
             ),
           ],
