@@ -17713,6 +17713,58 @@ impl DatabasePool {
     /// index. Deduplicated by feed URL. Mirrors the resolution in `process_person_subscription`.
     /// Returns `(title, feed_url, feed_id)` tuples. Never errors on a dead source — a missing
     /// source just contributes nothing (graceful default).
+    /// Look up a host by name in PodPeopleDB and return the shows they appear in as
+    /// `(podcast_title, feed_url, podcast_index_id)` tuples. Uses the JSON `/api/host-search`
+    /// endpoint, which returns an array of hosts each with a `podcasts` array carrying `feedUrl`.
+    /// Never errors — a dead/unreachable PodPeopleDB just contributes nothing (graceful default).
+    async fn fetch_podpeople_shows(
+        client: &reqwest::Client,
+        people_url: &str,
+        name: &str,
+    ) -> Vec<(String, String, i32)> {
+        let mut shows: Vec<(String, String, i32)> = Vec::new();
+
+        match client
+            .get(&format!("{}/api/host-search", people_url))
+            .query(&[("name", name)])
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if let Ok(hosts) = response.json::<serde_json::Value>().await {
+                    if let Some(hosts) = hosts.as_array() {
+                        for host in hosts {
+                            if let Some(podcasts) = host.get("podcasts").and_then(|v| v.as_array()) {
+                                for podcast in podcasts {
+                                    let feed_url = podcast
+                                        .get("feedUrl")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("");
+                                    if feed_url.is_empty() {
+                                        continue;
+                                    }
+                                    let title = podcast
+                                        .get("podcastTitle")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let feed_id = podcast
+                                        .get("podcastId")
+                                        .and_then(|v| v.as_i64())
+                                        .unwrap_or(0) as i32;
+                                    shows.push((title, feed_url.to_string(), feed_id));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => tracing::warn!("podpeople host-search failed for {}: {}", name, e),
+        }
+
+        shows
+    }
+
     async fn resolve_host_shows(&self, name: &str) -> Vec<(String, String, i32)> {
         use std::collections::HashSet;
 
@@ -17735,33 +17787,11 @@ impl DatabasePool {
         let mut seen: HashSet<String> = HashSet::new();
         let mut shows: Vec<(String, String, i32)> = Vec::new();
 
-        // 1. PodPeopleDB
-        match client
-            .get(&format!("{}/api/hostsearch", people_url))
-            .query(&[("name", name)])
-            .send()
-            .await
-        {
-            Ok(response) => {
-                if let Ok(data) = response.json::<serde_json::Value>().await {
-                    if data.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        if let Some(podcasts) = data.get("podcasts").and_then(|v| v.as_array()) {
-                            for podcast in podcasts {
-                                if let (Some(title), Some(feed_url)) = (
-                                    podcast.get("title").and_then(|v| v.as_str()),
-                                    podcast.get("feed_url").and_then(|v| v.as_str()),
-                                ) {
-                                    let feed_id = podcast.get("id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                                    if !feed_url.is_empty() && seen.insert(feed_url.to_string()) {
-                                        shows.push((title.to_string(), feed_url.to_string(), feed_id));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+        // 1. PodPeopleDB (community host -> podcasts mapping)
+        for (title, feed_url, feed_id) in Self::fetch_podpeople_shows(&client, &people_url, name).await {
+            if !feed_url.is_empty() && seen.insert(feed_url.clone()) {
+                shows.push((title, feed_url, feed_id));
             }
-            Err(e) => tracing::warn!("host feed: podpeople lookup failed for {}: {}", name, e),
         }
 
         // 2. Podcast Index person index
@@ -19122,35 +19152,13 @@ impl DatabasePool {
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| AppError::internal(&format!("Failed to create HTTP client: {}", e)))?;
-        
-        match client
-            .get(&format!("{}/api/hostsearch", people_url))
-            .query(&[("name", &person_name)])
-            .send()
-            .await
-        {
-            Ok(response) => {
-                if let Ok(podpeople_data) = response.json::<serde_json::Value>().await {
-                    if podpeople_data.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        if let Some(podcasts) = podpeople_data.get("podcasts").and_then(|v| v.as_array()) {
-                            for podcast in podcasts {
-                                if let (Some(title), Some(feed_url), Some(id)) = (
-                                    podcast.get("title").and_then(|v| v.as_str()),
-                                    podcast.get("feed_url").and_then(|v| v.as_str()),
-                                    podcast.get("id").and_then(|v| v.as_i64()),
-                                ) {
-                                    processed_shows.insert((title.to_string(), feed_url.to_string(), id as i32));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::error!("Error getting data from podpeople: {}", e);
+
+        for (title, feed_url, feed_id) in Self::fetch_podpeople_shows(&client, &people_url, &person_name).await {
+            if !feed_url.is_empty() {
+                processed_shows.insert((title, feed_url, feed_id));
             }
         }
-        
+
         // 2. Get podcasts from podcast index
         tracing::info!("API URL configured as: {}", api_url);
         match client

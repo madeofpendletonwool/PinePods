@@ -2633,21 +2633,42 @@ pub async fn get_host_podcasts(
         .build()
         .unwrap_or_default();
     let response = client
-        .get(&format!("{}/api/hostsearch", people_url))
+        .get(&format!("{}/api/host-search", people_url))
         .query(&[("name", &query.hostname)])
         .send()
         .await
         .map_err(|e| AppError::external_error(&format!("Failed to fetch from podpeople: {}", e)))?;
 
     if response.status().is_success() {
-        let podpeople_data: Vec<serde_json::Value> = response
+        // /api/host-search returns an array of hosts, each with a `podcasts` array. Flatten into
+        // the {podcastid, podcastname, feedurl} shape this endpoint's consumers expect, deduped
+        // by feed URL.
+        let hosts: Vec<serde_json::Value> = response
             .json()
             .await
             .map_err(|e| AppError::external_error(&format!("Failed to parse podpeople response: {}", e)))?;
 
+        let mut seen = std::collections::HashSet::new();
+        let mut podcasts = Vec::new();
+        for host in &hosts {
+            if let Some(host_podcasts) = host.get("podcasts").and_then(|v| v.as_array()) {
+                for podcast in host_podcasts {
+                    let feed_url = podcast.get("feedUrl").and_then(|v| v.as_str()).unwrap_or("");
+                    if feed_url.is_empty() || !seen.insert(feed_url.to_string()) {
+                        continue;
+                    }
+                    podcasts.push(serde_json::json!({
+                        "podcastid": podcast.get("podcastId").and_then(|v| v.as_i64()).unwrap_or(0),
+                        "podcastname": podcast.get("podcastTitle").and_then(|v| v.as_str()).unwrap_or(""),
+                        "feedurl": feed_url,
+                    }));
+                }
+            }
+        }
+
         Ok(Json(PodPeopleResponse {
             success: true,
-            podcasts: podpeople_data,
+            podcasts,
         }))
     } else {
         Ok(Json(PodPeopleResponse {
