@@ -2517,6 +2517,73 @@ pub async fn get_person_episodes(
     })))
 }
 
+#[derive(Deserialize)]
+pub struct HostFeedQuery {
+    pub name: String,
+    pub person_id: Option<i32>,
+    pub include_podcasts: Option<bool>,
+}
+
+// Unified host feed — the single source of a host's episodes (and the shows they appear in),
+// drawn from BOTH the Podcast Index person index and PodPeopleDB, viewable whether or not the
+// user is subscribed. Returns { person, podcasts, episodes }.
+//
+// - Subscribed, episodes-only callers (the subscribed-people list) take a fast path served from
+//   the cached PeopleEpisodes table.
+// - The host profile page takes the live path: a short-lived Redis cache holds the shared
+//   (non-user) feed by host name, and per-user interaction state is overlaid per request so the
+//   cache can be shared across users.
+pub async fn get_host_feed(
+    State(state): State<AppState>,
+    Path(user_id): Path<i32>,
+    Query(params): Query<HostFeedQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only retrieve your own host feed!"));
+    }
+
+    let include_podcasts = params.include_podcasts.unwrap_or(true);
+
+    // Fast path: subscribed host, episodes only — serve from the prebuilt PeopleEpisodes table.
+    if !include_podcasts {
+        if let Some(person_id) = params.person_id {
+            if person_id > 0 {
+                let episodes = state.db_pool.get_person_episodes(user_id, person_id, 300, 0).await?;
+                return Ok(Json(serde_json::json!({
+                    "person": { "name": params.name, "image": null },
+                    "podcasts": [],
+                    "episodes": episodes
+                })));
+            }
+        }
+    }
+
+    // Live path: cache the shared feed by host name, then overlay this user's state.
+    let cache_key = format!("host_feed:{}:{}", include_podcasts, params.name.to_lowercase());
+    let mut feed: serde_json::Value = match state.redis_client.get::<String>(&cache_key).await {
+        Ok(Some(cached)) => serde_json::from_str(&cached)
+            .unwrap_or_else(|_| serde_json::json!({ "person": { "name": params.name, "image": null }, "podcasts": [], "episodes": [] })),
+        _ => {
+            let built = state.db_pool.build_host_feed_shared(&params.name, include_podcasts).await?;
+            if let Ok(serialized) = serde_json::to_string(&built) {
+                // Short TTL: fresh enough for podcasts, cheap repeat visits. Best-effort.
+                let _ = state.redis_client.set_ex(&cache_key, serialized, 300).await;
+            }
+            built
+        }
+    };
+
+    state.db_pool.overlay_host_feed_user_state(user_id, &mut feed).await?;
+
+    Ok(Json(feed))
+}
+
 // Request struct for set_podcast_playback_speed - matches Python SetPlaybackSpeedPodcast model
 #[derive(Deserialize)]
 pub struct SetPlaybackSpeedPodcast {

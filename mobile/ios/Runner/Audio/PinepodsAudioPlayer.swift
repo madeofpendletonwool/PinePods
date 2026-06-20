@@ -431,7 +431,15 @@ class PinepodsAudioPlayer: NSObject {
             let title = meta["title"] as? String ?? "Unknown"
             let artist = meta["artist"] as? String ?? "Unknown"
             let artworkUrl = meta["artwork"] as? String
-            let duration = (meta["duration"] as? Int).map { Double($0) / 1000.0 } ?? 0
+            // Prefer the real asset duration (the "duration" key was just loaded
+            // above) over the metadata duration. The metadata duration's unit has
+            // historically been unreliable across play sources (PinepodsEpisode vs
+            // queue/resume from the DB), which produced a wildly inflated lock
+            // screen length. Fall back to metadata only if the asset duration
+            // isn't known yet (e.g. live/indefinite streams).
+            let assetSeconds = CMTimeGetSeconds(asset.duration)
+            let metaSeconds = (meta["duration"] as? Int).map { Double($0) / 1000.0 } ?? 0
+            let duration = (assetSeconds.isFinite && assetSeconds > 0) ? assetSeconds : metaSeconds
             let elapsed = Double(startPosition) / 1000.0
 
             NSLog("[PinepodsAudioPlayer] Setting Now Playing: title='\(title)', artist='\(artist)', duration=\(duration)s, elapsed=\(elapsed)s")

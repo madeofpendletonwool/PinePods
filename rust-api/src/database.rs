@@ -17514,7 +17514,7 @@ impl DatabasePool {
                         pe.episodedescription,
                         pe.episodeurl,
                         CASE
-                            WHEN pe.episodeartwork IS NULL THEN
+                            WHEN pe.episodeartwork IS NULL OR pe.episodeartwork = '' THEN
                                 (SELECT artworkurl FROM "Podcasts" WHERE podcastid = pe.podcastid)
                             ELSE
                                 CASE
@@ -17612,7 +17612,7 @@ impl DatabasePool {
                         pe.EpisodeDescription,
                         pe.EpisodeURL,
                         CASE
-                            WHEN pe.EpisodeArtwork IS NULL THEN p.ArtworkURL
+                            WHEN pe.EpisodeArtwork IS NULL OR pe.EpisodeArtwork = '' THEN p.ArtworkURL
                             ELSE
                                 CASE
                                     WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
@@ -17697,7 +17697,385 @@ impl DatabasePool {
         debug!("Found {} episodes for user {} and person {}", episodes.len(), user_id, person_id);
         Ok(episodes)
     }
-    
+
+    // ===================================================================================
+    // Unified host feed
+    //
+    // A host's episodes are sourced from BOTH the Podcast Index person index AND PodPeopleDB,
+    // and must be viewable whether or not the user is subscribed to the host or to the
+    // underlying podcasts. `build_host_feed_shared` produces the non-user-specific feed (podcasts
+    // a host appears in + a merged, artwork-resolved episode list) — this is what the handler
+    // caches. `overlay_host_feed_user_state` then layers the requesting user's interaction state
+    // (real episode id, saved/downloaded/listen progress) for podcasts they're subscribed to.
+    // ===================================================================================
+
+    /// Resolve the distinct shows a host appears in, from PodPeopleDB + the Podcast Index person
+    /// index. Deduplicated by feed URL. Mirrors the resolution in `process_person_subscription`.
+    /// Returns `(title, feed_url, feed_id)` tuples. Never errors on a dead source — a missing
+    /// source just contributes nothing (graceful default).
+    async fn resolve_host_shows(&self, name: &str) -> Vec<(String, String, i32)> {
+        use std::collections::HashSet;
+
+        let people_url = std::env::var("PEOPLE_API_URL")
+            .unwrap_or_else(|_| "https://people.pinepods.online".to_string());
+        let api_url = std::env::var("SEARCH_API_URL")
+            .unwrap_or_else(|_| "https://api.pinepods.online/api/search".to_string());
+
+        let client = match reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("Failed to build HTTP client for host feed: {}", e);
+                return Vec::new();
+            }
+        };
+
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut shows: Vec<(String, String, i32)> = Vec::new();
+
+        // 1. PodPeopleDB
+        match client
+            .get(&format!("{}/api/hostsearch", people_url))
+            .query(&[("name", name)])
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if let Ok(data) = response.json::<serde_json::Value>().await {
+                    if data.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        if let Some(podcasts) = data.get("podcasts").and_then(|v| v.as_array()) {
+                            for podcast in podcasts {
+                                if let (Some(title), Some(feed_url)) = (
+                                    podcast.get("title").and_then(|v| v.as_str()),
+                                    podcast.get("feed_url").and_then(|v| v.as_str()),
+                                ) {
+                                    let feed_id = podcast.get("id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                    if !feed_url.is_empty() && seen.insert(feed_url.to_string()) {
+                                        shows.push((title.to_string(), feed_url.to_string(), feed_id));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => tracing::warn!("host feed: podpeople lookup failed for {}: {}", name, e),
+        }
+
+        // 2. Podcast Index person index
+        match client
+            .get(&api_url)
+            .query(&[
+                ("query", name),
+                ("index", "person"),
+                ("search_type", "person"),
+            ])
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if let Ok(data) = response.json::<serde_json::Value>().await {
+                    if let Some(items) = data.get("items").and_then(|v| v.as_array()) {
+                        for episode in items {
+                            if let (Some(title), Some(feed_url)) = (
+                                episode.get("feedTitle").and_then(|v| v.as_str()),
+                                episode.get("feedUrl").and_then(|v| v.as_str()),
+                            ) {
+                                let feed_id = episode.get("feedId").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                if !feed_url.is_empty() && seen.insert(feed_url.to_string()) {
+                                    shows.push((title.to_string(), feed_url.to_string(), feed_id));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => tracing::warn!("host feed: podcast index lookup failed for {}: {}", name, e),
+        }
+
+        shows
+    }
+
+    /// Build the shared (non-user-specific) host feed: the podcasts a host appears in plus a
+    /// merged, recency-windowed, artwork-resolved episode list. Safe to cache by host name.
+    /// `include_podcasts` controls whether the (heavier) podcast card list is built.
+    pub async fn build_host_feed_shared(&self, name: &str, include_podcasts: bool) -> AppResult<serde_json::Value> {
+        let shows = self.resolve_host_shows(name).await;
+
+        if shows.is_empty() {
+            return Ok(serde_json::json!({
+                "person": { "name": name, "image": null },
+                "podcasts": [],
+                "episodes": []
+            }));
+        }
+
+        // Fetch + parse every feed concurrently. Each show yields its podcast metadata and its
+        // episodes (with artwork already resolved to the podcast cover when an episode has none,
+        // because parse_rss_feed uses the podcast artwork as its per-episode default).
+        let feed_futures = shows.iter().map(|(title, feed_url, feed_id)| {
+            let title = title.clone();
+            let feed_url = feed_url.clone();
+            let feed_id = *feed_id;
+            async move {
+                let content = match self.try_fetch_feed(&feed_url, None, None).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::warn!("host feed: failed to fetch {}: {}", feed_url, e);
+                        return None;
+                    }
+                };
+
+                // Podcast-level metadata (name, artwork, etc.) for the card and episode fallback.
+                let values = self
+                    .parse_feed_content_to_values(content.clone(), &feed_url, 1)
+                    .await
+                    .unwrap_or_default();
+                let podcast_name = values
+                    .get("podcastname")
+                    .cloned()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| title.clone());
+                let artwork = values.get("artworkurl").cloned().unwrap_or_default();
+
+                let episodes = match self.parse_rss_feed(&content, 0, &artwork).await {
+                    Ok(eps) => eps,
+                    Err(e) => {
+                        tracing::warn!("host feed: failed to parse {}: {}", feed_url, e);
+                        Vec::new()
+                    }
+                };
+
+                Some((title, feed_url, feed_id, podcast_name, artwork, values, episodes))
+            }
+        });
+
+        let results = futures::future::join_all(feed_futures).await;
+
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(90);
+        let mut episodes_json: Vec<serde_json::Value> = Vec::new();
+        let mut podcasts_json: Vec<serde_json::Value> = Vec::new();
+
+        for entry in results.into_iter().flatten() {
+            let (_title, feed_url, feed_id, podcast_name, artwork, values, episodes) = entry;
+
+            if include_podcasts {
+                podcasts_json.push(serde_json::json!({
+                    "podcastname": podcast_name,
+                    "feedurl": feed_url,
+                    "artworkurl": artwork,
+                    "description": values.get("description").cloned().unwrap_or_default(),
+                    "author": values.get("author").cloned().unwrap_or_default(),
+                    "websiteurl": values.get("websiteurl").cloned().unwrap_or_default(),
+                    "episodecount": values.get("episodecount").and_then(|s| s.parse::<i32>().ok()).unwrap_or(0),
+                    "podcastindexid": feed_id,
+                    "explicit": false,
+                }));
+            }
+
+            for ep in episodes {
+                if ep.pub_date < cutoff {
+                    continue;
+                }
+                episodes_json.push(serde_json::json!({
+                    "episodeid": -1,
+                    "episodetitle": ep.title,
+                    "episodedescription": ep.description,
+                    "episodeurl": ep.url,
+                    "episodeartwork": ep.artwork_url,
+                    "artworkurl": artwork,
+                    "episodepubdate": ep.pub_date.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                    "episodeduration": ep.duration,
+                    "podcastname": podcast_name,
+                    "feedurl": feed_url,
+                    "saved": false,
+                    "downloaded": false,
+                    "listenduration": 0,
+                    "is_youtube": false,
+                    "is_video": ep.is_video,
+                }));
+            }
+        }
+
+        // Newest first; cap payload so a host with many prolific shows stays bounded.
+        episodes_json.sort_by(|a, b| {
+            let da = a.get("episodepubdate").and_then(|v| v.as_str()).unwrap_or("");
+            let db = b.get("episodepubdate").and_then(|v| v.as_str()).unwrap_or("");
+            db.cmp(da)
+        });
+        episodes_json.truncate(300);
+
+        Ok(serde_json::json!({
+            "person": { "name": name, "image": null },
+            "podcasts": podcasts_json,
+            "episodes": episodes_json
+        }))
+    }
+
+    /// Overlay the requesting user's interaction state onto a shared host feed. For episodes whose
+    /// podcast the user is subscribed to, fills in the real episode id + saved/downloaded/listen
+    /// progress (so the card is fully interactive); episodes for unfollowed podcasts stay
+    /// view-only (episodeid = -1). Also tags each podcast card with `is_subscribed`.
+    pub async fn overlay_host_feed_user_state(&self, user_id: i32, feed: &mut serde_json::Value) -> AppResult<()> {
+        use std::collections::HashMap;
+
+        // Map of the user's subscribed feed URLs -> their podcast id.
+        let mut subscribed: HashMap<String, i32> = HashMap::new();
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"SELECT podcastid, feedurl FROM "Podcasts" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+                for row in rows {
+                    let pid: i32 = row.try_get("podcastid")?;
+                    let url: String = row.try_get("feedurl")?;
+                    if !url.is_empty() {
+                        subscribed.insert(url, pid);
+                    }
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query("SELECT PodcastID, FeedURL FROM Podcasts WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+                for row in rows {
+                    let pid: i32 = row.try_get("PodcastID")?;
+                    let url: String = row.try_get("FeedURL")?;
+                    if !url.is_empty() {
+                        subscribed.insert(url, pid);
+                    }
+                }
+            }
+        }
+
+        // Tag podcast cards.
+        if let Some(podcasts) = feed.get_mut("podcasts").and_then(|v| v.as_array_mut()) {
+            for podcast in podcasts.iter_mut() {
+                let is_sub = podcast
+                    .get("feedurl")
+                    .and_then(|v| v.as_str())
+                    .map(|u| subscribed.contains_key(u))
+                    .unwrap_or(false);
+                if let Some(obj) = podcast.as_object_mut() {
+                    obj.insert("is_subscribed".to_string(), serde_json::json!(is_sub));
+                }
+            }
+        }
+
+        if subscribed.is_empty() {
+            return Ok(());
+        }
+
+        // Group the episode URLs that belong to subscribed podcasts by podcast id.
+        let mut urls_by_podcast: HashMap<i32, Vec<String>> = HashMap::new();
+        if let Some(episodes) = feed.get("episodes").and_then(|v| v.as_array()) {
+            for ep in episodes {
+                if let (Some(feedurl), Some(epurl)) = (
+                    ep.get("feedurl").and_then(|v| v.as_str()),
+                    ep.get("episodeurl").and_then(|v| v.as_str()),
+                ) {
+                    if let Some(&pid) = subscribed.get(feedurl) {
+                        urls_by_podcast.entry(pid).or_default().push(epurl.to_string());
+                    }
+                }
+            }
+        }
+
+        if urls_by_podcast.is_empty() {
+            return Ok(());
+        }
+
+        // For each subscribed podcast in the feed, fetch episode state in one query keyed by URL.
+        // state: episodeurl -> (episodeid, saved, downloaded, listenduration)
+        let mut state: HashMap<String, (i32, bool, bool, i32)> = HashMap::new();
+        for (pid, urls) in &urls_by_podcast {
+            match self {
+                DatabasePool::Postgres(pool) => {
+                    let rows = sqlx::query(r#"
+                        SELECT e.episodeid, e.episodeurl,
+                            CASE WHEN s.episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN d.episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                            COALESCE(h.listenduration, 0) AS listenduration
+                        FROM "Episodes" e
+                        LEFT JOIN "SavedEpisodes" s ON s.episodeid = e.episodeid AND s.userid = $1
+                        LEFT JOIN "DownloadedEpisodes" d ON d.episodeid = e.episodeid AND d.userid = $1
+                        LEFT JOIN "UserEpisodeHistory" h ON h.episodeid = e.episodeid AND h.userid = $1
+                        WHERE e.podcastid = $2 AND e.episodeurl = ANY($3)
+                    "#)
+                        .bind(user_id)
+                        .bind(pid)
+                        .bind(urls)
+                        .fetch_all(pool)
+                        .await?;
+                    for row in rows {
+                        let eid: i32 = row.try_get("episodeid")?;
+                        let url: String = row.try_get("episodeurl")?;
+                        let saved: bool = row.try_get("saved")?;
+                        let downloaded: bool = row.try_get("downloaded")?;
+                        let listenduration: i32 = row.try_get("listenduration")?;
+                        state.insert(url, (eid, saved, downloaded, listenduration));
+                    }
+                }
+                DatabasePool::MySQL(pool) => {
+                    // MySQL has no array binding; build an IN list with placeholders.
+                    let placeholders = std::iter::repeat("?").take(urls.len()).collect::<Vec<_>>().join(",");
+                    let sql = format!(
+                        "SELECT e.EpisodeID as episodeid, e.EpisodeURL as episodeurl,
+                            IF(s.EpisodeID IS NOT NULL, TRUE, FALSE) AS saved,
+                            IF(d.EpisodeID IS NOT NULL, TRUE, FALSE) AS downloaded,
+                            COALESCE(h.ListenDuration, 0) AS listenduration
+                        FROM Episodes e
+                        LEFT JOIN SavedEpisodes s ON s.EpisodeID = e.EpisodeID AND s.UserID = ?
+                        LEFT JOIN DownloadedEpisodes d ON d.EpisodeID = e.EpisodeID AND d.UserID = ?
+                        LEFT JOIN UserEpisodeHistory h ON h.EpisodeID = e.EpisodeID AND h.UserID = ?
+                        WHERE e.PodcastID = ? AND e.EpisodeURL IN ({})",
+                        placeholders
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(pid);
+                    for url in urls {
+                        q = q.bind(url);
+                    }
+                    let rows = q.fetch_all(pool).await?;
+                    for row in rows {
+                        let eid: i32 = row.try_get("episodeid")?;
+                        let url: String = row.try_get("episodeurl")?;
+                        let saved: bool = row.try_get("saved")?;
+                        let downloaded: bool = row.try_get("downloaded")?;
+                        let listenduration: i32 = row.try_get("listenduration")?;
+                        state.insert(url, (eid, saved, downloaded, listenduration));
+                    }
+                }
+            }
+        }
+
+        // Apply the resolved state back onto the feed episodes.
+        if let Some(episodes) = feed.get_mut("episodes").and_then(|v| v.as_array_mut()) {
+            for ep in episodes.iter_mut() {
+                let epurl = ep.get("episodeurl").and_then(|v| v.as_str()).map(|s| s.to_string());
+                if let Some(url) = epurl {
+                    if let Some(&(eid, saved, downloaded, listenduration)) = state.get(&url) {
+                        if let Some(obj) = ep.as_object_mut() {
+                            obj.insert("episodeid".to_string(), serde_json::json!(eid));
+                            obj.insert("saved".to_string(), serde_json::json!(saved));
+                            obj.insert("downloaded".to_string(), serde_json::json!(downloaded));
+                            obj.insert("listenduration".to_string(), serde_json::json!(listenduration));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     // Check existing YouTube channel subscription - matches Python check_existing_channel_subscription function exactly
     pub async fn check_existing_channel_subscription(&self, channel_id: &str, user_id: i32) -> AppResult<Option<i32>> {
         debug!("Checking existing channel subscription for {} and user {}", channel_id, user_id);

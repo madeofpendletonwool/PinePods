@@ -460,7 +460,11 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
                 <div class="ep-art-wrap">
                     <FallbackImage
-                        src={props.episode.episodeartwork.clone()}
+                        src={if props.episode.episodeartwork.is_empty() {
+                            props.episode.artworkurl.clone()
+                        } else {
+                            props.episode.episodeartwork.clone()
+                        }}
                         alt={format!("Cover for {}", props.episode.episodetitle)}
                         class="ep-art-img"
                     />

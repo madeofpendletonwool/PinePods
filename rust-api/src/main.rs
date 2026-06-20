@@ -353,6 +353,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/person/unsubscribe/{user_id}/{person_id}", delete(handlers::settings::unsubscribe_from_person))
         .route("/person/subscriptions/{user_id}", get(handlers::settings::get_person_subscriptions))
         .route("/person/episodes/{user_id}/{person_id}", get(handlers::settings::get_person_episodes))
+        .route("/person/feed/{user_id}", get(handlers::settings::get_host_feed))
         .route("/search_youtube_channels", get(handlers::youtube::search_youtube_channels))
         .route("/youtube/subscribe", post(handlers::youtube::subscribe_to_youtube_channel))
         .route("/check_youtube_channel", get(handlers::youtube::check_youtube_channel))
