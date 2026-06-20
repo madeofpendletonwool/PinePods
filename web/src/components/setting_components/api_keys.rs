@@ -19,7 +19,7 @@ pub fn api_keys() -> Html {
     let api_infos = use_state(|| Vec::new());
     let new_api_key = use_state(|| String::new());
     let selected_api_key_id: UseStateHandle<Option<i32>> = use_state(|| None);
-    let dispatch_effect = _dispatch.clone();
+    let _dispatch_effect = _dispatch.clone();
     let dispatch_call = _dispatch.clone();
 
     // Capture all i18n strings at function start to avoid borrow checker issues
@@ -84,7 +84,7 @@ pub fn api_keys() -> Html {
         );
     }
 
-    let dispatch_refresh = _dispatch.clone();
+    let _dispatch_refresh = _dispatch.clone();
 
     // Add a new `use_effect_with` to re-fetch the API keys when a new API key is added
     {
@@ -209,7 +209,7 @@ pub fn api_keys() -> Html {
         // Assume you have user_id and api_key from context or props
         let user_id = 1; // Example user_id
         Callback::from(move |_| {
-            let dispatch = dispatch_call.clone();
+            let _dispatch = dispatch_call.clone();
             let api_key = api_key.clone();
             // let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
             let server_name = server_name.clone();

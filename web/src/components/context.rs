@@ -9,9 +9,8 @@ use crate::requests::login_requests::GetApiDetails;
 use crate::requests::pod_req::PodcastResponseExtra;
 
 use crate::requests::pod_req::{
-    Chapter, EpisodeDownloadResponse, Funding, HomeOverview, Person, Playlist,
-    Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
-    RefreshProgress, SavedEpisodesResponse, SharedEpisodeResponse, Transcript, Value,
+    Chapter, Funding, HomeOverview, Person, Playlist, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
+    RefreshProgress, SharedEpisodeResponse, Transcript, Value,
 };
 use crate::requests::search_pods::{
     PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse, YouTubeChannel,

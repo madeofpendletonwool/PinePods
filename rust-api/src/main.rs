@@ -78,7 +78,7 @@ async fn main() -> AppResult<()> {
     let task_spawner = Arc::new(TaskSpawner::new(task_manager.clone(), db_pool.clone()));
     let websocket_manager = Arc::new(WebSocketManager::new());
     let import_progress_manager = Arc::new(ImportProgressManager::new(redis_client.clone()));
-    let notification_manager = Arc::new(NotificationManager::new(redis_client.clone()));
+    let notification_manager = Arc::new(NotificationManager::new());
     info!("Task management system initialized");
 
     // Create shared application state
@@ -353,6 +353,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/person/unsubscribe/{user_id}/{person_id}", delete(handlers::settings::unsubscribe_from_person))
         .route("/person/subscriptions/{user_id}", get(handlers::settings::get_person_subscriptions))
         .route("/person/episodes/{user_id}/{person_id}", get(handlers::settings::get_person_episodes))
+        .route("/person/feed/{user_id}", get(handlers::settings::get_host_feed))
         .route("/search_youtube_channels", get(handlers::youtube::search_youtube_channels))
         .route("/youtube/subscribe", post(handlers::youtube::subscribe_to_youtube_channel))
         .route("/check_youtube_channel", get(handlers::youtube::check_youtube_channel))
@@ -376,6 +377,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/list_backup_files", post(handlers::settings::list_backup_files))
         .route("/restore_backup_file", post(handlers::settings::restore_from_backup_file))
         .route("/manual_backup_to_directory", post(handlers::settings::manual_backup_to_directory))
+        .route("/delete_backup_file", post(handlers::settings::delete_backup_file))
         .route("/get_unmatched_podcasts", post(handlers::settings::get_unmatched_podcasts))
         .route("/update_podcast_index_id", post(handlers::settings::update_podcast_index_id))
         .route("/ignore_podcast_index_id", post(handlers::settings::ignore_podcast_index_id))

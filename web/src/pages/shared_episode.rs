@@ -35,7 +35,7 @@ pub struct SharedProps {
 #[function_component(SharedEpisode)]
 pub fn shared_episode(_props: &SharedProps) -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, dispatch) = use_store::<AppState>();
     let (episode_detail_state, _) = use_store::<EpisodeDetailState>();
     let (prefs_state, _) = use_store::<UserPreferencesState>();
 
@@ -105,7 +105,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                 location.protocol().unwrap(),
                 location.host().unwrap()
             ); // Extracts the protocol and host
-            let dispatch = effect_dispatch.clone();
+            let _dispatch = effect_dispatch.clone();
 
             // Fetch the URL key from the current window location
             let url_pathname = location.pathname().unwrap();

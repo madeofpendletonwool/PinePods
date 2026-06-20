@@ -114,7 +114,20 @@
     "scheduled_backups": "Scheduled Backups",
     "scheduled_backups_description": "Configure automatic backups to run on a schedule. Backups are saved to the mounted backup directory and use the database credentials from your container environment.",
     "status": "Status",
-    "weekly_sunday_3am": "Weekly on Sunday at 3:00 AM"
+    "weekly_sunday_3am": "Weekly on Sunday at 3:00 AM",
+    "retention_label": "Keep last N backups",
+    "retention_hint": "Automatically delete older scheduled backups, keeping only this many. Set to 0 to keep all. Manual backups are never auto-deleted.",
+    "existing_backups": "Existing Backups",
+    "existing_backups_hint": "Backups currently stored in the server's backup directory. Delete any you no longer need.",
+    "refresh": "Refresh",
+    "refresh_backups": "Refresh backup list",
+    "loading_backups": "Loading backups...",
+    "no_backups": "No backups found in the backup directory.",
+    "failed_to_load_backups": "Failed to load backups: ",
+    "delete_backup": "Delete backup",
+    "confirm_delete_backup": "Delete this backup file?",
+    "backup_deleted": "Backup file deleted successfully.",
+    "failed_to_delete_backup": "Failed to delete backup: "
   },
   "common": {
     "add": "Add",
@@ -520,6 +533,10 @@
   },
   "home": {
     "continue_listening": "Continue Listening",
+    "up_next": "Up Next",
+    "this_week": "This Week",
+    "listened": "Listened",
+    "completed": "Completed",
     "episodes": "episodes",
     "no_categories_found": "No Categories Found",
     "no_description_provided": "No Description Provided",
@@ -1131,7 +1148,16 @@
     "select_from_server_backups": "Select From Server Backups",
     "backup_file_sql": "Backup File (.sql)",
     "upload_backup_hint": "Upload a backup file and provide your database password to restore your server.",
-    "choose_file": "Choose File"
+    "choose_file": "Choose File",
+    "server_backup_files": "Server Backup Files",
+    "server_backups_hint": "Select a backup file from the server's backup directory to restore from.",
+    "file_selected": "File selected",
+    "loading_backup_files": "Loading backup files...",
+    "no_backup_files": "No backup files found in the server backup directory.",
+    "selected_file_warning": "This will overwrite all current data with the selected backup.",
+    "restore_from_selected": "Restore From Selected",
+    "restoring_database": "Restoring database...",
+    "dont_close_window": "This may take a few minutes. Please don't close this window."
   },
   "rss_feeds": {
     "copy_to_clipboard": "Copy to Clipboard",

@@ -8,7 +8,7 @@ use crate::components::loading::Loading;
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::requests::episode::Episode;
 
-use crate::requests::pod_req::{EpisodeDownloadResponse, Podcast, PodcastDetails, PodcastResponse};
+use crate::requests::pod_req::{Podcast, PodcastDetails, PodcastResponse};
 use i18nrs::yew::use_translation;
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
@@ -317,7 +317,7 @@ pub fn downloads() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
     let (ep_status, _) = use_store::<EpisodeStatusState>();
-    let (ui_state, ui_dispatch) = use_store::<UIState>();
+    let (_ui_state, ui_dispatch) = use_store::<UIState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let effect_dispatch = dispatch.clone();
 
@@ -351,8 +351,8 @@ pub fn downloads() -> Html {
         .t("downloads_tauri.failed_to_delete_episodes")
         .to_string();
     let history = BrowserHistory::new();
-    let session_dispatch = effect_dispatch.clone();
-    let session_state = state.clone();
+    let _session_dispatch = effect_dispatch.clone();
+    let _session_state = state.clone();
     let expanded_state = use_state(HashMap::new);
     let show_modal = use_state(|| false);
     let show_clonedal = show_modal.clone();
@@ -366,12 +366,12 @@ pub fn downloads() -> Html {
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let app_offline_mode = audio_state.app_offline_mode;
     let page_state = use_state(|| PageState::Normal);
-    let api_key = post_state
+    let _api_key = post_state
         .auth_details
         .as_ref()
         .map(|ud| ud.api_key.clone());
-    let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let server_name = post_state
+    let _user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let _server_name = post_state
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
@@ -390,8 +390,8 @@ pub fn downloads() -> Html {
         let effect_dispatch = dispatch.clone();
 
         use_effect_with((local_download_increment,), move |_| {
-            let error_clone = error.clone();
-            let dispatch = effect_dispatch.clone();
+            let _error_clone = error.clone();
+            let _dispatch = effect_dispatch.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 // First ensure we have a valid podcast feed state, even if empty
@@ -495,7 +495,7 @@ pub fn downloads() -> Html {
                 state.selected_episodes_for_deletion.clear();
 
                 // Use local Tauri delete function for bulk deletion
-                let dispatch_for_future = dispatch_cloned.clone();
+                let _dispatch_for_future = dispatch_cloned.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     match remove_multiple_episodes_from_local_db(
                         selected_episodes.iter().cloned().collect(),
@@ -941,20 +941,20 @@ pub fn render_podcast_with_episodes(
     episodes: Vec<Episode>,
     is_expanded: bool,
     toggle_expanded: Callback<MouseEvent>,
-    state: Rc<AppState>,
+    _state: Rc<AppState>,
     dispatch: Dispatch<AppState>,
     is_delete_mode: bool,
-    desc_rc: Rc<ExpandedDescriptions>,
-    desc_state: Dispatch<ExpandedDescriptions>,
-    audio_dispatch: Dispatch<UIState>,
-    audio_state: Rc<UIState>,
+    _desc_rc: Rc<ExpandedDescriptions>,
+    _desc_state: Dispatch<ExpandedDescriptions>,
+    _audio_dispatch: Dispatch<UIState>,
+    _audio_state: Rc<UIState>,
     on_checkbox_change: Callback<i32>,
-    show_modal: bool,
-    on_modal_open: Callback<i32>,
-    on_modal_close: Callback<MouseEvent>,
+    _show_modal: bool,
+    _on_modal_open: Callback<i32>,
+    _on_modal_close: Callback<MouseEvent>,
     i18n_downloaded_episodes_count: &str,
 ) -> Html {
-    let history_clone = BrowserHistory::new();
+    let _history_clone = BrowserHistory::new();
 
     let on_podcast_checkbox_change = {
         let episodes = episodes.clone();
@@ -984,7 +984,7 @@ pub fn render_podcast_with_episodes(
         })
     };
 
-    let html_dispatch = dispatch.clone();
+    let _html_dispatch = dispatch.clone();
 
     html! {
         <div key={podcast.podcastid}>

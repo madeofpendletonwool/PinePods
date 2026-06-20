@@ -61,7 +61,7 @@ pub fn gpodder_advanced_options() -> Html {
     let i18n_initial_syncing = i18n.t("nextcloud_options.initial_syncing").to_string();
     let i18n_initial_sync = i18n.t("nextcloud_options.initial_sync").to_string();
     let i18n_setting_default = i18n.t("nextcloud_options.setting_default").to_string();
-    let i18n_current_default = i18n.t("nextcloud_options.current_default").to_string();
+    let _i18n_current_default = i18n.t("nextcloud_options.current_default").to_string();
     let i18n_set_as_default = i18n.t("nextcloud_options.set_as_default").to_string();
     let i18n_loading_default_device = i18n.t("nextcloud_options.loading_default_device").to_string();
 
@@ -96,7 +96,7 @@ pub fn gpodder_advanced_options() -> Html {
         let is_loading_default_device = is_loading_default_device.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
 
         use_effect_with((), move |_| {
             if let (Some(server_name), Some(api_key)) = (server_name, api_key.clone()) {
@@ -137,7 +137,7 @@ pub fn gpodder_advanced_options() -> Html {
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
         let selected_device_id = selected_device_id.clone();
         let selected_device_info = selected_device_info.clone();
         let default_device = default_device.clone();
@@ -294,7 +294,7 @@ pub fn gpodder_advanced_options() -> Html {
                 is_set_default.set(true);
                 let devices_clone = devices.clone();
                 let default_device_clone = default_device.clone();
-                let dispatch_clone = dispatch.clone();
+                let _dispatch_clone = dispatch.clone();
 
                 web_sys::console::log_1(
                     &format!(
@@ -390,7 +390,7 @@ pub fn gpodder_advanced_options() -> Html {
                 let devices_clone = devices.clone();
                 let new_device_name_clone = new_device_name.clone();
                 let new_device_caption_clone = new_device_caption.clone();
-                let dispatch_clone = dispatch.clone();
+                let _dispatch_clone = dispatch.clone();
 
                 spawn_local(async move {
                     match call_create_gpodder_device(&server_name, &api_key.unwrap(), request).await
@@ -450,7 +450,7 @@ pub fn gpodder_advanced_options() -> Html {
                     );
 
                     is_sync.set(true);
-                    let dispatch_clone = dispatch.clone();
+                    let _dispatch_clone = dispatch.clone();
 
                     spawn_local(async move {
                         match call_sync_with_gpodder(
@@ -542,7 +542,7 @@ pub fn gpodder_advanced_options() -> Html {
                     );
 
                     is_pushing.set(true);
-                    let dispatch_clone = dispatch.clone();
+                    let _dispatch_clone = dispatch.clone();
 
                     spawn_local(async move {
                         match call_force_full_sync(
@@ -894,7 +894,7 @@ pub fn sync_options() -> Html {
     let i18n_current_sync_server = i18n.t("nextcloud_options.current_sync_server").to_string();
     let i18n_remove_sync = i18n.t("nextcloud_options.remove_sync").to_string();
     let i18n_internal_gpodder_api = i18n.t("nextcloud_options.internal_gpodder_api").to_string();
-    let i18n_internal_gpodder_desc = i18n.t("nextcloud_options.internal_gpodder_desc").to_string();
+    let _i18n_internal_gpodder_desc = i18n.t("nextcloud_options.internal_gpodder_desc").to_string();
     let i18n_choose_sync_method = i18n.t("nextcloud_options.choose_sync_method").to_string();
     let i18n_choose_sync_method_desc = i18n.t("nextcloud_options.choose_sync_method_desc").to_string();
     let i18n_sync_option_internal = i18n.t("nextcloud_options.sync_option_internal").to_string();
@@ -958,7 +958,7 @@ pub fn sync_options() -> Html {
         let api_key = api_key.clone();
         let is_internal_gpodder_enabled = is_internal_gpodder_enabled.clone();
         let is_sync_configured = is_sync_configured.clone();
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
         let sync_type = sync_type.clone();
 
         use_effect_with(&(), move |_| {
@@ -1096,7 +1096,7 @@ pub fn sync_options() -> Html {
         Callback::from(move |_| {
             let is_internal_gpodder_enabled = is_internal_gpodder_enabled.clone();
             let is_toggling_gpodder = is_toggling_gpodder.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let new_state = !(*is_internal_gpodder_enabled);
@@ -1198,7 +1198,7 @@ pub fn sync_options() -> Html {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone();
-            let dispatch_clone = dispatch.clone();
+            let _dispatch_clone = dispatch.clone();
             let is_authenticating = is_authenticating.clone();
             let nextcloud_url = nextcloud_url.clone();
             let sync_type = sync_type.clone();
@@ -1428,7 +1428,7 @@ pub fn sync_options() -> Html {
         let is_internal_gpodder_enabled = is_internal_gpodder_enabled.clone();
 
         Callback::from(move |_| {
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone();
@@ -1509,7 +1509,7 @@ pub fn sync_options() -> Html {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 match call_test_gpodder_connection(
@@ -1562,7 +1562,7 @@ pub fn sync_options() -> Html {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone();
-            let dispatch_clone = dispatch.clone();
+            let _dispatch_clone = dispatch.clone();
             let server_user_check_deref = (*server_user).clone();
             let server_user_deref = (*server_user).clone();
             let server_pass_check_deref = (*server_pass).clone();
@@ -2167,7 +2167,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                     is_loading_stats.set(true);
                     let statistics_clone = statistics.clone();
                     let is_loading_clone = is_loading_stats.clone();
-                    let dispatch_clone = dispatch.clone();
+                    let _dispatch_clone = dispatch.clone();
 
                     spawn_local(async move {
                         match call_get_gpodder_statistics(&server_name, &api_key.unwrap()).await {
@@ -2199,7 +2199,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                 is_loading_stats.set(true);
                 let statistics_clone = statistics.clone();
                 let is_loading_clone = is_loading_stats.clone();
-                let dispatch_clone = dispatch.clone();
+                let _dispatch_clone = dispatch.clone();
 
                 spawn_local(async move {
                     match call_get_gpodder_statistics(&server_name, &api_key.unwrap()).await {

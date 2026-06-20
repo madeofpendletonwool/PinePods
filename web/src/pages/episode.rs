@@ -44,11 +44,11 @@ async fn fallback_to_podcast_parsing(
     podcast_index_id: i32,
     is_youtube: bool,
     episode_id: i32,
-    dispatch: Dispatch<AppState>,
+    _dispatch: Dispatch<AppState>,
     error_clone: UseStateHandle<Option<String>>,
     aud_dispatch: Dispatch<UIState>,
     ep_2_loading_clone: UseStateHandle<bool>,
-    ui_state: Rc<AppState>,
+    _ui_state: Rc<AppState>,
     window: web_sys::Window,
     user_id: i32,
     loading_clone: UseStateHandle<bool>,
@@ -843,7 +843,7 @@ pub fn epsiode() -> Html {
         let api_key = api_key.clone().flatten();
         let page_state = page_state.setter();
         let window = web_sys::window().expect("Window should exist");
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
 
         move |title: &str,
               podcast_url: &str,
@@ -1287,15 +1287,15 @@ pub fn epsiode() -> Html {
                         )
                     },
                     PageState::Ok(episode) => {
-                        let episode_id = episode.episodeid;
+                        let _episode_id = episode.episodeid;
                         let episode_url_clone = episode.episodeurl.clone();
-                        let episode_title_clone = episode.episodetitle.clone();
-                        let episode_descripton_clone = episode.episodedescription.clone();
-                        let episode_release_clone = episode.episodepubdate.clone();
-                        let episode_artwork_clone = episode.episodeartwork.clone();
-                        let episode_duration_clone = episode.episodeduration.clone();
+                        let _episode_title_clone = episode.episodetitle.clone();
+                        let _episode_descripton_clone = episode.episodedescription.clone();
+                        let _episode_release_clone = episode.episodepubdate.clone();
+                        let _episode_artwork_clone = episode.episodeartwork.clone();
+                        let _episode_duration_clone = episode.episodeduration.clone();
                         let podcast_of_episode = episode.podcastid.clone();
-                        let episode_listened_clone = episode.listenduration.clone();
+                        let _episode_listened_clone = episode.listenduration.clone();
                         let episode_id = episode.episodeid;
                         let episode_is_youtube = episode.is_youtube.clone();
 
@@ -1362,7 +1362,7 @@ pub fn epsiode() -> Html {
                         let on_complete_episode = {
                             Callback::from(move |_| {
                                 let completion_status = complete_status_clone.clone();
-                                let post_dispatch = complete_post.clone();
+                                let _post_dispatch = complete_post.clone();
                                 let server_name_copy = complete_server_name.clone();
                                 let api_key_copy = complete_api_key.clone();
                                 let is_youtube = episode_is_youtube;
@@ -1414,7 +1414,7 @@ pub fn epsiode() -> Html {
                         let on_uncomplete_episode = {
                             Callback::from(move |_| {
                                 let completion_status = uncomplete_status_clone.clone();
-                                let post_dispatch = uncomplete_post.clone();
+                                let _post_dispatch = uncomplete_post.clone();
                                 let server_name_copy = uncomplete_server_name.clone();
                                 let api_key_copy = uncomplete_api_key.clone();
                                 let request = MarkEpisodeCompletedRequest {
@@ -1484,7 +1484,7 @@ pub fn epsiode() -> Html {
                             Callback::from(move |_: MouseEvent| {
                                 let server_name_copy = server_name_queue.clone();
                                 let api_key_copy = api_key_queue.clone();
-                                let queue_post = dispatch_queue.clone();
+                                let _queue_post = dispatch_queue.clone();
                                 let queue_status = queue_status.clone();
                                 let is_queued = *queue_status;
                                 let request = QueuePodcastRequest {
@@ -1526,7 +1526,7 @@ pub fn epsiode() -> Html {
                             Callback::from(move |_: MouseEvent| {
                                 let server_name_copy = saved_server_name.clone();
                                 let api_key_copy = saved_api_key.clone();
-                                let post_state = save_post.clone();
+                                let _post_state = save_post.clone();
                                 let is_saved = *save_status;
                                 let save_status = save_status.clone();
                                 let request = SavePodcastRequest {
@@ -1566,7 +1566,7 @@ pub fn epsiode() -> Html {
                             Callback::from(move |_: MouseEvent| {
                                 let server_name_copy = download_server_name.clone();
                                 let api_key_copy = download_api_key.clone();
-                                let post_state = download_post.clone();
+                                let _post_state = download_post.clone();
                                 let is_downloaded = *download_status;
                                 let download_status = download_status.clone();
                                 let request = DownloadEpisodeRequest {
@@ -1623,7 +1623,7 @@ pub fn epsiode() -> Html {
                             let podcast_url = url_params.get("episode_url").unwrap_or_default();
 
                             Callback::from(move |event: MouseEvent| {
-                                let dispatch = dispatch.clone();
+                                let _dispatch = dispatch.clone();
                                 let server_name = server_name.clone();
                                 let api_key = api_key.clone();
                                 let podcast_id = podcast_id.clone();

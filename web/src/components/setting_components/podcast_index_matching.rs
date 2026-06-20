@@ -254,7 +254,7 @@ pub fn podcast_index_matching() -> Html {
             let unmatched_podcasts = unmatched_podcasts.clone();
             let selected_podcast_id = selected_podcast_id.clone();
             let search_results = search_results.clone();
-            let dispatch_effect = dispatch_effect.clone();
+            let _dispatch_effect = dispatch_effect.clone();
             let manual_search_term = manual_search_term.clone();
             let manual_podcast_id = manual_podcast_id.clone();
 
@@ -319,7 +319,7 @@ pub fn podcast_index_matching() -> Html {
             let user_id = user_id.clone();
             let unmatched_podcasts = unmatched_podcasts.clone();
             let ignored_podcasts = ignored_podcasts.clone();
-            let dispatch_effect = dispatch_effect.clone();
+            let _dispatch_effect = dispatch_effect.clone();
 
             spawn_local(async move {
                 if let (Some(server_name), Some(api_key), Some(user_id)) =

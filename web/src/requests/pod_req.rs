@@ -1,6 +1,6 @@
 use anyhow::{Context, Error};
 // use futures_util::stream::StreamExt;
-use crate::components::context::{AppState, NotificationState, PageLoadState};
+use crate::components::context::{NotificationState, PageLoadState};
 use crate::requests::cache;
 use crate::components::notification_center::TaskProgress;
 use crate::requests::episode::Episode;
@@ -4106,6 +4106,12 @@ pub struct HomePodcast {
     pub total_listen_time: Option<i32>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
+pub struct WeeklyStats {
+    pub seconds_listened: i64,
+    pub episodes_completed: i32,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct HomeOverview {
     pub recent_episodes: Vec<Episode>,
@@ -4114,6 +4120,10 @@ pub struct HomeOverview {
     pub saved_count: i32,
     pub downloaded_count: i32,
     pub queue_count: i32,
+    #[serde(default)]
+    pub queue_preview: Vec<Episode>,
+    #[serde(default)]
+    pub weekly_stats: WeeklyStats,
 }
 
 #[allow(dead_code)]

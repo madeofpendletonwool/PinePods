@@ -4179,6 +4179,58 @@ button.item-container-action-button.item-container-action-button {
     }
 }
 
+/* Count badge shown on quick-link cards */
+.quick-link-badge {
+    margin-top: 0.25rem;
+    background-color: var(--button-color);
+    color: var(--text-color);
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 0.15rem 0.45rem;
+    border-radius: 999px;
+    min-width: 1.2rem;
+    text-align: center;
+}
+
+/* ===== "This Week" stats cards ===== */
+.weekly-stat-card {
+    flex-direction: row;
+    gap: 0.7rem;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0.75rem 1rem;
+}
+
+.weekly-stat-card i {
+    font-size: 1.75rem;
+    flex-shrink: 0;
+}
+
+.weekly-stat-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.2;
+    gap: 0.1rem;
+}
+
+.weekly-stat-text .weekly-stat-value {
+    color: var(--text-color);
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-top: 0;
+    text-align: left;
+}
+
+.weekly-stat-text .weekly-stat-label {
+    color: var(--text-color);
+    opacity: 0.7;
+    font-size: 0.8rem;
+    margin-top: 0;
+    text-align: left;
+}
+
 /* ===== Welcome / first-run home page ===== */
 .welcome-container {
     display: flex;

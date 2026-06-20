@@ -1,33 +1,17 @@
 use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
-#[cfg(not(feature = "server_build"))]
-use crate::pages::downloads_tauri::{
-    download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
-};
 use i18nrs::yew::use_translation;
-use crate::requests::episode::Episode;
 
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::format_time;
 use crate::components::notification_center::{NotificationCenter, ToastNotification};
 use crate::components::safehtml::SafeHtml;
-use crate::requests::pod_req::{
-    call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
-    call_queue_episode, call_remove_downloaded_episode, call_remove_queued_episode,
-    call_remove_saved_episode, call_save_episode, DownloadEpisodeRequest,
-    MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest,
-};
-#[cfg(not(feature = "server_build"))]
-use crate::requests::pod_req::{
-    call_get_episode_metadata, call_get_podcast_details, EpisodeRequest,
-};
 use crate::requests::search_pods::{
-    call_get_podcast_info, call_youtube_search, test_connection, YouTubeSearchResults,
+    call_get_podcast_info, call_youtube_search, YouTubeSearchResults,
 };
 use gloo_events::EventListener;
 use gloo_timers::callback::Timeout;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use web_sys::HtmlElement;
 use web_sys::{window, Element, HtmlInputElement, KeyboardEvent, MouseEvent};
 use yew::prelude::*;
 use yew::Callback;
@@ -882,7 +866,7 @@ pub fn on_shownotes_click(
         let ep_aud = episode_audio_url.clone();
         let pod_title = podcast_title.clone();
 
-        let dispatch_clone = dispatch.clone();
+        let _dispatch_clone = dispatch.clone();
         let history_clone = history.clone();
 
         wasm_bindgen_futures::spawn_local(async move {

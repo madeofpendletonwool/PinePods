@@ -23,7 +23,7 @@ pub struct YouTubeChannelItemProps {
 #[function_component(YouTubeLayout)]
 pub fn youtube_layout() -> Html {
     let (i18n, _) = use_translation();
-    let (state, _dispatch) = use_store::<AppState>();
+    let (_state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let (search_state, _) = use_store::<SearchState>();
 
@@ -232,7 +232,7 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
             let channel = channel.clone();
             let set_loading = set_loading.clone();
             let is_subscribed = is_subscribed.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             let server_name_wasm = server_name.clone();
             let api_key_wasm = api_key.clone();
             let user_id_wasm = user_id.clone();

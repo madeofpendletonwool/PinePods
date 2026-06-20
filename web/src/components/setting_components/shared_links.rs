@@ -43,7 +43,7 @@ pub fn shared_links() -> Html {
             let api_key = api_key.clone();
             let server_name = server_name.clone();
             let user_id = user_id.clone();
-            let dispatch_err = dispatch_err.clone();
+            let _dispatch_err = dispatch_err.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(api_key), Some(server_name), Some(user_id)) =
@@ -98,7 +98,7 @@ pub fn shared_links() -> Html {
             let server_name = server_name.clone();
             let modal_state = modal_state.clone();
             let refresh_trigger = refresh_trigger.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(code), Some(api_key), Some(server_name)) =
                     (code, api_key, server_name)
@@ -142,7 +142,7 @@ pub fn shared_links() -> Html {
             let server_name = server_name.clone();
             let modal_state = modal_state.clone();
             let refresh_trigger = refresh_trigger.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(code), Some(api_key), Some(server_name)) =
                     (code, api_key, server_name)

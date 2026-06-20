@@ -1023,8 +1023,8 @@ pub async fn refresh_gpodder_subscriptions_admin_internal(state: &AppState) -> A
         }
     }
     
-    tracing::info!("Internal GPodder sync completed: {}/{} users successful", 
-        successful_syncs, gpodder_users.len());
+    tracing::info!("Internal GPodder sync completed: {}/{} users successful ({} failed)",
+        successful_syncs, gpodder_users.len(), failed_syncs);
     
     Ok(())
 }
@@ -1129,8 +1129,8 @@ pub async fn refresh_nextcloud_subscriptions_admin_internal(state: &AppState) ->
         }
     }
     
-    tracing::info!("Internal Nextcloud sync completed: {}/{} users successful", 
-        successful_syncs, nextcloud_users.len());
+    tracing::info!("Internal Nextcloud sync completed: {}/{} users successful ({} failed)",
+        successful_syncs, nextcloud_users.len(), failed_syncs);
     
     Ok(())
 }

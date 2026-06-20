@@ -58,7 +58,7 @@ pub fn restore_server() -> Html {
         let files_loading = files_loading.clone();
         let api_key = api_key.clone();
         let server_name = server_name.clone();
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
         let restore_mode = restore_mode.clone();
 
         use_effect_with(
@@ -106,7 +106,7 @@ pub fn restore_server() -> Html {
 
     let on_file_change = {
         let selected_file = selected_file.clone();
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
         Callback::from(move |e: Event| {
             let input: HtmlInputElement = e.target_unchecked_into();
             if let Some(files) = input.files() {
@@ -135,7 +135,7 @@ pub fn restore_server() -> Html {
 
         Callback::from(move |_| {
             let selected_file = (*selected_file).clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
 
             // Validate inputs
             if selected_file.is_none() {
@@ -206,7 +206,7 @@ pub fn restore_server() -> Html {
             ) {
                 is_loading.set(true);
                 let history = history.clone();
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
                 let is_loading = is_loading.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {

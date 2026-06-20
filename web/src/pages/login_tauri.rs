@@ -11,9 +11,7 @@ use chrono_tz::{Tz, TZ_VARIANTS};
 use i18nrs::yew::use_translation;
 use md5;
 use rand::RngExt;
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
 use web_sys::{console, window};
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
@@ -79,53 +77,53 @@ pub fn login() -> Html {
     let (i18n, _) = use_translation();
 
     // Pre-capture translation strings for use in closures and async blocks
-    let i18n_error_checking_status = i18n.t("login.error_checking_status").to_string();
-    let i18n_error_fetching_oidc = i18n.t("login.error_fetching_oidc_providers").to_string();
-    let i18n_error_fetching_languages = i18n.t("login.error_fetching_languages").to_string();
-    let i18n_account_created_success = i18n.t("login.account_created_successfully").to_string();
-    let i18n_error_creating_account = i18n.t("login.error_creating_account").to_string();
-    let i18n_error_checking_mfa = i18n.t("login.error_checking_mfa_status").to_string();
+    let _i18n_error_checking_status = i18n.t("login.error_checking_status").to_string();
+    let _i18n_error_fetching_oidc = i18n.t("login.error_fetching_oidc_providers").to_string();
+    let _i18n_error_fetching_languages = i18n.t("login.error_fetching_languages").to_string();
+    let _i18n_account_created_success = i18n.t("login.account_created_successfully").to_string();
+    let _i18n_error_creating_account = i18n.t("login.error_creating_account").to_string();
+    let _i18n_error_checking_mfa = i18n.t("login.error_checking_mfa_status").to_string();
     let i18n_error_checking_first_login = i18n
         .t("login.error_checking_first_login_status")
         .to_string();
     let i18n_credentials_incorrect = i18n.t("login.credentials_incorrect").to_string();
-    let i18n_error_setting_up_timezone = i18n.t("login.error_setting_up_timezone").to_string();
-    let i18n_first_time_welcome = i18n.t("login.first_time_welcome").to_string();
-    let i18n_mfa_welcome = i18n.t("login.mfa_welcome").to_string();
-    let i18n_forgot_password = i18n.t("login.forgot_password").to_string();
-    let i18n_reset_instructions = i18n.t("login.reset_password_instructions").to_string();
-    let i18n_fill_password_fields = i18n.t("login.fill_password_fields").to_string();
-    let i18n_passwords_no_match = i18n.t("login.passwords_no_match").to_string();
-    let i18n_enter_reset_code = i18n.t("login.enter_reset_code").to_string();
-    let i18n_password_reset_success = i18n.t("login.password_reset_success").to_string();
-    let i18n_invalid_reset_code = i18n.t("login.invalid_reset_code").to_string();
-    let i18n_password_reset_title = i18n.t("login.password_reset_title").to_string();
-    let i18n_reset_code_sent = i18n.t("login.reset_code_sent").to_string();
-    let i18n_reset_code_label = i18n.t("login.reset_code_label").to_string();
-    let i18n_new_password_label = i18n.t("login.new_password_label").to_string();
-    let i18n_confirm_password_label = i18n.t("login.confirm_password_label").to_string();
-    let i18n_initial_setup = i18n.t("login.initial_setup").to_string();
-    let i18n_hour_format = i18n.t("login.hour_format").to_string();
-    let i18n_time_zone = i18n.t("login.time_zone").to_string();
-    let i18n_date_format = i18n.t("login.date_format").to_string();
-    let i18n_save_preferences = i18n.t("login.save_preferences").to_string();
-    let i18n_mfa_login = i18n.t("login.mfa_login").to_string();
-    let i18n_or_continue_with = i18n.t("login.or_continue_with").to_string();
-    let i18n_connect_different_server = i18n.t("login.connect_different_server").to_string();
-    let i18n_connect_local_server = i18n.t("login.connect_local_server").to_string();
-    let i18n_admin_created_success = i18n.t("login.admin_created_success").to_string();
+    let _i18n_error_setting_up_timezone = i18n.t("login.error_setting_up_timezone").to_string();
+    let _i18n_first_time_welcome = i18n.t("login.first_time_welcome").to_string();
+    let _i18n_mfa_welcome = i18n.t("login.mfa_welcome").to_string();
+    let _i18n_forgot_password = i18n.t("login.forgot_password").to_string();
+    let _i18n_reset_instructions = i18n.t("login.reset_password_instructions").to_string();
+    let _i18n_fill_password_fields = i18n.t("login.fill_password_fields").to_string();
+    let _i18n_passwords_no_match = i18n.t("login.passwords_no_match").to_string();
+    let _i18n_enter_reset_code = i18n.t("login.enter_reset_code").to_string();
+    let _i18n_password_reset_success = i18n.t("login.password_reset_success").to_string();
+    let _i18n_invalid_reset_code = i18n.t("login.invalid_reset_code").to_string();
+    let _i18n_password_reset_title = i18n.t("login.password_reset_title").to_string();
+    let _i18n_reset_code_sent = i18n.t("login.reset_code_sent").to_string();
+    let _i18n_reset_code_label = i18n.t("login.reset_code_label").to_string();
+    let _i18n_new_password_label = i18n.t("login.new_password_label").to_string();
+    let _i18n_confirm_password_label = i18n.t("login.confirm_password_label").to_string();
+    let _i18n_initial_setup = i18n.t("login.initial_setup").to_string();
+    let _i18n_hour_format = i18n.t("login.hour_format").to_string();
+    let _i18n_time_zone = i18n.t("login.time_zone").to_string();
+    let _i18n_date_format = i18n.t("login.date_format").to_string();
+    let _i18n_save_preferences = i18n.t("login.save_preferences").to_string();
+    let _i18n_mfa_login = i18n.t("login.mfa_login").to_string();
+    let _i18n_or_continue_with = i18n.t("login.or_continue_with").to_string();
+    let _i18n_connect_different_server = i18n.t("login.connect_different_server").to_string();
+    let _i18n_connect_local_server = i18n.t("login.connect_local_server").to_string();
+    let _i18n_admin_created_success = i18n.t("login.admin_created_success").to_string();
     let i18n_error_parsing_time = i18n.t("login.error_parsing_time").to_string();
-    let i18n_language_updated = i18n.t("login.language_updated").to_string();
-    let i18n_error_setup_timezone = i18n.t("login.error_setup_timezone").to_string();
+    let _i18n_language_updated = i18n.t("login.language_updated").to_string();
+    let _i18n_error_setup_timezone = i18n.t("login.error_setup_timezone").to_string();
     let i18n_error_validating_mfa = i18n.t("login.error_validating_mfa").to_string();
     let i18n_error_checking_mfa_status = i18n.t("login.error_checking_mfa_status").to_string();
     let i18n_error_setting_timezone = i18n.t("login.error_setting_timezone").to_string();
     let i18n_error_setting_timezone_details =
         i18n.t("login.error_setting_timezone_details").to_string();
-    let i18n_language = i18n.t("common.language").to_string();
-    let i18n_login = i18n.t("auth.login").to_string();
+    let _i18n_language = i18n.t("common.language").to_string();
+    let _i18n_login = i18n.t("auth.login").to_string();
     let i18n_pinepods = i18n.t("common.pinepods").to_string();
-    let i18n_password_reset_successfully = i18n.t("login.password_reset_successfully").to_string();
+    let _i18n_password_reset_successfully = i18n.t("login.password_reset_successfully").to_string();
     let i18n_date_format_mdy = i18n.t("login.date_format_mdy").to_string();
     let i18n_date_format_dmy = i18n.t("login.date_format_dmy").to_string();
     let i18n_date_format_ymd = i18n.t("login.date_format_ymd").to_string();
@@ -134,16 +132,16 @@ pub fn login() -> Html {
     let i18n_date_format_usa = i18n.t("login.date_format_usa").to_string();
     let i18n_date_format_eur = i18n.t("login.date_format_eur").to_string();
     let i18n_date_format_jis = i18n.t("login.date_format_jis").to_string();
-    let i18n_not_used_client = i18n.t("login.not_used_client").to_string();
+    let _i18n_not_used_client = i18n.t("login.not_used_client").to_string();
 
     let history = BrowserHistory::new();
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
-    let (app_state, dispatch) = use_store::<AppState>();
+    let (_app_state, dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
     let (notif_state, _notif_dispatch) = use_store::<NotificationState>();
     let _error_message = notif_state.error_message.clone();
-    let error_message = notif_state.error_message.clone();
+    let _error_message = notif_state.error_message.clone();
     let time_zone = use_state(|| "".to_string());
     let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
@@ -152,7 +150,7 @@ pub fn login() -> Html {
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
-    let info_message = notif_state.info_message.clone();
+    let _info_message = notif_state.info_message.clone();
     // Define the initial state
     // Define states for both self-service and first admin
     let page_state = use_state(|| PageState::Default);
@@ -427,7 +425,7 @@ pub fn login() -> Html {
             let username = username.clone();
             let password = password.clone();
             let dispatch = submit_dispatch.clone();
-            let post_state = submit_post_state.clone();
+            let _post_state = submit_post_state.clone();
             let server_name = server_name.clone();
             let page_state = submit_state.clone();
             let temp_server_name = call_server_name.clone();
@@ -639,7 +637,7 @@ pub fn login() -> Html {
             df.set(select_element.value());
         })
     };
-    let time_state_error = dispatch.clone();
+    let _time_state_error = dispatch.clone();
     let on_time_pref_change = {
         let time_pref = time_pref.clone();
         let i18n_error_parsing_time = i18n_error_parsing_time.clone();
@@ -676,10 +674,10 @@ pub fn login() -> Html {
         Callback::from(move |e: MouseEvent| {
             let i18n_error_checking_mfa_status_clone = i18n_error_checking_mfa_status.clone();
             let i18n_error_setting_timezone_clone = i18n_error_setting_timezone.clone();
-            let post_state = dispatch_time.clone();
-            let i18n_error_checking_mfa_status = i18n_error_checking_mfa_status.clone();
-            let i18n_error_setting_timezone = i18n_error_setting_timezone.clone();
-            let i18n_error_setting_timezone_details = i18n_error_setting_timezone_details.clone();
+            let _post_state = dispatch_time.clone();
+            let _i18n_error_checking_mfa_status = i18n_error_checking_mfa_status.clone();
+            let _i18n_error_setting_timezone = i18n_error_setting_timezone.clone();
+            let _i18n_error_setting_timezone_details = i18n_error_setting_timezone_details.clone();
             e.prevent_default();
             let server_name = (*temp_server_name).clone();
             let api_key = (*temp_api_key).clone();
@@ -832,7 +830,7 @@ pub fn login() -> Html {
         // let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: MouseEvent| {
-            let dispatch = dispatch_wasm.clone();
+            let _dispatch = dispatch_wasm.clone();
             let i18n_error_validating_mfa = i18n_error_validating_mfa.clone();
             let i18n_error_setting_timezone_details = i18n_error_setting_timezone_details.clone();
             let mfa_code = mfa_code.clone();
@@ -841,7 +839,7 @@ pub fn login() -> Html {
             let user_id = user_id.clone();
             let page_state = page_state.clone();
             let history = history.clone();
-            let post_state = post_state.clone();
+            let _post_state = post_state.clone();
             // let error_message_clone = error_message_create.clone();
             e.prevent_default();
 

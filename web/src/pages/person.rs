@@ -1,29 +1,22 @@
 use crate::components::app_drawer::App_drawer;
-use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::episode_list_view::EpisodeListView;
 use crate::components::context::ExpandedDescriptions;
 use crate::components::context::{AppState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
-use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
-use crate::components::gen_funcs::{
-    format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
-    strip_images_from_html, truncate_description, unix_timestamp_to_datetime_string,
-};
+use crate::components::gen_funcs::strip_images_from_html;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::people_req::{
-    call_get_person_subscriptions, call_subscribe_to_person, call_unsubscribe_from_person,
+    call_get_host_feed, call_get_person_subscriptions, call_subscribe_to_person,
+    call_unsubscribe_from_person,
 };
 use crate::requests::pod_req::{
     call_add_podcast, call_remove_podcasts_name, Person as HostPerson, Podcast, PodcastResponse,
     PodcastValues, RemovePodcastValuesName,
 };
-use crate::requests::search_pods::{
-    call_get_person_info, call_get_podcast_details_dynamic, call_get_podpeople_podcasts,
-};
-use futures::future::join_all;
+use crate::requests::search_pods::PeopleFeedResult;
 use base64::{engine::general_purpose, Engine as _};
 use i18nrs::yew::use_translation;
 use std::collections::HashMap;
@@ -82,13 +75,13 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
     let i18n_error_adding_podcast = i18n.t("person.error_adding_podcast").to_string();
     let i18n_loading_podcasts = i18n.t("person.loading_podcasts").to_string();
 
-    let (app_state, dispatch) = use_store::<AppState>();
+    let (_app_state, dispatch) = use_store::<AppState>();
     let (podcast_state, podcast_dispatch) = use_store::<PodcastFeedState>();
     let (search_data, _search_data_dispatch) = use_store::<SearchState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let person_ids = use_state(|| HashMap::<String, i32>::new());
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -217,7 +210,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let user_id = user_id.clone();
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
         let page_loading = page_loading.clone();
         let name_str = (*name).clone();
 
@@ -227,92 +220,57 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
             {
                 let api_key_str = api_key.unwrap_or_default();
                 spawn_local(async move {
-                    // Fetch person search results and podpeople podcasts in parallel
-                    let server_opt = Some(server_name.clone());
-                    let (person_result, podpeople_result) = futures::join!(
-                        call_get_person_info(&name_str, &server_name, &api_key_str, "person"),
-                        call_get_podpeople_podcasts(&name_str, &server_opt, &api_key_str),
-                    );
+                    // One unified call: the backend resolves the host's shows from BOTH the
+                    // Podcast Index person index and PodPeopleDB, parses each feed, and returns the
+                    // merged, artwork-resolved episode list plus the podcast cards.
+                    match call_get_host_feed(&server_name, &api_key_str, user_id, &name_str, None, true)
+                        .await
+                    {
+                        Ok(feed) => {
+                            // Map host-feed podcasts into the Podcast shape the page renders. They
+                            // carry synthetic temp ids (real DB ids are resolved lazily on click,
+                            // same as the search flow).
+                            let podcasts: Vec<Podcast> = feed
+                                .podcasts
+                                .into_iter()
+                                .enumerate()
+                                .map(|(i, p)| Podcast {
+                                    podcastid: 1_000_000_000 + i as i32,
+                                    podcastname: p.podcastname,
+                                    artworkurl: Some(p.artworkurl),
+                                    description: Some(p.description),
+                                    episodecount: Some(p.episodecount),
+                                    websiteurl: Some(p.websiteurl),
+                                    feedurl: p.feedurl,
+                                    author: Some(p.author),
+                                    categories: None,
+                                    explicit: p.explicit,
+                                    podcastindexid: p.podcastindexid,
+                                    is_favorite: false,
+                                    is_video: false,
+                                })
+                                .collect();
 
-                    // Collect unique feeds by URL
-                    let mut seen_urls = HashSet::new();
-                    let mut unique_feeds: Vec<(String, String, i32)> = Vec::new();
+                            Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
+                                state.podcast_feed_return = Some(PodcastResponse {
+                                    pods: Some(podcasts),
+                                });
+                            });
 
-                    if let Ok(ref pr) = person_result {
-                        for item in &pr.items {
-                            if seen_urls.insert(item.feedurl.clone()) {
-                                unique_feeds.push((item.podcastname.clone(), item.feedurl.clone(), item.podcastid));
-                            }
+                            Dispatch::<SearchState>::global().reduce_mut(|state| {
+                                state.people_feed_results = Some(PeopleFeedResult {
+                                    status: Some("true".to_string()),
+                                    items: feed.episodes,
+                                });
+                            });
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Failed to fetch host feed: {:?}", e).into(),
+                            );
                         }
                     }
-                    if let Ok(ref pp) = podpeople_result {
-                        for podcast in &pp.podcasts {
-                            if seen_urls.insert(podcast.feedurl.clone()) {
-                                unique_feeds.push((podcast.podcastname.clone(), podcast.feedurl.clone(), podcast.podcastid));
-                            }
-                        }
-                    }
 
-                    // Fetch podcast details for each unique feed concurrently
-                    let podcast_futures: Vec<_> = unique_feeds
-                        .into_iter()
-                        .filter(|(_, url, _)| !url.is_empty())
-                        .enumerate()
-                        .map(|(i, (title, url, index_id))| {
-                            let server = server_name.clone();
-                            let key = api_key_str.clone();
-                            async move {
-                                match call_get_podcast_details_dynamic(
-                                    &server,
-                                    &key,
-                                    user_id,
-                                    &title,
-                                    &url,
-                                    index_id,
-                                    false,
-                                    Some(true),
-                                )
-                                .await
-                                {
-                                    Ok(result) => {
-                                        let d = result.details;
-                                        // Use a stable temp ID outside the real DB range
-                                        let temp_id = 1_000_000_000 + i as i32;
-                                        Some(Podcast {
-                                            podcastid: temp_id,
-                                            podcastname: d.podcastname,
-                                            artworkurl: Some(d.artworkurl),
-                                            description: Some(d.description),
-                                            episodecount: Some(d.episodecount),
-                                            websiteurl: Some(d.websiteurl),
-                                            feedurl: d.feedurl,
-                                            author: Some(d.author),
-                                            categories: d.categories,
-                                            explicit: d.explicit,
-                                            podcastindexid: d.podcastindexid,
-                                            is_favorite: false,
-                                            is_video: false,
-                                        })
-                                    }
-                                    Err(_) => None,
-                                }
-                            }
-                        })
-                        .collect();
-
-                    let podcasts: Vec<Podcast> =
-                        join_all(podcast_futures).await.into_iter().flatten().collect();
-
-                    Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
-                        state.podcast_feed_return = Some(PodcastResponse {
-                            pods: Some(podcasts),
-                        });
-                    });
-                    if let Ok(pr) = person_result {
-                        Dispatch::<SearchState>::global().reduce_mut(|state| {
-                            state.people_feed_results = Some(pr);
-                        });
-                    }
                     Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                         state.is_loading = Some(false);
                     });
@@ -333,7 +291,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         let server_name = server_name.clone();
         let dispatch = dispatch.clone();
         let state_callback = podcast_state.clone();
-        let dispatch_podcast = podcast_dispatch.clone();
+        let _dispatch_podcast = podcast_dispatch.clone();
 
         Callback::from(move |podcast_id: i32| {
             Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
@@ -342,7 +300,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
             let api_key_callback = api_key.clone();
             let user_id_callback = user_id.clone();
             let added_podcasts_callback = added_podcasts.clone();
-            let dispatch_callback = dispatch.clone();
+            let _dispatch_callback = dispatch.clone();
             let i18n_podcast_removed = i18n_podcast_removed.clone();
             let i18n_error_removing_podcast = i18n_error_removing_podcast.clone();
             let i18n_podcast_added = i18n_podcast_added.clone();
@@ -797,7 +755,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         let server_name_iter = server_name.clone().unwrap();
                                         let history = history_clone.clone();
 
-                                        let dispatch = dispatch.clone();
+                                        let _dispatch = dispatch.clone();
                                         let podcast_description_clone = podcast.description.clone();
 
                                         let on_title_click = create_on_title_click(

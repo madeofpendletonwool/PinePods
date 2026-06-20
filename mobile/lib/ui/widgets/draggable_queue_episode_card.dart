@@ -1,5 +1,6 @@
 // lib/ui/widgets/draggable_queue_episode_card.dart
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/core/date_utils.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 
 class DraggableQueueEpisodeCard extends StatelessWidget {
@@ -229,24 +230,20 @@ class DraggableQueueEpisodeCard extends StatelessWidget {
   }
 
   String _formatDate(String dateString) {
-    try {
-      final date = DateTime.parse(dateString);
-      final now = DateTime.now();
-      final difference = now.difference(date).inDays;
-      
-      if (difference == 0) {
-        return 'Today';
-      } else if (difference == 1) {
-        return 'Yesterday';
-      } else if (difference < 7) {
-        return '${difference}d ago';
-      } else if (difference < 30) {
-        return '${(difference / 7).floor()}w ago';
-      } else {
-        return '${date.day}/${date.month}/${date.year}';
-      }
-    } catch (e) {
-      return dateString;
+    final date = parseEpisodePubDateLocal(dateString);
+    if (date == null) return dateString;
+
+    final difference = calendarDaysAgo(date);
+    if (difference <= 0) {
+      return 'Today';
+    } else if (difference == 1) {
+      return 'Yesterday';
+    } else if (difference < 7) {
+      return '${difference}d ago';
+    } else if (difference < 30) {
+      return '${(difference / 7).floor()}w ago';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
     }
   }
 

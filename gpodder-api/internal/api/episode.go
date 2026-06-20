@@ -32,6 +32,9 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 		podcastURL := c.Query("podcast")
 		deviceName := c.Query("device")
 		aggregated := c.Query("aggregated") == "true"
+		// order: default "asc" so sync clients can paginate forward via the returned timestamp.
+		// "desc" (newest first) is used by the statistics view to show the most recent actions.
+		orderDesc := c.Query("order") == "desc"
 
 		// Get device ID if provided
 		var deviceID *int
@@ -103,6 +106,15 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 
 		// Performance optimization: Add limits and optimize query structure
 		const MAX_EPISODE_ACTIONS = 25000 // Limit raised to 25k to handle power users while preventing DoS
+
+		// Optional caller-supplied row limit (e.g. the statistics view only wants the latest few).
+		// Defaults to and is clamped at MAX_EPISODE_ACTIONS.
+		rowLimit := MAX_EPISODE_ACTIONS
+		if limitStr := c.Query("limit"); limitStr != "" {
+			if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 && parsed < MAX_EPISODE_ACTIONS {
+				rowLimit = parsed
+			}
+		}
 
 		// Log query performance info
 		debugf("getEpisodeActions: Query for user %v with since=%d, device=%s, aggregated=%v",
@@ -280,19 +292,20 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				}
 			}
 
-			// ORDER BY ASC (oldest first) so clients can paginate forward through ALL actions
-			// using the returned timestamp as the next 'since'. With DESC + a row limit, anything
-			// beyond the limit (>25k actions) would be silently dropped on the next page.
-			queryParts = append(queryParts, "ORDER BY e.Timestamp ASC")
+			// Default ORDER BY ASC (oldest first) so sync clients can paginate forward through ALL
+			// actions using the returned timestamp as the next 'since'. With DESC + a row limit,
+			// anything beyond the limit (>25k actions) would be silently dropped on the next page.
+			// Callers that want the most recent actions (e.g. the statistics view) pass order=desc.
+			if orderDesc {
+				queryParts = append(queryParts, "ORDER BY e.Timestamp DESC")
+			} else {
+				queryParts = append(queryParts, "ORDER BY e.Timestamp ASC")
+			}
 
 			// Add LIMIT for performance - prevents returning massive datasets
 			// Clients should use the 'since' parameter to paginate through results
-			if database.IsPostgreSQLDB() {
-				queryParts = append(queryParts, fmt.Sprintf("LIMIT %d", MAX_EPISODE_ACTIONS))
-			} else {
-				queryParts = append(queryParts, fmt.Sprintf("LIMIT %d", MAX_EPISODE_ACTIONS))
-			}
-			
+			queryParts = append(queryParts, fmt.Sprintf("LIMIT %d", rowLimit))
+
 			query = strings.Join(queryParts, " ")
 		}
 

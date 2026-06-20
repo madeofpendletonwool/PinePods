@@ -500,7 +500,7 @@ pub fn episode_layout() -> Html {
     // sort/filter prefs. The reload effect gates on this matching the current podcast_id, so we
     // don't fire a backend fetch with stale sort/filter from the previous podcast.
     let prefs_loaded_for_podcast = use_state(|| None::<i32>);
-    let reload_offset = use_state(|| 0i64);
+    let _reload_offset = use_state(|| 0i64);
     let loading_more = use_state(|| false);
     let notification_status = use_state(|| false);
     let favorite_status = use_state(|| false);
@@ -532,7 +532,7 @@ pub fn episode_layout() -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
-    let podcast_added = podcast_state.podcast_added.unwrap_or_default();
+    let _podcast_added = podcast_state.podcast_added.unwrap_or_default();
     let pod_url = use_state(|| String::new());
     let new_category = use_state(|| String::new());
 
@@ -1350,9 +1350,9 @@ pub fn episode_layout() -> Html {
             };
             let api_key_call = api_key_clone.clone();
             let server_name_call = server_name_clone.clone();
-            let app_dispatch = app_dispatch.clone();
+            let _app_dispatch = app_dispatch.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                let dispatch_wasm = call_dispatch.clone();
+                let _dispatch_wasm = call_dispatch.clone();
                 let api_key_wasm = api_key_call.clone().unwrap();
                 let server_name_wasm = server_name_call.clone();
 
@@ -1438,7 +1438,7 @@ pub fn episode_layout() -> Html {
             let server_name = server_name_copy.clone();
             let api_key = api_key_copy.clone();
             let feed_results = feed_results_copy.clone();
-            let call_down_dispatch = call_dispatch.clone();
+            let _call_down_dispatch = call_dispatch.clone();
             let page_state = page_state_copy.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let episode_id = match feed_results
@@ -1699,7 +1699,7 @@ pub fn episode_layout() -> Html {
             e.prevent_default();
             let i18n_playback_speed_updated = i18n_playback_speed_updated.clone();
             let i18n_error_updating_playback_speed = i18n_error_updating_playback_speed.clone();
-            let call_dispatch = dispatch.clone();
+            let _call_dispatch = dispatch.clone();
             let speed = *playback_speed;
             let playback_speed_customized = playback_speed_customized.clone();
             let api_key = api_key.clone();
@@ -1751,7 +1751,7 @@ pub fn episode_layout() -> Html {
             e.prevent_default();
             let i18n_playback_speed_reset_default = i18n_playback_speed_reset_default.clone();
             let i18n_error_resetting_playback_speed = i18n_error_resetting_playback_speed.clone();
-            let call_dispatch = dispatch.clone();
+            let _call_dispatch = dispatch.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone().unwrap();
             let server_name = server_name.clone();
@@ -1824,7 +1824,7 @@ pub fn episode_layout() -> Html {
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             let i18n_youtube_episode_limit_updated = i18n_youtube_episode_limit_updated.clone();
-            let dispatch_wasm = dispatch_vid.clone();
+            let _dispatch_wasm = dispatch_vid.clone();
 
             // Extract the values directly without creating intermediate variables
             if let (Some(server_val), Some(key_val), Some(user_val)) = (
@@ -1970,7 +1970,7 @@ pub fn episode_layout() -> Html {
             let new_setting = !*use_podcast_covers;
             let pod_id_deref = *podcast_id.clone();
             let user_id = user_id.clone().unwrap();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
@@ -2025,7 +2025,7 @@ pub fn episode_layout() -> Html {
             e.prevent_default();
             let i18n_skip_times_adjusted = i18n_skip_times_adjusted.clone();
             let i18n_error_adjusting_skip_times = i18n_error_adjusting_skip_times.clone();
-            let skip_call_dispatch = skip_dispatch.clone();
+            let _skip_call_dispatch = skip_dispatch.clone();
             let start_skip = *start_skip;
             let end_skip = *end_skip;
             let api_key = api_key.clone();
@@ -2075,7 +2075,7 @@ pub fn episode_layout() -> Html {
 
         Callback::from(move |event: web_sys::MouseEvent| {
             event.prevent_default(); // Prevent the default form submit or page reload behavior
-            let app_dispatch = app_dispatch_add.clone();
+            let _app_dispatch = app_dispatch_add.clone();
             if new_category.is_empty() {
                 web_sys::console::log_1(&i18n_category_name_cannot_be_empty.clone().into());
                 return;
@@ -2139,7 +2139,7 @@ pub fn episode_layout() -> Html {
         })
     };
 
-    let app_dispatch = _search_dispatch.clone();
+    let _app_dispatch = _search_dispatch.clone();
 
     {
         let category_to_remove = category_to_remove.clone();
@@ -2887,7 +2887,7 @@ pub fn episode_layout() -> Html {
                                                                         let primary_id = *podcast_id;
                                                                         let current_merged_podcasts = current_merged_podcasts.clone();
                                                                         let merged_podcast_details = merged_podcast_details.clone();
-                                                                        let dispatch = dispatch.clone();
+                                                                        let _dispatch = dispatch.clone();
 
                                                                         spawn_local(async move {
                                                                             if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key.as_ref(), server_name.as_ref(), user_id.as_ref()) {
@@ -2987,11 +2987,11 @@ pub fn episode_layout() -> Html {
                                                         let user_id = *user_id;
                                                         let current_merged_podcasts = current_merged_podcasts.clone();
                                                         let merged_podcast_details = merged_podcast_details.clone();
-                                                        let dispatch = dispatch.clone();
+                                                        let _dispatch = dispatch.clone();
 
                                                         spawn_local(async move {
                                                             match call_merge_podcasts(&server_name, &api_key, primary_id, &podcast_ids).await {
-                                                                Ok(response) => {
+                                                                Ok(_response) => {
                                                                     // Clear selection after successful merge
                                                                     selected_podcasts_to_merge.set(Vec::new());
 
@@ -3077,7 +3077,7 @@ pub fn episode_layout() -> Html {
                                                 let server_name = server_name.clone();
                                                 let user_id = user_id.clone();
                                                 let page_state = page_state.clone();
-                                                let dispatch = dispatch.clone();
+                                                let _dispatch = dispatch.clone();
 
                                                 if let Some(podcast_info) = clicked_podcast_info.as_ref() {
                                                     let current_feed_url = podcast_info.feedurl.clone();
@@ -3272,7 +3272,7 @@ pub fn episode_layout() -> Html {
                 let pod_feed_url_og = pod_values.clone().unwrap().feedurl.clone();
                 let pod_website_og = pod_values.clone().unwrap().websiteurl.clone();
                 let pod_explicit_og = pod_values.clone().unwrap().explicit.clone();
-                let app_dispatch = app_dispatch.clone();
+                let _app_dispatch = app_dispatch.clone();
                 Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
                 let is_added_inner = is_added.clone();
                 let is_subscribing_inner = is_subscribing_toggle.clone();
@@ -4554,7 +4554,7 @@ pub fn episode_layout() -> Html {
                                                                     let selected_ids = selected_ids.clone();
                                                                     let api_key = api_key.clone();
                                                                     let server_name = server_name.clone();
-                                                                    let dispatch = dispatch.clone();
+                                                                    let _dispatch = dispatch.clone();
                                                                     let selected_episodes = selected_episodes.clone();
                                                                     spawn_local(async move {
                                                                         let request = BulkEpisodeActionRequest {
@@ -4600,7 +4600,7 @@ pub fn episode_layout() -> Html {
                                                                     let selected_ids = selected_ids.clone();
                                                                     let api_key = api_key.clone();
                                                                     let server_name = server_name.clone();
-                                                                    let dispatch = dispatch.clone();
+                                                                    let _dispatch = dispatch.clone();
                                                                     let selected_episodes = selected_episodes.clone();
                                                                     spawn_local(async move {
                                                                         let request = BulkEpisodeActionRequest {
@@ -4646,7 +4646,7 @@ pub fn episode_layout() -> Html {
                                                                     let selected_ids = selected_ids.clone();
                                                                     let api_key = api_key.clone();
                                                                     let server_name = server_name.clone();
-                                                                    let dispatch = dispatch.clone();
+                                                                    let _dispatch = dispatch.clone();
                                                                     let selected_episodes = selected_episodes.clone();
                                                                     spawn_local(async move {
                                                                         let request = BulkEpisodeActionRequest {
@@ -4692,7 +4692,7 @@ pub fn episode_layout() -> Html {
                                                                     let selected_ids = selected_ids.clone();
                                                                     let api_key = api_key.clone();
                                                                     let server_name = server_name.clone();
-                                                                    let dispatch = dispatch.clone();
+                                                                    let _dispatch = dispatch.clone();
                                                                     let selected_episodes = selected_episodes.clone();
                                                                     spawn_local(async move {
                                                                         let request = BulkEpisodeActionRequest {
@@ -4742,12 +4742,12 @@ pub fn episode_layout() -> Html {
                                             </div>
                                         }
                                     } else if let (Some(_), Some(podcast_info)) = (podcast_feed_results, &clicked_podcast_info) {
-                                        let podcast_link_clone = podcast_info.feedurl.clone();
-                                        let podcast_title = podcast_info.podcastname.clone();
+                                        let _podcast_link_clone = podcast_info.feedurl.clone();
+                                        let _podcast_title = podcast_info.podcastname.clone();
 
                                         // Episode selection callback
                                         let selected_episodes_clone = selected_episodes.clone();
-                                        let on_episode_select = Callback::from(move |(episode_id, is_selected): (i32, bool)| {
+                                        let _on_episode_select = Callback::from(move |(episode_id, is_selected): (i32, bool)| {
                                             selected_episodes_clone.set({
                                                 let mut current = (*selected_episodes_clone).clone();
                                                 if is_selected {

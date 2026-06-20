@@ -19,7 +19,6 @@ use crate::requests::setting_reqs::{
 use chrono_tz::{Tz, TZ_VARIANTS};
 use i18nrs::yew::use_translation;
 use md5;
-use rand::Rng;
 use wasm_bindgen::JsCast;
 use web_sys::{console, window};
 use yew::prelude::*;
@@ -45,7 +44,7 @@ pub fn login() -> Html {
     // Pre-capture translation strings for use in closures and async blocks
     let i18n_error_checking_status = i18n.t("login.error_checking_status").to_string();
     let i18n_error_fetching_oidc = i18n.t("login.error_fetching_oidc_providers").to_string();
-    let i18n_error_fetching_languages = i18n.t("login.error_fetching_languages").to_string();
+    let _i18n_error_fetching_languages = i18n.t("login.error_fetching_languages").to_string();
     let i18n_account_created_success = i18n.t("login.account_created_successfully").to_string();
     let i18n_error_creating_account = i18n.t("login.error_creating_account").to_string();
     let i18n_error_checking_mfa = i18n.t("login.error_checking_mfa_status").to_string();
@@ -54,8 +53,8 @@ pub fn login() -> Html {
         .to_string();
     let i18n_credentials_incorrect = i18n.t("login.credentials_incorrect").to_string();
     let i18n_error_setting_up_timezone = i18n.t("login.error_setting_up_timezone").to_string();
-    let i18n_first_time_welcome = i18n.t("login.first_time_welcome").to_string();
-    let i18n_mfa_welcome = i18n.t("login.mfa_welcome").to_string();
+    let _i18n_first_time_welcome = i18n.t("login.first_time_welcome").to_string();
+    let _i18n_mfa_welcome = i18n.t("login.mfa_welcome").to_string();
     let i18n_forgot_password = i18n.t("login.forgot_password").to_string();
     let i18n_reset_instructions = i18n.t("login.reset_password_instructions").to_string();
     let i18n_fill_password_fields = i18n.t("login.fill_password_fields").to_string();
@@ -65,9 +64,9 @@ pub fn login() -> Html {
     let i18n_invalid_reset_code = i18n.t("login.invalid_reset_code").to_string();
     let i18n_password_reset_title = i18n.t("login.password_reset_title").to_string();
     let i18n_reset_code_sent = i18n.t("login.reset_code_sent").to_string();
-    let i18n_reset_code_label = i18n.t("login.reset_code_label").to_string();
-    let i18n_new_password_label = i18n.t("login.new_password_label").to_string();
-    let i18n_confirm_password_label = i18n.t("login.confirm_password_label").to_string();
+    let _i18n_reset_code_label = i18n.t("login.reset_code_label").to_string();
+    let _i18n_new_password_label = i18n.t("login.new_password_label").to_string();
+    let _i18n_confirm_password_label = i18n.t("login.confirm_password_label").to_string();
     let i18n_initial_setup = i18n.t("login.initial_setup").to_string();
     let i18n_hour_format = i18n.t("login.hour_format").to_string();
     let i18n_time_zone = i18n.t("login.time_zone").to_string();
@@ -76,12 +75,12 @@ pub fn login() -> Html {
     let i18n_mfa_login = i18n.t("login.mfa_login").to_string();
     let i18n_or_continue_with = i18n.t("login.or_continue_with").to_string();
     let i18n_connect_different_server = i18n.t("login.connect_different_server").to_string();
-    let i18n_connect_local_server = i18n.t("login.connect_local_server").to_string();
+    let _i18n_connect_local_server = i18n.t("login.connect_local_server").to_string();
     let i18n_admin_created_success = i18n.t("login.admin_created_success").to_string();
-    let i18n_error_parsing_time = i18n.t("login.error_parsing_time").to_string();
+    let _i18n_error_parsing_time = i18n.t("login.error_parsing_time").to_string();
     let i18n_language_updated = i18n.t("login.language_updated").to_string();
     let i18n_error_setup_timezone = i18n.t("login.error_setup_timezone").to_string();
-    let i18n_error_validating_mfa = i18n.t("login.error_validating_mfa").to_string();
+    let _i18n_error_validating_mfa = i18n.t("login.error_validating_mfa").to_string();
     let i18n_language = i18n.t("common.language").to_string();
     let i18n_login = i18n.t("auth.login").to_string();
     let i18n_pinepods = i18n.t("common.pinepods").to_string();
@@ -92,7 +91,7 @@ pub fn login() -> Html {
     let i18n_date_format_iso8601 = i18n.t("login.date_format_iso8601").to_string();
     let i18n_tagline = i18n.t("login.tagline").to_string();
     let i18n_forgot_password_link = i18n.t("login.forgot_password_link").to_string();
-    let i18n_login_button = i18n.t("login.login_button").to_string();
+    let _i18n_login_button = i18n.t("login.login_button").to_string();
 
     let history = BrowserHistory::new();
     let username = use_state(|| "".to_string());
@@ -501,7 +500,7 @@ pub fn login() -> Html {
             let username = username.clone();
             let password = password.clone();
             let dispatch = submit_dispatch.clone();
-            let post_state = submit_post_state.clone();
+            let _post_state = submit_post_state.clone();
             let page_state = submit_state.clone();
             let temp_server_name = call_server_name.clone();
             let temp_api_key = call_api_key.clone();
@@ -828,7 +827,7 @@ pub fn login() -> Html {
         Callback::from(move |e: MouseEvent| {
             let i18n_account_created_success = (&i18n_account_created_success).clone();
             let i18n_error_creating_account = (&i18n_error_creating_account).clone();
-            let create_state = create_state.clone();
+            let _create_state = create_state.clone();
             let window = window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location.href().expect("should have a href");
@@ -1110,7 +1109,7 @@ pub fn login() -> Html {
             let i18n_password_reset_success = i18n_password_reset_success.clone();
             let i18n_invalid_reset_code = i18n_invalid_reset_code.clone();
             let i18n_password_reset_successfully = i18n_password_reset_successfully.clone();
-            let dispatch = dispatch_wasm.clone();
+            let _dispatch = dispatch_wasm.clone();
             let page_state = page_state.clone();
 
             // Validate password confirmation
@@ -1312,7 +1311,7 @@ pub fn login() -> Html {
             let i18n_error_setting_up_timezone = (&i18n_error_setting_up_timezone).clone();
             let i18n_language_updated = i18n_language_updated.clone();
             let i18n_error_setup_timezone = i18n_error_setup_timezone.clone();
-            let dispatch = dispatch_wasm.clone();
+            let _dispatch = dispatch_wasm.clone();
             e.prevent_default();
             let server_name = (*temp_server_name).clone();
             let api_key = (*temp_api_key).clone();
@@ -1731,7 +1730,7 @@ pub fn login() -> Html {
             let i18n_admin_created_success = i18n_admin_created_success.clone();
             let history = history.clone();
             let first_admin_created = first_admin_created.clone();
-            let audio_dispatch = dispatch_wasm.clone();
+            let _audio_dispatch = dispatch_wasm.clone();
 
             // Get server name from window location
             let window = web_sys::window().expect("no global `window` exists");
@@ -2162,7 +2161,7 @@ pub fn login() -> Html {
             let username = username.clone();
             let password = password.clone();
             let dispatch = submit_dispatch.clone();
-            let post_state = submit_post_state.clone();
+            let _post_state = submit_post_state.clone();
             let server_name = server_name.clone();
             let page_state = submit_state.clone();
             let temp_server_name = call_server_name.clone();
@@ -2407,7 +2406,7 @@ pub fn login() -> Html {
             df.set(select_element.value());
         })
     };
-    let time_state_error = _app_dispatch.clone();
+    let _time_state_error = _app_dispatch.clone();
     let on_time_pref_change = {
         let time_pref = time_pref.clone();
         let i18n_error_parsing_time = i18n_error_parsing_time.clone();
@@ -2455,7 +2454,7 @@ pub fn login() -> Html {
             let i18n_error_checking_mfa = (&i18n_error_checking_mfa).clone();
             let i18n_error_setting_up_timezone = (&i18n_error_setting_up_timezone).clone();
             let i18n_language_updated = i18n_language_updated.clone();
-            let post_state = dispatch_time.clone();
+            let _post_state = dispatch_time.clone();
             e.prevent_default();
             let server_name = (*temp_server_name).clone();
             let api_key = (*temp_api_key).clone();
@@ -2720,14 +2719,14 @@ pub fn login() -> Html {
         let i18n_error_validating_mfa = i18n_error_validating_mfa.clone();
         Callback::from(move |e: MouseEvent| {
             let i18n_error_validating_mfa = i18n_error_validating_mfa.clone();
-            let dispatch = dispatch_wasm.clone();
+            let _dispatch = dispatch_wasm.clone();
             let mfa_code = mfa_code.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone();
             let page_state = page_state.clone();
             let history = history.clone();
-            let post_state = post_state.clone();
+            let _post_state = post_state.clone();
             // let error_message_clone = error_message_create.clone();
             e.prevent_default();
 

@@ -153,3 +153,82 @@ pub async fn call_get_person_episodes(
 
     Ok(episodes_response.episodes)
 }
+
+// Unified host feed — one endpoint that returns the shows a host appears in (from both the
+// Podcast Index person index and PodPeopleDB) plus the merged, artwork-resolved episode list,
+// with per-episode interaction state for podcasts the user is subscribed to.
+#[derive(Deserialize, Clone, PartialEq, Debug, Default)]
+pub struct HostFeedPerson {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub image: Option<String>,
+}
+
+#[derive(Deserialize, Clone, PartialEq, Debug, Default)]
+pub struct HostFeedPodcast {
+    #[serde(default)]
+    pub podcastname: String,
+    #[serde(default)]
+    pub feedurl: String,
+    #[serde(default)]
+    pub artworkurl: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default)]
+    pub websiteurl: String,
+    #[serde(default)]
+    pub episodecount: i32,
+    #[serde(default)]
+    pub podcastindexid: i32,
+    #[serde(default)]
+    pub explicit: bool,
+    #[serde(default)]
+    pub is_subscribed: bool,
+}
+
+#[derive(Deserialize, Default)]
+pub struct HostFeedResponse {
+    #[serde(default)]
+    pub person: HostFeedPerson,
+    #[serde(default)]
+    pub podcasts: Vec<HostFeedPodcast>,
+    #[serde(default)]
+    pub episodes: Vec<Episode>,
+}
+
+#[allow(dead_code)]
+pub async fn call_get_host_feed(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    name: &str,
+    person_id: Option<i32>,
+    include_podcasts: bool,
+) -> Result<HostFeedResponse, Error> {
+    let mut url = format!(
+        "{}/api/data/person/feed/{}?name={}&include_podcasts={}",
+        server_name,
+        user_id,
+        urlencoding::encode(name),
+        include_podcasts
+    );
+    if let Some(pid) = person_id {
+        url.push_str(&format!("&person_id={}", pid));
+    }
+
+    let response = Request::get(&url).header("Api-Key", api_key).send().await?;
+
+    if !response.ok() {
+        return Err(Error::msg(format!(
+            "Failed to fetch host feed: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+    let feed: HostFeedResponse = serde_json::from_str(&response_text)?;
+    Ok(feed)
+}

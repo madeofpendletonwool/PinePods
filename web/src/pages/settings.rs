@@ -124,7 +124,7 @@ pub fn settings() -> Html {
 
     let is_admin = use_state(|| false);
     let custom_themes_trigger = use_state(|| 0u32);
-    let audio_admin = _post_dispatch.clone();
+    let _audio_admin = _post_dispatch.clone();
 
     // Pre-capture translation string for async block
     let admin_check_error_msg = i18n.t("settings.admin_check_error");

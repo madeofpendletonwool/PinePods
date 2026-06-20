@@ -37,7 +37,7 @@ pub fn mfa_options() -> Html {
     let effect_user_id = user_id.clone();
     let effect_api_key = api_key.clone();
     let effect_server_name = server_name.clone();
-    let dispatch_effect = _dispatch.clone();
+    let _dispatch_effect = _dispatch.clone();
     {
         let mfa_status = mfa_status.clone();
         let i18n_error_getting_mfa_status_clone1 = i18n_error_getting_mfa_status.clone();
@@ -77,7 +77,7 @@ pub fn mfa_options() -> Html {
             },
         );
     }
-    let dispatch_refresh = _dispatch.clone();
+    let _dispatch_refresh = _dispatch.clone();
     // Re-fetch MFA status after setup is complete
     {
         let mfa_status = mfa_status.clone();

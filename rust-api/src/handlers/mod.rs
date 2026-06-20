@@ -15,13 +15,9 @@ pub mod feed;
 pub mod local_podcast;
 
 // Common handler utilities
-use axum::{
-    extract::Query,
-    http::{HeaderMap, StatusCode},
-};
+use axum::http::HeaderMap;
 use crate::{
     error::{AppError, AppResult},
-    models::PaginationParams,
     AppState,
 };
 
@@ -62,18 +58,6 @@ pub async fn check_user_access(state: &AppState, api_key: &str, target_user_id: 
     Ok(requesting_user_id == target_user_id || requesting_user_id == 1)
 }
 
-// Check if user has elevated access (web key - user ID 1)
-pub async fn check_web_key_access(state: &AppState, api_key: &str) -> AppResult<bool> {
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
-    Ok(requesting_user_id == 1)
-}
-
-// Check if user has admin privileges
-pub async fn check_admin_access(state: &AppState, api_key: &str) -> AppResult<bool> {
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
-    state.db_pool.user_admin_check(requesting_user_id).await
-}
-
 // Check if user has permission (either owns the resource, has web key access, or is admin)
 pub async fn check_user_or_admin_access(state: &AppState, api_key: &str, target_user_id: i32) -> AppResult<bool> {
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
@@ -85,29 +69,4 @@ pub async fn check_user_or_admin_access(state: &AppState, api_key: &str, target_
         // Check if user is admin
         state.db_pool.user_admin_check(requesting_user_id).await
     }
-}
-
-// Extract and validate pagination parameters
-pub fn extract_pagination(Query(params): Query<PaginationParams>) -> (i32, i32) {
-    let page = params.page.unwrap_or(1).max(1);
-    let per_page = params.per_page.unwrap_or(50).min(100).max(1); // Limit to 100 per page
-    (page, per_page)
-}
-
-// Calculate offset for SQL queries
-pub fn calculate_offset(page: i32, per_page: i32) -> i32 {
-    (page - 1) * per_page
-}
-
-// Common response helpers
-pub fn success_response() -> (StatusCode, &'static str) {
-    (StatusCode::OK, "success")
-}
-
-pub fn created_response() -> (StatusCode, &'static str) {
-    (StatusCode::CREATED, "created")
-}
-
-pub fn no_content_response() -> StatusCode {
-    StatusCode::NO_CONTENT
 }

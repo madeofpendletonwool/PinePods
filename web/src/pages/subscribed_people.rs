@@ -16,7 +16,6 @@ use yew::{function_component, html, Html};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 
-use wasm_bindgen::prelude::*;
 
 #[derive(Clone, PartialEq, Properties, Debug)]
 struct PersonWithEpisodes {
@@ -142,10 +141,20 @@ pub fn subscribed_people() -> Html {
                     let loading_episodes_task = loading_episodes.clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
-                        match people_req::call_get_person_episodes(&server, &key, uid, person_id)
-                            .await
+                        // Episodes-only fast path: subscribed host served from the cached
+                        // PeopleEpisodes table via the unified host-feed endpoint.
+                        match people_req::call_get_host_feed(
+                            &server,
+                            &key,
+                            uid,
+                            &person_name,
+                            Some(person_id),
+                            false,
+                        )
+                        .await
                         {
-                            Ok(new_episodes) => {
+                            Ok(feed) => {
+                                let new_episodes = feed.episodes;
                                 subscribed_people.set(
                                     (*subscribed_people)
                                         .clone()
@@ -207,7 +216,7 @@ pub fn subscribed_people() -> Html {
             let server = server_name.clone();
             let key = api_key.clone();
             let uid = user_id.clone();
-            let subscribed_people_revert = subscribed_people.clone();
+            let _subscribed_people_revert = subscribed_people.clone();
 
             spawn_local(async move {
                 if let (Some(server), Some(Some(key)), Some(uid)) = (server, key, uid) {
@@ -345,13 +354,13 @@ fn render_host_with_episodes(
     on_unsubscribe: Callback<MouseEvent>,
     on_navigate: Callback<MouseEvent>,
     state: Rc<AppState>,
-    dispatch: Dispatch<AppState>,
-    desc_rc: Rc<ExpandedDescriptions>,
-    desc_state: Dispatch<ExpandedDescriptions>,
+    _dispatch: Dispatch<AppState>,
+    _desc_rc: Rc<ExpandedDescriptions>,
+    _desc_state: Dispatch<ExpandedDescriptions>,
     _show_modal: bool,
-    on_modal_open: Callback<i32>,
-    on_modal_close: Callback<MouseEvent>,
-    active_modal: UseStateHandle<Option<i32>>,
+    _on_modal_open: Callback<i32>,
+    _on_modal_close: Callback<MouseEvent>,
+    _active_modal: UseStateHandle<Option<i32>>,
     episode_count_text: &str,
     shows_text: &str,
     avatar_alt_text: &str,

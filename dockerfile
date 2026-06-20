@@ -116,14 +116,13 @@ RUN addgroup -g 911 pinepods && \
 
 # Download and install latest yt-dlp — pick the arch-specific musl binary (no Python needed)
 RUN ARCH=$(uname -m) && \
-    LATEST=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name) && \
     case "$ARCH" in \
         x86_64)  YTDLP="yt-dlp_musllinux" ;; \
         aarch64) YTDLP="yt-dlp_musllinux_aarch64" ;; \
         armv7l)  YTDLP="yt-dlp_linux_armv7l" ;; \
         *)       YTDLP="yt-dlp_musllinux" ;; \
     esac && \
-    wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${LATEST}/${YTDLP}" && \
+    wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YTDLP}" && \
     chmod +x /usr/local/bin/yt-dlp
 
 # Download and install Horust (x86_64)

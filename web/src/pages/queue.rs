@@ -1,27 +1,21 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{
-    empty_message, on_shownotes_click, Search_nav, UseScrollToTop,
+    empty_message, Search_nav, UseScrollToTop,
 };
 use crate::components::loading::Loading;
 
 use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::context::{AppState, EpisodeStatusState, FilterState, PodcastFeedState};
 use crate::components::episode_list_item::{DragCallbacks, EpisodeListItem};
-use crate::components::gen_funcs::{
-    format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
-};
 use crate::requests::episode::Episode;
 
 use crate::requests::pod_req::{self, PodcastResponseExtra, QueuedEpisodesResponse};
-use gloo_events::EventListener;
-use gloo_utils::document;
 use i18nrs::yew::use_translation;
 use wasm_bindgen::JsCast;
-use web_sys::Element;
-use web_sys::{window, DragEvent, HtmlElement, TouchEvent};
+use web_sys::{window, DragEvent, HtmlElement};
 use yew::prelude::*;
-use yew::{function_component, html, Html, UseStateHandle};
+use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 
@@ -82,7 +76,7 @@ fn stop_auto_scroll(interval_id: i32) {
 #[function_component(Queue)]
 pub fn queue() -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, dispatch) = use_store::<AppState>();
     let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
     let (ep_status, _ep_dispatch) = use_store::<EpisodeStatusState>();
     let (filter_state, _filter_dispatch) = use_store::<FilterState>();
@@ -119,7 +113,7 @@ pub fn queue() -> Html {
                     let dispatch = effect_dispatch.clone();
 
                     {
-                        let dispatch_pods = dispatch.clone();
+                        let _dispatch_pods = dispatch.clone();
                         let server_name_pods = server_name.clone();
                         let api_key_pods = api_key.clone();
                         let user_id_pods = user_id.clone();
@@ -271,7 +265,7 @@ pub struct VirtualQueueListProps {
 
 #[function_component(VirtualQueueList)]
 pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
-    let (state, _dispatch) = use_store::<AppState>();
+    let (_state, _dispatch) = use_store::<AppState>();
     let (_ep_status, ep_dispatch) = use_store::<EpisodeStatusState>();
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let server_name = post_state
@@ -283,10 +277,10 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
         .as_ref()
         .map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let history = BrowserHistory::new();
+    let _history = BrowserHistory::new();
 
     let dragging_state = use_state(|| None::<i32>);
-    let is_dragging = use_state(|| false);
+    let _is_dragging = use_state(|| false);
 
     let ondragstart = {
         let dragging = dragging_state.clone();

@@ -68,13 +68,11 @@ impl ImportProgressManager {
 }
 
 // Notification manager for sending test notifications
-pub struct NotificationManager {
-    redis_client: RedisClient,
-}
+pub struct NotificationManager;
 
 impl NotificationManager {
-    pub fn new(redis_client: RedisClient) -> Self {
-        Self { redis_client }
+    pub fn new() -> Self {
+        Self
     }
 
     // Send test notification - matches Python notification functionality

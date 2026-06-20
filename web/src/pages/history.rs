@@ -22,11 +22,11 @@ const PAGE_SIZE: i64 = 50;
 #[function_component(PodHistory)]
 pub fn history() -> Html {
     let (i18n, _) = use_translation();
-    let (state, _dispatch) = use_store::<AppState>();
+    let (_state, _dispatch) = use_store::<AppState>();
     let (podcast_state, _) = use_store::<PodcastFeedState>();
     let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
-    let i18n_history = i18n.t("history.history").to_string();
+    let _i18n_history = i18n.t("history.history").to_string();
     let i18n_search_listening_history = i18n.t("history.search_listening_history").to_string();
     let i18n_newest_first = i18n.t("common.newest_first").to_string();
     let i18n_oldest_first = i18n.t("common.oldest_first").to_string();

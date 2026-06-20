@@ -10,7 +10,6 @@ use crate::{
     models::{AvailableLanguage, LanguageUpdateRequest, UserLanguageResponse, AvailableLanguagesResponse},
     AppState,
 };
-use sqlx::{Row, ValueRef};
 use tracing::{debug, error, info, warn};
 
 // Request struct for set_theme
@@ -619,7 +618,6 @@ pub struct SendTestEmailRequest {
     pub server_name: String,
     pub server_port: String,
     pub from_email: String,
-    pub send_mode: String,
     pub encryption: String,
     pub auth_required: bool,
     pub email_username: String,
@@ -663,7 +661,8 @@ async fn read_logo_as_base64() -> Result<String, AppError> {
     let logo_bytes = fs::read(logo_path).await
         .map_err(|e| AppError::internal(&format!("Failed to read logo file: {}", e)))?;
     
-    let base64_logo = base64::encode(&logo_bytes);
+    use base64::Engine;
+    let base64_logo = base64::engine::general_purpose::STANDARD.encode(&logo_bytes);
     Ok(base64_logo)
 }
 
@@ -1148,7 +1147,6 @@ pub async fn create_api_key(
 #[derive(Deserialize)]
 pub struct DeleteApiKeyRequest {
     pub api_id: String,
-    pub user_id: String,
 }
 
 // Delete API key - matches Python api_delete_api_key function exactly
@@ -1347,7 +1345,7 @@ async fn backup_server_streaming(
     // Spawn a task to wait for the process and handle errors
     tokio::spawn(async move {
         // Read stderr to capture error messages
-        let mut stderr_reader = tokio::io::BufReader::new(stderr);
+        let stderr_reader = tokio::io::BufReader::new(stderr);
         let mut stderr_output = String::new();
         use tokio::io::AsyncBufReadExt;
         
@@ -1380,342 +1378,6 @@ async fn backup_server_streaming(
         .header("content-disposition", "attachment; filename=\"pinepods_backup.sql\"")
         .body(body)
         .map_err(|e| format!("Failed to build response: {}", e))?)
-}
-
-// Generate backup chunks to handle large databases efficiently
-async fn generate_backup_chunk(state: &AppState, chunk_id: usize) -> Result<Option<String>, String> {
-    // Define tables in order of dependencies (foreign keys) - complete list from migrations
-    let tables = match &state.db_pool {
-        crate::database::DatabasePool::Postgres(_) => vec![
-            "Users", "OIDCProviders", "APIKeys", "RssKeys", "RssKeyMap", 
-            "AppSettings", "EmailSettings", "UserStats", "UserSettings",
-            "Podcasts", "Episodes", "YouTubeVideos", "UserEpisodeHistory", "UserVideoHistory",
-            "EpisodeQueue", "SavedEpisodes", "SavedVideos", "DownloadedEpisodes", "DownloadedVideos",
-            "GpodderDevices", "GpodderSyncState", "People", "PeopleEpisodes", "SharedEpisodes",
-            "Playlists", "PlaylistContents", "Sessions", "UserNotificationSettings"
-        ],
-        crate::database::DatabasePool::MySQL(_) => vec![
-            "Users", "OIDCProviders", "APIKeys", "RssKeys", "RssKeyMap",
-            "AppSettings", "EmailSettings", "UserStats", "UserSettings", 
-            "Podcasts", "Episodes", "YouTubeVideos", "UserEpisodeHistory", "UserVideoHistory",
-            "EpisodeQueue", "SavedEpisodes", "SavedVideos", "DownloadedEpisodes", "DownloadedVideos",
-            "GpodderDevices", "GpodderSyncState", "People", "PeopleEpisodes", "SharedEpisodes",
-            "Playlists", "PlaylistContents", "Sessions", "UserNotificationSettings"
-        ],
-    };
-
-    // Header chunk
-    if chunk_id == 0 {
-        return Ok(Some(generate_backup_header()));
-    }
-
-    // Table chunks (one table per chunk to keep memory usage low)
-    let table_index = chunk_id - 1;
-    if table_index < tables.len() {
-        let table_name = tables[table_index];
-        match export_table_data(state, table_name).await {
-            Ok(data) => Ok(Some(data)),
-            Err(e) => Err(format!("Failed to export table {}: {}", table_name, e)),
-        }
-    } else {
-        // End of stream
-        Ok(None)
-    }
-}
-
-// Generate SQL backup header
-fn generate_backup_header() -> String {
-    format!(
-        "-- PinePods Database Backup\n-- Generated: {}\n-- Rust API Backup System\n\n",
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
-    )
-}
-
-// Export individual table data efficiently
-async fn export_table_data(state: &AppState, table_name: &str) -> Result<String, String> {
-    const BATCH_SIZE: i64 = 1000; // Process 1000 rows at a time
-    let mut sql_output = format!("\n-- Exporting table: {}\n", table_name);
-    
-    // First, export the CREATE TABLE statement
-    let create_statement = match &state.db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            export_postgres_table_schema(pool, table_name).await?
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
-            export_mysql_table_schema(pool, table_name).await?
-        }
-    };
-    
-    sql_output.push_str(&create_statement);
-    sql_output.push('\n');
-    
-    // Then export the data
-    let mut offset = 0;
-    loop {
-        let batch_data = match &state.db_pool {
-            crate::database::DatabasePool::Postgres(pool) => {
-                export_postgres_table_batch(pool, table_name, offset, BATCH_SIZE).await?
-            }
-            crate::database::DatabasePool::MySQL(pool) => {
-                export_mysql_table_batch(pool, table_name, offset, BATCH_SIZE).await?
-            }
-        };
-
-        if batch_data.is_empty() {
-            break; // No more data
-        }
-
-        sql_output.push_str(&batch_data);
-        offset += BATCH_SIZE;
-
-        // Don't artificially limit chunk size - complete the entire table
-        // Each table is processed as one complete chunk to ensure valid SQL
-    }
-
-    Ok(sql_output)
-}
-
-// Export PostgreSQL table schema using pg_dump-like approach
-async fn export_postgres_table_schema(
-    pool: &sqlx::PgPool,
-    table_name: &str,
-) -> Result<String, String> {
-    // Get table definition from PostgreSQL system catalogs with proper ARRAY handling
-    let query = r#"
-        SELECT 
-            'CREATE TABLE "' || schemaname || '"."' || tablename || '" (' AS create_start,
-            string_agg(
-                '"' || column_name || '" ' || 
-                CASE 
-                    WHEN data_type = 'ARRAY' THEN 
-                        CASE 
-                            WHEN udt_name = '_int4' THEN 'INTEGER[]'
-                            WHEN udt_name = '_text' THEN 'TEXT[]'
-                            WHEN udt_name = '_varchar' THEN 'VARCHAR[]'
-                            WHEN udt_name = '_int8' THEN 'BIGINT[]'
-                            WHEN udt_name = '_bool' THEN 'BOOLEAN[]'
-                            ELSE udt_name || '[]'
-                        END
-                    WHEN data_type = 'character varying' THEN 'VARCHAR(' || COALESCE(character_maximum_length::text, '255') || ')'
-                    WHEN data_type = 'character' THEN 'CHAR(' || character_maximum_length || ')'
-                    WHEN data_type = 'numeric' THEN 'NUMERIC(' || numeric_precision || ',' || numeric_scale || ')'
-                    WHEN data_type = 'integer' THEN 'INTEGER'
-                    WHEN data_type = 'bigint' THEN 'BIGINT'
-                    WHEN data_type = 'boolean' THEN 'BOOLEAN'
-                    WHEN data_type = 'timestamp without time zone' THEN 'TIMESTAMP'
-                    WHEN data_type = 'timestamp with time zone' THEN 'TIMESTAMPTZ'
-                    WHEN data_type = 'date' THEN 'DATE'
-                    WHEN data_type = 'text' THEN 'TEXT'
-                    WHEN data_type = 'double precision' THEN 'DOUBLE PRECISION'
-                    WHEN data_type = 'real' THEN 'REAL'
-                    WHEN data_type = 'smallint' THEN 'SMALLINT'
-                    WHEN data_type = 'uuid' THEN 'UUID'
-                    WHEN data_type = 'json' THEN 'JSON'
-                    WHEN data_type = 'jsonb' THEN 'JSONB'
-                    ELSE UPPER(data_type)
-                END ||
-                CASE WHEN is_nullable = 'NO' THEN ' NOT NULL' ELSE '' END,
-                ', '
-                ORDER BY ordinal_position
-            ) AS columns,
-            ');' AS create_end
-        FROM information_schema.columns c
-        JOIN pg_tables t ON t.tablename = c.table_name
-        WHERE c.table_name = $1 AND c.table_schema = 'public'
-        GROUP BY schemaname, tablename
-    "#;
-
-    let row = sqlx::query(query)
-        .bind(table_name)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| format!("Schema query failed: {}", e))?;
-
-    if let Some(row) = row {
-        let create_start: String = row.try_get("create_start").map_err(|e| format!("Column error: {}", e))?;
-        let columns: String = row.try_get("columns").map_err(|e| format!("Column error: {}", e))?;
-        let create_end: String = row.try_get("create_end").map_err(|e| format!("Column error: {}", e))?;
-        
-        Ok(format!("{}\n    {}\n{}\n", create_start, columns, create_end))
-    } else {
-        Err(format!("Table {} not found", table_name))
-    }
-}
-
-// Export MySQL table schema
-async fn export_mysql_table_schema(
-    pool: &sqlx::MySqlPool,
-    table_name: &str,
-) -> Result<String, String> {
-    // Use SHOW CREATE TABLE for MySQL
-    let query = format!("SHOW CREATE TABLE {}", table_name);
-    
-    let row = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| format!("Schema query failed: {}", e))?;
-
-    if let Some(row) = row {
-        let create_table: String = row.try_get(1).map_err(|e| format!("Column error: {}", e))?;
-        Ok(format!("{};\n", create_table))
-    } else {
-        Err(format!("Table {} not found", table_name))
-    }
-}
-
-// Export PostgreSQL table batch
-async fn export_postgres_table_batch(
-    pool: &sqlx::PgPool,
-    table_name: &str,
-    offset: i64,
-    limit: i64,
-) -> Result<String, String> {
-    // Use quoted table names for PostgreSQL
-    let query = format!(
-        r#"SELECT * FROM "{}" ORDER BY 1 LIMIT {} OFFSET {}"#,
-        table_name, limit, offset
-    );
-
-    let rows = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Query failed: {}", e))?;
-
-    if rows.is_empty() {
-        return Ok(String::new());
-    }
-
-    let mut output = format!("INSERT INTO \"{}\" VALUES\n", table_name);
-    let mut first_row = true;
-
-    for row in rows {
-        if !first_row {
-            output.push_str(",\n");
-        }
-        first_row = false;
-
-        output.push('(');
-        let column_count = row.columns().len();
-        for i in 0..column_count {
-            if i > 0 {
-                output.push_str(", ");
-            }
-            
-            // Handle different PostgreSQL data types safely
-            match row.try_get_raw(i) {
-                Ok(value) if value.is_null() => output.push_str("NULL"),
-                Ok(_) => {
-                    // Try different data types in order of likelihood
-                    if let Ok(val) = row.try_get::<String, _>(i) {
-                        // Properly escape strings for PostgreSQL
-                        let escaped = val.replace('\'', "''").replace('\\', "\\\\");
-                        output.push_str(&format!("'{}'", escaped));
-                    } else if let Ok(val) = row.try_get::<i32, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<i64, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<bool, _>(i) {
-                        output.push_str(if val { "true" } else { "false" });
-                    } else if let Ok(val) = row.try_get::<f64, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(i) {
-                        output.push_str(&format!("'{}'", val.format("%Y-%m-%d %H:%M:%S%.6f%z")));
-                    } else {
-                        // Fallback: try to get as text
-                        match row.try_get::<String, _>(i) {
-                            Ok(val) => {
-                                let escaped = val.replace('\'', "''").replace('\\', "\\\\");
-                                output.push_str(&format!("'{}'", escaped));
-                            },
-                            Err(_) => output.push_str("NULL"),
-                        }
-                    }
-                }
-                Err(_) => output.push_str("NULL"),
-            }
-        }
-        output.push(')');
-    }
-    output.push_str(";\n");
-
-    Ok(output)
-}
-
-// Export MySQL table batch
-async fn export_mysql_table_batch(
-    pool: &sqlx::MySqlPool,
-    table_name: &str,
-    offset: i64,
-    limit: i64,
-) -> Result<String, String> {
-    let query = format!(
-        "SELECT * FROM {} ORDER BY 1 LIMIT {} OFFSET {}",
-        table_name, limit, offset
-    );
-
-    let rows = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Query failed: {}", e))?;
-
-    if rows.is_empty() {
-        return Ok(String::new());
-    }
-
-    let mut output = format!("INSERT INTO {} VALUES\n", table_name);
-    let mut first_row = true;
-
-    for row in rows {
-        if !first_row {
-            output.push_str(",\n");
-        }
-        first_row = false;
-
-        output.push('(');
-        let column_count = row.columns().len();
-        for i in 0..column_count {
-            if i > 0 {
-                output.push_str(", ");
-            }
-            
-            // Handle different MySQL data types safely
-            match row.try_get_raw(i) {
-                Ok(value) if value.is_null() => output.push_str("NULL"),
-                Ok(_) => {
-                    // Try different data types in order of likelihood
-                    if let Ok(val) = row.try_get::<String, _>(i) {
-                        // Properly escape strings for MySQL
-                        let escaped = val.replace('\'', "''").replace('\\', "\\\\");
-                        output.push_str(&format!("'{}'", escaped));
-                    } else if let Ok(val) = row.try_get::<i32, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<i64, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<bool, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<f64, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(i) {
-                        output.push_str(&format!("'{}'", val.format("%Y-%m-%d %H:%M:%S")));
-                    } else {
-                        // Fallback: try to get as text
-                        match row.try_get::<String, _>(i) {
-                            Ok(val) => {
-                                let escaped = val.replace('\'', "''").replace('\\', "\\\\");
-                                output.push_str(&format!("'{}'", escaped));
-                            },
-                            Err(_) => output.push_str("NULL"),
-                        }
-                    }
-                }
-                Err(_) => output.push_str("NULL"),
-            }
-        }
-        output.push(')');
-    }
-    output.push_str(";\n");
-
-    Ok(output)
 }
 
 pub async fn restore_server(
@@ -2078,42 +1740,6 @@ async fn poll_for_auth_completion(
     Err("Polling timeout reached".into())
 }
 
-// Helper function to save Nextcloud credentials directly to database
-async fn save_nextcloud_credentials(
-    db_pool: &crate::database::DatabasePool,
-    user_id: i32,
-    nextcloud_url: &str,
-    app_password: &str,
-    login_name: &str
-) -> crate::error::AppResult<()> {
-    // Encrypt the app password
-    let encrypted_password = db_pool.encrypt_password(app_password).await?;
-    
-    // Store Nextcloud credentials
-    match db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'nextcloud' WHERE userid = $4"#)
-                .bind(nextcloud_url)
-                .bind(login_name)
-                .bind(&encrypted_password)
-                .bind(user_id)
-                .execute(pool)
-                .await?;
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
-            sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'nextcloud' WHERE UserID = ?")
-                .bind(nextcloud_url)
-                .bind(login_name)
-                .bind(&encrypted_password)
-                .bind(user_id)
-                .execute(pool)
-                .await?;
-        }
-    }
-    
-    Ok(())
-}
-
 // Request struct for verify_gpodder_auth
 #[derive(Deserialize)]
 pub struct VerifyGpodderAuthRequest {
@@ -2275,21 +1901,6 @@ pub struct CustomPodcastRequest {
     pub password: Option<String>,
     pub youtube_channel: Option<bool>,
     pub feed_cutoff: Option<i32>,
-}
-
-// Request struct for import_opml
-#[derive(Deserialize)]
-pub struct OpmlImportRequest {
-    pub podcasts: Vec<String>,
-    pub user_id: i32,
-}
-
-// Response struct for import_progress
-#[derive(Serialize)]
-pub struct ImportProgressResponse {
-    pub current: i32,
-    pub total: i32,
-    pub current_podcast: String,
 }
 
 // Request struct for notification_settings
@@ -2477,99 +2088,6 @@ fn extract_youtube_channel_id(url: &str) -> Result<String, AppError> {
         "Invalid YouTube channel URL. Expected format: https://www.youtube.com/channel/UC... or https://www.youtube.com/@channelname or just the channel ID. Got: {}",
         url
     )))
-}
-
-// Import OPML - matches Python import_opml function exactly with background processing
-pub async fn import_opml(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(request): Json<OpmlImportRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check authorization
-    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only import OPML for yourself!"));
-    }
-
-    let total_podcasts = request.podcasts.len();
-
-    // Initialize progress tracking in Redis/Valkey
-    state.import_progress_manager.start_import(request.user_id, total_podcasts as i32).await?;
-
-    // Spawn background task for OPML processing
-    let state_clone = state.clone();
-    let podcasts = request.podcasts.clone();
-    let user_id = request.user_id;
-
-    tokio::spawn(async move {
-        for (index, feed_url) in podcasts.iter().enumerate() {
-            // Update progress
-            let _ = state_clone.import_progress_manager.update_progress(
-                user_id,
-                index as i32,
-                feed_url
-            ).await;
-
-            // Process podcast (with error handling to continue on failures)
-            match state_clone.db_pool.get_podcast_values(feed_url, user_id, None, None).await {
-                Ok(podcast_values) => {
-                    let _ = state_clone.db_pool.add_podcast_from_values(
-                        &podcast_values,
-                        user_id,
-                        30,  // feed_cutoff
-                        None, // username
-                        None  // password
-                    ).await;
-                }
-                Err(e) => {
-                    tracing::error!("Failed to import podcast {}: {}", feed_url, e);
-                    // Continue with next podcast
-                }
-            }
-
-            // Small delay between imports (matches Python 0.1s delay)
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        }
-
-        // Clear progress when complete
-        let _ = state_clone.import_progress_manager.clear_progress(user_id).await;
-    });
-
-    Ok(Json(serde_json::json!({
-        "message": "OPML import started",
-        "total": total_podcasts
-    })))
-}
-
-// Import progress webhook - matches Python import_progress function exactly
-pub async fn import_progress(
-    State(state): State<AppState>,
-    Path(user_id): Path<i32>,
-    headers: HeaderMap,
-) -> Result<Json<ImportProgressResponse>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check authorization - user can only check their own progress
-    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only check your own import progress!"));
-    }
-
-    let (current, total, current_podcast) = state.import_progress_manager.get_progress(user_id).await?;
-    let progress = ImportProgressResponse {
-        current,
-        total,
-        current_podcast,
-    };
-    Ok(Json(progress))
 }
 
 // Get notification settings - matches Python notification_settings GET function exactly
@@ -2999,6 +2517,73 @@ pub async fn get_person_episodes(
     })))
 }
 
+#[derive(Deserialize)]
+pub struct HostFeedQuery {
+    pub name: String,
+    pub person_id: Option<i32>,
+    pub include_podcasts: Option<bool>,
+}
+
+// Unified host feed — the single source of a host's episodes (and the shows they appear in),
+// drawn from BOTH the Podcast Index person index and PodPeopleDB, viewable whether or not the
+// user is subscribed. Returns { person, podcasts, episodes }.
+//
+// - Subscribed, episodes-only callers (the subscribed-people list) take a fast path served from
+//   the cached PeopleEpisodes table.
+// - The host profile page takes the live path: a short-lived Redis cache holds the shared
+//   (non-user) feed by host name, and per-user interaction state is overlaid per request so the
+//   cache can be shared across users.
+pub async fn get_host_feed(
+    State(state): State<AppState>,
+    Path(user_id): Path<i32>,
+    Query(params): Query<HostFeedQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only retrieve your own host feed!"));
+    }
+
+    let include_podcasts = params.include_podcasts.unwrap_or(true);
+
+    // Fast path: subscribed host, episodes only — serve from the prebuilt PeopleEpisodes table.
+    if !include_podcasts {
+        if let Some(person_id) = params.person_id {
+            if person_id > 0 {
+                let episodes = state.db_pool.get_person_episodes(user_id, person_id, 300, 0).await?;
+                return Ok(Json(serde_json::json!({
+                    "person": { "name": params.name, "image": null },
+                    "podcasts": [],
+                    "episodes": episodes
+                })));
+            }
+        }
+    }
+
+    // Live path: cache the shared feed by host name, then overlay this user's state.
+    let cache_key = format!("host_feed:{}:{}", include_podcasts, params.name.to_lowercase());
+    let mut feed: serde_json::Value = match state.redis_client.get::<String>(&cache_key).await {
+        Ok(Some(cached)) => serde_json::from_str(&cached)
+            .unwrap_or_else(|_| serde_json::json!({ "person": { "name": params.name, "image": null }, "podcasts": [], "episodes": [] })),
+        _ => {
+            let built = state.db_pool.build_host_feed_shared(&params.name, include_podcasts).await?;
+            if let Ok(serialized) = serde_json::to_string(&built) {
+                // Short TTL: fresh enough for podcasts, cheap repeat visits. Best-effort.
+                let _ = state.redis_client.set_ex(&cache_key, serialized, 300).await;
+            }
+            built
+        }
+    };
+
+    state.db_pool.overlay_host_feed_user_state(user_id, &mut feed).await?;
+
+    Ok(Json(feed))
+}
+
 // Request struct for set_podcast_playback_speed - matches Python SetPlaybackSpeedPodcast model
 #[derive(Deserialize)]
 pub struct SetPlaybackSpeedPodcast {
@@ -3346,6 +2931,14 @@ pub struct ScheduleBackupRequest {
     pub user_id: i32,
     pub cron_schedule: String, // e.g., "0 2 * * *" for daily at 2 AM
     pub enabled: bool,
+    // Number of scheduled backups to keep; None/0 = keep all
+    #[serde(default)]
+    pub retention_count: Option<i32>,
+}
+
+#[derive(Deserialize)]
+pub struct DeleteBackupFileRequest {
+    pub backup_filename: String,
 }
 
 #[derive(Deserialize)]
@@ -3354,13 +2947,10 @@ pub struct GetScheduledBackupRequest {
 }
 
 #[derive(Deserialize)]
-pub struct ListBackupFilesRequest {
-    pub user_id: i32,
-}
+pub struct ListBackupFilesRequest {}
 
 #[derive(Deserialize)]
 pub struct RestoreBackupFileRequest {
-    pub user_id: i32,
     pub backup_filename: String,
 }
 
@@ -3388,12 +2978,13 @@ pub async fn schedule_backup(
     }
 
     // Store the schedule in database
-    state.db_pool.set_scheduled_backup(request.user_id, &request.cron_schedule, request.enabled).await?;
+    state.db_pool.set_scheduled_backup(request.user_id, &request.cron_schedule, request.enabled, request.retention_count).await?;
 
-    Ok(Json(serde_json::json!({ 
+    Ok(Json(serde_json::json!({
         "detail": "Backup schedule updated successfully",
         "schedule": request.cron_schedule,
-        "enabled": request.enabled
+        "enabled": request.enabled,
+        "retention_count": request.retention_count
     })))
 }
 
@@ -3423,7 +3014,7 @@ pub async fn get_scheduled_backup(
 pub async fn list_backup_files(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<ListBackupFilesRequest>,
+    Json(_request): Json<ListBackupFilesRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
@@ -3603,17 +3194,53 @@ pub async fn restore_from_backup_file(
     })))
 }
 
+// Delete a backup file from the mounted backup directory - admin only
+pub async fn delete_backup_file(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<DeleteBackupFileRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
+
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+
+    // Validate filename to prevent path traversal
+    let backup_filename = request.backup_filename.clone();
+    if backup_filename.contains("..") || backup_filename.contains('/') || !backup_filename.ends_with(".sql") {
+        return Err(AppError::bad_request("Invalid backup filename"));
+    }
+
+    let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
+
+    if !std::path::Path::new(&backup_path).exists() {
+        return Err(AppError::not_found("Backup file not found"));
+    }
+
+    std::fs::remove_file(&backup_path)
+        .map_err(|e| AppError::internal(&format!("Failed to delete backup file: {}", e)))?;
+
+    Ok(Json(serde_json::json!({
+        "detail": "Backup file deleted",
+        "filename": backup_filename
+    })))
+}
+
 // Request struct for manual backup to directory
 #[derive(Deserialize)]
-pub struct ManualBackupRequest {
-    pub user_id: i32,
-}
+pub struct ManualBackupRequest {}
 
 // Manual backup to directory - admin only
 pub async fn manual_backup_to_directory(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<ManualBackupRequest>,
+    Json(_request): Json<ManualBackupRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;

@@ -20,7 +20,7 @@ pub fn queue_panel() -> Html {
     let i18n_queue_is_empty = i18n.t("queue_panel.queue_is_empty").to_string();
     let i18n_add_episodes_hint = i18n.t("queue_panel.add_episodes_hint").to_string();
     let (ui_state, ui_dispatch) = use_store::<UIState>();
-    let (app_state, app_dispatch) = use_store::<AppState>();
+    let (app_state, _app_dispatch) = use_store::<AppState>();
     let (ep_status, ep_dispatch) = use_store::<EpisodeStatusState>();
 
     let is_open = ui_state.queue_panel_open;
@@ -287,7 +287,7 @@ pub fn queue_panel() -> Html {
                             <div class="queue-empty-sub">{ &i18n_add_episodes_hint }</div>
                         </div>
                     } else {
-                        { for queued.iter().enumerate().map(|(i, ep)| {
+                        { for queued.iter().enumerate().map(|(_i, ep)| {
                             let ep = ep.clone();
                             let ep_for_remove = ep.clone();
                             let ep_for_art = ep.clone();

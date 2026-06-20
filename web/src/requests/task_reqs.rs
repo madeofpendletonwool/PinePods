@@ -445,7 +445,7 @@ pub async fn connect_to_task_websocket(
                                 ),
                             }
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             // console::error_1(
                             //     &format!(
                             //         "Failed to parse WebSocket message: {}. Text: {}",

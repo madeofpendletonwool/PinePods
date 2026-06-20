@@ -10,7 +10,7 @@ use crate::components::gen_funcs::{format_time, strip_images_from_html};
 use crate::components::safehtml::RawHtml;
 use crate::requests::episode::Episode;
 use i18nrs::yew::use_translation;
-use yew_router::history::{BrowserHistory, History};
+use yew_router::history::BrowserHistory;
 use wasm_bindgen::prelude::*;
 use web_sys::{DragEvent, MouseEvent};
 use yew::prelude::*;
@@ -105,7 +105,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
         let is_loading = state.loading_episode_id == Some(episode_id);
         (is_current, is_current && state.audio_playing.unwrap_or(false), is_loading)
     });
-    let (is_current_episode, is_active_and_playing, is_loading) = *play_state;
+    let (_is_current_episode, is_active_and_playing, is_loading) = *play_state;
 
     /*
     Item Shape
@@ -460,7 +460,11 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
                 <div class="ep-art-wrap">
                     <FallbackImage
-                        src={props.episode.episodeartwork.clone()}
+                        src={if props.episode.episodeartwork.is_empty() {
+                            props.episode.artworkurl.clone()
+                        } else {
+                            props.episode.episodeartwork.clone()
+                        }}
                         alt={format!("Cover for {}", props.episode.episodetitle)}
                         class="ep-art-img"
                     />

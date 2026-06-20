@@ -39,7 +39,8 @@ pub fn app_drawer() -> Html {
     // let (state, _dispatch) = use_store::<AppState>();
 
     // Capture i18n strings before they get moved
-    let i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
+    #[cfg(not(feature = "server_build"))]
+    let _i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
     let i18n_pinepods = i18n.t("app_drawer.pinepods").to_string();
     let i18n_home = i18n.t("navigation.home").to_string();
     let i18n_feed = i18n.t("app_drawer.feed").to_string();
@@ -48,6 +49,7 @@ pub fn app_drawer() -> Html {
     let i18n_playlists = i18n.t("navigation.playlists").to_string();
     let i18n_history = i18n.t("navigation.history").to_string();
     let i18n_server_downloads = i18n.t("app_drawer.server_downloads").to_string();
+    #[cfg(not(feature = "server_build"))]
     let i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
     let i18n_subscribed_people = i18n.t("app_drawer.subscribed_people").to_string();
     let i18n_podcasts = i18n.t("navigation.podcasts").to_string();
@@ -134,7 +136,7 @@ pub fn app_drawer() -> Html {
             let server_name_call = server_name.clone();
             let user_id_call = user_id.clone();
             let api_key_call = api_key.clone();
-            let dispatch_clone = dispatch.clone();
+            let _dispatch_clone = dispatch.clone();
             let notif_dispatch_clone = notif_dispatch_refresh.clone();
 
             // Set refreshing state before starting
