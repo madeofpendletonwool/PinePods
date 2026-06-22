@@ -19,6 +19,7 @@
 <p align="center">
   <a href="https://flathub.org/apps/com.gooseberrydevelopment.pinepods"><img src="https://flathub.org/api/badge?locale=en" alt="Get it on Flathub" height="50"></a>
   <a href="https://apps.apple.com/us/app/pinepods/id6751441116"><img src="./images/Download_on_the_App_Store_Badge_US-UK_RGB_blk_092917.svg" alt="Download on the App Store" height="50"></a>
+  <a href="https://play.google.com/store/apps/details?id=com.gooseberrydevelopment.pinepods"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="50"></a>
   <a href="https://apt.izzysoft.de/fdroid/index/apk/com.gooseberrydevelopment.pinepods"><img src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroid.png" alt="Get it on IzzyOnDroid" height="50"></a>
   <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.gooseberrydevelopment.pinepods%22%2C%22url%22%3A%22https%3A//github.com/madeofpendletonwool/PinePods%22%2C%22author%22%3A%22madeofpendletonwool%22%2C%22name%22%3A%22PinePods%22%2C%22installerUrl%22%3A%22https%3A//github.com/madeofpendletonwool/PinePods/releases/latest%22%7D"><img src="./images/badge_obtainium.png" alt="Get it on Obtainium" height="50"></a>
 </p>
@@ -220,7 +221,7 @@ in. The web client is served by the server itself — the rest are optional nati
 | :window: **Windows** | `.exe` (installer) or `.msi` (portable) on [Releases](https://github.com/madeofpendletonwool/PinePods/releases) | |
 | :apple: **macOS** | `.dmg` (installer) or portable build on [Releases](https://github.com/madeofpendletonwool/PinePods/releases) | |
 | :iphone: **iOS** | [App Store](https://apps.apple.com/us/app/pinepods/id6751441116) | CarPlay supported |
-| :robot: **Android** | [IzzyOnDroid](https://apt.izzysoft.de/fdroid/index/apk/com.gooseberrydevelopment.pinepods) or [Obtainium](https://github.com/madeofpendletonwool/PinePods/releases) | Android Auto supported |
+| :robot: **Android** | [Google Play](https://play.google.com/store/apps/details?id=com.gooseberrydevelopment.pinepods), [IzzyOnDroid](https://apt.izzysoft.de/fdroid/index/apk/com.gooseberrydevelopment.pinepods), or [Obtainium](https://github.com/madeofpendletonwool/PinePods/releases) | Android Auto supported |
 | :computer: **Terminal** | [Pinepods Firewood](https://github.com/madeofpendletonwool/pinepods-firewood) (CLI) | |
 
 ARM devices — including 64-bit Raspberry Pis — are fully supported; the `latest` tag
