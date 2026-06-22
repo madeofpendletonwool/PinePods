@@ -1032,6 +1032,15 @@ impl DatabasePool {
                         .execute(&mut *tx)
                         .await?;
 
+                    // 6b. PeopleEpisodes — host-feed rows can reference this podcast (legacy rows
+                    // pointed at a user's podcast). The FK is NO ACTION, so the Podcasts delete
+                    // below would FK-error without this. Removed rows repopulate under the system
+                    // podcast on the next host refresh.
+                    sqlx::query(r#"DELETE FROM "PeopleEpisodes" WHERE podcastid = $1"#)
+                        .bind(podcast_id)
+                        .execute(&mut *tx)
+                        .await?;
+
                     // 7. Finally delete the podcast itself
                     sqlx::query(r#"DELETE FROM "Podcasts" WHERE podcastid = $1"#)
                         .bind(podcast_id)
@@ -1100,6 +1109,12 @@ impl DatabasePool {
 
                     // 6. Episodes
                     sqlx::query("DELETE FROM Episodes WHERE PodcastID = ?")
+                        .bind(podcast_id)
+                        .execute(&mut *tx)
+                        .await?;
+
+                    // 6b. PeopleEpisodes (see Postgres branch for rationale)
+                    sqlx::query("DELETE FROM PeopleEpisodes WHERE PodcastID = ?")
                         .bind(podcast_id)
                         .execute(&mut *tx)
                         .await?;
@@ -1398,7 +1413,14 @@ impl DatabasePool {
                         .bind(podcast_id)
                         .execute(pool)
                         .await?;
-                    
+
+                    // 6b. PeopleEpisodes — host-feed rows may reference this podcast (FK is
+                    // NO ACTION); delete them so the Podcasts delete can't FK-error.
+                    sqlx::query(r#"DELETE FROM "PeopleEpisodes" WHERE podcastid = $1"#)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+
                     // 7. Finally delete the podcast
                     sqlx::query(r#"DELETE FROM "Podcasts" WHERE "PodcastID" = $1"#)
                         .bind(podcast_id)
@@ -1459,12 +1481,18 @@ impl DatabasePool {
                         .bind(podcast_id)
                         .execute(pool)
                         .await?;
-                    
+
+                    // PeopleEpisodes — see Postgres branch rationale.
+                    sqlx::query("DELETE FROM PeopleEpisodes WHERE PodcastID = ?")
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+
                     sqlx::query("DELETE FROM Podcasts WHERE PodcastID = ?")
                         .bind(podcast_id)
                         .execute(pool)
                         .await?;
-                    
+
                     sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = ?")
                         .bind(user_id)
                         .execute(pool)
@@ -17415,15 +17443,20 @@ impl DatabasePool {
                         0
                     };
 
-                    // Count episodes for this person from PeopleEpisodes table
+                    // Count episodes in this host's feed. Must match what get_person_episodes
+                    // actually returns: every PeopleEpisodes row for the person within the 90-day
+                    // window, regardless of which podcast (the user's own copy OR a system
+                    // podcast, userid=1) it points at. Filtering by the requesting user's
+                    // ownership here was the bug — a host none of whose shows you're subscribed to
+                    // counted 0 (system podcasts), leaving the UI stuck on "Loading episodes…",
+                    // and subscribed hosts were counted all-time instead of the 90-day feed.
                     let episode_count: i64 = sqlx::query_scalar(r#"
-                        SELECT COUNT(*) 
+                        SELECT COUNT(*)
                         FROM "PeopleEpisodes" pe
-                        INNER JOIN "Podcasts" p ON pe.podcastid = p.podcastid
-                        WHERE pe.personid = $1 AND p.userid = $2
+                        WHERE pe.personid = $1
+                        AND pe.episodepubdate >= NOW() - INTERVAL '90 days'
                     "#)
                     .bind(person_id)
-                    .bind(user_id)
                     .fetch_one(pool)
                     .await
                     .unwrap_or(0);
@@ -17468,15 +17501,16 @@ impl DatabasePool {
                         0
                     };
 
-                    // Count episodes for this person from PeopleEpisodes table
+                    // Count episodes in this host's feed — see the Postgres branch above for why
+                    // this is not filtered by the requesting user's podcast ownership and uses the
+                    // same 90-day window as the feed.
                     let episode_count: i64 = sqlx::query_scalar("
-                        SELECT COUNT(*) 
+                        SELECT COUNT(*)
                         FROM PeopleEpisodes pe
-                        INNER JOIN Podcasts p ON pe.PodcastID = p.PodcastID
-                        WHERE pe.PersonID = ? AND p.UserID = ?
+                        WHERE pe.PersonID = ?
+                        AND pe.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 90 DAY)
                     ")
                     .bind(person_id)
-                    .bind(user_id)
                     .fetch_one(pool)
                     .await
                     .unwrap_or(0);
@@ -18103,6 +18137,64 @@ impl DatabasePool {
             }
         }
 
+        Ok(())
+    }
+
+    /// Read a shared host feed from the DB-backed warm cache (HostFeedCache) if it exists and was
+    /// refreshed within `max_age_secs`. This is the layer below the short-lived Redis cache: it
+    /// keeps a cold/expired Redis entry from forcing a full N-feed rebuild and survives a Redis
+    /// restart. Returns the parsed feed JSON.
+    pub async fn get_cached_host_feed(&self, cache_key: &str, max_age_secs: i64) -> AppResult<Option<serde_json::Value>> {
+        let cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::seconds(max_age_secs);
+        let json_str: Option<String> = match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_scalar(r#"SELECT feedjson FROM "HostFeedCache" WHERE cachekey = $1 AND refreshedat > $2"#)
+                    .bind(cache_key)
+                    .bind(cutoff)
+                    .fetch_optional(pool)
+                    .await?
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query_scalar("SELECT FeedJSON FROM HostFeedCache WHERE CacheKey = ? AND RefreshedAt > ?")
+                    .bind(cache_key)
+                    .bind(cutoff)
+                    .fetch_optional(pool)
+                    .await?
+            }
+        };
+
+        match json_str {
+            Some(s) => Ok(serde_json::from_str(&s).ok()),
+            None => Ok(None),
+        }
+    }
+
+    /// Upsert a shared host feed into the DB-backed warm cache (HostFeedCache).
+    pub async fn set_cached_host_feed(&self, cache_key: &str, feed_json: &str) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"
+                    INSERT INTO "HostFeedCache" (cachekey, feedjson, refreshedat)
+                    VALUES ($1, $2, CURRENT_TIMESTAMP)
+                    ON CONFLICT (cachekey) DO UPDATE SET feedjson = excluded.feedjson, refreshedat = CURRENT_TIMESTAMP
+                "#)
+                    .bind(cache_key)
+                    .bind(feed_json)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("
+                    INSERT INTO HostFeedCache (CacheKey, FeedJSON, RefreshedAt)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON DUPLICATE KEY UPDATE FeedJSON = VALUES(FeedJSON), RefreshedAt = CURRENT_TIMESTAMP
+                ")
+                    .bind(cache_key)
+                    .bind(feed_json)
+                    .execute(pool)
+                    .await?;
+            }
+        }
         Ok(())
     }
 
@@ -19273,21 +19365,25 @@ impl DatabasePool {
     }
 
     // Helper function to process individual show for person - returns the podcast_id used
-    async fn process_person_show(&self, user_id: i32, person_id: i32, title: &str, feed_url: &str, _feed_id: i32) -> AppResult<i32> {
-        // First check if podcast exists for user
-        let user_podcast_id = self.get_podcast_id_by_feed_url(user_id, feed_url).await?;
-        
-        let podcast_id = if user_podcast_id.is_none() {
+    async fn process_person_show(&self, _user_id: i32, person_id: i32, title: &str, feed_url: &str, _feed_id: i32) -> AppResult<i32> {
+        // PeopleEpisodes always reference the SYSTEM podcast (UserID = 1), never the requesting
+        // user's own copy. The user's podcast id is unstable — it changes as they subscribe/
+        // unsubscribe to the show, and removing it would orphan/FK-break PeopleEpisodes. The
+        // system podcast is a stable, canonical anchor; get_person_episodes resolves the user's
+        // own copy (and interaction state) by feed URL at read time, so we never need to point at
+        // it here. (Previously this preferred the user's podcast when subscribed, which caused
+        // duplicate episodes after a later subscribe and FK errors on podcast removal.)
+        let podcast_id = {
             // Check if system podcast exists (UserID = 1)
             let system_podcast_id = self.get_podcast_id_by_feed_url(1, feed_url).await?;
-            
+
             if system_podcast_id.is_none() {
                 // Add as new system podcast
                 tracing::info!("Creating system podcast for feed: {}", feed_url);
                 let podcast_values = self.get_podcast_values_for_person(feed_url).await?;
                 let add_result = self.add_person_podcast_from_values(&podcast_values, 1).await?;
                 tracing::info!("Add podcast result: {}", add_result);
-                
+
                 // Get the podcast ID after adding
                 tracing::info!("Looking for podcast with UserID=1 and FeedURL='{}'", feed_url);
                 match self.get_podcast_id_by_feed_url(1, feed_url).await? {
@@ -19337,10 +19433,8 @@ impl DatabasePool {
             } else {
                 system_podcast_id.unwrap()
             }
-        } else {
-            user_podcast_id.unwrap()
         };
-        
+
         tracing::info!("Using podcast: ID={}, Title={}", podcast_id, title);
 
         // Add episodes to PeopleEpisodes
@@ -19365,32 +19459,34 @@ impl DatabasePool {
         let mut added_count = 0;
         
         for episode in episodes {
-            // Check if episode already exists
+            // Dedup per (person, episode URL) — NOT per (person, podcast, URL). The podcast a
+            // PeopleEpisodes row anchors to can shift (e.g. legacy rows under a user's podcast vs
+            // the canonical system podcast), so keying dedup on podcastid would let the same
+            // episode be stored twice for one person. The enclosure URL uniquely identifies an
+            // episode, so one row per (person, URL) is correct.
             let episode_exists = match self {
                 DatabasePool::Postgres(pool) => {
                     let result = sqlx::query(r#"
                         SELECT episodeid FROM "PeopleEpisodes"
-                        WHERE personid = $1 AND podcastid = $2 AND episodeurl = $3
+                        WHERE personid = $1 AND episodeurl = $2
                     "#)
                     .bind(person_id)
-                    .bind(podcast_id)
                     .bind(&episode.url)
                     .fetch_optional(pool)
                     .await?;
-                    
+
                     result.is_some()
                 }
                 DatabasePool::MySQL(pool) => {
                     let result = sqlx::query("
                         SELECT EpisodeID FROM PeopleEpisodes
-                        WHERE PersonID = ? AND PodcastID = ? AND EpisodeURL = ?
+                        WHERE PersonID = ? AND EpisodeURL = ?
                     ")
                     .bind(person_id)
-                    .bind(podcast_id)
                     .bind(&episode.url)
                     .fetch_optional(pool)
                     .await?;
-                    
+
                     result.is_some()
                 }
             };

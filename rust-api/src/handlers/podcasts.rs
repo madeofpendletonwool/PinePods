@@ -2678,6 +2678,68 @@ pub async fn get_host_podcasts(
     }
 }
 
+// Query struct for podpeople discovery passthrough
+#[derive(Deserialize)]
+pub struct PodPeopleDiscoverQuery {
+    pub kind: String,
+    pub limit: Option<i32>,
+}
+
+// Proxy PodPeopleDB's JSON discovery endpoints (top-hosts, recent-hosts, popular-podcasts, stats)
+// so the PinePods web app can surface a "Discover hosts" experience without talking to PodPeopleDB
+// directly (PEOPLE_API_URL is backend-only). Returns the upstream JSON verbatim.
+pub async fn get_podpeople_discover(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Query(query): Query<PodPeopleDiscoverQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Allowlist the upstream path so `kind` can't be used to hit arbitrary endpoints.
+    let path = match query.kind.as_str() {
+        "top-hosts" => "top-hosts",
+        "recent-hosts" => "recent-hosts",
+        "popular-podcasts" => "popular-podcasts",
+        "stats" => "stats",
+        _ => return Err(AppError::bad_request("Invalid discover kind")),
+    };
+
+    let people_url = std::env::var("PEOPLE_API_URL")
+        .unwrap_or_else(|_| "https://people.pinepods.online".to_string());
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_default();
+
+    let mut req = client.get(&format!("{}/api/discover/{}", people_url, path));
+    if let Some(limit) = query.limit {
+        req = req.query(&[("limit", limit)]);
+    }
+
+    let response = req
+        .send()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to fetch from podpeople: {}", e)))?;
+
+    if !response.status().is_success() {
+        // Graceful default: empty rather than an error so the UI just shows nothing.
+        return Ok(Json(if path == "stats" {
+            serde_json::json!({})
+        } else {
+            serde_json::json!([])
+        }));
+    }
+
+    let data: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to parse podpeople response: {}", e)))?;
+
+    Ok(Json(data))
+}
+
 // Request struct for update_feed_cutoff_days
 #[derive(Deserialize)]
 pub struct UpdateFeedCutoffDaysData {

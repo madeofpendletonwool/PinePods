@@ -396,13 +396,11 @@ fn render_host_with_episodes(
                         { &person.name }
                     </p>
                     <hr class="my-2 border-t hidden md:block"/>
-                    {
-                        if person.episode_count == 0 {
-                            html! { <p class="item_container-text text-sm italic text-gray-400">{ loading_episodes_text }</p> }
-                        } else {
-                            html! { <p class="item_container-text">{ format!("{}: {}", episode_count_text, person.episode_count) }</p> }
-                        }
-                    }
+                    // episode_count is part of the subscriptions response (not separately loaded),
+                    // so always show it — including 0 (e.g. a host whose shows have no episodes in
+                    // the last 90 days). It previously showed "Loading episodes…" for 0, which was
+                    // misleading and stuck permanently.
+                    <p class="item_container-text">{ format!("{}: {}", episode_count_text, person.episode_count) }</p>
                     <p class="item_container-text text-sm">{ format!("{}: {}", shows_text, person.associatedpodcasts) }</p>
                 </div>
                 // Right-side action buttons

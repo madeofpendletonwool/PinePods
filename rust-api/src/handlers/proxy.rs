@@ -1,25 +1,70 @@
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
+
+use crate::AppState;
 
 #[derive(Deserialize)]
 pub struct ImageProxyQuery {
     pub url: String,
 }
 
+// Server-side image cache: 1-day TTL, skip caching anything larger than this so a few huge images
+// can't blow out Redis. Cached entries are stored as two keys: bytes + content-type.
+const IMAGE_CACHE_TTL_SECS: u64 = 86_400;
+const IMAGE_CACHE_MAX_BYTES: usize = 5 * 1024 * 1024;
+
+fn image_cache_keys(url: &str) -> (String, String) {
+    let mut hasher = DefaultHasher::new();
+    url.hash(&mut hasher);
+    let h = hasher.finish();
+    (format!("imgproxy:{:x}:data", h), format!("imgproxy:{:x}:ct", h))
+}
+
+fn image_response(content_type: &str, bytes: axum::body::Bytes) -> Response {
+    let mut headers = HeaderMap::new();
+    if let Ok(ct) = content_type.parse() {
+        headers.insert("content-type", ct);
+    }
+    headers.insert("cache-control", "public, max-age=86400".parse().unwrap());
+    headers.insert("access-control-allow-origin", "*".parse().unwrap());
+    headers.insert("x-content-type-options", "nosniff".parse().unwrap());
+    (headers, bytes).into_response()
+}
+
 // Image proxy endpoint - matches Python proxy_image endpoint
 pub async fn proxy_image(
+    State(state): State<AppState>,
     Query(query): Query<ImageProxyQuery>,
 ) -> Result<Response, StatusCode> {
-    tracing::info!("Image proxy request received for URL: {}", query.url);
+    tracing::debug!("Image proxy request received for URL: {}", query.url);
 
     if !is_valid_image_url(&query.url) {
         tracing::error!("Invalid image URL: {}", query.url);
         return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Serve from the server-side cache when present (avoids re-fetching upstream for every cold
+    // client). Best-effort: any Redis hiccup just falls through to a live fetch.
+    let (data_key, ct_key) = image_cache_keys(&query.url);
+    if let Ok(Some(cached)) = state.redis_client.get::<Vec<u8>>(&data_key).await {
+        if !cached.is_empty() {
+            let ct = state
+                .redis_client
+                .get::<String>(&ct_key)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "application/octet-stream".to_string());
+            tracing::debug!("Image proxy cache hit for {}", query.url);
+            return Ok(image_response(&ct, axum::body::Bytes::from(cached)));
+        }
     }
 
     // SSRF guard: refuse to fetch from loopback/private/link-local/etc. addresses
@@ -80,17 +125,20 @@ pub async fn proxy_image(
 
     let bytes = response.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
-    let mut headers = HeaderMap::new();
-    if let Ok(ct) = content_type.parse() {
-        headers.insert("content-type", ct);
+    // Populate the cache (best-effort) for reasonably sized images.
+    if !bytes.is_empty() && bytes.len() <= IMAGE_CACHE_MAX_BYTES {
+        let _ = state
+            .redis_client
+            .set_ex(&data_key, bytes.to_vec(), IMAGE_CACHE_TTL_SECS)
+            .await;
+        let _ = state
+            .redis_client
+            .set_ex(&ct_key, content_type.clone(), IMAGE_CACHE_TTL_SECS)
+            .await;
     }
-    headers.insert("cache-control", "public, max-age=86400".parse().unwrap());
-    headers.insert("access-control-allow-origin", "*".parse().unwrap());
-    headers.insert("x-content-type-options", "nosniff".parse().unwrap());
 
-    tracing::info!("Returning image response");
-
-    Ok((headers, bytes).into_response())
+    tracing::debug!("Returning freshly fetched image response");
+    Ok(image_response(&content_type, bytes))
 }
 
 fn is_valid_image_url(url: &str) -> bool {

@@ -232,3 +232,84 @@ pub async fn call_get_host_feed(
     let feed: HostFeedResponse = serde_json::from_str(&response_text)?;
     Ok(feed)
 }
+
+// --- Discovery (PodPeopleDB, proxied through the PinePods backend) ---
+
+#[derive(Deserialize, Clone, PartialEq, Debug, Default)]
+pub struct DiscoverHost {
+    #[serde(default)]
+    pub id: i32,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub img: String,
+    #[serde(default, alias = "podcastCount")]
+    pub podcast_count: i32,
+}
+
+#[derive(Deserialize, Clone, PartialEq, Debug, Default)]
+pub struct DiscoverPodcast {
+    #[serde(default)]
+    pub podcast_id: i32,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub host_count: i32,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Deserialize, Clone, PartialEq, Debug, Default)]
+pub struct DiscoverStats {
+    #[serde(default)]
+    pub total_hosts: i32,
+    #[serde(default)]
+    pub total_podcasts: i32,
+    #[serde(default)]
+    pub approved_hosts: i32,
+    #[serde(default)]
+    pub episodes_with_guests: i32,
+}
+
+async fn discover_get(server_name: &str, api_key: &str, kind: &str, limit: Option<i32>) -> Result<String, Error> {
+    let mut url = format!(
+        "{}/api/data/podpeople/discover?kind={}",
+        server_name, kind
+    );
+    if let Some(l) = limit {
+        url.push_str(&format!("&limit={}", l));
+    }
+    let response = Request::get(&url).header("Api-Key", api_key).send().await?;
+    if !response.ok() {
+        return Err(Error::msg(format!(
+            "Failed to fetch discover {}: {}",
+            kind,
+            response.status_text()
+        )));
+    }
+    Ok(response.text().await?)
+}
+
+#[allow(dead_code)]
+pub async fn call_discover_top_hosts(server_name: &str, api_key: &str, limit: i32) -> Result<Vec<DiscoverHost>, Error> {
+    let text = discover_get(server_name, api_key, "top-hosts", Some(limit)).await?;
+    Ok(serde_json::from_str(&text)?)
+}
+
+#[allow(dead_code)]
+pub async fn call_discover_recent_hosts(server_name: &str, api_key: &str, limit: i32) -> Result<Vec<DiscoverHost>, Error> {
+    let text = discover_get(server_name, api_key, "recent-hosts", Some(limit)).await?;
+    Ok(serde_json::from_str(&text)?)
+}
+
+#[allow(dead_code)]
+pub async fn call_discover_popular_podcasts(server_name: &str, api_key: &str, limit: i32) -> Result<Vec<DiscoverPodcast>, Error> {
+    let text = discover_get(server_name, api_key, "popular-podcasts", Some(limit)).await?;
+    Ok(serde_json::from_str(&text)?)
+}
+
+#[allow(dead_code)]
+pub async fn call_discover_stats(server_name: &str, api_key: &str) -> Result<DiscoverStats, Error> {
+    let text = discover_get(server_name, api_key, "stats", None).await?;
+    Ok(serde_json::from_str(&text)?)
+}

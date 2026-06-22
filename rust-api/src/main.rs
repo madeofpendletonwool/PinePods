@@ -268,6 +268,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/get_podcast_details", get(handlers::podcasts::get_podcast_details))
         .route("/get_podcast_details_dynamic", get(handlers::podcasts::get_podcast_details_dynamic))
         .route("/podpeople/host_podcasts", get(handlers::podcasts::get_host_podcasts))
+        .route("/podpeople/discover", get(handlers::podcasts::get_podpeople_discover))
         .route("/update_feed_cutoff_days", post(handlers::podcasts::update_feed_cutoff_days))
         .route("/fetch_podcast_feed", get(handlers::podcasts::fetch_podcast_feed))
         .route("/youtube_episodes", get(handlers::podcasts::youtube_episodes))

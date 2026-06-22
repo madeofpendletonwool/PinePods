@@ -2524,6 +2524,10 @@ pub struct HostFeedQuery {
     pub include_podcasts: Option<bool>,
 }
 
+fn empty_host_feed(name: &str) -> serde_json::Value {
+    serde_json::json!({ "person": { "name": name, "image": null }, "podcasts": [], "episodes": [] })
+}
+
 // Unified host feed — the single source of a host's episodes (and the shows they appear in),
 // drawn from BOTH the Podcast Index person index and PodPeopleDB, viewable whether or not the
 // user is subscribed. Returns { person, podcasts, episodes }.
@@ -2564,19 +2568,31 @@ pub async fn get_host_feed(
         }
     }
 
-    // Live path: cache the shared feed by host name, then overlay this user's state.
+    // Live path: serve the shared (non-user-specific) feed from a two-layer cache, then overlay
+    // this user's interaction state. Layers, fastest first:
+    //   1. Redis hot cache (5 min) — absorbs repeat visits.
+    //   2. HostFeedCache DB warm cache (24h) — survives Redis expiry/restart so a cold entry
+    //      doesn't force a full N-feed rebuild.
+    //   3. Live build (fetch + parse every feed the host appears in), then write both caches.
     let cache_key = format!("host_feed:{}:{}", include_podcasts, params.name.to_lowercase());
-    let mut feed: serde_json::Value = match state.redis_client.get::<String>(&cache_key).await {
-        Ok(Some(cached)) => serde_json::from_str(&cached)
-            .unwrap_or_else(|_| serde_json::json!({ "person": { "name": params.name, "image": null }, "podcasts": [], "episodes": [] })),
-        _ => {
-            let built = state.db_pool.build_host_feed_shared(&params.name, include_podcasts).await?;
-            if let Ok(serialized) = serde_json::to_string(&built) {
-                // Short TTL: fresh enough for podcasts, cheap repeat visits. Best-effort.
-                let _ = state.redis_client.set_ex(&cache_key, serialized, 300).await;
-            }
-            built
+    const REDIS_TTL_SECS: u64 = 300;
+    const DB_CACHE_MAX_AGE_SECS: i64 = 86_400;
+
+    let mut feed: serde_json::Value = if let Ok(Some(cached)) = state.redis_client.get::<String>(&cache_key).await {
+        serde_json::from_str(&cached).unwrap_or_else(|_| empty_host_feed(&params.name))
+    } else if let Ok(Some(warm)) = state.db_pool.get_cached_host_feed(&cache_key, DB_CACHE_MAX_AGE_SECS).await {
+        // Warm DB hit — repopulate Redis so subsequent hits stay hot.
+        if let Ok(serialized) = serde_json::to_string(&warm) {
+            let _ = state.redis_client.set_ex(&cache_key, serialized, REDIS_TTL_SECS).await;
         }
+        warm
+    } else {
+        let built = state.db_pool.build_host_feed_shared(&params.name, include_podcasts).await?;
+        if let Ok(serialized) = serde_json::to_string(&built) {
+            let _ = state.redis_client.set_ex(&cache_key, serialized.clone(), REDIS_TTL_SECS).await;
+            let _ = state.db_pool.set_cached_host_feed(&cache_key, &serialized).await;
+        }
+        built
     };
 
     state.db_pool.overlay_host_feed_user_state(user_id, &mut feed).await?;

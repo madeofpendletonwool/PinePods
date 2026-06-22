@@ -3500,6 +3500,47 @@ def migration_108_gpodder_subscription_snapshot(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("109", "host_feed_cache", "Add shared host-feed cache table for the live person feed", requires=["009"])
+def migration_109_host_feed_cache(conn, db_type: str):
+    """Create HostFeedCache table.
+
+    A DB-backed warm cache for the live host feed (/api/data/person/feed). Building a host's feed
+    means fetching+parsing every RSS feed they appear in, which is expensive for prolific hosts.
+    The short-lived Redis cache absorbs repeat visits; this table is the longer-lived warm layer so
+    a cold/expired Redis entry doesn't force a full N-feed rebuild, and so the cache survives a
+    Redis restart. Keyed by the lowercased host name + whether podcasts are included.
+    """
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration 109: Add host feed cache table")
+
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS "HostFeedCache" (
+                    CacheKey TEXT PRIMARY KEY,
+                    FeedJSON TEXT NOT NULL,
+                    RefreshedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            ''', conn=conn)
+        else:  # mysql
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS HostFeedCache (
+                    CacheKey VARCHAR(512) PRIMARY KEY,
+                    FeedJSON LONGTEXT NOT NULL,
+                    RefreshedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            ''', conn=conn)
+
+        logger.info("Created HostFeedCache table successfully")
+
+    except Exception as e:
+        logger.error(f"Error in migration 109: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("033", "add_http_notification_columns", "Add generic HTTP notification columns to UserNotificationSettings table", requires=["011"])
 def migration_033_add_http_notification_columns(conn, db_type: str):
     """Add generic HTTP notification columns for platforms like Telegram"""
