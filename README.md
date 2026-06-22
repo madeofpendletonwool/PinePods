@@ -144,6 +144,17 @@ services:
       - valkey
 ```
 
+> **Upgrading from Postgres 17 to 18?** New installs default to `postgres:18` and need
+> no special steps. **Existing** installs cannot just change the image tag — a major
+> Postgres version uses an incompatible on-disk format, so `postgres:18` will refuse to
+> start against a data directory created by 17 (`FATAL: database files are incompatible
+> with server`). Your data is safe; it just needs a one-time upgrade. Either run the
+> helper script `deployment/docker/upgrade-postgres.sh` (takes a safety backup, then
+> upgrades the data directory in place via `pgautoupgrade`), or follow the full guide:
+> [Upgrading PostgreSQL](https://www.pinepods.online/docs/Troubleshooting/PostgresMajorUpgrade).
+> Always back up first, and note the upgrade is one-way (you can't run 17 against the
+> upgraded directory again).
+
 #### Compose File - MariaDB (Alternative)
 ```yaml
 services:
