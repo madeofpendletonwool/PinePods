@@ -25,6 +25,7 @@ use crate::pages::search_new::SearchNew;
 use crate::pages::settings::Settings;
 use crate::pages::shared_episode::SharedEpisode;
 use crate::pages::subscribed_people::SubscribedPeople;
+use crate::pages::discover_hosts::DiscoverHosts;
 use crate::pages::user_stats::UserStats;
 use crate::pages::youtube_layout::YouTubeLayout;
 
@@ -77,6 +78,7 @@ fn switch(route: Route) -> Html {
         Route::Settings => html! { <Settings /> },
         Route::SharedEpisode { url_key } => html! { <SharedEpisode url_key={url_key.clone()} /> },
         Route::SubscribedPeople => html! { <SubscribedPeople /> },
+        Route::DiscoverHosts => html! { <DiscoverHosts /> },
         Route::UserStats => html! { <UserStats /> },
         Route::YoutubeLayout => html! { <YouTubeLayout /> },
         #[cfg(not(feature = "server_build"))]

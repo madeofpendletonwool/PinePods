@@ -37,6 +37,7 @@
     "user": "User"
   },
   "app_drawer": {
+    "discover_hosts": "Discover Hosts",
     "downloads": "Downloads",
     "feed": "Feed",
     "history": "History",
@@ -50,6 +51,17 @@
     "settings": "Settings",
     "sign_out": "Sign Out",
     "subscribed_people": "Subscribed People"
+  },
+  "discover": {
+    "title": "Discover Hosts",
+    "stats_summary": "{hosts} hosts across {podcasts} podcasts",
+    "empty_title": "Nothing to discover yet",
+    "empty_message": "Host data comes from the community PodPeopleDB.",
+    "top_hosts": "Top Hosts",
+    "recently_added": "Recently Added",
+    "popular_podcasts": "Popular Podcasts",
+    "shows_count": "{count} shows",
+    "hosts_count": "{count} hosts"
   },
   "audio": {
     "chapters": "Chapters",

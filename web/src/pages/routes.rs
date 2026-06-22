@@ -37,6 +37,8 @@ pub enum Route {
     PodLayout,
     #[at("/people_subs")]
     SubscribedPeople,
+    #[at("/discover_hosts")]
+    DiscoverHosts,
     #[at("/search_new")]
     SearchNew,
     #[at("/podcasts")]
