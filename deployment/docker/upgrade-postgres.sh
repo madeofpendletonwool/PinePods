@@ -19,7 +19,7 @@ VOLUME=""                                   # host path OR docker named volume h
 DB_NAME="pinepods_database"
 DB_USER="postgres"
 DB_PASSWORD="myS3curepass"
-PGDATA="/var/lib/postgresql/data/pgdata"
+PGDATA="/var/lib/pgdata/pgdata"             # kept OUTSIDE the postgres:18 VOLUME (/var/lib/postgresql)
 OLD_IMAGE="postgres:17"                      # image used for the safety dump (current version)
 TARGET_IMAGE="pgautoupgrade/pgautoupgrade:18-trixie"  # Debian variant to match postgres:18
 NEW_IMAGE="postgres:18"                      # what you switch your compose to afterwards
@@ -99,6 +99,11 @@ fi
 TMP_DUMP_CTR="pinepods-pg-dump-tmp"
 UPGRADE_CTR="pinepods-pg-upgrade"
 
+# Mount the data volume at PGDATA's parent. We deliberately keep this OUTSIDE
+# /var/lib/postgresql, because the postgres:18 image declares that path as a VOLUME
+# and bind-mounting under it fails on some Linux/overlay2 hosts (docker-library/postgres#1363).
+CONTAINER_MOUNT="$(dirname "$PGDATA")"
+
 cleanup() {
     docker rm -f "$TMP_DUMP_CTR" >/dev/null 2>&1 || true
 }
@@ -133,7 +138,7 @@ docker rm -f "$TMP_DUMP_CTR" >/dev/null 2>&1 || true
 docker run -d --name "$TMP_DUMP_CTR" \
     -e POSTGRES_PASSWORD="$DB_PASSWORD" \
     -e PGDATA="$PGDATA" \
-    -v "$VOLUME":/var/lib/postgresql/data \
+    -v "$VOLUME":"$CONTAINER_MOUNT" \
     "$OLD_IMAGE" >/dev/null
 
 echo "    waiting for the temporary server to become ready ..."
@@ -178,7 +183,7 @@ if ! docker run --rm --name "$UPGRADE_CTR" \
         -e POSTGRES_PASSWORD="$DB_PASSWORD" \
         -e PGDATA="$PGDATA" \
         -e PGAUTO_ONESHOT=yes \
-        -v "$VOLUME":/var/lib/postgresql/data \
+        -v "$VOLUME":"$CONTAINER_MOUNT" \
         "$TARGET_IMAGE"; then
     echo >&2
     echo "ERROR: pgautoupgrade failed. Your data directory may be unchanged or partially" >&2
@@ -194,9 +199,17 @@ cat <<EOF
 Your PostgreSQL data directory is now upgraded.
 
 Next steps:
-  1. Edit your compose file and set the db service image to:
+  1. Edit your compose file's db service:
          image: $NEW_IMAGE
-     (remove any PGAUTO_ONESHOT line if you added one)
+     and make sure the data volume is mounted OUTSIDE the postgres:18 VOLUME
+     (/var/lib/postgresql). Match what this upgrade used:
+         environment:
+           PGDATA: $PGDATA
+         volumes:
+           - $VOLUME:$CONTAINER_MOUNT
+     (remove any PGAUTO_ONESHOT line if you added one). If you instead keep the old
+     '...:/var/lib/postgresql/data' mount, postgres:18 may fail to start on Linux with
+     'change mount propagation ... no such file or directory'.
   2. Start the stack:
          docker compose up -d
   3. The new image likely ships a newer glibc, so the db will warn about a

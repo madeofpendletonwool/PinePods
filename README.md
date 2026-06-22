@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <img src="./images/screenshots/homethemed.png" alt="PinePods home screen" width="900">
+  <img src="./images/screenshots/homepage.png" alt="PinePods home screen" width="900">
 </p>
 
 ---
@@ -66,23 +66,43 @@ See the [full feature catalog](https://www.pinepods.online/docs/intro) in the do
 
 ## Screenshots :camera:
 
-<p align="center"><strong>Home, your way — loads of themes plus a full custom theme creator</strong></p>
+<p align="center"><strong>A home dashboard that picks up where you left off — with dozens of built-in themes plus a custom theme creator</strong></p>
 <p align="center">
-  <img width="800" src="./images/screenshots/homethemed.png" alt="Themed home screen">
-</p>
-<p align="center">
-  <img width="32%" src="./images/screenshots/homelight.png" alt="Light theme">
-  <img width="32%" src="./images/screenshots/home.png" alt="Dark theme">
-  <img width="32%" src="./images/screenshots/homegreen.png" alt="Green theme">
+  <img width="49%" src="./images/screenshots/homepage.png" alt="Home dashboard">
+  <img width="49%" src="./images/screenshots/tonsofthemes.png" alt="Theme picker with many themes">
 </p>
 
-<p align="center"><strong>Full podcast & episode management with Markdown / HTML show notes</strong></p>
+<p align="center"><strong>Browse your whole library and dig into any show</strong></p>
 <p align="center">
-  <img width="49%" src="./images/screenshots/podpage.png" alt="Podcast page">
-  <img width="49%" src="./images/screenshots/podview.png" alt="Episode list">
+  <img width="49%" src="./images/screenshots/podcastlayout.png" alt="Podcast library grid">
+  <img width="49%" src="./images/screenshots/singlepodcastpage.png" alt="Single podcast page">
+</p>
+
+<p align="center"><strong>One unified feed of every new episode across your subscriptions</strong></p>
+<p align="center">
+  <img width="800" src="./images/screenshots/feedpage.png" alt="Unified episode feed">
+</p>
+
+<p align="center"><strong>Rich episode pages with show notes, chapters, and transcripts</strong></p>
+<p align="center">
+  <img width="800" src="./images/screenshots/singleepisodepage.png" alt="Episode page with notes, chapters, and transcript tabs">
+</p>
+
+<p align="center"><strong>Listen your way — full-screen audio and native video playback</strong></p>
+<p align="center">
+  <img width="32%" src="./images/screenshots/videoplayer.png" alt="Video player">
+  <img width="32%" src="./images/screenshots/fullscreenplayer.png" alt="Full-screen audio player">
+  <img width="32%" src="./images/screenshots/smallplayer.png" alt="Mini player">
+</p>
+
+<p align="center"><strong>A persistent queue, smart playlists, library search, and detailed stats</strong></p>
+<p align="center">
+  <img width="49%" src="./images/screenshots/queuepage.png" alt="Queue side panel">
+  <img width="49%" src="./images/screenshots/playlistcreator.png" alt="Smart playlist creator">
 </p>
 <p align="center">
-  <img width="800" src="./images/screenshots/markdownview.png" alt="Show notes with Markdown and HTML">
+  <img width="49%" src="./images/screenshots/searchpage.png" alt="Search your library">
+  <img width="49%" src="./images/screenshots/userstats.png" alt="User statistics dashboard">
 </p>
 
 <p align="center"><strong>Mobile apps for iOS & Android, with CarPlay and Android Auto</strong></p>
@@ -111,9 +131,9 @@ services:
       POSTGRES_DB: pinepods_database
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: myS3curepass
-      PGDATA: /var/lib/postgresql/data/pgdata
+      PGDATA: /var/lib/pgdata/pgdata
     volumes:
-      - /home/user/pinepods/pgdata:/var/lib/postgresql/data
+      - /home/user/pinepods/pgdata:/var/lib/pgdata
     restart: always
 
   valkey:
@@ -163,16 +183,22 @@ sudo docker compose up -d
 Open `http://localhost:8040` and you'll be prompted to create your first admin
 account. That's it — you're up.
 
-> :warning: **PostgreSQL 18 mount error?** Some hosts hit an OCI mount error on
-> `postgres:18`. If startup fails with `change mount propagation through procfd ...
-> no such file or directory`, change your Postgres image tag to `17`. See
-> [docker-library/postgres#1363](https://github.com/docker-library/postgres/issues/1363).
+> :information_source: **On PostgreSQL 18 / upgrading from 17.** New installs default to
+> `postgres:18` and need no special steps. Two things to know when moving an existing
+> install to 18:
 >
-> **Upgrading an existing 17 install to 18?** A major Postgres version uses an
-> incompatible on-disk format, so you can't just bump the tag. Run
-> `deployment/docker/upgrade-postgres.sh` (takes a backup, then upgrades in place) or
-> follow the [Upgrading PostgreSQL](https://www.pinepods.online/docs/Troubleshooting/PostgresMajorUpgrade)
-> guide. Back up first — the upgrade is one-way.
+> - **Data isn't auto-migrated across major versions.** `postgres:18` won't start
+>   against a data directory created by 17 (`FATAL: database files are incompatible with
+>   server`). Your data is safe — run `deployment/docker/upgrade-postgres.sh` (takes a
+>   backup, then upgrades in place) or follow the
+>   [Upgrading PostgreSQL](https://www.pinepods.online/docs/Troubleshooting/PostgresMajorUpgrade)
+>   guide. Back up first — the upgrade is one-way.
+> - **The `postgres:18` image moved its data dir and `VOLUME`.** Bind-mounting to the
+>   old `/var/lib/postgresql/data` can fail on some Linux/overlay2 hosts with
+>   `change mount propagation through procfd ... no such file or directory`. The compose
+>   above avoids this by mounting at `/var/lib/pgdata`, outside the image's `VOLUME`;
+>   use that same pattern when you upgrade. See
+>   [docker-library/postgres#1363](https://github.com/docker-library/postgres/issues/1363).
 
 **Need more?** Helm/Kubernetes, MySQL/MariaDB, admin bootstrap vars, the self-hosted
 search API, timezone tuning, PUID/PGID, and OIDC are all covered in the docs:
