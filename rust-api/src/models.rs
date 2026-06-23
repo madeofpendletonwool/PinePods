@@ -1,15 +1,16 @@
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use utoipa::ToSchema;
 
 // PinePods check response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PinepodsCheckResponse {
     pub status_code: u16,
     pub pinepods_instance: bool,
 }
 
 // Health check response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthResponse {
     pub status: String,
     pub database: bool,
@@ -18,7 +19,7 @@ pub struct HealthResponse {
 }
 
 // Request models
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreatePlaylistRequest {
     pub user_id: i32,
     pub name: String,
@@ -38,24 +39,24 @@ pub struct CreatePlaylistRequest {
     pub icon_name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CreatePlaylistResponse {
     pub detail: String,
     pub playlist_id: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DeletePlaylistRequest {
     pub user_id: i32,
     pub playlist_id: i32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DeletePlaylistResponse {
     pub detail: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdatePlaylistRequest {
     pub user_id: i32,
     pub playlist_id: i32,
@@ -76,36 +77,36 @@ pub struct UpdatePlaylistRequest {
     pub icon_name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UpdatePlaylistResponse {
     pub detail: String,
 }
 
 // Language models
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AvailableLanguage {
     pub code: String,
     pub name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LanguageUpdateRequest {
     pub user_id: i32,
     pub language: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UserLanguageResponse {
     pub language: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AvailableLanguagesResponse {
     pub languages: Vec<AvailableLanguage>,
 }
 
 // API-specific podcast models to match Python responses
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PodcastResponse {
     pub podcastid: i32,
     pub podcastname: String,
@@ -122,7 +123,7 @@ pub struct PodcastResponse {
     pub is_video: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PodcastExtraResponse {
     pub podcastid: i32,
     pub podcastname: String,
@@ -143,18 +144,18 @@ pub struct PodcastExtraResponse {
     pub is_favorite: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PodcastListResponse {
     pub pods: Vec<PodcastResponse>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PodcastExtraListResponse {
     pub pods: Vec<PodcastExtraResponse>,
 }
 
 // Remove podcast request model
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct RemovePodcastByNameRequest {
     pub user_id: i32,
     pub podcast_name: String,
@@ -162,7 +163,7 @@ pub struct RemovePodcastByNameRequest {
 }
 
 // Time info response model
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TimeInfoResponse {
     pub timezone: String,
     pub hour_pref: i32,
@@ -170,39 +171,39 @@ pub struct TimeInfoResponse {
 }
 
 // Check podcast response model  
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct CheckPodcastResponse {
     pub exists: bool,
 }
 
 // Check episode in database response model
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct EpisodeInDbResponse {
     pub episode_in_db: bool,
 }
 
 // Queue-related models
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct QueuePodcastRequest {
     pub episode_id: i32,
     pub user_id: i32,
     pub is_youtube: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ClearQueueRequest {
     pub user_id: i32,
 }
 
 // Saved episodes models
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct SavePodcastRequest {
     pub episode_id: i32,
     pub user_id: i32,
     pub is_youtube: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SavedEpisode {
     pub episodetitle: String,
     pub podcastname: String,
@@ -223,13 +224,13 @@ pub struct SavedEpisode {
     pub savedate: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SavedEpisodesResponse {
     pub saved_episodes: Vec<SavedEpisode>,
     pub total: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PlaylistInfo {
     pub name: String,
     pub description: String,
@@ -250,20 +251,20 @@ pub struct PlaylistInfo {
     pub time_filter_hours: Option<i32>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PlaylistEpisodesResponse {
     pub episodes: Vec<SavedEpisode>,
     pub playlist_info: PlaylistInfo,
     pub total: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct SaveEpisodeResponse {
     pub detail: String,
 }
 
 // History models
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct HistoryAddRequest {
     pub episode_id: i32,
     pub episode_pos: f32,
@@ -271,7 +272,7 @@ pub struct HistoryAddRequest {
     pub is_youtube: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct HistoryEpisode {
     pub episodetitle: String,
     pub podcastname: String,
@@ -287,17 +288,17 @@ pub struct HistoryEpisode {
     pub is_youtube: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct HistoryResponse {
     pub detail: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct QueueResponse {
     pub data: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct QueuedEpisode {
     pub episodetitle: String,
     pub podcastname: String,
@@ -318,37 +319,37 @@ pub struct QueuedEpisode {
     pub is_video: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct QueuedEpisodesResponse {
     pub data: Vec<QueuedEpisode>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ReorderQueueRequest {
     pub episode_ids: Vec<i32>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ReorderQueueResponse {
     pub message: String,
 }
 
 // Bulk episode action models - flexible episode ID lists
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct BulkEpisodeActionRequest {
     pub episode_ids: Vec<i32>,
     pub user_id: i32,
     pub is_youtube: Option<bool>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct BulkEpisodeActionResponse {
     pub message: String,
     pub processed_count: i32,
     pub failed_count: Option<i32>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, utoipa::ToSchema)]
 pub struct CustomTheme {
     pub themeid: i32,
     pub name: String,
@@ -373,7 +374,7 @@ pub struct CustomTheme {
     pub check_box_color: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateCustomThemeRequest {
     pub user_id: i32,
     pub name: String,
@@ -398,7 +399,7 @@ pub struct CreateCustomThemeRequest {
     pub check_box_color: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteCustomThemeRequest {
     pub user_id: i32,
     pub theme_id: i32,

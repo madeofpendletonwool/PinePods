@@ -10,7 +10,7 @@ use std::net::IpAddr;
 
 use crate::AppState;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct ImageProxyQuery {
     pub url: String,
 }
@@ -39,6 +39,16 @@ fn image_response(content_type: &str, bytes: axum::body::Bytes) -> Response {
 }
 
 // Image proxy endpoint - matches Python proxy_image endpoint
+#[utoipa::path(
+    get,
+    path = "/image",
+    tag = "proxy",
+    summary = "Proxy image",
+    params(ImageProxyQuery),
+    responses(
+        (status = 200, description = "Proxied image bytes", content_type = "application/octet-stream"),
+    ),
+)]
 pub async fn proxy_image(
     State(state): State<AppState>,
     Query(query): Query<ImageProxyQuery>,

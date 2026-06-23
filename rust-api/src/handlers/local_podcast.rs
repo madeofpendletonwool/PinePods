@@ -20,7 +20,7 @@ const LOCAL_MEDIA_ROOT: &str = "/opt/pinepods/local-media";
 const ARTWORK_DIR: &str = "_artwork";
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "ogg", "flac", "wav", "aac", "opus"];
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct AddLocalPodcastRequest {
     pub user_id: i32,
     pub directory_path: String,
@@ -30,26 +30,26 @@ pub struct AddLocalPodcastRequest {
     pub explicit: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct RefreshLocalPodcastRequest {
     pub user_id: i32,
     pub podcast_id: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct ListLocalDirectoriesQuery {
     #[serde(default)]
     pub path: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct LocalDirectoryEntry {
     pub name: String,
     pub path: String,
     pub audio_count: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
 pub struct LocalEpisodeCandidate {
     pub file_path: String,
     pub title: String,
@@ -268,6 +268,18 @@ pub fn scan_local_directory(dir: &Path) -> Result<Vec<LocalEpisodeCandidate>, Ap
     Ok(candidates)
 }
 
+#[utoipa::path(
+    post,
+    path = "/add_local_podcast",
+    tag = "local",
+    summary = "Add local podcast",
+    request_body = AddLocalPodcastRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn add_local_podcast(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -334,6 +346,18 @@ pub async fn add_local_podcast(
     Ok(Json(serde_json::json!({ "data": podcast_details })))
 }
 
+#[utoipa::path(
+    post,
+    path = "/refresh_local_podcast",
+    tag = "local",
+    summary = "Refresh local podcast",
+    request_body = RefreshLocalPodcastRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn refresh_local_podcast(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -397,6 +421,18 @@ pub async fn refresh_local_podcast(
     })))
 }
 
+#[utoipa::path(
+    post,
+    path = "/add_local_podcast_artwork",
+    tag = "local",
+    summary = "Add local podcast artwork",
+    request_body(content = String, content_type = "multipart/form-data", description = "Uploaded file"),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn add_local_podcast_artwork(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -523,6 +559,18 @@ fn count_audio_files(dir: &Path) -> usize {
 
 // Detect the cover art a directory would use (cover.jpg/embedded ID3 art), so the
 // frontend can preview it before adding. Mirrors the artwork the add flow auto-selects.
+#[utoipa::path(
+    get,
+    path = "/detect_local_cover",
+    tag = "local",
+    summary = "Detect local cover",
+    params(ListLocalDirectoriesQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn detect_local_cover(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -551,6 +599,18 @@ pub async fn detect_local_cover(
 
 // List immediate subdirectories under the local-media root (optionally within a
 // relative subpath), with an audio-file count for each, so the frontend can browse.
+#[utoipa::path(
+    get,
+    path = "/list_local_directories",
+    tag = "local",
+    summary = "List local directories",
+    params(ListLocalDirectoriesQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn list_local_directories(
     State(state): State<AppState>,
     headers: HeaderMap,

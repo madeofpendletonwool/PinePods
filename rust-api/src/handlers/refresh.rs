@@ -61,6 +61,16 @@ lazy_static::lazy_static! {
 }
 
 // Admin refresh endpoint (background task) - matches Python refresh_pods function exactly
+#[utoipa::path(
+    get,
+    path = "/refresh_pods",
+    tag = "tasks",
+    summary = "Refresh all podcasts",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Refresh triggered", body = serde_json::Value),
+    ),
+)]
 pub async fn refresh_pods_admin(
     State(state): State<AppState>,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
@@ -81,6 +91,16 @@ pub async fn refresh_pods_admin(
 }
 
 // Separate endpoint for gPodder refresh (scheduled separately like Python)
+#[utoipa::path(
+    get,
+    path = "/refresh_gpodder_subscriptions",
+    tag = "tasks",
+    summary = "Refresh gpodder subscriptions",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Refresh triggered", body = serde_json::Value),
+    ),
+)]
 pub async fn refresh_gpodder_subscriptions_admin(
     State(state): State<AppState>,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
@@ -1030,6 +1050,16 @@ pub async fn refresh_gpodder_subscriptions_admin_internal(state: &AppState) -> A
 }
 
 // Separate endpoint for actual Nextcloud refresh (different from GPodder)
+#[utoipa::path(
+    get,
+    path = "/refresh_nextcloud_subscriptions",
+    tag = "tasks",
+    summary = "Refresh Nextcloud subscriptions",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Refresh triggered", body = serde_json::Value),
+    ),
+)]
 pub async fn refresh_nextcloud_subscriptions_admin(
     State(state): State<AppState>,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {

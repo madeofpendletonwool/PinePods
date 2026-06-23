@@ -11,12 +11,24 @@ use crate::{
     AppState,
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct UpdateGpodderSyncRequest {
     pub enabled: bool,
 }
 
 // Set default gPodder device - accepts device name for frontend compatibility
+#[utoipa::path(
+    post,
+    path = "/set_default/{device_id}",
+    tag = "sync",
+    summary = "Gpodder set default",
+    params(("device_id" = String, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn gpodder_set_default(
     State(state): State<AppState>,
     Path(device_name): Path<String>,
@@ -40,6 +52,18 @@ pub async fn gpodder_set_default(
 }
 
 // Get gPodder devices for user - matches Python get_devices function exactly
+#[utoipa::path(
+    get,
+    path = "/devices/{user_id}",
+    tag = "sync",
+    summary = "Gpodder get user devices",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn gpodder_get_user_devices(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -61,6 +85,17 @@ pub async fn gpodder_get_user_devices(
 }
 
 // Get all gPodder devices - matches Python get_all_devices function exactly
+#[utoipa::path(
+    get,
+    path = "/devices",
+    tag = "sync",
+    summary = "Gpodder get all devices",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn gpodder_get_all_devices(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -74,6 +109,17 @@ pub async fn gpodder_get_all_devices(
 }
 
 // Force sync gPodder - performs initial full sync without timestamps (like setup)
+#[utoipa::path(
+    post,
+    path = "/sync/force",
+    tag = "sync",
+    summary = "Gpodder force sync",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn gpodder_force_sync(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -161,6 +207,17 @@ pub async fn gpodder_force_sync(
 }
 
 // Regular gPodder sync - performs standard incremental sync with timestamps (like tasks.rs)
+#[utoipa::path(
+    post,
+    path = "/sync",
+    tag = "sync",
+    summary = "Gpodder sync",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn gpodder_sync(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -189,6 +246,17 @@ pub async fn gpodder_sync(
 }
 
 // Get gPodder status - matches Python get_gpodder_status function exactly
+#[utoipa::path(
+    get,
+    path = "/gpodder/status",
+    tag = "sync",
+    summary = "Gpodder status",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn gpodder_status(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -209,6 +277,18 @@ pub async fn gpodder_status(
 }
 
 // Toggle gPodder sync - matches Python toggle_gpodder_sync function exactly  
+#[utoipa::path(
+    post,
+    path = "/gpodder/toggle",
+    tag = "sync",
+    summary = "Gpodder toggle",
+    request_body = UpdateGpodderSyncRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn gpodder_toggle(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -296,6 +376,17 @@ pub async fn gpodder_toggle(
 }
 
 // gPodder test connection - matches Python test connection functionality
+#[utoipa::path(
+    get,
+    path = "/test-connection",
+    tag = "sync",
+    summary = "Gpodder test connection",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn gpodder_test_connection(
     State(state): State<AppState>,
     Query(params): Query<std::collections::HashMap<String, String>>,
@@ -359,6 +450,17 @@ pub async fn gpodder_test_connection(
 }
 
 // Get default gPodder device - matches Python get_default_device function exactly
+#[utoipa::path(
+    get,
+    path = "/default_device",
+    tag = "sync",
+    summary = "Gpodder get default device",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn gpodder_get_default_device(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -373,13 +475,25 @@ pub async fn gpodder_get_default_device(
 }
 
 // Create gPodder device - matches Python create_device function exactly
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 pub struct CreateDeviceRequest {
     pub device_name: String,
     pub device_type: String,
     pub device_caption: Option<String>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/devices",
+    tag = "sync",
+    summary = "Gpodder create device",
+    request_body = CreateDeviceRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn gpodder_create_device(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -421,7 +535,7 @@ pub async fn gpodder_create_device(
 }
 
 // GPodder Statistics - real server-side stats from GPodder API
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct GpodderStatistics {
     pub server_url: String,
     pub sync_type: String,
@@ -437,7 +551,7 @@ pub struct GpodderStatistics {
     pub api_endpoints_tested: Vec<EndpointTest>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, utoipa::ToSchema)]
 pub struct ServerDevice {
     pub id: String,
     pub caption: String,
@@ -445,14 +559,14 @@ pub struct ServerDevice {
     pub subscriptions: i32,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, utoipa::ToSchema)]
 pub struct ServerSubscription {
     pub url: String,
     pub title: Option<String>,
     pub description: Option<String>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, utoipa::ToSchema)]
 pub struct ServerEpisodeAction {
     pub podcast: String,
     pub episode: String,
@@ -462,7 +576,7 @@ pub struct ServerEpisodeAction {
     pub device: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct EndpointTest {
     pub endpoint: String,
     pub status: String, // "success", "failed", "not_tested"
@@ -470,6 +584,17 @@ pub struct EndpointTest {
     pub error: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/gpodder_statistics",
+    tag = "sync",
+    summary = "Gpodder get statistics",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = GpodderStatistics),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn gpodder_get_statistics(
     State(state): State<AppState>,
     headers: HeaderMap,

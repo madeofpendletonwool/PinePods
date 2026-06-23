@@ -15,7 +15,7 @@ use crate::{
 };
 
 // Query struct for YouTube channel search
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct YouTubeSearchQuery {
     pub query: String,
     pub max_results: Option<i32>,
@@ -23,7 +23,7 @@ pub struct YouTubeSearchQuery {
 }
 
 // YouTube channel struct for search results - matches Python response exactly
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, utoipa::ToSchema)]
 pub struct YouTubeChannel {
     pub channel_id: String,
     pub name: String,
@@ -36,7 +36,7 @@ pub struct YouTubeChannel {
 }
 
 // YouTube video struct for recent videos in channel - matches Python response exactly
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, utoipa::ToSchema)]
 pub struct YouTubeVideo {
     pub id: String,
     pub title: String,
@@ -45,7 +45,7 @@ pub struct YouTubeVideo {
 }
 
 // Query struct for YouTube subscription endpoint
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct YouTubeSubscribeQuery {
     pub channel_id: String,
     pub user_id: i32,
@@ -53,7 +53,7 @@ pub struct YouTubeSubscribeQuery {
 }
 
 // Query struct for check YouTube channel endpoint
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct CheckYouTubeChannelQuery {
     pub user_id: i32,
     pub channel_name: String,
@@ -61,6 +61,18 @@ pub struct CheckYouTubeChannelQuery {
 }
 
 // Search YouTube channels - matches Python search_youtube_channels function exactly
+#[utoipa::path(
+    get,
+    path = "/search_youtube_channels",
+    tag = "youtube",
+    summary = "Search youtube channels",
+    params(YouTubeSearchQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn search_youtube_channels(
     State(state): State<AppState>,
     Query(query): Query<YouTubeSearchQuery>,
@@ -200,6 +212,18 @@ pub async fn search_youtube_channels(
 
 
 // Subscribe to YouTube channel - matches Python subscribe_to_youtube_channel function exactly
+#[utoipa::path(
+    post,
+    path = "/youtube/subscribe",
+    tag = "youtube",
+    summary = "Subscribe to youtube channel",
+    params(YouTubeSubscribeQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn subscribe_to_youtube_channel(
     State(state): State<AppState>,
     Query(query): Query<YouTubeSubscribeQuery>,
@@ -620,6 +644,18 @@ pub async fn download_youtube_audio(video_id: &str, output_path: &str) -> Result
 }
 
 // Check if YouTube channel exists - matches Python api_check_youtube_channel function exactly
+#[utoipa::path(
+    get,
+    path = "/check_youtube_channel",
+    tag = "youtube",
+    summary = "Check youtube channel",
+    params(CheckYouTubeChannelQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn check_youtube_channel(
     State(state): State<AppState>,
     Query(query): Query<CheckYouTubeChannelQuery>,

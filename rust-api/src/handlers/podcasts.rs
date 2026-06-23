@@ -13,7 +13,7 @@ use crate::{
     AppState,
 };
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
 #[allow(non_snake_case)]
 pub struct Episode {
     pub podcastid: i32,
@@ -35,7 +35,7 @@ pub struct Episode {
 }
 
 // Separate struct for downloaded episodes that exactly matches Python implementation
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
 #[allow(non_snake_case)]
 pub struct DownloadedEpisode {
     pub podcastid: i32,
@@ -61,12 +61,12 @@ pub struct DownloadedEpisode {
 }
 
 // Response struct for downloaded episodes
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 pub struct DownloadedEpisodesResponse {
     pub downloaded_episodes: Vec<DownloadedEpisode>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
 pub struct PodcastDownloadSummary {
     pub podcastid: i32,
     pub podcastname: String,
@@ -74,19 +74,19 @@ pub struct PodcastDownloadSummary {
     pub episode_count: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 pub struct PodcastDownloadSummaryResponse {
     pub podcasts: Vec<PodcastDownloadSummary>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 pub struct DownloadedEpisodesPage {
     pub episodes: Vec<DownloadedEpisode>,
     pub total: i64,
 }
 
 // Separate struct for podcast_episodes endpoint that matches frontend expectations
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
 #[allow(non_snake_case)]
 pub struct PodcastEpisode {
     pub podcastname: String,
@@ -115,26 +115,26 @@ pub struct PodcastEpisode {
     pub is_video: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct PodcastEpisodesResponse {
     pub episodes: Vec<PodcastEpisode>,
     pub total: i64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct EpisodesResponse {
     pub episodes: Vec<Episode>,
     pub total: i64,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, utoipa::IntoParams)]
 pub struct FeedQueryParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
     pub since: Option<String>, // ISO-8601 e.g. "2026-05-01T00:00:00"
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, utoipa::IntoParams)]
 pub struct ListQueryParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -144,7 +144,7 @@ pub struct ListQueryParams {
     pub search: Option<String>,     // free-text term, matched against title and podcast name
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
 pub struct PodcastValues {
     pub pod_title: String,
     pub pod_artwork: String,
@@ -158,39 +158,39 @@ pub struct PodcastValues {
     pub user_id: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct AddPodcastRequest {
     pub podcast_values: PodcastValues,
     pub podcast_index_id: Option<i64>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct PodcastStatusResponse {
     pub success: bool,
     pub podcast_id: i32,
     pub first_episode_id: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct RemovePodcastRequest {
     pub user_id: i32,
     pub podcast_name: String,
     pub podcast_url: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct RemovePodcastIdRequest {
     pub user_id: i32,
     pub podcast_id: i32,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct RemovePodcastResponse {
     pub success: bool,
 }
 
 // Request struct for update_podcast_info - matches edit podcast functionality
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct UpdatePodcastInfoRequest {
     pub user_id: i32,
     pub podcast_id: i32,
@@ -205,20 +205,32 @@ pub struct UpdatePodcastInfoRequest {
     pub podcast_index_id: Option<i64>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct UpdatePodcastInfoResponse {
     pub success: bool,
     pub message: String,
 }
 
 // Query struct for get_podcast_details - matches Python endpoint
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct GetPodcastDetailsQuery {
     pub user_id: i32,
     pub podcast_id: i32,
 }
 
 // Get episodes for a user - matches Python return_episodes endpoint
+#[utoipa::path(
+    get,
+    path = "/return_episodes/{user_id}",
+    tag = "podcasts",
+    summary = "Return episodes",
+    params(FeedQueryParams, ("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = EpisodesResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn return_episodes(
     Path(user_id): Path<i32>,
     Query(params): Query<FeedQueryParams>,
@@ -249,6 +261,18 @@ pub async fn return_episodes(
 }
 
 // Add a new podcast - matches Python add_podcast endpoint
+#[utoipa::path(
+    post,
+    path = "/add_podcast",
+    tag = "podcasts",
+    summary = "Add podcast",
+    request_body = AddPodcastRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = PodcastStatusResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn add_podcast(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -317,6 +341,18 @@ pub async fn add_podcast(
 }
 
 // Remove a podcast - matches Python remove_podcast endpoint
+#[utoipa::path(
+    post,
+    path = "/remove_podcast",
+    tag = "podcasts",
+    summary = "Remove podcast",
+    request_body = RemovePodcastRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = RemovePodcastResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn remove_podcast(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -349,6 +385,18 @@ pub async fn remove_podcast(
 }
 
 // Remove podcast by ID - matches Python remove_podcast_id endpoint
+#[utoipa::path(
+    post,
+    path = "/remove_podcast_id",
+    tag = "podcasts",
+    summary = "Remove podcast id",
+    request_body = RemovePodcastIdRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = RemovePodcastResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn remove_podcast_id(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -377,6 +425,18 @@ pub async fn remove_podcast_id(
 }
 
 // Remove podcast by name and URL - matches call_remove_podcasts_name from frontend
+#[utoipa::path(
+    post,
+    path = "/remove_podcast_name",
+    tag = "podcasts",
+    summary = "Remove podcast by name",
+    request_body = crate::models::RemovePodcastByNameRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn remove_podcast_by_name(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -409,6 +469,18 @@ pub async fn remove_podcast_by_name(
 }
 
 // Get podcasts for a user - matches call_get_podcasts from frontend
+#[utoipa::path(
+    get,
+    path = "/return_pods/{user_id}",
+    tag = "podcasts",
+    summary = "Return pods",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::PodcastListResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn return_pods(
     Path(user_id): Path<i32>,
     headers: HeaderMap,
@@ -434,6 +506,18 @@ pub async fn return_pods(
 }
 
 // Get podcasts with extra stats for a user - matches call_get_podcasts_extra from frontend
+#[utoipa::path(
+    get,
+    path = "/return_pods_extra/{user_id}",
+    tag = "podcasts",
+    summary = "Return pods extra",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::PodcastExtraListResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn return_pods_extra(
     Path(user_id): Path<i32>,
     headers: HeaderMap,
@@ -459,25 +543,37 @@ pub async fn return_pods_extra(
 }
 
 // Query parameters for check operations
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct CheckPodcastQuery {
     pub user_id: i32,
     pub podcast_name: String,
     pub podcast_url: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct CheckEpisodeQuery {
     pub episode_title: String,
     pub episode_url: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct TimeInfoQuery {
     pub user_id: i32,
 }
 
 // Get time info for a user - matches call_get_time_info from frontend
+#[utoipa::path(
+    get,
+    path = "/get_time_info",
+    tag = "podcasts",
+    summary = "Get time info",
+    params(TimeInfoQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::TimeInfoResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_time_info(
     Query(query): Query<TimeInfoQuery>,
     headers: HeaderMap,
@@ -503,6 +599,18 @@ pub async fn get_time_info(
 }
 
 // Check if podcast exists - matches call_check_podcast from frontend
+#[utoipa::path(
+    get,
+    path = "/check_podcast",
+    tag = "podcasts",
+    summary = "Check podcast",
+    params(CheckPodcastQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::CheckPodcastResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn check_podcast(
     Query(query): Query<CheckPodcastQuery>,
     headers: HeaderMap,
@@ -528,6 +636,18 @@ pub async fn check_podcast(
 }
 
 // Check if episode exists in database - matches call_check_episode_in_db from frontend
+#[utoipa::path(
+    get,
+    path = "/check_episode_in_db/{user_id}",
+    tag = "podcasts",
+    summary = "Check episode in db",
+    params(CheckEpisodeQuery, ("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::EpisodeInDbResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn check_episode_in_db(
     Path(user_id): Path<i32>,
     Query(query): Query<CheckEpisodeQuery>,
@@ -554,6 +674,18 @@ pub async fn check_episode_in_db(
 }
 
 // Queue episode - matches call_queue_episode from frontend
+#[utoipa::path(
+    post,
+    path = "/queue_pod",
+    tag = "podcasts",
+    summary = "Queue episode",
+    request_body = crate::models::QueuePodcastRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::QueueResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn queue_episode(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -587,6 +719,18 @@ pub async fn queue_episode(
 }
 
 // Remove queued episode - matches call_remove_queued_episode from frontend
+#[utoipa::path(
+    post,
+    path = "/remove_queued_pod",
+    tag = "podcasts",
+    summary = "Remove queued episode",
+    request_body = crate::models::QueuePodcastRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::QueueResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn remove_queued_episode(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -613,6 +757,18 @@ pub async fn remove_queued_episode(
     }))
 }
 
+#[utoipa::path(
+    post,
+    path = "/clear_queue",
+    tag = "podcasts",
+    summary = "Clear all queue",
+    request_body = crate::models::ClearQueueRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::QueueResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn clear_all_queue(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -633,6 +789,18 @@ pub async fn clear_all_queue(
 }
 
 // Get queued episodes - matches call_get_queued_episodes from frontend
+#[utoipa::path(
+    get,
+    path = "/get_queued_episodes",
+    tag = "podcasts",
+    summary = "Get queued episodes",
+    params(TimeInfoQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::QueuedEpisodesResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_queued_episodes(
     Query(query): Query<TimeInfoQuery>, // Reuse TimeInfoQuery since it just needs user_id
     headers: HeaderMap,
@@ -661,6 +829,19 @@ pub async fn get_queued_episodes(
 }
 
 // Reorder queue - matches call_reorder_queue from frontend
+#[utoipa::path(
+    post,
+    path = "/reorder_queue",
+    tag = "podcasts",
+    summary = "Reorder queue",
+    params(TimeInfoQuery),
+    request_body = crate::models::ReorderQueueRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::ReorderQueueResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn reorder_queue(
     Query(query): Query<TimeInfoQuery>, // Reuse TimeInfoQuery since it just needs user_id
     headers: HeaderMap,
@@ -689,6 +870,18 @@ pub async fn reorder_queue(
 }
 
 // Save episode - matches call_save_episode from frontend
+#[utoipa::path(
+    post,
+    path = "/save_episode",
+    tag = "podcasts",
+    summary = "Save episode",
+    request_body = crate::models::SavePodcastRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::SaveEpisodeResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn save_episode(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -722,6 +915,18 @@ pub async fn save_episode(
 }
 
 // Remove saved episode - matches call_remove_saved_episode from frontend
+#[utoipa::path(
+    post,
+    path = "/remove_saved_episode",
+    tag = "podcasts",
+    summary = "Remove saved episode",
+    request_body = crate::models::SavePodcastRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::SaveEpisodeResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn remove_saved_episode(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -755,6 +960,18 @@ pub async fn remove_saved_episode(
 }
 
 // Get saved episodes - matches call_get_saved_episodes from frontend
+#[utoipa::path(
+    get,
+    path = "/saved_episode_list/{user_id}",
+    tag = "podcasts",
+    summary = "Get saved episodes",
+    params(ListQueryParams, ("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::SavedEpisodesResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_saved_episodes(
     Path(user_id): Path<i32>,
     Query(params): Query<ListQueryParams>,
@@ -786,6 +1003,18 @@ pub async fn get_saved_episodes(
 }
 
 // Add history - matches call_add_history from frontend
+#[utoipa::path(
+    post,
+    path = "/record_podcast_history",
+    tag = "podcasts",
+    summary = "Add history",
+    request_body = crate::models::HistoryAddRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::HistoryResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn add_history(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -818,7 +1047,7 @@ pub async fn add_history(
 }
 
 // Query parameters for get_podcast_id
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct GetPodcastIdQuery {
     pub user_id: i32,
     pub podcast_feed: String,
@@ -826,6 +1055,18 @@ pub struct GetPodcastIdQuery {
 }
 
 // Get podcast ID - matches Python get_podcast_id endpoint
+#[utoipa::path(
+    get,
+    path = "/get_podcast_id",
+    tag = "podcasts",
+    summary = "Get podcast id",
+    params(GetPodcastIdQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_podcast_id(
     Query(query): Query<GetPodcastIdQuery>,
     headers: HeaderMap,
@@ -852,12 +1093,24 @@ pub async fn get_podcast_id(
 }
 
 // Query parameters for download_episode_list
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct DownloadEpisodeListQuery {
     pub user_id: i32,
 }
 
 // Get downloaded episodes list - matches Python download_episode_list endpoint
+#[utoipa::path(
+    get,
+    path = "/download_episode_list",
+    tag = "podcasts",
+    summary = "Download episode list",
+    params(DownloadEpisodeListQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = DownloadedEpisodesResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn download_episode_list(
     Query(query): Query<DownloadEpisodeListQuery>,
     headers: HeaderMap,
@@ -883,6 +1136,18 @@ pub async fn download_episode_list(
 }
 
 // Get podcast-level download summary (no episodes, just counts per podcast)
+#[utoipa::path(
+    get,
+    path = "/podcast_download_summary/{user_id}",
+    tag = "podcasts",
+    summary = "Get podcast download summary",
+    params(ListQueryParams, ("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = PodcastDownloadSummaryResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_podcast_download_summary(
     Path(user_id): Path<i32>,
     Query(params): Query<ListQueryParams>,
@@ -904,6 +1169,18 @@ pub async fn get_podcast_download_summary(
 }
 
 // Get paginated downloaded episodes for a specific podcast
+#[utoipa::path(
+    get,
+    path = "/podcast_downloads_paged/{user_id}/{podcast_id}",
+    tag = "podcasts",
+    summary = "Get podcast downloads paged",
+    params(ListQueryParams, ("user_id" = i32, Path), ("podcast_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = DownloadedEpisodesPage),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_podcast_downloads_paged(
     Path((user_id, podcast_id)): Path<(i32, i32)>,
     Query(params): Query<ListQueryParams>,
@@ -927,21 +1204,21 @@ pub async fn get_podcast_downloads_paged(
 }
 
 // Request models for download operations
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct DownloadPodcastRequest {
     pub episode_id: i32,
     pub user_id: i32,
     pub is_youtube: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct DeleteEpisodeRequest {
     pub episode_id: i32,
     pub user_id: i32,
     pub is_youtube: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct DownloadAllPodcastRequest {
     pub podcast_id: i32,
     pub user_id: i32,
@@ -949,6 +1226,18 @@ pub struct DownloadAllPodcastRequest {
 }
 
 // Download a single episode - matches Python download_podcast endpoint
+#[utoipa::path(
+    post,
+    path = "/download_podcast",
+    tag = "podcasts",
+    summary = "Download podcast",
+    request_body = DownloadPodcastRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn download_podcast(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -997,6 +1286,18 @@ pub async fn download_podcast(
 }
 
 // Delete a downloaded episode - matches Python delete_episode endpoint  
+#[utoipa::path(
+    post,
+    path = "/delete_episode",
+    tag = "podcasts",
+    summary = "Delete episode",
+    request_body = DeleteEpisodeRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn delete_episode(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1053,6 +1354,18 @@ pub async fn delete_episode(
 }
 
 // Download all episodes of a podcast - matches Python download_all_podcast endpoint
+#[utoipa::path(
+    post,
+    path = "/download_all_podcast",
+    tag = "podcasts",
+    summary = "Download all podcast",
+    request_body = DownloadAllPodcastRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn download_all_podcast(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1089,6 +1402,19 @@ pub async fn download_all_podcast(
 }
 
 // Get download status for a user - matches Python download_status endpoint
+#[utoipa::path(
+    get,
+    path = "/download_status/{user_id}",
+    tag = "podcasts",
+    operation_id = "podcast_download_status",
+    summary = "Download status",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn download_status(
     Path(user_id): Path<i32>,
     headers: HeaderMap,
@@ -1114,7 +1440,7 @@ pub async fn download_status(
 }
 
 // Query parameters for podcast_episodes
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct PodcastEpisodesQuery {
     pub user_id: i32,
     pub podcast_id: i32,
@@ -1127,6 +1453,18 @@ pub struct PodcastEpisodesQuery {
 }
 
 // Get episodes for a specific podcast - matches Python podcast_episodes endpoint
+#[utoipa::path(
+    get,
+    path = "/podcast_episodes",
+    tag = "podcasts",
+    summary = "Podcast episodes",
+    params(PodcastEpisodesQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = PodcastEpisodesResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn podcast_episodes(
     Query(query): Query<PodcastEpisodesQuery>,
     headers: HeaderMap,
@@ -1168,7 +1506,7 @@ pub async fn podcast_episodes(
 }
 
 // Query parameters for get_podcast_id_from_ep_name
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct GetPodcastIdFromEpNameQuery {
     pub episode_name: String,
     pub episode_url: String,
@@ -1176,6 +1514,18 @@ pub struct GetPodcastIdFromEpNameQuery {
 }
 
 // Get podcast ID from episode name and URL - matches Python get_podcast_id_from_ep_name endpoint
+#[utoipa::path(
+    get,
+    path = "/get_podcast_id_from_ep_name",
+    tag = "podcasts",
+    summary = "Get podcast id from ep name",
+    params(GetPodcastIdFromEpNameQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_podcast_id_from_ep_name(
     Query(query): Query<GetPodcastIdFromEpNameQuery>,
     headers: HeaderMap,
@@ -1201,13 +1551,25 @@ pub async fn get_podcast_id_from_ep_name(
 }
 
 // Query parameters for get_episode_id_ep_name
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct GetEpisodeIdFromEpNameQuery {
     pub episode_url: String,
     pub user_id: i32,
 }
 
 // Get episode ID from episode URL - matches frontend call_get_episode_id function
+#[utoipa::path(
+    get,
+    path = "/get_episode_id_ep_name",
+    tag = "podcasts",
+    summary = "Get episode id ep name",
+    params(GetEpisodeIdFromEpNameQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_episode_id_ep_name(
     Query(query): Query<GetEpisodeIdFromEpNameQuery>,
     headers: HeaderMap,
@@ -1236,7 +1598,7 @@ pub async fn get_episode_id_ep_name(
 }
 
 // Request for get_episode_metadata - matches Python EpisodeMetadata model
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct EpisodeMetadataRequest {
     pub episode_id: i32,
     pub user_id: i32,
@@ -1245,6 +1607,18 @@ pub struct EpisodeMetadataRequest {
 }
 
 // Get episode metadata - matches Python get_episode_metadata endpoint exactly
+#[utoipa::path(
+    post,
+    path = "/get_episode_metadata",
+    tag = "podcasts",
+    summary = "Get episode metadata",
+    request_body = EpisodeMetadataRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_episode_metadata(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1277,13 +1651,25 @@ pub async fn get_episode_metadata(
 }
 
 // Query parameters for fetch_podcasting_2_data
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct FetchPodcasting2DataQuery {
     pub episode_id: i32,
     pub user_id: i32,
 }
 
 // Fetch podcasting 2.0 data for episode - matches Python fetch_podcasting_2_data endpoint exactly
+#[utoipa::path(
+    get,
+    path = "/fetch_podcasting_2_data",
+    tag = "podcasts",
+    summary = "Fetch podcasting 2 data",
+    params(FetchPodcasting2DataQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn fetch_podcasting_2_data(
     Query(query): Query<FetchPodcasting2DataQuery>,
     headers: HeaderMap,
@@ -1308,19 +1694,31 @@ pub async fn fetch_podcasting_2_data(
 }
 
 // Request for get_auto_download_status - matches Python AutoDownloadStatusRequest
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct AutoDownloadStatusRequest {
     pub podcast_id: i32,
     pub user_id: i32,
 }
 
 // Response for auto download status - matches Python AutoDownloadStatusResponse
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct AutoDownloadStatusResponse {
     pub auto_download: bool,
 }
 
 // Get auto download status - matches Python get_auto_download_status endpoint exactly
+#[utoipa::path(
+    post,
+    path = "/get_auto_download_status",
+    tag = "podcasts",
+    summary = "Get auto download status",
+    request_body = AutoDownloadStatusRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = AutoDownloadStatusResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_auto_download_status(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1349,18 +1747,30 @@ pub async fn get_auto_download_status(
     }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct AutoPlayNextStatusRequest {
     pub podcast_id: i32,
     pub user_id: i32,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct AutoPlayNextStatusResponse {
     pub auto_play_next: bool,
 }
 
 // Get auto play next status for a podcast
+#[utoipa::path(
+    post,
+    path = "/get_auto_play_next_status",
+    tag = "podcasts",
+    summary = "Get auto play next status",
+    request_body = AutoPlayNextStatusRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = AutoPlayNextStatusResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_auto_play_next_status(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1388,13 +1798,25 @@ pub async fn get_auto_play_next_status(
     }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct NextPodcastEpisodeRequest {
     pub episode_id: i32,
     pub user_id: i32,
 }
 
 // Get the next episode in a podcast after the given episode (chronological order)
+#[utoipa::path(
+    post,
+    path = "/get_next_podcast_episode",
+    tag = "podcasts",
+    summary = "Get next podcast episode",
+    request_body = NextPodcastEpisodeRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::QueuedEpisode),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_next_podcast_episode(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1416,13 +1838,25 @@ pub async fn get_next_podcast_episode(
     Ok(Json(episode))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct NextPlaylistEpisodeRequest {
     pub episode_id: i32,
     pub playlist_id: i32,
     pub user_id: i32,
 }
 
+#[utoipa::path(
+    post,
+    path = "/get_next_playlist_episode",
+    tag = "podcasts",
+    summary = "Get next playlist episode",
+    request_body = NextPlaylistEpisodeRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::models::QueuedEpisode),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_next_playlist_episode(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1445,14 +1879,14 @@ pub async fn get_next_playlist_episode(
 }
 
 // Query parameters for get_feed_cutoff_days
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct FeedCutoffDaysQuery {
     pub podcast_id: i32,
     pub user_id: i32,
 }
 
 // Response for feed cutoff days - matches Python response format
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct FeedCutoffDaysResponse {
     pub podcast_id: i32,
     pub user_id: i32,
@@ -1460,6 +1894,18 @@ pub struct FeedCutoffDaysResponse {
 }
 
 // Get feed cutoff days - matches Python get_feed_cutoff_days endpoint exactly
+#[utoipa::path(
+    get,
+    path = "/get_feed_cutoff_days",
+    tag = "podcasts",
+    summary = "Get feed cutoff days",
+    params(FeedCutoffDaysQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = FeedCutoffDaysResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_feed_cutoff_days(
     Query(query): Query<FeedCutoffDaysQuery>,
     headers: HeaderMap,
@@ -1494,19 +1940,31 @@ pub async fn get_feed_cutoff_days(
 }
 
 // Request for podcast notification status - matches Python PodcastNotificationStatusData
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct PodcastNotificationStatusRequest {
     pub user_id: i32,
     pub podcast_id: i32,
 }
 
 // Response for notification status
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct NotificationStatusResponse {
     pub enabled: bool,
 }
 
 // Get podcast notification status - matches Python podcast/notification_status endpoint exactly
+#[utoipa::path(
+    post,
+    path = "/podcast/notification_status",
+    tag = "podcasts",
+    summary = "Get notification status",
+    request_body = PodcastNotificationStatusRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = NotificationStatusResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_notification_status(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1535,19 +1993,31 @@ pub async fn get_notification_status(
 }
 
 // Request for podcast favorite status
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct PodcastFavoriteStatusRequest {
     pub user_id: i32,
     pub podcast_id: i32,
 }
 
 // Response for favorite status
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct FavoriteStatusResponse {
     pub is_favorite: bool,
 }
 
 // Get podcast favorite status
+#[utoipa::path(
+    post,
+    path = "/podcast/favorite_status",
+    tag = "podcasts",
+    summary = "Get podcast favorite status",
+    request_body = PodcastFavoriteStatusRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = FavoriteStatusResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_podcast_favorite_status(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1572,7 +2042,7 @@ pub async fn get_podcast_favorite_status(
 }
 
 // Request for get_play_episode_details - matches Python PlayEpisodeDetailsRequest
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct PlayEpisodeDetailsRequest {
     pub podcast_id: i32,
     pub user_id: i32,
@@ -1580,7 +2050,7 @@ pub struct PlayEpisodeDetailsRequest {
 }
 
 // Response for play episode details - matches Python PlayEpisodeDetailsResponse
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct PlayEpisodeDetailsResponse {
     pub playback_speed: f64,
     pub start_skip: i32,
@@ -1589,6 +2059,18 @@ pub struct PlayEpisodeDetailsResponse {
 }
 
 // Get play episode details - matches Python get_play_episode_details endpoint exactly
+#[utoipa::path(
+    post,
+    path = "/get_play_episode_details",
+    tag = "podcasts",
+    summary = "Get play episode details",
+    request_body = PlayEpisodeDetailsRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = PlayEpisodeDetailsResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_play_episode_details(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1625,13 +2107,25 @@ pub async fn get_play_episode_details(
 }
 
 // Query parameters for fetch_podcasting_2_pod_data
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct FetchPodcasting2PodDataQuery {
     pub podcast_id: i32,
     pub user_id: i32,
 }
 
 // Fetch podcasting 2.0 podcast data - matches Python fetch_podcasting_2_pod_data endpoint exactly
+#[utoipa::path(
+    get,
+    path = "/fetch_podcasting_2_pod_data",
+    tag = "podcasts",
+    summary = "Fetch podcasting 2 pod data",
+    params(FetchPodcasting2PodDataQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn fetch_podcasting_2_pod_data(
     Query(query): Query<FetchPodcasting2PodDataQuery>,
     headers: HeaderMap,
@@ -1651,13 +2145,25 @@ pub async fn fetch_podcasting_2_pod_data(
     Ok(Json(data))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct UpdateEpisodeDurationRequest {
     pub episode_id: i32,
     pub new_duration: i32,
     pub is_youtube: bool,
 }
 
+#[utoipa::path(
+    post,
+    path = "/update_episode_duration",
+    tag = "podcasts",
+    summary = "Update episode duration",
+    request_body = UpdateEpisodeDurationRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_episode_duration(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1683,7 +2189,7 @@ pub async fn update_episode_duration(
 }
 
 // Request for mark_episode_completed - matches Python MarkEpisodeCompletedData
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct MarkEpisodeCompletedRequest {
     pub episode_id: i32,
     pub user_id: i32,
@@ -1691,6 +2197,18 @@ pub struct MarkEpisodeCompletedRequest {
 }
 
 // Mark episode as completed - matches Python mark_episode_completed endpoint exactly
+#[utoipa::path(
+    post,
+    path = "/mark_episode_completed",
+    tag = "podcasts",
+    summary = "Mark episode completed",
+    request_body = MarkEpisodeCompletedRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn mark_episode_completed(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1721,6 +2239,18 @@ pub async fn mark_episode_completed(
 }
 
 // Increment played count - matches Python increment_played endpoint exactly
+#[utoipa::path(
+    put,
+    path = "/increment_played/{user_id}",
+    tag = "podcasts",
+    summary = "Increment played",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn increment_played(
     Path(user_id): Path<i32>,
     headers: HeaderMap,
@@ -1747,7 +2277,7 @@ pub async fn increment_played(
 }
 
 // Query parameters for get_podcast_id_from_ep_id
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct GetPodcastIdFromEpIdQuery {
     pub episode_id: i32,
     pub user_id: i32,
@@ -1755,6 +2285,18 @@ pub struct GetPodcastIdFromEpIdQuery {
 }
 
 // Get podcast ID from episode ID - matches Python get_podcast_id_from_ep_id endpoint exactly
+#[utoipa::path(
+    get,
+    path = "/get_podcast_id_from_ep_id",
+    tag = "podcasts",
+    summary = "Get podcast id from ep id",
+    params(GetPodcastIdFromEpIdQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_podcast_id_from_ep_id(
     Query(query): Query<GetPodcastIdFromEpIdQuery>,
     headers: HeaderMap,
@@ -1789,12 +2331,24 @@ pub async fn get_podcast_id_from_ep_id(
 }
 
 // Query parameters for get_stats
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct GetStatsQuery {
     pub user_id: i32,
 }
 
 // Get user stats - matches Python get_stats endpoint exactly
+#[utoipa::path(
+    get,
+    path = "/get_stats",
+    tag = "podcasts",
+    summary = "Get stats",
+    params(GetStatsQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_stats(
     Query(query): Query<GetStatsQuery>,
     headers: HeaderMap,
@@ -1825,12 +2379,24 @@ pub async fn get_stats(
 }
 
 // Query parameters for get_extended_stats
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct GetExtendedStatsQuery {
     pub user_id: i32,
 }
 
 // Get extended user stats with rich listening insights
+#[utoipa::path(
+    get,
+    path = "/get_extended_stats",
+    tag = "podcasts",
+    summary = "Get extended stats",
+    params(GetExtendedStatsQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_extended_stats(
     Query(query): Query<GetExtendedStatsQuery>,
     headers: HeaderMap,
@@ -1855,6 +2421,17 @@ pub async fn get_extended_stats(
 }
 
 // Get PinePods version - matches Python get_pinepods_version endpoint exactly
+#[utoipa::path(
+    get,
+    path = "/get_pinepods_version",
+    tag = "podcasts",
+    summary = "Get pinepods version",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_pinepods_version(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1873,7 +2450,7 @@ pub async fn get_pinepods_version(
 }
 
 // Request for search_data - matches Python SearchPodcastData
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SearchDataRequest {
     pub search_term: String,
     pub user_id: i32,
@@ -1881,20 +2458,33 @@ pub struct SearchDataRequest {
     pub categories: Option<Vec<String>>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, utoipa::IntoParams)]
 pub struct SearchQueryParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
     pub filter: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct SearchDataResponse {
     pub data: Vec<serde_json::Value>,
     pub total: i64,
 }
 
 // Search data - matches Python search_data endpoint exactly
+#[utoipa::path(
+    post,
+    path = "/search_data",
+    tag = "podcasts",
+    summary = "Search data",
+    params(SearchQueryParams),
+    request_body = SearchDataRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = SearchDataResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn search_data(
     Query(params): Query<SearchQueryParams>,
     headers: HeaderMap,
@@ -1927,12 +2517,24 @@ pub async fn search_data(
 }
 
 // Request for fetch_transcript - proxy to avoid CORS issues
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct FetchTranscriptRequest {
     pub url: String,
 }
 
 // Fetch transcript - proxy endpoint to avoid CORS issues
+#[utoipa::path(
+    post,
+    path = "/fetch_transcript",
+    tag = "podcasts",
+    summary = "Fetch transcript",
+    request_body = FetchTranscriptRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn fetch_transcript(
     headers: HeaderMap,
     State(_state): State<AppState>,
@@ -1975,12 +2577,24 @@ pub async fn fetch_transcript(
 }
 
 // Query struct for home_overview
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct HomeOverviewQuery {
     pub user_id: i32,
 }
 
 // Get home overview - matches Python api_home_overview function
+#[utoipa::path(
+    get,
+    path = "/home_overview",
+    tag = "podcasts",
+    summary = "Home overview",
+    params(HomeOverviewQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn home_overview(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2002,12 +2616,24 @@ pub async fn home_overview(
 }
 
 // Query struct for get_playlists
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct GetPlaylistsQuery {
     pub user_id: i32,
 }
 
 // Get playlists - matches Python api_get_playlists function
+#[utoipa::path(
+    get,
+    path = "/get_playlists",
+    tag = "podcasts",
+    summary = "Get playlists",
+    params(GetPlaylistsQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_playlists(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2029,7 +2655,7 @@ pub async fn get_playlists(
 }
 
 // Request struct for mark_episode_uncompleted
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct MarkEpisodeUncompletedRequest {
     pub episode_id: i32,
     pub user_id: i32,
@@ -2038,6 +2664,18 @@ pub struct MarkEpisodeUncompletedRequest {
 }
 
 // Mark episode as uncompleted - matches Python api_mark_episode_uncompleted function
+#[utoipa::path(
+    post,
+    path = "/mark_episode_uncompleted",
+    tag = "podcasts",
+    summary = "Mark episode uncompleted",
+    request_body = MarkEpisodeUncompletedRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn mark_episode_uncompleted(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2059,7 +2697,7 @@ pub async fn mark_episode_uncompleted(
 }
 
 // Request struct for record_listen_duration
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct RecordListenDurationRequest {
     pub episode_id: i32,
     pub user_id: i32,
@@ -2069,6 +2707,18 @@ pub struct RecordListenDurationRequest {
 }
 
 // Record listen duration - matches Python api record_listen_duration function exactly
+#[utoipa::path(
+    post,
+    path = "/record_listen_duration",
+    tag = "podcasts",
+    summary = "Record listen duration",
+    request_body = RecordListenDurationRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn record_listen_duration(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2122,6 +2772,18 @@ pub async fn record_listen_duration(
 }
 
 // Get user history - matches Python user_history endpoint exactly
+#[utoipa::path(
+    get,
+    path = "/user_history/{user_id}",
+    tag = "podcasts",
+    summary = "User history",
+    params(ListQueryParams, ("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn user_history(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -2150,6 +2812,18 @@ pub async fn user_history(
 }
 
 // Increment listen time - matches Python increment_listen_time endpoint exactly
+#[utoipa::path(
+    put,
+    path = "/increment_listen_time/{user_id}",
+    tag = "podcasts",
+    summary = "Increment listen time",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn increment_listen_time(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -2171,13 +2845,25 @@ pub async fn increment_listen_time(
 }
 
 // Request struct for get_playback_speed
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct GetPlaybackSpeedRequest {
     pub user_id: i32,
     pub podcast_id: Option<i32>,
 }
 
 // Get playback speed - matches Python get_playback_speed endpoint exactly
+#[utoipa::path(
+    post,
+    path = "/get_playback_speed",
+    tag = "podcasts",
+    summary = "Get playback speed",
+    request_body = GetPlaybackSpeedRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_playback_speed(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2199,7 +2885,7 @@ pub async fn get_playback_speed(
 }
 
 // Query struct for get_playlist_episodes
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct GetPlaylistEpisodesQuery {
     pub user_id: i32,
     pub playlist_id: i32,
@@ -2208,6 +2894,18 @@ pub struct GetPlaylistEpisodesQuery {
 }
 
 // Get playlist episodes - UPDATED to use dynamic playlist system
+#[utoipa::path(
+    get,
+    path = "/get_playlist_episodes",
+    tag = "podcasts",
+    summary = "Get playlist episodes",
+    params(GetPlaylistEpisodesQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_playlist_episodes(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2247,6 +2945,18 @@ pub async fn get_playlist_episodes(
 }
 
 // Get podcast details - matches Python get_podcast_details endpoint
+#[utoipa::path(
+    get,
+    path = "/get_podcast_details",
+    tag = "podcasts",
+    summary = "Get podcast details",
+    params(GetPodcastDetailsQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_podcast_details(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2268,13 +2978,25 @@ pub async fn get_podcast_details(
 }
 
 // Query struct for YouTube episodes endpoint
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct YouTubeEpisodesQuery {
     pub user_id: i32,
     pub podcast_id: i32,
 }
 
 // Get YouTube episodes - matches Python api_youtube_episodes function exactly
+#[utoipa::path(
+    get,
+    path = "/youtube_episodes",
+    tag = "podcasts",
+    summary = "Youtube episodes",
+    params(YouTubeEpisodesQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn youtube_episodes(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2299,7 +3021,7 @@ pub async fn youtube_episodes(
 }
 
 // Request struct for removing YouTube channel
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct RemoveYouTubeChannelRequest {
     pub user_id: i32,
     pub channel_name: String,
@@ -2307,6 +3029,18 @@ pub struct RemoveYouTubeChannelRequest {
 }
 
 // Remove YouTube channel - matches Python api_remove_youtube_channel_route function exactly
+#[utoipa::path(
+    post,
+    path = "/remove_youtube_channel",
+    tag = "podcasts",
+    summary = "Remove youtube channel",
+    request_body = RemoveYouTubeChannelRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn remove_youtube_channel(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2337,7 +3071,7 @@ pub async fn remove_youtube_channel(
 }
 
 // Query struct for stream endpoint
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct StreamQuery {
     pub api_key: String,
     pub user_id: i32,
@@ -2346,6 +3080,18 @@ pub struct StreamQuery {
 }
 
 // Stream episode - matches Python stream_episode function exactly
+#[utoipa::path(
+    get,
+    path = "/stream/{episode_id}",
+    tag = "podcasts",
+    summary = "Stream episode",
+    params(StreamQuery, ("episode_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Audio/media stream", content_type = "application/octet-stream"),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn stream_episode(
     State(state): State<crate::AppState>,
     Path(episode_id): Path<i32>,
@@ -2461,6 +3207,18 @@ pub async fn stream_episode(
 }
 
 // Get RSS key endpoint - get or create RSS key for user
+#[utoipa::path(
+    get,
+    path = "/get_rss_key",
+    tag = "podcasts",
+    summary = "Get rss key",
+    params(UserIdQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_rss_key(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2485,13 +3243,13 @@ pub async fn get_rss_key(
     })))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct UserIdQuery {
     pub user_id: i32,
 }
 
 // Query struct for get_podcast_details_dynamic
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct PodcastDetailsQuery {
     pub user_id: i32,
     pub podcast_title: String,
@@ -2502,7 +3260,7 @@ pub struct PodcastDetailsQuery {
 }
 
 // Response struct for get_podcast_details_dynamic (matches ClickedFeedURL)
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ClickedFeedURLResponse {
     pub podcastid: i32,
     pub podcastname: String,
@@ -2519,6 +3277,18 @@ pub struct ClickedFeedURLResponse {
 }
 
 // Get podcast details dynamic endpoint
+#[utoipa::path(
+    get,
+    path = "/get_podcast_details_dynamic",
+    tag = "podcasts",
+    summary = "Get podcast details dynamic",
+    params(PodcastDetailsQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = ClickedFeedURLResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_podcast_details_dynamic(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2603,19 +3373,31 @@ pub async fn get_podcast_details_dynamic(
 }
 
 // Query struct for podpeople host podcasts
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct HostPodcastsQuery {
     pub hostname: String,
 }
 
 // Response struct for podpeople host podcasts
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct PodPeopleResponse {
     pub success: bool,
     pub podcasts: Vec<serde_json::Value>,
 }
 
 // Get host podcasts from podpeople endpoint
+#[utoipa::path(
+    get,
+    path = "/podpeople/host_podcasts",
+    tag = "podcasts",
+    summary = "Get host podcasts",
+    params(HostPodcastsQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = PodPeopleResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_host_podcasts(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2679,7 +3461,7 @@ pub async fn get_host_podcasts(
 }
 
 // Query struct for podpeople discovery passthrough
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct PodPeopleDiscoverQuery {
     pub kind: String,
     pub limit: Option<i32>,
@@ -2688,6 +3470,18 @@ pub struct PodPeopleDiscoverQuery {
 // Proxy PodPeopleDB's JSON discovery endpoints (top-hosts, recent-hosts, popular-podcasts, stats)
 // so the PinePods web app can surface a "Discover hosts" experience without talking to PodPeopleDB
 // directly (PEOPLE_API_URL is backend-only). Returns the upstream JSON verbatim.
+#[utoipa::path(
+    get,
+    path = "/podpeople/discover",
+    tag = "podcasts",
+    summary = "Get podpeople discover",
+    params(PodPeopleDiscoverQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_podpeople_discover(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2741,7 +3535,7 @@ pub async fn get_podpeople_discover(
 }
 
 // Request struct for update_feed_cutoff_days
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct UpdateFeedCutoffDaysData {
     pub podcast_id: i32,
     pub user_id: i32,
@@ -2749,6 +3543,18 @@ pub struct UpdateFeedCutoffDaysData {
 }
 
 // Update feed cutoff days endpoint
+#[utoipa::path(
+    post,
+    path = "/update_feed_cutoff_days",
+    tag = "podcasts",
+    summary = "Update feed cutoff days",
+    request_body = UpdateFeedCutoffDaysData,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_feed_cutoff_days(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2775,12 +3581,24 @@ pub async fn update_feed_cutoff_days(
 }
 
 // Query struct for fetch_podcast_feed
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct FetchPodcastFeedQuery {
     pub podcast_feed: String,
 }
 
 // Fetch podcast feed endpoint - returns parsed episode data using feed-rs
+#[utoipa::path(
+    get,
+    path = "/fetch_podcast_feed",
+    tag = "podcasts",
+    summary = "Fetch podcast feed",
+    params(FetchPodcastFeedQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn fetch_podcast_feed(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -2798,6 +3616,18 @@ pub async fn fetch_podcast_feed(
 }
 
 // Handler for updating podcast basic info (URL, username, password)
+#[utoipa::path(
+    put,
+    path = "/update_podcast_info",
+    tag = "podcasts",
+    summary = "Update podcast info",
+    request_body = UpdatePodcastInfoRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = UpdatePodcastInfoResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_podcast_info(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -2861,29 +3691,42 @@ pub async fn update_podcast_info(
 }
 
 // Request/Response structs for podcast merging
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 pub struct MergePodcastsRequest {
     pub secondary_podcast_ids: Vec<i32>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 pub struct MergePodcastsResponse {
     pub success: bool,
     pub message: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 pub struct UnmergePodcastResponse {
     pub success: bool,
     pub message: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 pub struct MergedPodcastsResponse {
     pub merged_podcast_ids: Vec<i32>,
 }
 
 // Merge podcasts endpoint
+#[utoipa::path(
+    post,
+    path = "/{podcast_id}/merge",
+    tag = "podcasts",
+    summary = "Merge podcasts",
+    params(("podcast_id" = i32, Path)),
+    request_body = MergePodcastsRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = MergePodcastsResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn merge_podcasts(
     Path(primary_podcast_id): Path<i32>,
     headers: HeaderMap,
@@ -2931,6 +3774,18 @@ pub async fn merge_podcasts(
 }
 
 // Unmerge podcast endpoint
+#[utoipa::path(
+    post,
+    path = "/{podcast_id}/unmerge/{target_podcast_id}",
+    tag = "podcasts",
+    summary = "Unmerge podcast",
+    params(("podcast_id" = i32, Path), ("target_podcast_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = UnmergePodcastResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn unmerge_podcast(
     Path((primary_podcast_id, target_podcast_id)): Path<(i32, i32)>,
     headers: HeaderMap,
@@ -2961,6 +3816,18 @@ pub async fn unmerge_podcast(
 }
 
 // Get merged podcasts endpoint
+#[utoipa::path(
+    get,
+    path = "/{podcast_id}/merged",
+    tag = "podcasts",
+    summary = "Get merged podcasts",
+    params(("podcast_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = MergedPodcastsResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_merged_podcasts(
     Path(podcast_id): Path<i32>,
     headers: HeaderMap,
@@ -2990,7 +3857,7 @@ pub async fn get_merged_podcasts(
     }))
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, utoipa::IntoParams)]
 pub struct ProxySearchParams {
     pub query: String,
     pub index: String,
@@ -3001,6 +3868,18 @@ pub struct ProxySearchParams {
 // Proxy podcast/iTunes/YouTube/person search through the backend so the
 // browser (and mobile clients) never need to reach SEARCH_API_URL directly.
 // SEARCH_API_URL can therefore be an internal-only Docker hostname.
+#[utoipa::path(
+    get,
+    path = "/proxy_search",
+    tag = "podcasts",
+    summary = "Proxy search",
+    params(ProxySearchParams),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn proxy_search(
     Query(params): Query<ProxySearchParams>,
     headers: HeaderMap,

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub enum TaskStatus {
     #[serde(rename = "PENDING")]
     Pending,
@@ -16,7 +16,7 @@ pub enum TaskStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TaskInfo {
     pub id: String,
     pub task_type: String,

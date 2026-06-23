@@ -9,7 +9,7 @@ use crate::{
     AppState,
 };
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct FeedQuery {
     pub api_key: String,
     pub limit: Option<i32>,
@@ -19,6 +19,16 @@ pub struct FeedQuery {
 }
 
 // Get RSS feed for user - matches Python get_user_feed function exactly
+#[utoipa::path(
+    get,
+    path = "/{user_id}",
+    tag = "feed",
+    summary = "Get user feed",
+    params(FeedQuery, ("user_id" = i32, Path)),
+    responses(
+        (status = 200, description = "RSS feed XML", content_type = "application/rss+xml"),
+    ),
+)]
 pub async fn get_user_feed(
     State(state): State<AppState>,
     Path(_user_id): Path<i32>,
@@ -73,7 +83,7 @@ pub async fn get_user_feed(
         .map_err(|e| AppError::internal(&format!("Failed to create response: {}", e)))?)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, utoipa::ToSchema)]
 pub struct RssKeyInfo {
     pub podcast_ids: Vec<i32>,
     pub user_id: i32,
