@@ -3,7 +3,7 @@ FLUTTER_ROOT=/Users/collin_pendleton/development/flutter
 FLUTTER_APPLICATION_PATH=/Users/collin_pendleton/Documents/github/PinePods/mobile
 FLUTTER_FRAMEWORK_SWIFT_PACKAGE_PATH=/Users/collin_pendleton/Documents/github/PinePods/mobile/ios/Flutter/ephemeral/Packages/.packages/FlutterFramework
 COCOAPODS_PARALLEL_CODE_SIGN=true
-FLUTTER_TARGET=/Users/collin_pendleton/Documents/github/PinePods/mobile/lib/main.dart
+FLUTTER_TARGET=lib/main.dart
 FLUTTER_BUILD_DIR=build
 FLUTTER_BUILD_NAME=0.9.0
 FLUTTER_BUILD_NUMBER=20252203
@@ -11,6 +11,6 @@ EXCLUDED_ARCHS[sdk=iphonesimulator*]=i386
 EXCLUDED_ARCHS[sdk=iphoneos*]=armv7
 DART_DEFINES=RkxVVFRFUl9WRVJTSU9OPTMuNDQuMA==,RkxVVFRFUl9DSEFOTkVMPXN0YWJsZQ==,RkxVVFRFUl9HSVRfVVJMPWh0dHBzOi8vZ2l0aHViLmNvbS9mbHV0dGVyL2ZsdXR0ZXIuZ2l0,RkxVVFRFUl9GUkFNRVdPUktfUkVWSVNJT049NTU5ZmZhM2Y3NQ==,RkxVVFRFUl9FTkdJTkVfUkVWSVNJT049NGM1MjVkYWM1ZQ==,RkxVVFRFUl9EQVJUX1ZFUlNJT049My4xMi4w
 DART_OBFUSCATION=false
-TRACK_WIDGET_CREATION=true
-TREE_SHAKE_ICONS=false
+TRACK_WIDGET_CREATION=false
+TREE_SHAKE_ICONS=true
 PACKAGE_CONFIG=/Users/collin_pendleton/Documents/github/PinePods/mobile/.dart_tool/package_config.json

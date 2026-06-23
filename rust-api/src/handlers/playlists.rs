@@ -7,6 +7,19 @@ use crate::{
     AppState,
 };
 
+#[utoipa::path(
+    post,
+    path = "/create_playlist",
+    tag = "playlists",
+    summary = "Create a playlist",
+    request_body = CreatePlaylistRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Playlist created", body = CreatePlaylistResponse),
+        (status = 401, description = "Invalid API key"),
+        (status = 403, description = "Cannot create a playlist for another user"),
+    ),
+)]
 pub async fn create_playlist(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -34,6 +47,19 @@ pub async fn create_playlist(
     }))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/delete_playlist",
+    tag = "playlists",
+    summary = "Delete a playlist",
+    request_body = DeletePlaylistRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Playlist deleted", body = DeletePlaylistResponse),
+        (status = 401, description = "Invalid API key"),
+        (status = 403, description = "Cannot delete another user's playlist"),
+    ),
+)]
 pub async fn delete_playlist(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -60,6 +86,19 @@ pub async fn delete_playlist(
     }))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/update_playlist",
+    tag = "playlists",
+    summary = "Update a playlist",
+    request_body = UpdatePlaylistRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Playlist updated", body = UpdatePlaylistResponse),
+        (status = 401, description = "Invalid API key"),
+        (status = 403, description = "Cannot edit another user's playlist"),
+    ),
+)]
 pub async fn update_playlist(
     State(state): State<AppState>,
     headers: HeaderMap,

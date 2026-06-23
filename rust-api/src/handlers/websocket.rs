@@ -182,6 +182,16 @@ async fn handle_task_progress_socket(socket: WebSocket, user_id: i32, state: App
     state.websocket_manager.remove_connection(user_id, &tx).await;
 }
 
+#[utoipa::path(
+    get,
+    path = "/user/{user_id}",
+    tag = "tasks",
+    summary = "Get user tasks",
+    params(("user_id" = i32, Path)),
+    responses(
+        (status = 200, description = "Success", body = Vec<crate::services::task_manager::TaskInfo>),
+    ),
+)]
 pub async fn get_user_tasks(
     Path(user_id): Path<i32>,
     State(state): State<AppState>,
@@ -190,6 +200,16 @@ pub async fn get_user_tasks(
     Ok(axum::Json(tasks))
 }
 
+#[utoipa::path(
+    get,
+    path = "/{task_id}",
+    tag = "tasks",
+    summary = "Get task status",
+    params(("task_id" = String, Path)),
+    responses(
+        (status = 200, description = "Success", body = crate::services::task_manager::TaskInfo),
+    ),
+)]
 pub async fn get_task_status(
     Path(task_id): Path<String>,
     State(state): State<AppState>,
@@ -198,6 +218,15 @@ pub async fn get_task_status(
     Ok(axum::Json(task))
 }
 
+#[utoipa::path(
+    get,
+    path = "/active",
+    tag = "tasks",
+    summary = "Get active tasks",
+    responses(
+        (status = 200, description = "Success", body = Vec<crate::services::task_manager::TaskInfo>),
+    ),
+)]
 pub async fn get_active_tasks(
     Query(params): Query<std::collections::HashMap<String, String>>,
     State(state): State<AppState>,

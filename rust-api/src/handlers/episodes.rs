@@ -12,6 +12,18 @@ use crate::{
 // Bulk episode action handlers for efficient mass operations
 
 // Bulk mark episodes as completed
+#[utoipa::path(
+    post,
+    path = "/bulk_mark_episodes_completed",
+    tag = "episodes",
+    summary = "Bulk mark episodes completed",
+    request_body = BulkEpisodeActionRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = BulkEpisodeActionResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn bulk_mark_episodes_completed(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -44,6 +56,18 @@ pub async fn bulk_mark_episodes_completed(
 }
 
 // Bulk save episodes
+#[utoipa::path(
+    post,
+    path = "/bulk_save_episodes",
+    tag = "episodes",
+    summary = "Bulk save episodes",
+    request_body = BulkEpisodeActionRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = BulkEpisodeActionResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn bulk_save_episodes(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -76,6 +100,18 @@ pub async fn bulk_save_episodes(
 }
 
 // Bulk queue episodes
+#[utoipa::path(
+    post,
+    path = "/bulk_queue_episodes",
+    tag = "episodes",
+    summary = "Bulk queue episodes",
+    request_body = BulkEpisodeActionRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = BulkEpisodeActionResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn bulk_queue_episodes(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -108,6 +144,18 @@ pub async fn bulk_queue_episodes(
 }
 
 // Bulk download episodes - triggers download tasks
+#[utoipa::path(
+    post,
+    path = "/bulk_download_episodes",
+    tag = "episodes",
+    summary = "Bulk download episodes",
+    request_body = BulkEpisodeActionRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = BulkEpisodeActionResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn bulk_download_episodes(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -165,6 +213,18 @@ pub async fn bulk_download_episodes(
 }
 
 // Bulk delete downloaded episodes - removes multiple downloaded episodes at once
+#[utoipa::path(
+    post,
+    path = "/bulk_delete_downloaded_episodes",
+    tag = "episodes",
+    summary = "Bulk delete downloaded episodes",
+    request_body = BulkEpisodeActionRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = BulkEpisodeActionResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn bulk_delete_downloaded_episodes(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -197,6 +257,18 @@ pub async fn bulk_delete_downloaded_episodes(
 }
 
 // Share episode - creates a shareable URL that expires in 60 days
+#[utoipa::path(
+    post,
+    path = "/share_episode/{episode_id}",
+    tag = "episodes",
+    summary = "Share episode",
+    params(("episode_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn share_episode(
     State(state): State<AppState>,
     axum::extract::Path(episode_id): axum::extract::Path<i32>,
@@ -225,6 +297,16 @@ pub async fn share_episode(
 }
 
 // Get episode by URL key - for accessing shared episodes
+#[utoipa::path(
+    get,
+    path = "/episode_by_url/{url_key}",
+    tag = "episodes",
+    summary = "Get episode by url key",
+    params(("url_key" = String, Path)),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+    ),
+)]
 pub async fn get_episode_by_url_key(
     State(state): State<AppState>,
     axum::extract::Path(url_key): axum::extract::Path<String>,
@@ -245,6 +327,21 @@ pub async fn get_episode_by_url_key(
 }
 
 // Download episode file with metadata
+#[utoipa::path(
+    get,
+    path = "/{episode_id}/download",
+    tag = "episodes",
+    summary = "Download an episode media file",
+    params(
+        ("episode_id" = i32, Path, description = "Episode ID to download"),
+        ("api_key" = Option<String>, Query, description = "API key (alternative to the Api-Key header)"),
+    ),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Episode media file stream", content_type = "application/octet-stream"),
+        (status = 401, description = "API key is required or invalid"),
+    ),
+)]
 pub async fn download_episode_file(
     State(state): State<AppState>,
     axum::extract::Path(episode_id): axum::extract::Path<i32>,

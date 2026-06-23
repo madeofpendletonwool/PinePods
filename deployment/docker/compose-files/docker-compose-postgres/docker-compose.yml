@@ -1,14 +1,14 @@
 services:
   db:
     container_name: db
-    image: postgres:17
+    image: postgres:18
     environment:
       POSTGRES_DB: pinepods_database
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: myS3curepass
-      PGDATA: /var/lib/postgresql/data/pgdata
+      PGDATA: /var/lib/pgdata/pgdata
     volumes:
-      - /home/user/pinepods/pgdata:/var/lib/postgresql/data
+      - /home/user/pinepods/pgdata:/var/lib/pgdata
     restart: always
 
   valkey:
