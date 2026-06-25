@@ -993,6 +993,29 @@ pub async fn call_restore_server(
 }
 
 #[derive(Deserialize, Debug)]
+pub struct RestoreStatusResponse {
+    pub restore_in_progress: bool,
+}
+
+/// Polls the lightweight, DB-free restore-status probe. Stays responsive even while a
+/// restore holds DB locks, so the UI can show a "restore in progress" overlay.
+pub async fn call_restore_status(server_name: &str) -> Result<bool, Error> {
+    let url = format!("{}/api/data/restore_status", server_name);
+
+    let response = Request::get(&url).send().await.map_err(Error::msg)?;
+
+    if response.ok() {
+        let data: RestoreStatusResponse = response.json().await.map_err(Error::msg)?;
+        Ok(data.restore_in_progress)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting restore status: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Deserialize, Debug)]
 pub struct GenerateMFAResponse {
     pub(crate) secret: String,
     pub(crate) qr_code_svg: String,

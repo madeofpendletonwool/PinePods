@@ -1,0 +1,51 @@
+name: OpenAPI Spec Check
+
+# Regenerates the OpenAPI document from the Rust source and fails if the committed
+# spec (rust-api/openapi.json) is out of date, so the generated API reference can
+# never silently drift from the code. Also validates the spec with Redocly.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'rust-api/**'
+  pull_request:
+    paths:
+      - 'rust-api/**'
+  workflow_dispatch:
+
+jobs:
+  openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-api
+
+      - name: Regenerate OpenAPI spec
+        working-directory: rust-api
+        run: cargo run --quiet -- --dump-openapi openapi.json
+
+      - name: Fail if the committed spec is out of date
+        run: |
+          if ! git diff --exit-code rust-api/openapi.json; then
+            echo "::error::rust-api/openapi.json is out of date. Run 'cargo run -- --dump-openapi openapi.json' in rust-api/ and commit the result."
+            exit 1
+          fi
+
+      - name: Validate spec with Redocly
+        run: npx -y @redocly/cli@latest lint --config rust-api/redocly.yaml rust-api/openapi.json
+
+      - name: Upload spec artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: rust-api/openapi.json

@@ -138,6 +138,14 @@ impl AppError {
         AppError::TooManyRequests(msg.into())
     }
 
+    pub fn conflict(msg: impl Into<String>) -> Self {
+        AppError::Conflict(msg.into())
+    }
+
+    pub fn service_unavailable(msg: impl Into<String>) -> Self {
+        AppError::ServiceUnavailable(msg.into())
+    }
+
     pub fn external_error(msg: impl Into<String>) -> Self {
         AppError::Internal(msg.into())
     }

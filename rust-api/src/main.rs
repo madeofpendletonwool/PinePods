@@ -45,6 +45,10 @@ pub struct AppState {
     pub websocket_manager: Arc<WebSocketManager>,
     pub import_progress_manager: Arc<ImportProgressManager>,
     pub notification_manager: Arc<NotificationManager>,
+    /// Set while a full server restore is running. Used to reject concurrent restores
+    /// and to block first-admin creation (which would otherwise race the restore and
+    /// corrupt it). Shared across clones via Arc.
+    pub restore_in_progress: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[tokio::main]
@@ -108,6 +112,7 @@ async fn main() -> AppResult<()> {
         websocket_manager,
         import_progress_manager,
         notification_manager,
+        restore_in_progress: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
 
     // Build the application with routes
@@ -345,6 +350,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::settings::backup_user))
         .routes(routes!(handlers::settings::backup_server))
         .routes(routes!(handlers::settings::restore_server))
+        .routes(routes!(handlers::settings::restore_status))
         .routes(routes!(handlers::settings::generate_mfa_secret))
         .routes(routes!(handlers::settings::verify_temp_mfa))
         .routes(routes!(handlers::settings::check_mfa_enabled))

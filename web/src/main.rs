@@ -4,6 +4,7 @@ mod requests;
 
 use crate::components::navigation::NavigationHandler;
 use crate::components::oauth_callback::OAuthCallback;
+use crate::components::restore_overlay::RestoreOverlay;
 use crate::pages::downloads::Downloads;
 use crate::pages::episode::Episode;
 use crate::pages::episode_layout::EpisodeLayout;
@@ -247,6 +248,7 @@ fn language_manager() -> Html {
             <NavigationHandler>
                 <Switch<Route> render={switch} />
             </NavigationHandler>
+            <RestoreOverlay />
         </BrowserRouter>
     }
 }
