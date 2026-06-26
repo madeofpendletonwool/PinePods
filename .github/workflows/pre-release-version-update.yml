@@ -33,14 +33,24 @@ jobs:
           # Update environment.dart constants
           sed -i "s/static const _projectVersion = '[^']*';/static const _projectVersion = '${VERSION_NAME}';/" lib/core/environment.dart
           sed -i "s/static const _build = '[^']*';/static const _build = '${BUILD_NUMBER}';/" lib/core/environment.dart
-          
+
+          # Update android/local.properties — build.gradle reads versionName/versionCode straight
+          # from here (no pubspec fallback), so it MUST carry the same build number for the APK/AAB
+          # (and reproducible IzzyOnDroid builds) to match pubspec.
+          sed -i "s/^flutter.versionName=.*/flutter.versionName=${VERSION_NAME}/" android/local.properties
+          sed -i "s/^flutter.versionCode=.*/flutter.versionCode=${BUILD_NUMBER}/" android/local.properties
+
           echo "Updated version to ${VERSION_NAME}+${BUILD_NUMBER}"
+          echo "android/local.properties now:"
+          grep -E "flutter.version(Name|Code)" android/local.properties
 
       - name: Commit and push version update
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add mobile/pubspec.yaml mobile/lib/core/environment.dart
+          # local.properties is gitignored but tracked — force-stage so the modification is committed
+          git add -f mobile/android/local.properties
           git commit -m "chore: update version to ${{ github.event.inputs.version }} [skip ci]"
           git push
 
