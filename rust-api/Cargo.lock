@@ -2474,7 +2474,7 @@ checksum = "3b3cff922bd51709b605d9ead9aa71031d81447142d828eb4a6eba76fe619f9b"
 
 [[package]]
 name = "pinepods-api"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "argon2",
