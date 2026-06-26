@@ -18,7 +18,6 @@ jobs:
           - ubuntu-latest
           - ubuntu-arm64
           - macOS-latest
-          - macOS-13
           - windows-latest
         include:
           - os: ubuntu-arm64
@@ -56,9 +55,6 @@ jobs:
           elif [ "${{ matrix.os }}" = "macOS-latest" ]; then
             echo "ARTIFACT_NAME1=Pinepods_${{ env.IMAGE_TAG }}_aarch64.dmg" >> $GITHUB_ENV
             echo "ARTIFACT_NAME2=Pinepods.app" >> $GITHUB_ENV
-          elif [ "${{ matrix.os }}" = "macOS-13" ]; then
-            echo "ARTIFACT_NAME1=Pinepods_${{ env.IMAGE_TAG }}_x64.dmg" >> $GITHUB_ENV
-            echo "ARTIFACT_NAME2=Pinepods.app" >> $GITHUB_ENV
           fi
         shell: bash
         if: ${{ matrix.os != 'windows-latest' }}
@@ -80,7 +76,7 @@ jobs:
 
       # Install cargo-binstall for Linux/Windows
       - name: Install cargo-binstall
-        if: matrix.os != 'macos-latest' && matrix.os != 'macOS-13'
+        if: matrix.os != 'macos-latest'
         uses: cargo-bins/cargo-binstall@main
 
       - name: Depends install
@@ -95,12 +91,12 @@ jobs:
           rustup target add wasm32-unknown-unknown
 
       - name: Install Trunk (macOS)
-        if: matrix.os == 'macos-latest' || matrix.os == 'macOS-13'
+        if: matrix.os == 'macos-latest'
         run: |
           brew install trunk
 
       - name: Install Trunk (Linux/Windows)
-        if: matrix.os != 'macos-latest' && matrix.os != 'macOS-13'
+        if: matrix.os != 'macos-latest'
         run: |
           cargo binstall trunk -y
 
@@ -192,15 +188,6 @@ jobs:
             ./web/src-tauri/target/release/bundle/macos/${{ env.ARTIFACT_NAME2 }}
         if: ${{ matrix.os == 'macOS-latest' }}
 
-      - name: Archive build (macOS x64)
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-x64-builds
-          path: |
-            ./web/src-tauri/target/release/bundle/dmg/${{ env.ARTIFACT_NAME1 }}
-            ./web/src-tauri/target/release/bundle/macos/${{ env.ARTIFACT_NAME2 }}
-        if: ${{ matrix.os == 'macOS-13' }}
-
       - name: Archive build (Windows)
         uses: actions/upload-artifact@v4
         with:
@@ -233,7 +220,7 @@ jobs:
             ./web/src-tauri/target/release/bundle/rpm/${{ env.ARTIFACT_NAME3 }}
 
       - name: Upload release assets (macOS)
-        if: github.event_name == 'release' && (matrix.os == 'macOS-latest' || matrix.os == 'macOS-13')
+        if: github.event_name == 'release' && matrix.os == 'macOS-latest'
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
