@@ -32,7 +32,7 @@ class Environment {
   static const _applicationName = 'Pinepods';
   static const _applicationUrl =
       'https://github.com/madeofpendletonwool/pinepods';
-  static const _projectVersion = '0.8.1';
+  static const _projectVersion = '0.9.0';
   static const _build = '20252203';
 
   static var _agentString = userAgentAppString;
