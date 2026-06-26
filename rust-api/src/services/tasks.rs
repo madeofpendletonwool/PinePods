@@ -182,6 +182,7 @@ impl TaskSpawner {
         F: FnOnce(String, Arc<TaskManager>, DatabasePool) -> Fut + Send + 'static,
         Fut: Future<Output = AppResult<Value>> + Send + 'static,
     {
+        let task_type_for_log = task_type.clone();
         let task_id = self.task_manager.create_task(task_type, user_id).await?;
         let task_manager = self.task_manager.clone();
         let db_pool = self.db_pool.clone();
@@ -198,6 +199,10 @@ impl TaskSpawner {
                     }
                 }
                 Err(e) => {
+                    // Surface the failure in the server logs too -- otherwise it only reaches the
+                    // task/websocket layer, which makes background failures (e.g. a restore that
+                    // errors out) invisible in the container logs.
+                    tracing::error!("Task {} ({}) failed: {}", task_id_clone, task_type_for_log, e);
                     if let Err(err) = task_manager
                         .fail_task(&task_id_clone, e.to_string())
                         .await

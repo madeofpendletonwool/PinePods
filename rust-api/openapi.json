@@ -6126,6 +6126,25 @@
         ]
       }
     },
+    "/api/data/restore_status": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Restore status",
+        "operationId": "restore_status",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/return_episodes/{user_id}": {
       "get": {
         "tags": [

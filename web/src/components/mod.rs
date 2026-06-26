@@ -10,6 +10,7 @@ pub mod misc_func;
 pub(crate) mod navigation;
 pub(crate) mod notification_center;
 pub(crate) mod oauth_callback;
+pub(crate) mod restore_overlay;
 pub(crate) mod safehtml;
 pub(crate) mod virtual_list;
 

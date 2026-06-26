@@ -1171,6 +1171,11 @@
     "restoring_database": "Restoring database...",
     "dont_close_window": "This may take a few minutes. Please don't close this window."
   },
+  "restore_overlay": {
+    "title": "Server restore in progress",
+    "message": "Your data is being restored. This can take several minutes for large backups.",
+    "dont_close": "Please don't close or refresh this page — it will reload automatically when the restore finishes."
+  },
   "rss_feeds": {
     "copy_to_clipboard": "Copy to Clipboard",
     "enable_rss_feeds": "Enable RSS Feeds",

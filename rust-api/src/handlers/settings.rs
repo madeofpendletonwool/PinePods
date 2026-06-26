@@ -1648,6 +1648,10 @@ async fn backup_server_streaming(
                .arg("--verbose")
                .arg("--data-only")
                .arg("--disable-triggers")
+               // Transient login-token tables: never worth backing up (security) and a
+               // frequent source of cross-version schema drift on restore.
+               .arg("--exclude-table-data=public.\"Sessions\"")
+               .arg("--exclude-table-data=public.\"GpodderSessions\"")
                .arg("--format=plain")
                .arg(&database);
             
@@ -1673,6 +1677,10 @@ async fn backup_server_streaming(
                .arg("--routines")
                .arg("--triggers")
                .arg("--complete-insert")
+               // Transient login-token tables: never worth backing up (security) and a
+               // frequent source of cross-version schema drift on restore.
+               .arg(format!("--ignore-table={}.Sessions", database))
+               .arg(format!("--ignore-table={}.GpodderSessions", database))
                .arg(&database);
             
             cmd
@@ -1731,6 +1739,27 @@ async fn backup_server_streaming(
         .map_err(|e| format!("Failed to build response: {}", e))?)
 }
 
+/// RAII guard for the global "restore in progress" flag. Resets the flag on drop so a
+/// panic or early return in the restore task can't leave restores permanently blocked.
+pub struct RestoreGuard(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl RestoreGuard {
+    /// Acquire the guard, or return None if a restore is already running.
+    pub fn try_acquire(flag: &std::sync::Arc<std::sync::atomic::AtomicBool>) -> Option<Self> {
+        use std::sync::atomic::Ordering;
+        match flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => Some(RestoreGuard(flag.clone())),
+            Err(_) => None,
+        }
+    }
+}
+
+impl Drop for RestoreGuard {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 #[utoipa::path(
     post,
     path = "/restore_server",
@@ -1759,11 +1788,23 @@ pub async fn restore_server(
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    // Process the multipart form to get the uploaded file and database password
-    let mut sql_content = None;
-    let mut _database_password = None;
+    // Refuse to start a second restore while one is already running.
+    let restore_guard = RestoreGuard::try_acquire(&state.restore_in_progress)
+        .ok_or_else(|| AppError::conflict("A restore is already in progress"))?;
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| AppError::bad_request(&format!("Multipart error: {}", e)))? {
+    // Stream the uploaded file to a temp file on the backups volume so memory usage
+    // stays bounded for large dumps (a real instance backup can be hundreds of MB).
+    // A ".tmp" extension keeps it out of list_backup_files (which only lists ".sql").
+    let backup_dir = std::path::Path::new("/opt/pinepods/backups");
+    tokio::fs::create_dir_all(backup_dir).await
+        .map_err(|e| AppError::internal(&format!("Failed to create backup directory: {}", e)))?;
+    let tmp_path = backup_dir.join(format!(".restore_upload_{}.tmp", uuid::Uuid::new_v4()));
+
+    // Process the multipart form to get the uploaded file and (unused) database password.
+    let mut have_file = false;
+    let mut _have_password = false;
+
+    while let Some(mut field) = multipart.next_field().await.map_err(|e| AppError::bad_request(&format!("Multipart error: {}", e)))? {
         let name = field.name().unwrap_or("").to_string();
 
         if name == "backup_file" {
@@ -1774,34 +1815,85 @@ pub async fn restore_server(
                 return Err(AppError::bad_request("Only SQL files are allowed"));
             }
 
-            let data = field.bytes().await.map_err(|e| AppError::bad_request(&format!("Failed to read file: {}", e)))?;
+            let mut file = tokio::fs::File::create(&tmp_path).await
+                .map_err(|e| AppError::internal(&format!("Failed to create temp restore file: {}", e)))?;
 
-            // Check file size (limit to 100MB)
-            if data.len() > 100 * 1024 * 1024 {
-                return Err(AppError::bad_request("File too large (max 100MB)"));
+            use tokio::io::AsyncWriteExt;
+            while let Some(chunk) = field.chunk().await
+                .map_err(|e| AppError::bad_request(&format!("Failed to read upload: {}", e)))? {
+                if let Err(e) = file.write_all(&chunk).await {
+                    let _ = tokio::fs::remove_file(&tmp_path).await;
+                    return Err(AppError::internal(&format!("Failed to write upload: {}", e)));
+                }
             }
-
-            sql_content = Some(String::from_utf8(data.to_vec()).map_err(|_| AppError::bad_request("Invalid UTF-8 content"))?);
+            file.flush().await
+                .map_err(|e| AppError::internal(&format!("Failed to flush temp restore file: {}", e)))?;
+            have_file = true;
         } else if name == "database_pass" {
-            let password_data = field.bytes().await.map_err(|e| AppError::bad_request(&format!("Failed to read password: {}", e)))?;
-            _database_password = Some(String::from_utf8(password_data.to_vec()).map_err(|_| AppError::bad_request("Invalid UTF-8 password"))?);
+            // The uploaded password is ignored; restore uses the DB_PASSWORD env var.
+            let _ = field.bytes().await;
+            _have_password = true;
         }
     }
 
-    let sql_content = sql_content.ok_or_else(|| AppError::bad_request("No SQL file uploaded"))?;
-    let _database_password = _database_password.ok_or_else(|| AppError::bad_request("Database password is required"))?;
+    if !have_file {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err(AppError::bad_request("No SQL file uploaded"));
+    }
 
-    // Process the restore in the background to prevent timeouts
+    // Run the restore as a tracked progress task so the UI sees real completion (the
+    // upload itself can take a while; the restore then runs against the streamed file).
+    // The guard is moved into the task and released (via Drop) when it finishes.
     let db_pool = state.db_pool.clone();
-    tokio::spawn(async move {
-        if let Err(e) = db_pool.restore_server_data(&sql_content).await {
-            tracing::error!("Restore failed: {}", e);
+    let task_id = state.task_spawner.spawn_progress_task(
+        "restore_server".to_string(),
+        user_id,
+        move |reporter| {
+            let db_pool = db_pool.clone();
+            let tmp_path = tmp_path.clone();
+            let _restore_guard = restore_guard;
+            async move {
+                reporter.update_progress(10.0, Some("Starting restore...".to_string())).await?;
+                reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
+
+                let result = db_pool.restore_server_data_from_path(&tmp_path).await;
+
+                // Always clean up the temp upload, success or failure.
+                if let Err(e) = tokio::fs::remove_file(&tmp_path).await {
+                    tracing::warn!("Failed to remove temp restore file {}: {}", tmp_path.display(), e);
+                }
+                result?;
+
+                reporter.update_progress(100.0, Some("Restore completed successfully".to_string())).await?;
+                Ok(serde_json::json!({ "status": "Restore completed successfully" }))
+            }
         }
-    });
+    ).await?;
 
     Ok(Json(serde_json::json!({
-        "message": "Server restore started successfully"
+        "message": "Server restore started successfully",
+        "task_id": task_id
     })))
+}
+
+/// Lightweight restore-status probe. Deliberately reads ONLY the in-memory flag and does
+/// no database work and no auth, so it stays responsive even while a restore holds table
+/// locks (which blocks every DB-backed request). The frontend polls this to show a
+/// full-page "restore in progress" overlay and to auto-reload when it finishes.
+#[utoipa::path(
+    get,
+    path = "/restore_status",
+    tag = "settings",
+    summary = "Restore status",
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+    ),
+)]
+pub async fn restore_status(
+    State(state): State<AppState>,
+) -> Json<serde_json::Value> {
+    let in_progress = state.restore_in_progress.load(std::sync::atomic::Ordering::SeqCst);
+    Json(serde_json::json!({ "restore_in_progress": in_progress }))
 }
 
 // Generate MFA secret - matches Python generate_mfa_secret function exactly
@@ -3979,14 +4071,19 @@ pub async fn restore_from_backup_file(
     }
 
     let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
-    
+
     // Check if file exists
     if !std::path::Path::new(&backup_path).exists() {
         return Err(AppError::not_found("Backup file not found"));
     }
 
+    // Refuse to start a second restore while one is already running.
+    let restore_guard = RestoreGuard::try_acquire(&state.restore_in_progress)
+        .ok_or_else(|| AppError::conflict("A restore is already in progress"))?;
+
     // Clone for the async closure
     let backup_filename_for_closure = backup_filename.clone();
+    let db_pool = state.db_pool.clone();
 
     // Spawn restoration task
     let task_id = state.task_spawner.spawn_progress_task(
@@ -3995,74 +4092,18 @@ pub async fn restore_from_backup_file(
         move |reporter| {
             let backup_path = backup_path.clone();
             let backup_filename = backup_filename_for_closure;
+            let db_pool = db_pool.clone();
+            // Released (via Drop) when the restore task finishes.
+            let _restore_guard = restore_guard;
             async move {
                 reporter.update_progress(10.0, Some("Starting restoration from backup file...".to_string())).await?;
-                
-                // Get database password from environment
-                let db_password = std::env::var("DB_PASSWORD")
-                    .map_err(|_| AppError::internal("Database password not found in environment"))?;
-                
                 reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
 
-                // Execute restoration based on database type
-                use tokio::process::Command;
-                let db_type = std::env::var("DB_TYPE").unwrap_or_else(|_| "postgresql".to_string());
-                let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
-                let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_database".to_string());
-                
-                let output = if db_type.to_lowercase().contains("mysql") || db_type.to_lowercase().contains("mariadb") {
-                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
-                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
-                    
-                    let mut cmd = Command::new("mysql");
-                    cmd.arg("-h").arg(&db_host)
-                       .arg("-P").arg(&db_port)
-                       .arg("-u").arg(&db_user)
-                       .arg(&format!("-p{}", db_password))
-                       .arg("--ssl-verify-server-cert=0")
-                       .arg(&db_name);
-                    
-                    // For MySQL, we need to pipe the file content to stdin
-                    cmd.stdin(std::process::Stdio::piped());
-                    let mut child = cmd.spawn()
-                        .map_err(|e| AppError::internal(&format!("Failed to execute mysql: {}", e)))?;
-                    
-                    // Read the backup file and send to mysql stdin
-                    let backup_content = tokio::fs::read_to_string(&backup_path).await
-                        .map_err(|e| AppError::internal(&format!("Failed to read backup file: {}", e)))?;
-                    
-                    if let Some(stdin) = child.stdin.as_mut() {
-                        use tokio::io::AsyncWriteExt;
-                        stdin.write_all(backup_content.as_bytes()).await
-                            .map_err(|e| AppError::internal(&format!("Failed to write to mysql stdin: {}", e)))?;
-                    }
-                    
-                    child.wait_with_output().await
-                        .map_err(|e| AppError::internal(&format!("Failed to wait for mysql: {}", e)))?
-                } else {
-                    // PostgreSQL
-                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
-                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
-                    
-                    let mut cmd = Command::new("psql");
-                    cmd.arg("-h").arg(&db_host)
-                       .arg("-p").arg(&db_port)
-                       .arg("-U").arg(&db_user)
-                       .arg("-d").arg(&db_name)
-                       .arg("-f").arg(&backup_path)
-                       .env("PGPASSWORD", &db_password);
-                    
-                    cmd.output().await
-                        .map_err(|e| AppError::internal(&format!("Failed to execute psql: {}", e)))?
-                };
-
-                if !output.status.success() {
-                    let error_msg = String::from_utf8_lossy(&output.stderr);
-                    return Err(AppError::internal(&format!("Restore failed: {}", error_msg)));
-                }
+                // Clears existing data, then streams the dump into psql/mysql.
+                db_pool.restore_server_data_from_path(std::path::Path::new(&backup_path)).await?;
 
                 reporter.update_progress(100.0, Some("Restoration completed successfully".to_string())).await?;
-                
+
                 Ok(serde_json::json!({
                     "status": "Restoration completed successfully",
                     "backup_file": backup_filename
@@ -4208,6 +4249,10 @@ pub async fn manual_backup_to_directory(
                             "--routines",
                             "--triggers",
                             "--ssl-verify-server-cert=0",
+                            // Transient login-token tables: excluded for security and to avoid
+                            // cross-version schema drift on restore.
+                            &format!("--ignore-table={}.Sessions", db_name),
+                            &format!("--ignore-table={}.GpodderSessions", db_name),
                             "--result-file", &backup_path,
                             &db_name
                         ])
@@ -4230,6 +4275,10 @@ pub async fn manual_backup_to_directory(
                             "--if-exists",
                             "--no-owner",
                             "--no-privileges",
+                            // Transient login-token tables: excluded for security and to avoid
+                            // cross-version schema drift on restore.
+                            "--exclude-table-data=public.\"Sessions\"",
+                            "--exclude-table-data=public.\"GpodderSessions\"",
                             "-f", &backup_path
                         ])
                         .output()

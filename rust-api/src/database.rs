@@ -4404,7 +4404,7 @@ impl DatabasePool {
                     let row = sqlx::query(
                         "SELECT \
                             CAST(COALESCE(SUM(UserEpisodeHistory.ListenDuration), 0) AS SIGNED) AS seconds_listened, \
-                            CAST(SUM(CASE WHEN Episodes.Completed = 1 THEN 1 ELSE 0 END) AS SIGNED) AS episodes_completed \
+                            CAST(COALESCE(SUM(CASE WHEN Episodes.Completed = 1 THEN 1 ELSE 0 END), 0) AS SIGNED) AS episodes_completed \
                         FROM UserEpisodeHistory \
                         JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID \
                         WHERE UserEpisodeHistory.UserID = ? \
@@ -12680,24 +12680,46 @@ pub struct GpodderSession {
 }
 
 impl DatabasePool {
-    // Use actual psql/mysql for reliable restore
-    pub async fn restore_server_data(&self, sql_content: &str) -> AppResult<()> {
+
+    // Restore server data from an on-disk SQL dump, streaming the file into the
+    // psql/mysql client so memory usage stays bounded regardless of dump size.
+    //
+    // Postgres restores are fully atomic: the truncate + data load run inside a single
+    // psql transaction (--single-transaction + ON_ERROR_STOP), so a failure rolls back
+    // and leaves the pre-restore data untouched. Crucially, MVCC means concurrent app
+    // connections keep seeing the old committed data until COMMIT, so the database never
+    // appears empty mid-restore (which previously triggered the "create first user" flow
+    // and a write race that corrupted the restore).
+    pub async fn restore_server_data_from_path(&self, path: &std::path::Path) -> AppResult<()> {
+        // Transient auth tables that hold only disposable login tokens. They are never worth
+        // restoring, and historically their schema has drifted (e.g. an upgraded instance can
+        // still carry the legacy `Sessions(sessionid, userid, value, expire)` layout while a
+        // fresh install has `Sessions(SessionID, UserID, SessionToken, ...)`). Restoring their
+        // rows can therefore fail the column match and, under --single-transaction +
+        // ON_ERROR_STOP, roll back the entire restore. We strip these tables' data from the
+        // incoming dump so the rest of the (compatible) data still loads. GpodderSyncState is
+        // deliberately NOT included here — it holds real per-device sync watermarks.
+        const SKIP_TABLES: &[&str] = &["Sessions", "GpodderSessions"];
+
         use tokio::process::Command;
         use tokio::io::AsyncWriteExt;
-        
-        // First, clear all existing data from tables
-        self.clear_all_data().await?;
-        
+
         match self {
             DatabasePool::Postgres(_) => {
-                // Extract connection details from environment
                 let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
                 let port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
                 let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
                 let username = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
                 let password = std::env::var("DB_PASSWORD").unwrap_or_else(|_| "password".to_string());
-                
-                // Use psql to restore data - connect to target database
+
+                // Feed the whole restore through psql stdin as one transaction:
+                //   1. disable FK/triggers for the load,
+                //   2. truncate every table in the public schema,
+                //   3. stream the data-only dump,
+                //   4. re-enable triggers.
+                // --single-transaction wraps it in BEGIN/COMMIT; ON_ERROR_STOP makes it
+                // all-or-nothing (otherwise psql skips failing statements, exits 0, and
+                // silently drops rows). The dump is streamed, so memory stays bounded.
                 let mut cmd = Command::new("psql");
                 cmd.arg("--host").arg(&host)
                    .arg("--port").arg(&port)
@@ -12705,42 +12727,94 @@ impl DatabasePool {
                    .arg("--no-password")
                    .arg("--dbname").arg(&database)
                    .arg("--quiet")
+                   .arg("--single-transaction")
+                   .arg("-v").arg("ON_ERROR_STOP=1")
+                   .env("PGPASSWORD", &password)
                    .stdin(std::process::Stdio::piped())
                    .stdout(std::process::Stdio::piped())
                    .stderr(std::process::Stdio::piped());
-                
-                // Set password via environment variable
-                cmd.env("PGPASSWORD", &password);
-                
+
                 let mut child = cmd.spawn()
                     .map_err(|e| AppError::internal(&format!("Failed to start psql: {}", e)))?;
-                
-                // Write SQL content to stdin
-                if let Some(stdin) = child.stdin.as_mut() {
-                    stdin.write_all(sql_content.as_bytes()).await
-                        .map_err(|e| AppError::internal(&format!("Failed to write SQL to psql: {}", e)))?;
+
+                const PREAMBLE: &str = "SET session_replication_role = replica;\n\
+                    DO $$ DECLARE r RECORD; BEGIN \
+                    FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP \
+                    EXECUTE format('TRUNCATE TABLE %I RESTART IDENTITY CASCADE', r.tablename); \
+                    END LOOP; END $$;\n";
+                const POSTAMBLE: &str = "\nSET session_replication_role = DEFAULT;\n";
+
+                // psql writes to stdout/stderr (sequence setval rows, NOTICE/COPY messages)
+                // as it consumes stdin. If we wrote the whole dump and only drained those pipes
+                // afterward, a large restore would deadlock: psql blocks once its ~64KB output
+                // pipe fills, stops reading stdin, and our writer blocks forever. So drain
+                // stdin/stdout/stderr concurrently and only then reap the child.
+                let mut stdin = child.stdin.take()
+                    .ok_or_else(|| AppError::internal("psql stdin was not piped"))?;
+                let mut stdout = child.stdout.take()
+                    .ok_or_else(|| AppError::internal("psql stdout was not piped"))?;
+                let mut stderr_pipe = child.stderr.take()
+                    .ok_or_else(|| AppError::internal("psql stderr was not piped"))?;
+
+                let path_buf = path.to_path_buf();
+                let writer = async move {
+                    stdin.write_all(PREAMBLE.as_bytes()).await
+                        .map_err(|e| AppError::internal(&format!("Failed to write restore preamble: {}", e)))?;
+                    let file = tokio::fs::File::open(&path_buf).await
+                        .map_err(|e| AppError::internal(&format!("Failed to open backup file: {}", e)))?;
+                    // Stream the dump through, dropping COPY blocks for the transient session
+                    // tables so a legacy/mismatched `Sessions` schema can't abort the restore.
+                    stream_pg_dump_skipping_tables(file, &mut stdin, SKIP_TABLES).await
+                        .map_err(|e| AppError::internal(&format!("Failed to stream SQL to psql: {}", e)))?;
+                    stdin.write_all(POSTAMBLE.as_bytes()).await
+                        .map_err(|e| AppError::internal(&format!("Failed to write restore postamble: {}", e)))?;
                     stdin.shutdown().await
                         .map_err(|e| AppError::internal(&format!("Failed to close psql stdin: {}", e)))?;
-                }
-                
-                // Wait for completion
-                let output = child.wait_with_output().await
+                    Ok::<(), AppError>(())
+                };
+
+                use tokio::io::AsyncReadExt;
+                let read_out = async move {
+                    let mut buf = Vec::new();
+                    let _ = stdout.read_to_end(&mut buf).await;
+                    buf
+                };
+                let read_err = async move {
+                    let mut buf = Vec::new();
+                    let _ = stderr_pipe.read_to_end(&mut buf).await;
+                    buf
+                };
+
+                let (write_res, _out, err_buf) = tokio::join!(writer, read_out, read_err);
+
+                let status = child.wait().await
                     .map_err(|e| AppError::internal(&format!("Failed to wait for psql: {}", e)))?;
-                
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(AppError::internal(&format!("psql failed: {}", stderr)));
+
+                let stderr = String::from_utf8_lossy(&err_buf);
+                if !status.success() {
+                    // psql's own error (e.g. ON_ERROR_STOP) is more useful than a broken-pipe
+                    // write error, so report stderr/status here regardless of the writer result.
+                    return Err(AppError::internal(&format!("psql restore failed (rolled back): {}", stderr.trim())));
                 }
+                // psql exited clean; surface a writer error only if one slipped through.
+                write_res?;
+                if !stderr.trim().is_empty() {
+                    tracing::warn!("psql restore reported messages: {}", stderr.trim());
+                }
+                tracing::info!("psql restore completed successfully");
             }
             DatabasePool::MySQL(_) => {
-                // Extract connection details from environment
+                // MySQL TRUNCATE/DDL auto-commits, so the load can't be a single atomic
+                // transaction like Postgres. Clear via transactional DELETE (FK checks
+                // off) first, then stream the dump; mysql stops on the first error.
+                self.clear_all_data().await?;
+
                 let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
                 let port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
                 let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
                 let username = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
                 let password = std::env::var("DB_PASSWORD").unwrap_or_else(|_| "password".to_string());
-                
-                // Use mysql to restore
+
                 let mut cmd = Command::new("mysql");
                 cmd.arg("--host").arg(&host)
                    .arg("--port").arg(&port)
@@ -12752,32 +12826,68 @@ impl DatabasePool {
                    .stdin(std::process::Stdio::piped())
                    .stdout(std::process::Stdio::piped())
                    .stderr(std::process::Stdio::piped());
-                
+
                 let mut child = cmd.spawn()
                     .map_err(|e| AppError::internal(&format!("Failed to start mysql: {}", e)))?;
-                
-                // Write SQL content to stdin
-                if let Some(stdin) = child.stdin.as_mut() {
-                    stdin.write_all(sql_content.as_bytes()).await
-                        .map_err(|e| AppError::internal(&format!("Failed to write SQL to mysql: {}", e)))?;
-                    stdin.shutdown().await
-                        .map_err(|e| AppError::internal(&format!("Failed to close mysql stdin: {}", e)))?;
-                }
-                
-                // Wait for completion
-                let output = child.wait_with_output().await
+
+                // Drain stdin/stdout/stderr concurrently. Writing the whole dump first and
+                // only reading mysql's output afterward deadlocks on large restores once
+                // mysql's ~64KB output pipe fills and it stops reading stdin (see the
+                // Postgres branch above for the full explanation).
+                let mut stdin = child.stdin.take()
+                    .ok_or_else(|| AppError::internal("mysql stdin was not piped"))?;
+                let mut stdout = child.stdout.take()
+                    .ok_or_else(|| AppError::internal("mysql stdout was not piped"))?;
+                let mut stderr_pipe = child.stderr.take()
+                    .ok_or_else(|| AppError::internal("mysql stderr was not piped"))?;
+
+                let path_buf = path.to_path_buf();
+                let writer = async move {
+                    let file = tokio::fs::File::open(&path_buf).await
+                        .map_err(|e| AppError::internal(&format!("Failed to open backup file: {}", e)))?;
+                    // Drop INSERT/LOCK statements for the transient session tables so a
+                    // legacy/mismatched schema can't abort the load (see the Postgres branch).
+                    stream_mysql_dump_skipping_tables(file, &mut stdin, SKIP_TABLES).await
+                        .map_err(|e| AppError::internal(&format!("Failed to stream SQL to mysql: {}", e)))?;
+                    // Drop stdin to signal EOF to mysql.
+                    drop(stdin);
+                    Ok::<(), AppError>(())
+                };
+
+                use tokio::io::AsyncReadExt;
+                let read_out = async move {
+                    let mut buf = Vec::new();
+                    let _ = stdout.read_to_end(&mut buf).await;
+                    buf
+                };
+                let read_err = async move {
+                    let mut buf = Vec::new();
+                    let _ = stderr_pipe.read_to_end(&mut buf).await;
+                    buf
+                };
+
+                let (write_res, _out, err_buf) = tokio::join!(writer, read_out, read_err);
+
+                let status = child.wait().await
                     .map_err(|e| AppError::internal(&format!("Failed to wait for mysql: {}", e)))?;
-                
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(AppError::internal(&format!("mysql failed: {}", stderr)));
+
+                // mysql in batch mode stops on the first error and exits non-zero
+                // (no --force), so a non-zero status means the restore did not complete.
+                let stderr = String::from_utf8_lossy(&err_buf);
+                if !status.success() {
+                    return Err(AppError::internal(&format!("mysql restore failed: {}", stderr.trim())));
                 }
+                write_res?;
+                if !stderr.trim().is_empty() {
+                    tracing::warn!("mysql restore reported messages: {}", stderr.trim());
+                }
+                tracing::info!("mysql restore completed successfully");
             }
         }
-        
+
         Ok(())
     }
-    
+
     // Clear all data from tables while preserving schema
     async fn clear_all_data(&self) -> AppResult<()> {
         match self {
@@ -12805,9 +12915,17 @@ impl DatabasePool {
                 sqlx::query("SET session_replication_role = DEFAULT;").execute(pool).await?;
             }
             DatabasePool::MySQL(pool) => {
+                // Run the whole clear on ONE pinned connection. `SET FOREIGN_KEY_CHECKS = 0` is
+                // a session variable, so issuing each statement via `.execute(pool)` (which can
+                // hand back a different pooled connection each time) leaves FK checks ON for the
+                // DELETEs -- and a DELETE on a parent table then fails with ERROR 1451, aborting
+                // the restore before the dump is ever loaded. Acquiring a single connection keeps
+                // FK checks disabled across every DELETE.
+                let mut conn = pool.acquire().await?;
+
                 // Disable foreign key checks
-                sqlx::query("SET FOREIGN_KEY_CHECKS = 0;").execute(pool).await?;
-                
+                sqlx::query("SET FOREIGN_KEY_CHECKS = 0;").execute(&mut *conn).await?;
+
                 // Get all table names
                 let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
                 let tables_query = format!(r#"
@@ -12815,9 +12933,9 @@ impl DatabasePool {
                     WHERE TABLE_SCHEMA = '{}' AND TABLE_TYPE = 'BASE TABLE'
                 "#, database);
                 let tables = sqlx::query(sqlx::AssertSqlSafe(tables_query.as_str()))
-                .fetch_all(pool)
+                .fetch_all(&mut *conn)
                 .await?;
-                
+
                 // Clear each table
                 for table in tables {
                     // Handle both VARCHAR and VARBINARY cases for TABLE_NAME
@@ -12830,11 +12948,11 @@ impl DatabasePool {
                     };
                     // Use DELETE instead of TRUNCATE to avoid foreign key constraint issues
                     let query = format!("DELETE FROM `{}`", table_name);
-                    sqlx::query(sqlx::AssertSqlSafe(query.as_str())).execute(pool).await?;
+                    sqlx::query(sqlx::AssertSqlSafe(query.as_str())).execute(&mut *conn).await?;
                 }
-                
+
                 // Re-enable foreign key checks
-                sqlx::query("SET FOREIGN_KEY_CHECKS = 1;").execute(pool).await?;
+                sqlx::query("SET FOREIGN_KEY_CHECKS = 1;").execute(&mut *conn).await?;
             }
         }
         Ok(())
@@ -25034,13 +25152,13 @@ impl DatabasePool {
                             WHEN d.EpisodeID IS NOT NULL THEN 'download'
                             ELSE 'new'
                         END as action,
-                        COALESCE(eh.ListenDate, '1970-01-01 00:00:00') as timestamp
+                        CAST(COALESCE(eh.ListenDate, '1970-01-01 00:00:00') AS DATETIME) as timestamp
                     FROM Episodes e
                     JOIN Podcasts p ON e.PodcastID = p.PodcastID AND p.UserID = ?
                     LEFT JOIN UserEpisodeHistory eh ON e.EpisodeID = eh.EpisodeID AND eh.UserID = ?
                     LEFT JOIN DownloadedEpisodes d ON e.EpisodeID = d.EpisodeID AND d.UserID = ?
                     WHERE (eh.UserID = ? OR d.UserID = ?)
-                    AND COALESCE(eh.ListenDate, '1970-01-01 00:00:00') > ?
+                    AND CAST(COALESCE(eh.ListenDate, '1970-01-01 00:00:00') AS DATETIME) > ?
                     ORDER BY timestamp DESC
                 ")
                 .bind(user_id)
@@ -25974,6 +26092,10 @@ impl DatabasePool {
                    .arg("--if-exists")
                    .arg("--no-owner")
                    .arg("--no-privileges")
+                   // Transient login-token tables: excluded for security and to avoid
+                   // cross-version schema drift on restore.
+                   .arg("--exclude-table-data=public.\"Sessions\"")
+                   .arg("--exclude-table-data=public.\"GpodderSessions\"")
                    .arg("-f").arg(&backup_path)
                    .env("PGPASSWORD", &db_password);
 
@@ -26000,7 +26122,11 @@ impl DatabasePool {
                    .arg("--result-file").arg(&backup_path)
                    .arg("--single-transaction")
                    .arg("--routines")
-                   .arg("--triggers");
+                   .arg("--triggers")
+                   // Transient login-token tables: excluded for security and to avoid
+                   // cross-version schema drift on restore.
+                   .arg(format!("--ignore-table={}.Sessions", db_name))
+                   .arg(format!("--ignore-table={}.GpodderSessions", db_name));
 
                 let output = cmd.output().await
                     .map_err(|e| AppError::internal(&format!("Failed to execute backup: {}", e)))?;
@@ -27490,7 +27616,11 @@ impl DatabasePool {
                         p.podcastname,
                         TO_CHAR(e.episodepubdate AT TIME ZONE '{}', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as episodepubdate,
                         e.episodedescription,
-                        COALESCE(e.episodeartwork, p.artworkurl) as episodeartwork,
+                        CASE
+                            WHEN p.usepodcastcoverscustomized = TRUE AND p.usepodcastcovers = TRUE THEN p.artworkurl
+                            WHEN u.usepodcastcovers = TRUE THEN p.artworkurl
+                            ELSE COALESCE(e.episodeartwork, p.artworkurl)
+                        END as episodeartwork,
                         e.episodeurl,
                         e.episodeduration,
                         COALESCE(h.listenduration, 0) as listenduration,
@@ -27512,7 +27642,8 @@ impl DatabasePool {
                         ROUND(((COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) * 100)::numeric, 2) as progress_percent
                     FROM "Episodes" e
                     JOIN "Podcasts" p ON e.podcastid = p.podcastid AND p.userid = {}
-                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#, 
+                    LEFT JOIN "Users" u ON p.userid = u.userid
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#,
                     user_timezone, user_id, user_id, user_id, user_id, user_id
                 ));
                 
@@ -27770,7 +27901,11 @@ impl DatabasePool {
                         p.PodcastName as podcastname,
                         DATE_FORMAT(CONVERT_TZ(e.EpisodePubDate, 'UTC', '{}'), '%Y-%m-%dT%H:%i:%sZ') as episodepubdate,
                         e.EpisodeDescription as episodedescription,
-                        COALESCE(e.EpisodeArtwork, p.ArtworkURL) as episodeartwork,
+                        CASE
+                            WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            ELSE COALESCE(e.EpisodeArtwork, p.ArtworkURL)
+                        END as episodeartwork,
                         e.EpisodeURL as episodeurl,
                         e.EpisodeDuration as episodeduration,
                         COALESCE(h.ListenDuration, 0) as listenduration,
@@ -27790,7 +27925,8 @@ impl DatabasePool {
                         ROUND((COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) * 100, 2) as progress_percent
                     FROM Episodes e
                     JOIN Podcasts p ON e.PodcastID = p.PodcastID AND p.UserID = {}
-                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#, 
+                    LEFT JOIN Users u ON p.UserID = u.UserID
+                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#,
                     user_timezone, user_id, user_id, user_id, user_id, user_id
                 ));
                 
@@ -28420,4 +28556,209 @@ pub async fn delete_playlist(pool: &DatabasePool, _config: &Config, playlist_dat
 
 pub async fn update_playlist(pool: &DatabasePool, config: &Config, playlist_data: &crate::models::UpdatePlaylistRequest) -> AppResult<()> {
     pool.update_playlist(config, playlist_data).await
+}
+
+/// Strip the trailing `\r`/`\n` from a raw line read with `read_until(b'\n')`.
+fn trim_line_eol(line: &[u8]) -> &[u8] {
+    let mut end = line.len();
+    while end > 0 && (line[end - 1] == b'\n' || line[end - 1] == b'\r') {
+        end -= 1;
+    }
+    &line[..end]
+}
+
+/// True for the lone `\.` line that terminates a Postgres `COPY ... FROM stdin` data block.
+fn is_pg_copy_terminator(line: &[u8]) -> bool {
+    trim_line_eol(line) == b"\\."
+}
+
+/// Stream a Postgres plain-text dump from `reader` to `writer`, dropping the `COPY` data
+/// blocks for any table in `skip_tables`. Everything else is passed through byte-for-byte.
+///
+/// Works line-by-line (bounded memory) with a small state machine so that data rows which
+/// happen to start with the text `COPY` are never mistaken for statement-level COPY headers:
+/// once inside a COPY block we only watch for its `\.` terminator. Table names are matched as
+/// the exact double-quoted identifier pg_dump emits (`"Sessions"`), so `"Sessions"` does not
+/// match inside `"GpodderSessions"`.
+async fn stream_pg_dump_skipping_tables<R, W>(
+    reader: R,
+    writer: &mut W,
+    skip_tables: &[&str],
+) -> std::io::Result<()>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    enum CopyState {
+        Normal,
+        Pass,
+        Skip,
+    }
+
+    let needles: Vec<String> = skip_tables.iter().map(|t| format!("\"{}\"", t)).collect();
+    let mut buf_reader = BufReader::new(reader);
+    let mut state = CopyState::Normal;
+    let mut line: Vec<u8> = Vec::new();
+
+    loop {
+        line.clear();
+        if buf_reader.read_until(b'\n', &mut line).await? == 0 {
+            break;
+        }
+        match state {
+            CopyState::Normal => {
+                let mut drop_line = false;
+                if line.starts_with(b"COPY ") {
+                    let header = String::from_utf8_lossy(&line);
+                    if header.contains(" FROM stdin;") {
+                        if needles.iter().any(|n| header.contains(n.as_str())) {
+                            state = CopyState::Skip;
+                            drop_line = true; // drop the COPY header for skipped tables
+                        } else {
+                            state = CopyState::Pass;
+                        }
+                    }
+                }
+                if !drop_line {
+                    writer.write_all(&line).await?;
+                }
+            }
+            CopyState::Pass => {
+                writer.write_all(&line).await?;
+                if is_pg_copy_terminator(&line) {
+                    state = CopyState::Normal;
+                }
+            }
+            CopyState::Skip => {
+                if is_pg_copy_terminator(&line) {
+                    state = CopyState::Normal;
+                }
+                // drop every line inside a skipped COPY block, including the terminator
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Stream a mysqldump file from `reader` to `writer`, dropping the data-loading statements
+/// (`INSERT INTO` / `LOCK TABLES`) for any table in `skip_tables`. mysqldump quotes table
+/// names with backticks (`` `Sessions` ``), and `--complete-insert` emits one statement per
+/// line, so a prefix match per line is sufficient. Secondary to the Postgres path.
+async fn stream_mysql_dump_skipping_tables<R, W>(
+    reader: R,
+    writer: &mut W,
+    skip_tables: &[&str],
+) -> std::io::Result<()>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    let prefixes: Vec<String> = skip_tables
+        .iter()
+        .flat_map(|t| {
+            vec![
+                format!("INSERT INTO `{}`", t),
+                format!("LOCK TABLES `{}`", t),
+            ]
+        })
+        .collect();
+
+    let mut buf_reader = BufReader::new(reader);
+    let mut line: Vec<u8> = Vec::new();
+
+    loop {
+        line.clear();
+        if buf_reader.read_until(b'\n', &mut line).await? == 0 {
+            break;
+        }
+        let trimmed = trim_line_eol(&line);
+        // Only the INSERT/LOCK statements start with these prefixes, so checking the prefix is
+        // cheap and avoids inspecting (and allocating for) every data line.
+        let drop_line = (trimmed.starts_with(b"INSERT INTO `") || trimmed.starts_with(b"LOCK TABLES `"))
+            && {
+                let text = String::from_utf8_lossy(trimmed);
+                prefixes.iter().any(|p| text.starts_with(p.as_str()))
+            };
+        if !drop_line {
+            writer.write_all(&line).await?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod restore_filter_tests {
+    use super::{stream_mysql_dump_skipping_tables, stream_pg_dump_skipping_tables};
+
+    async fn run_pg(input: &str, skip: &[&str]) -> String {
+        let mut out: Vec<u8> = Vec::new();
+        stream_pg_dump_skipping_tables(input.as_bytes(), &mut out, skip)
+            .await
+            .unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    #[tokio::test]
+    async fn pg_strips_skipped_table_copy_block_and_keeps_others() {
+        let input = concat!(
+            "SET something = 1;\n",
+            "COPY public.\"Podcasts\" (id, title) FROM stdin;\n",
+            "1\tHello\n",
+            "2\tCOPY public.\"Sessions\" looks like a header but is data\n",
+            "\\.\n",
+            "COPY public.\"Sessions\" (sessionid, userid, value, expire) FROM stdin;\n",
+            "1\t2\tsecret\t1234\n",
+            "\\.\n",
+            "COPY public.\"Episodes\" (id) FROM stdin;\n",
+            "9\n",
+            "\\.\n",
+        );
+        let out = run_pg(input, &["Sessions", "GpodderSessions"]).await;
+        // Podcasts block preserved verbatim, including the data row that starts with COPY.
+        assert!(out.contains("COPY public.\"Podcasts\" (id, title) FROM stdin;"));
+        assert!(out.contains("2\tCOPY public.\"Sessions\" looks like a header but is data"));
+        // Episodes block preserved.
+        assert!(out.contains("COPY public.\"Episodes\" (id) FROM stdin;"));
+        assert!(out.contains("\n9\n"));
+        // Sessions header + data fully removed.
+        assert!(!out.contains("sessionid, userid, value, expire"));
+        assert!(!out.contains("1\t2\tsecret\t1234"));
+    }
+
+    #[tokio::test]
+    async fn pg_does_not_match_substring_table_name() {
+        let input = concat!(
+            "COPY public.\"GpodderSyncState\" (id) FROM stdin;\n",
+            "1\n",
+            "\\.\n",
+        );
+        let out = run_pg(input, &["Sessions"]).await;
+        // "Sessions" must not match inside "GpodderSyncState"/"GpodderSessions".
+        assert!(out.contains("GpodderSyncState"));
+        assert!(out.contains("\n1\n"));
+    }
+
+    #[tokio::test]
+    async fn mysql_strips_skipped_table_inserts() {
+        let input = concat!(
+            "INSERT INTO `Podcasts` (id) VALUES (1);\n",
+            "LOCK TABLES `Sessions` WRITE;\n",
+            "INSERT INTO `Sessions` (sessionid) VALUES (1);\n",
+            "UNLOCK TABLES;\n",
+            "INSERT INTO `Episodes` (id) VALUES (9);\n",
+        );
+        let mut out: Vec<u8> = Vec::new();
+        stream_mysql_dump_skipping_tables(input.as_bytes(), &mut out, &["Sessions"])
+            .await
+            .unwrap();
+        let out = String::from_utf8(out).unwrap();
+        assert!(out.contains("INSERT INTO `Podcasts`"));
+        assert!(out.contains("INSERT INTO `Episodes`"));
+        assert!(!out.contains("INSERT INTO `Sessions`"));
+        assert!(!out.contains("LOCK TABLES `Sessions`"));
+    }
 }

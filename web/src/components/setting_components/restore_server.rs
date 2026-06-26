@@ -18,7 +18,6 @@ pub fn restore_server() -> Html {
     let i18n_failed_to_load_backup_files = i18n
         .t("restore_server.failed_to_load_backup_files")
         .to_string();
-    let i18n_file_size_too_large = i18n.t("restore_server.file_size_too_large").to_string();
     let i18n_warning = i18n.t("restore_server.warning").to_string();
     let i18n_restore_method = i18n.t("restore_server.restore_method").to_string();
     let i18n_upload_backup_file = i18n.t("restore_server.upload_backup_file").to_string();
@@ -111,13 +110,7 @@ pub fn restore_server() -> Html {
             let input: HtmlInputElement = e.target_unchecked_into();
             if let Some(files) = input.files() {
                 if let Some(file) = files.get(0) {
-                    // Check file size (e.g., limit to 100MB)
-                    if file.size() > 100.0 * 1024.0 * 1024.0 {
-                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                            state.error_message = Some(i18n_file_size_too_large.clone());
-                        });
-                        return;
-                    }
+                    // Uploads are streamed server-side, so there is no client size cap.
                     selected_file.set(Some(file));
                 }
             }

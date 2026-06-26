@@ -465,11 +465,18 @@ pub async fn create_first_admin(
     State(state): State<AppState>,
     Json(request): Json<CreateFirstAdminRequest>,
 ) -> Result<Json<CreateFirstAdminResponse>, AppError> {
+    // Block first-admin creation while a restore is running. Otherwise the setup UI (which
+    // can appear if the DB looks empty mid-restore on a fresh install) could insert a Users
+    // row that collides with the restore's data load and rolls the whole restore back.
+    if state.restore_in_progress.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(AppError::service_unavailable("A restore is in progress — please wait for it to finish"));
+    }
+
     // Check if admin already exists
     if state.db_pool.check_admin_exists().await? {
         return Err(AppError::forbidden("An admin user already exists"));
     }
-    
+
     // Add the admin user
     let user_id = state.db_pool.add_admin_user(
         &request.fullname,
