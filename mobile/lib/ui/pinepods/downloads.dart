@@ -572,54 +572,39 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
     );
   }
 
+  /// Render a server download using the standard episode card so it looks and
+  /// behaves identically to episodes elsewhere in the app (artwork, podcast
+  /// name, date/duration, progress, status icons). Stays nested inside the
+  /// per-podcast dropdown; the context menu moves to long-press like other cards.
   Widget _buildServerEpisodeTile(PinepodsEpisode episode, int podcastId) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      title: Text(
-        episode.episodeTitle,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        episode.episodePubDate.isNotEmpty
-            ? DateTime.tryParse(episode.episodePubDate)?.toLocal().toString().split(' ').first ?? ''
-            : '',
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.play_arrow),
-            onPressed: () => _playServerEpisode(episode),
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {
-              showDialog(
-                context: context,
-                barrierColor: Colors.black.withOpacity(0.3),
-                builder: (context) => EpisodeContextMenu(
-                  episode: episode,
-                  onDownload: () {
-                    Navigator.of(context).pop();
-                    _handleServerEpisodeDelete(episode, podcastId);
-                  },
-                  onLocalDownload: () {
-                    Navigator.of(context).pop();
-                    _localDownloadServerEpisode(episode);
-                  },
-                  onDismiss: () => Navigator.of(context).pop(),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
+    return PinepodsEpisodeCard(
+      episode: episode,
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => PinepodsEpisodeDetails(initialEpisode: episode),
         ),
+      ),
+      onPlayPressed: () => _playServerEpisode(episode),
+      onLongPress: () => _showServerContextMenu(episode, podcastId),
+    );
+  }
+
+  void _showServerContextMenu(PinepodsEpisode episode, int podcastId) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.3),
+      builder: (context) => EpisodeContextMenu(
+        episode: episode,
+        onDownload: () {
+          Navigator.of(context).pop();
+          _handleServerEpisodeDelete(episode, podcastId);
+        },
+        onLocalDownload: () {
+          Navigator.of(context).pop();
+          _localDownloadServerEpisode(episode);
+        },
+        onDismiss: () => Navigator.of(context).pop(),
       ),
     );
   }
@@ -1007,9 +992,29 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
     return 'No downloads ${parts.join(' ')}';
   }
 
-  void _playServerEpisode(PinepodsEpisode episode) {
-    log.info('Playing server episode: ${episode.episodeTitle}');
-    _showErrorSnackBar('Server episode playback not yet implemented');
+  Future<void> _playServerEpisode(PinepodsEpisode episode) async {
+    try {
+      log.info('Playing server episode: ${episode.episodeTitle}');
+      final audioService = GlobalServices.pinepodsAudioService;
+      if (audioService == null) {
+        _showErrorSnackBar('Audio service not available');
+        return;
+      }
+      // Route through the unified PinePods path. The audio service prefers an
+      // on-device download when one exists, otherwise streams the server's
+      // downloaded copy (these episodes carry downloaded == true), falling back
+      // to the source URL — so no source branching is needed here.
+      await playPinepodsEpisodeWithOptionalFullScreen(
+        context,
+        audioService,
+        episode,
+        resume: true,
+      );
+      log.info('Successfully started server episode playback');
+    } catch (e) {
+      log.severe('Error playing server episode: $e');
+      _showErrorSnackBar('Failed to play episode: $e');
+    }
   }
 
   Future<void> _playLocalEpisode(Episode episode) async {

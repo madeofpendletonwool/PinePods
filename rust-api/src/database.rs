@@ -27616,7 +27616,11 @@ impl DatabasePool {
                         p.podcastname,
                         TO_CHAR(e.episodepubdate AT TIME ZONE '{}', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as episodepubdate,
                         e.episodedescription,
-                        COALESCE(e.episodeartwork, p.artworkurl) as episodeartwork,
+                        CASE
+                            WHEN p.usepodcastcoverscustomized = TRUE AND p.usepodcastcovers = TRUE THEN p.artworkurl
+                            WHEN u.usepodcastcovers = TRUE THEN p.artworkurl
+                            ELSE COALESCE(e.episodeartwork, p.artworkurl)
+                        END as episodeartwork,
                         e.episodeurl,
                         e.episodeduration,
                         COALESCE(h.listenduration, 0) as listenduration,
@@ -27638,7 +27642,8 @@ impl DatabasePool {
                         ROUND(((COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) * 100)::numeric, 2) as progress_percent
                     FROM "Episodes" e
                     JOIN "Podcasts" p ON e.podcastid = p.podcastid AND p.userid = {}
-                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#, 
+                    LEFT JOIN "Users" u ON p.userid = u.userid
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#,
                     user_timezone, user_id, user_id, user_id, user_id, user_id
                 ));
                 
@@ -27896,7 +27901,11 @@ impl DatabasePool {
                         p.PodcastName as podcastname,
                         DATE_FORMAT(CONVERT_TZ(e.EpisodePubDate, 'UTC', '{}'), '%Y-%m-%dT%H:%i:%sZ') as episodepubdate,
                         e.EpisodeDescription as episodedescription,
-                        COALESCE(e.EpisodeArtwork, p.ArtworkURL) as episodeartwork,
+                        CASE
+                            WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            ELSE COALESCE(e.EpisodeArtwork, p.ArtworkURL)
+                        END as episodeartwork,
                         e.EpisodeURL as episodeurl,
                         e.EpisodeDuration as episodeduration,
                         COALESCE(h.ListenDuration, 0) as listenduration,
@@ -27916,7 +27925,8 @@ impl DatabasePool {
                         ROUND((COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) * 100, 2) as progress_percent
                     FROM Episodes e
                     JOIN Podcasts p ON e.PodcastID = p.PodcastID AND p.UserID = {}
-                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#, 
+                    LEFT JOIN Users u ON p.UserID = u.UserID
+                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#,
                     user_timezone, user_id, user_id, user_id, user_id, user_id
                 ));
                 
