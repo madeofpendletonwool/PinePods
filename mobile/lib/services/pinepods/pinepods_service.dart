@@ -621,6 +621,44 @@ class PinepodsService {
     }
   }
 
+  // Update the stored duration for an episode. Mirrors the web frontend, which
+  // corrects the episode duration to the real decoded length the first time an
+  // episode is played (feeds frequently ship missing/zero itunes:duration).
+  Future<bool> updateEpisodeDuration(
+    int episodeId,
+    int newDuration,
+    bool isYoutube,
+  ) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/update_episode_duration');
+    _devLog('Making API call to: $url');
+
+    try {
+      final requestBody = jsonEncode({
+        'episode_id': episodeId,
+        'new_duration': newDuration,
+        'is_youtube': isYoutube,
+      });
+
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: requestBody,
+      );
+
+      _devLog(
+        'Update episode duration response: ${response.statusCode} - ${response.body}',
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      _devLog('Error updating episode duration: $e');
+      return false;
+    }
+  }
+
   // Increment listen time for user stats
   Future<bool> incrementListenTime(int userId) async {
     if (_server == null || _apiKey == null) {

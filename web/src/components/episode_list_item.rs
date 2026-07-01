@@ -270,7 +270,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
 
     let (_listen_duration_str, listen_duration_percentage) = {
         let lds = format_time(props.episode.listenduration);
-        let ldp = if props.episode.listenduration > 0 {
+        let ldp = if props.episode.listenduration > 0 && props.episode.episodeduration > 0 {
             ((props.episode.listenduration * 100) / props.episode.episodeduration).min(100)
         } else {
             0

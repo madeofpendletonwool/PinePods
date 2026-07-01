@@ -45,6 +45,10 @@ class NativeAudioPlayerService extends AudioPlayerService {
   DateTime? _episodeStartTime;
   Timer? _localPositionTimer;
 
+  /// Whether we've already reported the decoded duration for the current
+  /// episode to the server (see PinepodsAudioService.updateEpisodeDurationIfNeeded).
+  bool _actualDurationReported = false;
+
   StreamSubscription<int>? _sleepSubscription;
   StreamSubscription? _nativeEventSubscription;
 
@@ -225,6 +229,14 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
       // Update chapter if needed
       _updateChapter(position ~/ 1000, duration ~/ 1000);
+
+      // Once the decoder reports a real length, correct the server's stored
+      // duration if it's wrong (e.g. feeds shipping a missing/zero duration).
+      // Mirrors the web player; only fires once per episode.
+      if (!_actualDurationReported && duration > 0) {
+        _actualDurationReported = true;
+        _pinepodsAudioService?.updateEpisodeDurationIfNeeded(duration / 1000.0);
+      }
     }
   }
 
@@ -314,6 +326,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
     _currentEpisode = episode;
     _currentEpisode!.played = false;
+    _actualDurationReported = false;
 
     // Get URI (local file or stream)
     final uri = await _generateEpisodeUri(episode);
