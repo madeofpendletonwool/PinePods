@@ -48,4 +48,9 @@ In addition this update further improves some findings after the previous 0.7.4 
   </recommends>
 
   <content_rating type="oars-1.1" />
+  <keywords>
+    <keyword>podcast manager</keyword>
+    <keyword>podcast hosting</keyword>
+    <keyword>self hosted podcasting</keyword>
+  </keywords>
 </component>
