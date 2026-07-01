@@ -377,7 +377,10 @@
     "youtube_download_limit": "Limite de téléchargement d'épisode YouTube (jours) :",
     "youtube_episode_limit_updated": "Limite d'épisodes YouTube mise à jour !",
     "youtube_limit_description": "Ajuster la durée de rétention du flux audio YouTube lors du téléchargement pour diffusion via le serveur. Les épisodes YouTube seront supprimés ensuite pour libérer de l'espace.",
-    "video": "Video"
+    "video": "Video",
+    "trim_silence": "Trim silence",
+    "trim_silence_description": "Auto-detect and skip silence on new downloads",
+    "aggressiveness": "Aggressiveness"
   },
   "export_settings": {
     "download_export_opml": "Télécharger/Exporter OPML",

@@ -371,7 +371,10 @@
     "youtube_download_limit": "ZZTEST-YOUTUBE-DOWNLOAD-LIMIT-ZZTEST",
     "youtube_episode_limit_updated": "ZZTEST-YOUTUBE-EPISODE-LIMIT-UPDATED-ZZTEST",
     "youtube_limit_description": "ZZTEST-YOUTUBE-LIMIT-DESCRIPTION-ZZTEST",
-    "video": "Video"
+    "video": "Video",
+    "trim_silence": "Trim silence",
+    "trim_silence_description": "Auto-detect and skip silence on new downloads",
+    "aggressiveness": "Aggressiveness"
   },
   "export_settings": {
     "download_export_opml": "ZZTEST-DOWNLOAD-EXPORT-OPML-ZZTEST",

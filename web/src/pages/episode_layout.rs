@@ -406,6 +406,11 @@ pub fn episode_layout() -> Html {
     let i18n_start_skip_seconds = i18n.t("episodes_layout.start_skip_seconds").to_string();
     let i18n_end_skip_seconds = i18n.t("episodes_layout.end_skip_seconds").to_string();
     let i18n_youtube_download_limit = i18n.t("episodes_layout.youtube_download_limit").to_string();
+    let i18n_trim_silence = i18n.t("episodes_layout.trim_silence").to_string();
+    let i18n_trim_silence_description = i18n
+        .t("episodes_layout.trim_silence_description")
+        .to_string();
+    let i18n_aggressiveness = i18n.t("episodes_layout.aggressiveness").to_string();
     let i18n_youtube_limit_description = i18n
         .t("episodes_layout.youtube_limit_description")
         .to_string();
@@ -2562,7 +2567,7 @@ pub fn episode_layout() -> Html {
                             </div>
 
                             <div class="mt-4">
-                                <label for="trim-silence" class="block mb-2 text-sm font-medium">{"Trim silence"}</label>
+                                <label for="trim-silence" class="block mb-2 text-sm font-medium">{&i18n_trim_silence}</label>
                                 <div class="flex items-center space-x-2">
                                     <input
                                         type="checkbox"
@@ -2571,8 +2576,8 @@ pub fn episode_layout() -> Html {
                                         checked={trim_checked}
                                         onchange={trim_toggle}
                                     />
-                                    <span class="text-sm">{"Auto-detect and skip silence on new downloads"}</span>
-                                    <label for="silence-threshold" class="block text-sm font-medium">{"Aggressiveness"}</label>
+                                    <span class="text-sm">{&i18n_trim_silence_description}</span>
+                                    <label for="silence-threshold" class="block text-sm font-medium">{&i18n_aggressiveness}</label>
                                     <select
                                         id="silence-threshold"
                                         class="email-input border text-sm rounded-lg p-2.5"

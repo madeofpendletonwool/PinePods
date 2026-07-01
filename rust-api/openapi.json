@@ -477,6 +477,43 @@
         ]
       }
     },
+    "/api/data/adjust_silence_trim": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Set per-podcast silence-trim (enable + threshold)",
+        "operationId": "adjust_silence_trim",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SilenceTrimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/adjust_skip_times": {
       "post": {
         "tags": [
@@ -2077,6 +2114,43 @@
         ]
       }
     },
+    "/api/data/detect_silence": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Run silence detection for an episode",
+        "operationId": "detect_silence",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetectSilenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/download_all_podcast": {
       "post": {
         "tags": [
@@ -2493,6 +2567,53 @@
           },
           "403": {
             "description": "Cannot access another user's collections"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/episode_skip_segments": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get auto-skip segments for an episode",
+        "operationId": "get_episode_skip_segments",
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
           }
         },
         "security": [
@@ -3970,6 +4091,53 @@
         ],
         "summary": "Get server default language",
         "operationId": "get_server_default_language",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/get_silence_trim": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get per-podcast silence-trim settings",
+        "operationId": "get_silence_trim",
+        "parameters": [
+          {
+            "name": "podcast_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -11064,6 +11232,26 @@
           }
         }
       },
+      "DetectSilenceRequest": {
+        "type": "object",
+        "required": [
+          "episode_id",
+          "user_id"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "force": {
+            "type": "boolean"
+          }
+        }
+      },
       "DownloadAllPodcastRequest": {
         "type": "object",
         "required": [
@@ -13772,6 +13960,30 @@
           },
           "new_username": {
             "type": "string"
+          }
+        }
+      },
+      "SilenceTrimRequest": {
+        "type": "object",
+        "required": [
+          "podcast_id",
+          "user_id"
+        ],
+        "properties": {
+          "podcast_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "threshold": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
