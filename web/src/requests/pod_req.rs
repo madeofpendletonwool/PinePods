@@ -3082,6 +3082,123 @@ pub async fn call_get_auto_skip_times(
     }
 }
 
+// ---- Auto-skip segments (silence trim #727; later ads #790) ----
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub struct SkipSegment {
+    pub kind: String,
+    pub start_time: f64,
+    pub end_time: f64,
+    pub source: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct SkipSegmentsResponse {
+    segments: Vec<SkipSegment>,
+}
+
+pub async fn call_get_episode_skip_segments(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    episode_id: i32,
+) -> Result<Vec<SkipSegment>, Error> {
+    let url = format!(
+        "{}/api/data/episode_skip_segments?episode_id={}&user_id={}",
+        server_name, episode_id, user_id
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if response.ok() {
+        let data: SkipSegmentsResponse = response.json().await?;
+        Ok(data.segments)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!(
+            "Failed to get skip segments: {}",
+            error_text
+        )))
+    }
+}
+
+// ---- Per-podcast silence-trim settings ----
+#[derive(Serialize, Debug)]
+pub struct SilenceTrimRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub enabled: bool,
+    pub threshold: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct SilenceTrimSettings {
+    pub enabled: bool,
+    pub threshold: i32,
+}
+
+pub async fn call_get_silence_trim(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+) -> Result<SilenceTrimSettings, Error> {
+    let url = format!(
+        "{}/api/data/get_silence_trim?podcast_id={}&user_id={}",
+        server_name, podcast_id, user_id
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url).header("Api-Key", api_key_ref).send().await?;
+    if response.ok() {
+        Ok(response.json().await?)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to get silence trim: {}", error_text)))
+    }
+}
+
+pub async fn call_adjust_silence_trim(
+    server_name: &str,
+    api_key: &Option<String>,
+    request: &SilenceTrimRequest,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/adjust_silence_trim", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(serde_json::to_string(request)?)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to update silence trim: {}", error_text)))
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PlayEpisodeDetailsRequest {
     pub podcast_id: i32,
@@ -4711,4 +4828,278 @@ pub async fn call_get_merged_podcasts(
     let merged_response: MergedPodcastsResponse =
         serde_json::from_str(&text).map_err(|e| anyhow::Error::new(e))?;
     Ok(merged_response.merged_podcast_ids)
+}
+
+// ---- Collections ----------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Collection {
+    pub collection_id: i32,
+    pub user_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_default: bool,
+    pub icon: String,
+    pub created_at: String,
+    pub last_updated: String,
+    pub episode_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CollectionsResponse {
+    pub collections: Vec<Collection>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateCollectionRequest {
+    pub user_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateCollectionResponse {
+    #[allow(dead_code)]
+    pub detail: String,
+    pub collection_id: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UpdateCollectionRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CollectionEpisodeRequest {
+    pub user_id: i32,
+    pub episode_id: i32,
+    pub is_youtube: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EpisodeCollectionsResponse {
+    pub collection_ids: Vec<i32>,
+}
+
+pub async fn call_get_collections(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<Vec<Collection>, Error> {
+    let endpoint = format!("{}/api/data/collections/user/{}", server, user_id);
+    let response = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        let parsed = response.json::<CollectionsResponse>().await?;
+        Ok(parsed.collections)
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
+}
+
+pub async fn call_create_collection(
+    server: &str,
+    api_key: &str,
+    req: CreateCollectionRequest,
+) -> Result<CreateCollectionResponse, Error> {
+    let endpoint = format!("{}/api/data/collections/create", server);
+    let response = Request::post(&endpoint)
+        .header("Api-Key", api_key)
+        .json(&req)?
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        Ok(response.json::<CreateCollectionResponse>().await?)
+    } else if response.status() == 409 {
+        Err(anyhow::anyhow!("A collection with that name already exists"))
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
+}
+
+pub async fn call_update_collection(
+    server: &str,
+    api_key: &str,
+    collection_id: i32,
+    req: UpdateCollectionRequest,
+) -> Result<(), Error> {
+    let endpoint = format!("{}/api/data/collections/{}", server, collection_id);
+    let response = Request::patch(&endpoint)
+        .header("Api-Key", api_key)
+        .json(&req)?
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        Ok(())
+    } else if response.status() == 409 {
+        Err(anyhow::anyhow!("A collection with that name already exists"))
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
+}
+
+pub async fn call_delete_collection(
+    server: &str,
+    api_key: &str,
+    collection_id: i32,
+) -> Result<(), Error> {
+    let endpoint = format!("{}/api/data/collections/{}", server, collection_id);
+    let response = Request::delete(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
+}
+
+pub async fn call_add_episode_to_collection(
+    server: &str,
+    api_key: &str,
+    collection_id: i32,
+    req: &CollectionEpisodeRequest,
+) -> Result<(), Error> {
+    let endpoint = format!("{}/api/data/collections/{}/add_episode", server, collection_id);
+    let response = Request::post(&endpoint)
+        .header("Api-Key", api_key)
+        .json(req)?
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
+}
+
+pub async fn call_remove_episode_from_collection(
+    server: &str,
+    api_key: &str,
+    collection_id: i32,
+    req: &CollectionEpisodeRequest,
+) -> Result<(), Error> {
+    let endpoint = format!("{}/api/data/collections/{}/remove_episode", server, collection_id);
+    let response = Request::post(&endpoint)
+        .header("Api-Key", api_key)
+        .json(req)?
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
+}
+
+pub async fn call_get_collection_episodes_paged(
+    server_name: &str,
+    api_key: &Option<String>,
+    collection_id: i32,
+    limit: i64,
+    offset: i64,
+    sort_by: &str,
+    sort_order: &str,
+    filter: &str,
+) -> Result<SavedPage, anyhow::Error> {
+    let url = format!(
+        "{}/api/data/collections/{}/episodes?limit={}&offset={}&sort_by={}&sort_order={}&filter={}",
+        server_name, collection_id, limit, offset, sort_by, sort_order, filter
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch collection episodes: {}",
+            response.status_text()
+        )));
+    }
+    let text = response.text().await?;
+    serde_json::from_str::<SavedPage>(&text)
+        .map_err(|_| anyhow::Error::msg("Failed to deserialize collection episodes page"))
+}
+
+pub async fn call_get_episode_collections(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+    episode_id: i32,
+    is_youtube: bool,
+) -> Result<Vec<i32>, Error> {
+    let endpoint = format!(
+        "{}/api/data/episode_collections/{}/{}?is_youtube={}",
+        server, user_id, episode_id, is_youtube
+    );
+    let response = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        let parsed = response.json::<EpisodeCollectionsResponse>().await?;
+        Ok(parsed.collection_ids)
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
+}
+
+pub async fn call_get_collection_add_ui(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<String, Error> {
+    let endpoint = format!("{}/api/data/collection_add_ui?user_id={}", server, user_id);
+    let response = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        let parsed = response.json::<serde_json::Value>().await?;
+        Ok(parsed
+            .get("collection_add_ui")
+            .and_then(|v| v.as_str())
+            .unwrap_or("modal")
+            .to_string())
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
+}
+
+pub async fn call_set_collection_add_ui(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+    mode: &str,
+) -> Result<(), Error> {
+    let endpoint = format!("{}/api/data/collection_add_ui", server);
+    let body = serde_json::json!({ "user_id": user_id, "mode": mode });
+    let response = Request::post(&endpoint)
+        .header("Api-Key", api_key)
+        .json(&body)?
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
 }

@@ -1,33 +1,21 @@
 PODS:
   - Flutter (1.0.0)
-  - flutter_carplay (1.1.0):
-    - Flutter
   - flutter_downloader (0.0.1):
-    - Flutter
-  - permission_handler_apple (9.3.0):
     - Flutter
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
-  - flutter_carplay (from `.symlinks/plugins/flutter_carplay/ios`)
   - flutter_downloader (from `.symlinks/plugins/flutter_downloader/ios`)
-  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
 
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
-  flutter_carplay:
-    :path: ".symlinks/plugins/flutter_carplay/ios"
   flutter_downloader:
     :path: ".symlinks/plugins/flutter_downloader/ios"
-  permission_handler_apple:
-    :path: ".symlinks/plugins/permission_handler_apple/ios"
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_carplay: 0e3f943484e00399dac7f599715ae6761288f0db
   flutter_downloader: 78da0da1084e709cbfd3b723c7ea349c71681f09
-  permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
 
 PODFILE CHECKSUM: 1a9f7ffa1bf69c91d3779fff98c69958379e046b
 

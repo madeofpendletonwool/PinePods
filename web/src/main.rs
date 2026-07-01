@@ -5,6 +5,7 @@ mod requests;
 use crate::components::navigation::NavigationHandler;
 use crate::components::oauth_callback::OAuthCallback;
 use crate::components::restore_overlay::RestoreOverlay;
+use crate::components::collection_picker_modal::CollectionPickerModal;
 use crate::pages::downloads::Downloads;
 use crate::pages::episode::Episode;
 use crate::pages::episode_layout::EpisodeLayout;
@@ -74,6 +75,7 @@ fn switch(route: Route) -> Html {
         Route::PodLayout => html! { <PodLayout /> },
         Route::Queue => html! { <Queue /> },
         Route::Saved => html! { <Saved /> },
+        Route::Collections => html! { <Saved /> },
         Route::Search => html! { <Search on_search={Callback::from(move |_| {})} /> },
         Route::SearchNew => html! { <SearchNew /> },
         Route::Settings => html! { <Settings /> },
@@ -249,6 +251,7 @@ fn language_manager() -> Html {
                 <Switch<Route> render={switch} />
             </NavigationHandler>
             <RestoreOverlay />
+            <CollectionPickerModal />
         </BrowserRouter>
     }
 }

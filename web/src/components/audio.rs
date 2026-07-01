@@ -10,6 +10,7 @@ use crate::requests::pod_req::call_get_episode_id;
 use crate::requests::pod_req::FetchPodcasting2DataRequest;
 use crate::requests::pod_req::{
     call_add_history, call_check_episode_in_db, call_fetch_podcasting_2_data,
+    call_get_episode_skip_segments,
     call_get_auto_play_next_status, call_get_next_playlist_episode, call_get_next_podcast_episode,
     call_get_play_episode_details, call_get_podcast_id_from_ep, call_get_queued_episodes,
     call_increment_listen_time, call_increment_played, call_mark_episode_completed,
@@ -514,6 +515,34 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     let api_key = api_key.clone(); // Clone to make it owned
                     let server_name = server_name.clone(); // Clone to make it owned
 
+                    // Fetch auto-skip segments (silence trim #727) for this episode.
+                    if episode_id != 0 && !is_youtube_vid {
+                        let seg_dispatch = dispatch.clone();
+                        let seg_api_key = api_key.clone();
+                        let seg_server_name = server_name.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match call_get_episode_skip_segments(
+                                &seg_server_name,
+                                &seg_api_key,
+                                user_id,
+                                episode_id,
+                            )
+                            .await
+                            {
+                                Ok(segments) => {
+                                    seg_dispatch.reduce_mut(|state| {
+                                        state.skip_segments = Some(segments);
+                                    });
+                                }
+                                Err(e) => {
+                                    web_sys::console::log_1(
+                                        &format!("Error fetching skip segments: {}", e).into(),
+                                    );
+                                }
+                            }
+                        });
+                    }
+
                     // Only proceed if the episode_id is not zero
                     if episode_id != 0 && !is_youtube_vid {
                         wasm_bindgen_futures::spawn_local(async move {
@@ -680,6 +709,23 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     } else {
                         0.0
                     };
+
+                    // Auto-skip: if the playhead is inside a detected silence range, jump to its end.
+                    // Segments are pre-computed server-side (#727); a small tolerance avoids
+                    // skipping when we're already essentially at the range's end.
+                    if let Some(segments) = &state_clone.skip_segments {
+                        if let Some(seg) = segments.iter().find(|s| {
+                            s.kind == "silence"
+                                && time_in_seconds >= s.start_time
+                                && time_in_seconds < s.end_time - 0.25
+                        }) {
+                            if let Some(media_element) = state_clone.media_element.as_ref() {
+                                media_element.set_current_time(seg.end_time);
+                            } else if let Some(audio_element) = state_clone.audio_element.as_ref() {
+                                audio_element.set_current_time(seg.end_time);
+                            }
+                        }
+                    }
 
                     // Update local state instead of global dispatch to avoid re-rendering entire app
                     current_time_local.set(time_in_seconds);

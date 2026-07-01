@@ -17,6 +17,8 @@ pub enum Route {
     Queue,
     #[at("/saved")]
     Saved,
+    #[at("/collections")]
+    Collections,
     #[at("/settings")]
     Settings,
     #[at("/history")]

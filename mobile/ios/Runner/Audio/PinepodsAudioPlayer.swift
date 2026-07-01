@@ -23,6 +23,12 @@ class PinepodsAudioPlayer: NSObject {
     private var playerContext = 0
     private var itemContext = 0
 
+    // Silence trim (#727): AVPlayer has no native skip-silence DSP, so we apply
+    // server-detected silent ranges by seeking past them from the periodic
+    // time observer. Times are in seconds.
+    private var skipSilenceEnabled = false
+    private var skipSegments: [(start: Double, end: Double)] = []
+
     init(eventSink: FlutterEventSink?) {
         self.eventSink = eventSink
         super.init()
@@ -95,9 +101,10 @@ class PinepodsAudioPlayer: NSObject {
         player?.addObserver(self, forKeyPath: #keyPath(AVPlayer.timeControlStatus), options: [.new], context: &playerContext)
         player?.addObserver(self, forKeyPath: #keyPath(AVPlayer.rate), options: [.new], context: &playerContext)
 
-        // Setup periodic time observer for position updates (every 500ms)
-        let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        // Setup periodic time observer for position updates (every 1s; battery)
+        let interval = CMTime(seconds: 1.0, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            self?.applySilenceSkipIfNeeded(at: time.seconds)
             self?.sendPlaybackStateEvent()
         }
 
@@ -321,6 +328,11 @@ class PinepodsAudioPlayer: NSObject {
         // CRITICAL: Ensure all components are set up before playback
         // This prevents issues where now playing info isn't displayed
         ensureSetupComplete()
+
+        // Clear any silence-skip ranges from the previous episode; the Dart layer
+        // re-supplies them (or disables) via setSkipSegments after load.
+        skipSilenceEnabled = false
+        skipSegments = []
 
         self.currentMetadata = metadata
 
@@ -552,6 +564,25 @@ class PinepodsAudioPlayer: NSObject {
         NSLog("[PinepodsAudioPlayer] setPlaybackSpeed: \(speed)")
         player?.rate = speed
         updateNowPlayingPlaybackInfo()
+    }
+
+    /// Configure server-detected silence ranges for the current episode (#727).
+    /// Passing enabled=false or an empty list disables skipping.
+    func setSkipSegments(enabled: Bool, segments: [(start: Double, end: Double)]) {
+        NSLog("[PinepodsAudioPlayer] setSkipSegments: enabled=\(enabled), count=\(segments.count)")
+        skipSilenceEnabled = enabled
+        skipSegments = segments.sorted { $0.start < $1.start }
+    }
+
+    /// Called from the 1s periodic observer: if the playhead is inside a silence
+    /// range, seek to its end. A small tolerance avoids seeking when we're
+    /// essentially already past the range.
+    private func applySilenceSkipIfNeeded(at seconds: Double) {
+        guard skipSilenceEnabled, !skipSegments.isEmpty, seconds.isFinite else { return }
+        if let seg = skipSegments.first(where: { seconds >= $0.start && seconds < $0.end - 0.25 }) {
+            let target = CMTime(seconds: seg.end, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+            player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
     }
 
     func getCurrentPosition() -> Int {

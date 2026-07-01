@@ -685,7 +685,8 @@
     "queue": "Queue",
     "saved": "Saved",
     "search": "Search",
-    "unmatched_podcasts_notification": "📻 You have {count} podcast(s) that aren't matched to Podcast Index. Visit the Match Podcast Index settings to enable host and guest information."
+    "unmatched_podcasts_notification": "📻 You have {count} podcast(s) that aren't matched to Podcast Index. Visit the Match Podcast Index settings to enable host and guest information.",
+    "collections": "Collections"
   },
   "nextcloud_options": {
     "add_device": "Add Device",
@@ -769,7 +770,6 @@
     "loading_server_statistics": "Loading Server Statistics",
     "nextcloud_sync_active": "Nextcloud Sync Active",
     "sync_now": "Sync Now",
-    "syncing": "Syncing...",
     "waiting_for_auth": "Waiting for authentication...",
     "hide": "Hide",
     "show": "Show",
@@ -1429,5 +1429,26 @@
     "successfully_unsubscribed": "Successfully unsubscribed from channel.",
     "try_different_keywords": "Try searching with different keywords.",
     "youtube_channels": "YouTube Channels"
+  },
+  "collections": {
+    "collections": "Collections",
+    "add_to_collection": "Add to Collection",
+    "new_collection": "New collection",
+    "edit_collection": "Edit collection",
+    "collection_name": "Collection name",
+    "description": "Description",
+    "icon": "Icon",
+    "search_collections": "Search collections...",
+    "save": "Save",
+    "saving": "Saving...",
+    "create": "Create",
+    "delete_collection": "Delete collection",
+    "default": "default",
+    "add_mode": "Collection add mode",
+    "add_mode_modal": "Modal picker",
+    "add_mode_submenu": "Sub-menu flyout",
+    "add_mode_description": "Choose how the \"Add to Collection\" menu behaves on episodes.",
+    "empty_title": "No episodes in this collection yet",
+    "empty_instructions": "Add episodes by opening any episode's three-dot menu and choosing \"Add to Collection\"."
   }
 }

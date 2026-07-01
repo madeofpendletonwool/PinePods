@@ -45,7 +45,7 @@ pub fn app_drawer() -> Html {
     let i18n_home = i18n.t("navigation.home").to_string();
     let i18n_feed = i18n.t("app_drawer.feed").to_string();
     let i18n_search_podcasts = i18n.t("app_drawer.search_podcasts").to_string();
-    let i18n_saved = i18n.t("navigation.saved").to_string();
+    let i18n_collections = i18n.t("navigation.collections").to_string();
     let i18n_playlists = i18n.t("navigation.playlists").to_string();
     let i18n_history = i18n.t("navigation.history").to_string();
     let i18n_server_downloads = i18n.t("app_drawer.server_downloads").to_string();
@@ -273,9 +273,9 @@ pub fn app_drawer() -> Html {
                         </Link<Route>>
                     </div>
                     <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::Saved} classes="sb-item">
-                            <i class="ph ph-star"></i>
-                            <span>{&i18n_saved}</span>
+                        <Link<Route> to={Route::Collections} classes="sb-item">
+                            <i class="ph ph-bookmark-simple"></i>
+                            <span>{&i18n_collections}</span>
                         </Link<Route>>
                     </div>
                     <div onclick={toggle_drawer.clone()}>

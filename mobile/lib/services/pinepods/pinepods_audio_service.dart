@@ -165,6 +165,26 @@ class PinepodsAudioService {
         await _audioPlayerService.seek(position: playDetails.startSkip);
       }
 
+      // Silence trim (#727): honor the per-podcast setting (falling back to the
+      // user's global preference), applied to this session only. Android uses
+      // ExoPlayer's native skip-silence; iOS applies the server-detected ranges.
+      try {
+        final trimSettings = await _pinepodsService.getSilenceTrim(userId, podcastId);
+        List<Map<String, double>> segments = const [];
+        if (trimSettings.enabled) {
+          final fetched = await _pinepodsService.getEpisodeSkipSegments(episodeId, userId);
+          segments = fetched
+              .where((s) => s.kind == 'silence')
+              .map((s) => {'start': s.startTime, 'end': s.endTime})
+              .toList();
+        }
+        // Pass the per-podcast flag; the native service ORs it with the user's
+        // global trim-silence preference (Android DSP path).
+        await _audioPlayerService.applyEpisodeSilenceTrim(trimSettings.enabled, segments);
+      } catch (e) {
+        log.fine('Could not apply silence trim (continuing): $e');
+      }
+
       // Add to history. Routes through the offline outbox so it is not lost when
       // the device is offline (e.g. playing a local download on a plane).
       final initialPosition = resume ? (pinepodsEpisode.listenDuration ?? 0).toDouble() : 0.0;

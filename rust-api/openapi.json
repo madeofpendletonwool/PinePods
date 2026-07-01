@@ -1182,6 +1182,508 @@
         ]
       }
     },
+    "/api/data/collection_add_ui": {
+      "get": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Get the collection add-UI preference",
+        "operationId": "get_collection_add_ui",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preference",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionAddUiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Set the collection add-UI preference",
+        "operationId": "set_collection_add_ui",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetCollectionAddUiRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "403": {
+            "description": "Cannot set another user's setting"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/collections/bulk_add": {
+      "post": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Add multiple episodes to a collection",
+        "operationId": "bulk_add_collection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkAddCollectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Episodes added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "403": {
+            "description": "Cannot modify another user's collection"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/collections/create": {
+      "post": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Create a collection",
+        "operationId": "create_collection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCollectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Collection created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateCollectionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "403": {
+            "description": "Cannot create a collection for another user"
+          },
+          "409": {
+            "description": "A collection with that name already exists"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/collections/user/{user_id}": {
+      "get": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "List a user's collections",
+        "operationId": "list_collections",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Collections",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "403": {
+            "description": "Cannot list another user's collections"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/collections/{collection_id}": {
+      "delete": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Delete a collection",
+        "operationId": "delete_collection",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Collection deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cannot delete the default collection"
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "403": {
+            "description": "Cannot delete another user's collection"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Update a collection",
+        "operationId": "update_collection",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCollectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Collection updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Cannot edit the default collection"
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "403": {
+            "description": "Cannot edit another user's collection"
+          },
+          "409": {
+            "description": "A collection with that name already exists"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/collections/{collection_id}/add_episode": {
+      "post": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Add an episode to a collection",
+        "operationId": "add_episode_to_collection",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionEpisodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Episode added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "403": {
+            "description": "Cannot modify another user's collection"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/collections/{collection_id}/episodes": {
+      "get": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Get a collection's episodes (paginated)",
+        "operationId": "get_collection_episodes",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort_order",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Episodes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedEpisodesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "403": {
+            "description": "Cannot view another user's collection"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/collections/{collection_id}/remove_episode": {
+      "post": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Remove an episode from a collection",
+        "operationId": "remove_episode_from_collection",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionEpisodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Episode removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "403": {
+            "description": "Cannot modify another user's collection"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/config": {
       "get": {
         "tags": [
@@ -1938,6 +2440,66 @@
             }
           }
         }
+      }
+    },
+    "/api/data/episode_collections/{user_id}/{episode_id}": {
+      "get": {
+        "tags": [
+          "collections"
+        ],
+        "summary": "Which collections contain this episode",
+        "operationId": "get_episode_collections",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "is_youtube",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Collection IDs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodeCollectionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "403": {
+            "description": "Cannot access another user's collections"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
       }
     },
     "/api/data/extend_shared_link": {
@@ -9685,6 +10247,41 @@
           }
         }
       },
+      "BulkAddCollectionRequest": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "collection_id",
+          "episodes"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "collection_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "episodes": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": false,
+              "prefixItems": [
+                {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "description": "Each entry is (episode_id, is_youtube)"
+          }
+        }
+      },
       "BulkEpisodeActionRequest": {
         "type": "object",
         "required": [
@@ -9849,6 +10446,111 @@
           }
         }
       },
+      "Collection": {
+        "type": "object",
+        "required": [
+          "collection_id",
+          "user_id",
+          "name",
+          "is_default",
+          "icon",
+          "created_at",
+          "last_updated",
+          "episode_count"
+        ],
+        "properties": {
+          "collection_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "last_updated": {
+            "type": "string"
+          },
+          "episode_count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "CollectionAddUiResponse": {
+        "type": "object",
+        "required": [
+          "collection_add_ui"
+        ],
+        "properties": {
+          "collection_add_ui": {
+            "type": "string"
+          }
+        }
+      },
+      "CollectionDetailResponse": {
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "CollectionEpisodeRequest": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "episode_id",
+          "is_youtube"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "episode_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "is_youtube": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CollectionsResponse": {
+        "type": "object",
+        "required": [
+          "collections"
+        ],
+        "properties": {
+          "collections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Collection"
+            }
+          }
+        }
+      },
       "ConfigResponse": {
         "type": "object",
         "required": [
@@ -9907,6 +10609,50 @@
               "type": "integer",
               "format": "int32"
             }
+          }
+        }
+      },
+      "CreateCollectionRequest": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "name"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CreateCollectionResponse": {
+        "type": "object",
+        "required": [
+          "detail",
+          "collection_id"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "collection_id": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -10688,6 +11434,21 @@
           },
           "is_video": {
             "type": "boolean"
+          }
+        }
+      },
+      "EpisodeCollectionsResponse": {
+        "type": "object",
+        "required": [
+          "collection_ids"
+        ],
+        "properties": {
+          "collection_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
           }
         }
       },
@@ -12851,6 +13612,22 @@
           }
         }
       },
+      "SetCollectionAddUiRequest": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "mode"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "mode": {
+            "type": "string"
+          }
+        }
+      },
       "SetEmailRequest": {
         "type": "object",
         "required": [
@@ -13235,6 +14012,29 @@
           "seconds": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "UpdateCollectionRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
