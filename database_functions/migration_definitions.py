@@ -4730,3 +4730,312 @@ def migration_047_add_scheduled_backup_retention(conn, db_type: str):
         raise
     finally:
         cursor.close()
+
+
+@register_migration("048", "create_collections_tables", "Create Collections + CollectionEpisodes tables and a per-user default 'Saved' collection", requires=["010"])
+def migration_048_create_collections_tables(conn, db_type: str):
+    """Collections evolve the flat Saved page into manual, user-curated lists.
+
+    The legacy "Saved" bucket becomes a pinned, undeletable default collection per user.
+    Episodes can belong to multiple collections at once, and both podcast episodes and
+    YouTube videos are supported via the same dual-FK CHECK pattern used by PlaylistContents.
+
+    Note: the default ("Saved") collection keeps SavedEpisodes/SavedVideos as its backing
+    store — we do NOT copy those rows into CollectionEpisodes. CollectionEpisodes only ever
+    holds membership rows for non-default collections.
+    """
+    logger.info("Starting migration 048: Create Collections tables")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "Collections" (
+                    CollectionID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    Description TEXT,
+                    IsDefault BOOLEAN NOT NULL DEFAULT FALSE,
+                    Icon VARCHAR(50) NOT NULL DEFAULT 'ph-bookmark-simple',
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    LastUpdated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Name)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "CollectionEpisodes" (
+                    CollectionEpisodeID SERIAL PRIMARY KEY,
+                    CollectionID INT NOT NULL,
+                    EpisodeID INT,
+                    VideoID INT,
+                    AddedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (CollectionID) REFERENCES "Collections"(CollectionID) ON DELETE CASCADE,
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+
+            # Indexes for fast per-collection scans and membership lookups
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_collections_userid ON "Collections"(UserID);
+                CREATE INDEX IF NOT EXISTS idx_collection_episodes_collectionid ON "CollectionEpisodes"(CollectionID);
+                CREATE INDEX IF NOT EXISTS idx_collection_episodes_episodeid ON "CollectionEpisodes"(EpisodeID);
+                CREATE INDEX IF NOT EXISTS idx_collection_episodes_videoid ON "CollectionEpisodes"(VideoID);
+            """)
+
+            # Enforce exactly one default collection per user (Postgres partial unique index)
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_one_default_per_user
+                ON "Collections"(UserID) WHERE IsDefault = TRUE
+            """)
+
+            # Seed a default "Saved" collection for every existing user (idempotent)
+            cursor.execute("""
+                INSERT INTO "Collections" (UserID, Name, IsDefault, Icon)
+                SELECT u.UserID, 'Saved', TRUE, 'ph-bookmark-simple'
+                FROM "Users" u
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM "Collections" c
+                    WHERE c.UserID = u.UserID AND c.IsDefault = TRUE
+                )
+            """)
+        else:  # MySQL / MariaDB
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS Collections (
+                    CollectionID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    Description TEXT,
+                    IsDefault BOOLEAN NOT NULL DEFAULT FALSE,
+                    Icon VARCHAR(50) NOT NULL DEFAULT 'ph-bookmark-simple',
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    LastUpdated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Name)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS CollectionEpisodes (
+                    CollectionEpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                    CollectionID INT NOT NULL,
+                    EpisodeID INT,
+                    VideoID INT,
+                    AddedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (CollectionID) REFERENCES Collections(CollectionID) ON DELETE CASCADE,
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+
+            # Create indexes for better performance (MySQL doesn't support IF NOT EXISTS for indexes)
+            try:
+                cursor.execute("CREATE INDEX idx_collections_userid ON Collections(UserID)")
+            except:
+                pass  # Index may already exist
+            try:
+                cursor.execute("CREATE INDEX idx_collection_episodes_collectionid ON CollectionEpisodes(CollectionID)")
+            except:
+                pass  # Index may already exist
+            try:
+                cursor.execute("CREATE INDEX idx_collection_episodes_episodeid ON CollectionEpisodes(EpisodeID)")
+            except:
+                pass  # Index may already exist
+            try:
+                cursor.execute("CREATE INDEX idx_collection_episodes_videoid ON CollectionEpisodes(VideoID)")
+            except:
+                pass  # Index may already exist
+
+            # MySQL/MariaDB has no partial unique index — "one default per user" is enforced
+            # by the idempotent seed below plus application logic in the API layer.
+            cursor.execute("""
+                INSERT INTO Collections (UserID, Name, IsDefault, Icon)
+                SELECT u.UserID, 'Saved', TRUE, 'ph-bookmark-simple'
+                FROM Users u
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM Collections c
+                    WHERE c.UserID = u.UserID AND c.IsDefault = TRUE
+                )
+            """)
+
+        logger.info("Created Collections tables and seeded default collections")
+
+    except Exception as e:
+        logger.error(f"Error in Collections tables migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("049", "add_collection_add_ui_to_usersettings", "Add collection_add_ui preference column to UserSettings", requires=["003"])
+def migration_049_add_collection_add_ui(conn, db_type: str):
+    """Drives the 'Add to Collection' UX choice: 'modal' (default) picker or 'submenu' flyout."""
+    logger.info("Starting migration 049: Add collection_add_ui column to UserSettings")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == 'postgresql':
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserSettings'
+                AND column_name = 'collection_add_ui'
+                AND table_schema = 'public'
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE "UserSettings"
+                    ADD COLUMN collection_add_ui VARCHAR(10) DEFAULT 'modal'
+                """)
+                logger.info("Added collection_add_ui column to UserSettings table (PostgreSQL)")
+            else:
+                logger.info("collection_add_ui column already exists in UserSettings table (PostgreSQL)")
+        else:  # MySQL
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserSettings'
+                AND column_name = 'CollectionAddUI'
+                AND table_schema = DATABASE()
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE UserSettings
+                    ADD COLUMN CollectionAddUI VARCHAR(10) DEFAULT 'modal'
+                """)
+                logger.info("Added CollectionAddUI column to UserSettings table (MySQL)")
+            else:
+                logger.info("CollectionAddUI column already exists in UserSettings table (MySQL)")
+
+        logger.info("collection_add_ui migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in collection_add_ui migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("050", "create_skip_segments_and_silence_settings", "Create EpisodeSkipSegments table and add per-podcast silence-trim settings", requires=["001", "005"])
+def migration_050_create_skip_segments(conn, db_type: str):
+    """Server-side, multi-range skip model (foundation for silence-trim #727, later ad-skip #790).
+
+    EpisodeSkipSegments holds content-level (per-episode, NOT per-user) time ranges the player
+    should auto-skip. Because a given episode's audio is identical for every subscriber, the
+    segments are computed once and shared across all users — users only opt in to *applying* a
+    given Kind. It mirrors the dual-FK (EpisodeID/VideoID) CHECK pattern used by
+    CollectionEpisodes/PlaylistContents so podcast episodes and YouTube videos share one table.
+
+    Per-podcast controls live on Podcasts (matching the existing PlaybackSpeed/StartSkip pattern):
+      TrimSilence      - opt-in toggle to auto-detect silence on new episodes of this podcast
+      SilenceThreshold - aggressiveness preset (1=low, 2=medium, 3=high); default medium
+
+    Episodes.SilenceDetected marks that silence detection has already run for an episode, so we
+    don't re-analyze the same file on every playback (absence of segment rows is otherwise
+    indistinguishable from "not yet analyzed")."""
+    logger.info("Starting migration 050: Create EpisodeSkipSegments + silence-trim settings")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeSkipSegments" (
+                    SegmentID SERIAL PRIMARY KEY,
+                    EpisodeID INT,
+                    VideoID INT,
+                    Kind VARCHAR(20) NOT NULL,
+                    StartTime DOUBLE PRECISION NOT NULL,
+                    EndTime DOUBLE PRECISION NOT NULL,
+                    Source VARCHAR(30) NOT NULL,
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_skip_segments_episodeid ON "EpisodeSkipSegments"(EpisodeID);
+                CREATE INDEX IF NOT EXISTS idx_skip_segments_videoid ON "EpisodeSkipSegments"(VideoID);
+            """)
+
+            # Per-podcast silence-trim controls
+            for col_name, col_def in (
+                ("trimsilence", "BOOLEAN DEFAULT FALSE"),
+                ("silencethreshold", "INT DEFAULT 2"),
+            ):
+                cursor.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = 'Podcasts' AND column_name = %s
+                    """,
+                    (col_name,),
+                )
+                if not cursor.fetchone():
+                    cursor.execute(f'ALTER TABLE "Podcasts" ADD COLUMN {col_name} {col_def}')
+                    logger.info(f"Added column {col_name} to Podcasts (PostgreSQL)")
+
+            # Detection-complete marker so we don't re-analyze on every playback
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'Episodes' AND column_name = 'silencedetected'
+            """)
+            if not cursor.fetchone():
+                cursor.execute('ALTER TABLE "Episodes" ADD COLUMN silencedetected BOOLEAN DEFAULT FALSE')
+                logger.info("Added silencedetected column to Episodes (PostgreSQL)")
+
+        else:  # MySQL / MariaDB
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS EpisodeSkipSegments (
+                    SegmentID INT AUTO_INCREMENT PRIMARY KEY,
+                    EpisodeID INT,
+                    VideoID INT,
+                    Kind VARCHAR(20) NOT NULL,
+                    StartTime DOUBLE NOT NULL,
+                    EndTime DOUBLE NOT NULL,
+                    Source VARCHAR(30) NOT NULL,
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+            for idx_sql in (
+                "CREATE INDEX idx_skip_segments_episodeid ON EpisodeSkipSegments(EpisodeID)",
+                "CREATE INDEX idx_skip_segments_videoid ON EpisodeSkipSegments(VideoID)",
+            ):
+                try:
+                    cursor.execute(idx_sql)
+                except Exception:
+                    pass  # Index may already exist
+
+            for table, col_name, col_def in (
+                ("Podcasts", "TrimSilence", "BOOLEAN DEFAULT FALSE"),
+                ("Podcasts", "SilenceThreshold", "INT DEFAULT 2"),
+                ("Episodes", "SilenceDetected", "BOOLEAN DEFAULT FALSE"),
+            ):
+                cursor.execute(
+                    """
+                    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s
+                    """,
+                    (table, col_name),
+                )
+                if not cursor.fetchone():
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+                    logger.info(f"Added column {col_name} to {table} (MySQL)")
+
+        logger.info("Skip segments + silence-trim settings migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in skip segments migration: {e}")
+        raise
+    finally:
+        cursor.close()

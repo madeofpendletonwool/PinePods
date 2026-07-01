@@ -32,7 +32,6 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dialogs/flutter_dialogs.dart';
-import 'package:flutter_html/flutter_html.dart';
 import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
 
@@ -587,7 +586,7 @@ class _PodcastTitleState extends State<PodcastTitle> with SingleTickerProviderSt
 
     description = PodcastHtml(
       content: widget.podcast.description!,
-      fontSize: FontSize.medium,
+      fontSize: 16.0,
     );
 
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) {

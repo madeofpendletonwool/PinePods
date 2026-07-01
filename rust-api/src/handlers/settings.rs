@@ -3679,6 +3679,180 @@ pub async fn adjust_skip_times(
     Ok(Json(serde_json::json!({ "detail": "Skip times updated." })))
 }
 
+// ---- Silence-trim / skip-segment endpoints (#727) ----
+
+fn default_silence_threshold() -> i32 { 2 }
+
+// Per-podcast silence-trim settings
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct SilenceTrimRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_silence_threshold")]
+    pub threshold: i32,
+}
+
+#[utoipa::path(
+    post,
+    path = "/adjust_silence_trim",
+    tag = "settings",
+    summary = "Set per-podcast silence-trim (enable + threshold)",
+    request_body = SilenceTrimRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn adjust_silence_trim(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SilenceTrimRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    crate::services::audio_processing::set_trim_silence(
+        &state.db_pool, request.podcast_id, request.user_id, request.enabled, request.threshold,
+    )
+    .await
+    .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "detail": "Silence trim settings updated." })))
+}
+
+// Read per-podcast silence-trim settings
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct SilenceTrimQuery {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+#[utoipa::path(
+    get,
+    path = "/get_silence_trim",
+    tag = "settings",
+    summary = "Get per-podcast silence-trim settings",
+    params(SilenceTrimQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_silence_trim(
+    State(state): State<AppState>,
+    Query(query): Query<SilenceTrimQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own podcasts."));
+    }
+
+    let (enabled, threshold) =
+        crate::services::audio_processing::get_trim_silence(&state.db_pool, query.podcast_id)
+            .await
+            .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "enabled": enabled, "threshold": threshold })))
+}
+
+// Read all skip segments (silence, and later ads) the player should auto-skip for an episode
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct SkipSegmentsQuery {
+    pub episode_id: i32,
+    pub user_id: i32,
+}
+
+#[utoipa::path(
+    get,
+    path = "/episode_skip_segments",
+    tag = "settings",
+    summary = "Get auto-skip segments for an episode",
+    params(SkipSegmentsQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_episode_skip_segments(
+    State(state): State<AppState>,
+    Query(query): Query<SkipSegmentsQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own episodes."));
+    }
+
+    let segments = crate::services::audio_processing::get_episode_skip_segments(&state.db_pool, query.episode_id)
+        .await
+        .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "segments": segments })))
+}
+
+// Manually (re-)run silence detection for one episode as a tracked background task
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct DetectSilenceRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    #[serde(default)]
+    pub force: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/detect_silence",
+    tag = "settings",
+    summary = "Run silence detection for an episode",
+    request_body = DetectSilenceRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn detect_silence(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<DetectSilenceRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only process your own episodes."));
+    }
+
+    let task_id = state
+        .task_spawner
+        .spawn_detect_silence(request.episode_id, request.user_id, request.force)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "task_id": task_id, "detail": "Silence detection started." })))
+}
+
 // Request struct for remove_category - matches Python RemoveCategoryData model
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct RemoveCategoryData {

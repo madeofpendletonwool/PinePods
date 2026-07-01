@@ -45,12 +45,14 @@ class NativeAudioPlayerService extends AudioPlayerService {
   DateTime? _episodeStartTime;
   Timer? _localPositionTimer;
 
-  StreamSubscription<int>? _positionSubscription;
+  /// Whether we've already reported the decoded duration for the current
+  /// episode to the server (see PinepodsAudioService.updateEpisodeDurationIfNeeded).
+  bool _actualDurationReported = false;
+
   StreamSubscription<int>? _sleepSubscription;
   StreamSubscription? _nativeEventSubscription;
 
   final BehaviorSubject<AudioState> _playingState = BehaviorSubject<AudioState>.seeded(AudioState.none);
-  final _durationTicker = Stream<int>.periodic(const Duration(milliseconds: 500), (count) => count).asBroadcastStream();
   final _sleepTicker = Stream<int>.periodic(const Duration(milliseconds: 500), (count) => count).asBroadcastStream();
   final _playPosition = BehaviorSubject<PositionState>();
   final _episodeEvent = BehaviorSubject<Episode?>(sync: true);
@@ -227,6 +229,14 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
       // Update chapter if needed
       _updateChapter(position ~/ 1000, duration ~/ 1000);
+
+      // Once the decoder reports a real length, correct the server's stored
+      // duration if it's wrong (e.g. feeds shipping a missing/zero duration).
+      // Mirrors the web player; only fires once per episode.
+      if (!_actualDurationReported && duration > 0) {
+        _actualDurationReported = true;
+        _pinepodsAudioService?.updateEpisodeDurationIfNeeded(duration / 1000.0);
+      }
     }
   }
 
@@ -316,6 +326,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
     _currentEpisode = episode;
     _currentEpisode!.played = false;
+    _actualDurationReported = false;
 
     // Get URI (local file or stream)
     final uri = await _generateEpisodeUri(episode);
@@ -471,6 +482,9 @@ class NativeAudioPlayerService extends AudioPlayerService {
       // Convert seconds to milliseconds for native player
       final positionMs = position * 1000;
       await platform.invokeMethod('seek', {'position': positionMs});
+      // Persist the new position immediately so a crash/quick-close right after
+      // a scrub doesn't lose it (steady-state saver only runs every 15s).
+      await _saveLocalPosition();
     } catch (e) {
       log.severe('Error seeking: $e');
     }
@@ -500,6 +514,38 @@ class NativeAudioPlayerService extends AudioPlayerService {
         await platform.invokeMethod('setTrimSilence', {'enabled': trim});
       } catch (e) {
         log.severe('Error setting trim silence: $e');
+      }
+    }
+  }
+
+  @override
+  Future<void> applyEpisodeSilenceTrim(
+    bool enabled,
+    List<Map<String, double>> segments,
+  ) async {
+    log.info('applyEpisodeSilenceTrim: enabled=$enabled, segments=${segments.length}');
+    // Session-only: unlike trimSilence(), this does NOT persist to the global
+    // settingsService, so a per-podcast value never overwrites the user default.
+    if (Platform.isAndroid) {
+      // Android uses ExoPlayer's native real-time skip-silence DSP. Effective
+      // enablement is the per-podcast flag OR the user's global preference.
+      final effective = enabled || settingsService.trimSilence;
+      try {
+        await platform.invokeMethod('setTrimSilence', {'enabled': effective});
+      } catch (e) {
+        log.severe('Error applying episode trim silence (Android): $e');
+      }
+    } else if (Platform.isIOS) {
+      // iOS (AVPlayer has no DSP skip-silence): apply pre-computed silence ranges.
+      try {
+        await platform.invokeMethod('setSkipSegments', {
+          'enabled': enabled,
+          'segments': segments
+              .map((s) => {'start': s['start'], 'end': s['end']})
+              .toList(),
+        });
+      } catch (e) {
+        log.severe('Error applying episode skip segments (iOS): $e');
       }
     }
   }
@@ -672,7 +718,10 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
   void _startLocalPositionSaver() {
     _localPositionTimer?.cancel();
-    _localPositionTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+    // Steady-state local resume-position save. Kept infrequent for battery; the
+    // important moments (pause/seek/stop/complete) save immediately via
+    // _saveLocalPosition() so crash-resume stays accurate.
+    _localPositionTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
       try {
         await _saveLocalPosition();
       } catch (e) {

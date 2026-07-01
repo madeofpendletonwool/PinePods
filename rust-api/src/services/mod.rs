@@ -1,3 +1,4 @@
+pub mod audio_processing;
 pub mod auth;
 pub mod scheduler;
 pub mod task_manager;

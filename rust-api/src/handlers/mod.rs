@@ -3,6 +3,7 @@ pub mod health;
 pub mod podcasts;
 pub mod episodes;
 pub mod playlists;
+pub mod collections;
 pub mod websocket;
 // pub mod async_tasks_examples;  // File was deleted
 pub mod refresh;

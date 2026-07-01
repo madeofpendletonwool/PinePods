@@ -11,7 +11,9 @@ use crate::components::loading::Loading;
 use crate::components::episode_list_view::EpisodeListView;
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{
-    call_add_category, call_add_podcast, call_adjust_skip_times, call_bulk_download_episodes,
+    call_add_category, call_add_podcast, call_adjust_silence_trim, call_adjust_skip_times,
+    call_get_silence_trim, SilenceTrimRequest,
+    call_bulk_download_episodes,
     call_bulk_mark_episodes_completed, call_bulk_queue_episodes, call_bulk_save_episodes,
     call_check_podcast, call_clear_playback_speed, call_download_all_podcast,
     call_enable_auto_download, call_enable_auto_play_next,
@@ -404,6 +406,11 @@ pub fn episode_layout() -> Html {
     let i18n_start_skip_seconds = i18n.t("episodes_layout.start_skip_seconds").to_string();
     let i18n_end_skip_seconds = i18n.t("episodes_layout.end_skip_seconds").to_string();
     let i18n_youtube_download_limit = i18n.t("episodes_layout.youtube_download_limit").to_string();
+    let i18n_trim_silence = i18n.t("episodes_layout.trim_silence").to_string();
+    let i18n_trim_silence_description = i18n
+        .t("episodes_layout.trim_silence_description")
+        .to_string();
+    let i18n_aggressiveness = i18n.t("episodes_layout.aggressiveness").to_string();
     let i18n_youtube_limit_description = i18n
         .t("episodes_layout.youtube_limit_description")
         .to_string();
@@ -846,6 +853,9 @@ pub fn episode_layout() -> Html {
     let podcast_id = use_state(|| 0);
     let start_skip = use_state(|| 0);
     let end_skip = use_state(|| 0);
+    // Silence-trim (#727) per-podcast settings
+    let trim_silence = use_state(|| false);
+    let silence_threshold = use_state(|| 2i32);
 
     // Load merge-related data when edit modal opens
     {
@@ -2063,6 +2073,110 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    // Load per-podcast silence-trim settings when the podcast id becomes known.
+    {
+        let trim_silence = trim_silence.clone();
+        let silence_threshold = silence_threshold.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        let podcast_id = podcast_id.clone();
+        use_effect_with(*podcast_id, move |pid| {
+            let pid = *pid;
+            if pid != 0 {
+                if let (Some(api_key), Some(server_name), Some(user_id)) =
+                    (api_key.clone(), server_name.clone(), user_id.clone())
+                {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(settings) = call_get_silence_trim(
+                            &server_name,
+                            &api_key,
+                            user_id,
+                            pid,
+                        )
+                        .await
+                        {
+                            trim_silence.set(settings.enabled);
+                            silence_threshold.set(settings.threshold);
+                        }
+                    });
+                }
+            }
+            || ()
+        });
+    }
+
+    // Save the silence-trim settings to the server
+    let save_silence_trim = {
+        let trim_silence = trim_silence.clone();
+        let silence_threshold = silence_threshold.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+        let podcast_id = podcast_id.clone();
+
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let enabled = *trim_silence;
+            let threshold = *silence_threshold;
+            let api_key = api_key.clone();
+            let user_id = user_id.clone().unwrap();
+            let server_name = server_name.clone();
+            let podcast_id = *podcast_id;
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    let request = SilenceTrimRequest {
+                        podcast_id,
+                        user_id,
+                        enabled,
+                        threshold,
+                    };
+                    match call_adjust_silence_trim(server_name, api_key, &request)
+                        .await
+                    {
+                        Ok(_) => {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                state.info_message =
+                                    Option::from("Silence trim settings updated.".to_string())
+                            });
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error updating silence trim: {}", e).into(),
+                            );
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                state.error_message =
+                                    Option::from("Error updating silence trim.".to_string())
+                            });
+                        }
+                    }
+                }
+            });
+        })
+    };
+
+    // UI bindings for the silence-trim controls
+    let trim_checked = *trim_silence;
+    let threshold_val = *silence_threshold;
+    let trim_toggle = {
+        let trim_silence = trim_silence.clone();
+        Callback::from(move |e: Event| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                trim_silence.set(input.checked());
+            }
+        })
+    };
+    let threshold_change = {
+        let silence_threshold = silence_threshold.clone();
+        Callback::from(move |e: Event| {
+            if let Some(sel) = e.target_dyn_into::<web_sys::HtmlSelectElement>() {
+                silence_threshold.set(sel.value().parse::<i32>().unwrap_or(2));
+            }
+        })
+    };
+
     // let onclick_cat = new_category
     let app_dispatch_add = _search_dispatch.clone();
     let onclick_add = {
@@ -2446,6 +2560,36 @@ pub fn episode_layout() -> Html {
                                     <button
                                         class="download-button font-bold py-2 px-4 rounded"
                                         onclick={save_skip_times}
+                                    >
+                                        {&i18n.t("episodes_layout.confirm")}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="mt-4">
+                                <label for="trim-silence" class="block mb-2 text-sm font-medium">{&i18n_trim_silence}</label>
+                                <div class="flex items-center space-x-2">
+                                    <input
+                                        type="checkbox"
+                                        id="trim-silence"
+                                        class="w-4 h-4"
+                                        checked={trim_checked}
+                                        onchange={trim_toggle}
+                                    />
+                                    <span class="text-sm">{&i18n_trim_silence_description}</span>
+                                    <label for="silence-threshold" class="block text-sm font-medium">{&i18n_aggressiveness}</label>
+                                    <select
+                                        id="silence-threshold"
+                                        class="email-input border text-sm rounded-lg p-2.5"
+                                        onchange={threshold_change}
+                                    >
+                                        <option value="1" selected={threshold_val == 1}>{"Low"}</option>
+                                        <option value="2" selected={threshold_val == 2}>{"Medium"}</option>
+                                        <option value="3" selected={threshold_val == 3}>{"High"}</option>
+                                    </select>
+                                    <button
+                                        class="download-button font-bold py-2 px-4 rounded"
+                                        onclick={save_silence_trim}
                                     >
                                         {&i18n.t("episodes_layout.confirm")}
                                     </button>

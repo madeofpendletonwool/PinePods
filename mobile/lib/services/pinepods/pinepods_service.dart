@@ -533,6 +533,56 @@ class PinepodsService {
     }
   }
 
+  // Get per-podcast silence-trim settings (#727). Returns (enabled, threshold).
+  Future<SilenceTrimSettings> getSilenceTrim(int userId, int podcastId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse(
+      '$_server/api/data/get_silence_trim?podcast_id=$podcastId&user_id=$userId',
+    );
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return SilenceTrimSettings(
+          enabled: data['enabled'] == true,
+          threshold: data['threshold'] ?? 2,
+        );
+      }
+    } catch (e) {
+      _devLog('Error getting silence trim: $e');
+    }
+    return const SilenceTrimSettings(enabled: false, threshold: 2);
+  }
+
+  // Get auto-skip segments (silence #727) for an episode, in seconds.
+  Future<List<SkipSegment>> getEpisodeSkipSegments(int episodeId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse(
+      '$_server/api/data/episode_skip_segments?episode_id=$episodeId&user_id=$userId',
+    );
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final segments = (data['segments'] as List?) ?? [];
+        return segments
+            .map((s) => SkipSegment(
+                  kind: s['kind'] ?? '',
+                  startTime: (s['start_time'] as num?)?.toDouble() ?? 0.0,
+                  endTime: (s['end_time'] as num?)?.toDouble() ?? 0.0,
+                ))
+            .toList();
+      }
+    } catch (e) {
+      _devLog('Error getting skip segments: $e');
+    }
+    return const [];
+  }
+
   // Record listen duration for episode
   Future<bool> recordListenDuration(
     int episodeId,
@@ -567,6 +617,44 @@ class PinepodsService {
       return response.statusCode == 200;
     } catch (e) {
       _devLog('Error recording listen duration: $e');
+      return false;
+    }
+  }
+
+  // Update the stored duration for an episode. Mirrors the web frontend, which
+  // corrects the episode duration to the real decoded length the first time an
+  // episode is played (feeds frequently ship missing/zero itunes:duration).
+  Future<bool> updateEpisodeDuration(
+    int episodeId,
+    int newDuration,
+    bool isYoutube,
+  ) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/update_episode_duration');
+    _devLog('Making API call to: $url');
+
+    try {
+      final requestBody = jsonEncode({
+        'episode_id': episodeId,
+        'new_duration': newDuration,
+        'is_youtube': isYoutube,
+      });
+
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: requestBody,
+      );
+
+      _devLog(
+        'Update episode duration response: ${response.statusCode} - ${response.body}',
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      _devLog('Error updating episode duration: $e');
       return false;
     }
   }
@@ -2343,6 +2431,27 @@ class PlayEpisodeDetails {
     required this.playbackSpeed,
     required this.startSkip,
     required this.endSkip,
+  });
+}
+
+// Per-podcast silence-trim settings (#727)
+class SilenceTrimSettings {
+  final bool enabled;
+  final int threshold;
+
+  const SilenceTrimSettings({required this.enabled, required this.threshold});
+}
+
+// A single auto-skip range (silence #727; later ads #790), times in seconds
+class SkipSegment {
+  final String kind;
+  final double startTime;
+  final double endTime;
+
+  const SkipSegment({
+    required this.kind,
+    required this.startTime,
+    required this.endTime,
   });
 }
 

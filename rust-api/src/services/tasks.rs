@@ -541,7 +541,11 @@ impl TaskSpawner {
                 
                 let status_message = format!("Downloaded {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 100.0, Some(status_message), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
-                
+
+                // Kick off silence detection in the background if the podcast opted in. Runs
+                // detached so it never delays the download's completion.
+                crate::services::audio_processing::maybe_detect_silence_after_download(db_pool.clone(), episode_id);
+
                 Ok(serde_json::json!({
                     "episode_id": episode_id,
                     "user_id": user_id,
@@ -572,6 +576,25 @@ impl TaskSpawner {
         });
 
         Ok(task_id)
+    }
+
+    /// Manually (re-)run silence detection for a single episode as a tracked background task.
+    /// `force` re-analyzes even if the episode was already processed.
+    pub async fn spawn_detect_silence(&self, episode_id: i32, user_id: i32, force: bool) -> AppResult<String> {
+        let db_pool = self.db_pool.clone();
+        self.spawn_simple_task(
+            "detect_silence".to_string(),
+            user_id,
+            move || async move {
+                let count = crate::services::audio_processing::analyze_episode_silence(
+                    &db_pool, episode_id, force, None,
+                )
+                .await
+                .map_err(|e| crate::error::AppError::internal(&e))?;
+                Ok(serde_json::json!({ "episode_id": episode_id, "segments": count }))
+            },
+        )
+        .await
     }
 
     pub async fn spawn_download_youtube_video(&self, video_id: i32, user_id: i32) -> AppResult<String> {

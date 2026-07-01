@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, EpisodeStatusState, NotificationState};
+use crate::components::context::{AppState, CollectionModalState, EpisodeStatusState, NotificationState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::context::UIState;
 #[cfg(not(feature = "server_build"))]
@@ -9,17 +9,21 @@ use crate::requests::episode::Episode;
 
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{
-    call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
-    call_queue_episode, call_remove_downloaded_episode, call_remove_queued_episode,
-    call_remove_saved_episode, call_save_episode, DownloadEpisodeRequest,
+    call_add_episode_to_collection, call_download_episode, call_get_collection_add_ui,
+    call_get_collections, call_get_episode_collections, call_mark_episode_completed,
+    call_mark_episode_uncompleted, call_queue_episode, call_remove_downloaded_episode,
+    call_remove_episode_from_collection, call_remove_queued_episode, call_remove_saved_episode,
+    call_save_episode, Collection, CollectionEpisodeRequest, DownloadEpisodeRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest,
 };
+use std::collections::HashSet;
 #[cfg(not(feature = "server_build"))]
 use crate::requests::pod_req::{
     call_get_episode_metadata, call_get_podcast_details, EpisodeRequest,
 };
 use gloo_events::EventListener;
 use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;
 use i18nrs::yew::use_translation;
 use web_sys::{window, MouseEvent, TouchEvent};
@@ -64,6 +68,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let i18n_save_episode = i18n.t("context_menu_button.save_episode").to_string();
     let i18n_mark_episode_incomplete = i18n.t("context_menu_button.mark_episode_incomplete").to_string();
     let i18n_mark_episode_complete = i18n.t("context_menu_button.mark_episode_complete").to_string();
+    let i18n_add_to_collection = i18n.t("collections.add_to_collection").to_string();
     // None = closed; Some((right, bottom)) = open at this viewport position.
     // Single state ensures the dropdown never renders at a stale position.
     let dropdown_state = use_state(|| Option::<(i32, i32)>::None);
@@ -101,6 +106,36 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     });
     let dropdown_ref = use_node_ref();
     let button_ref = use_node_ref();
+
+    // Concrete auth values for collection actions
+    let cm_server = server_name.clone().unwrap_or_default();
+    let cm_api_key = api_key.clone().flatten().unwrap_or_default();
+    let cm_user_id = user_id.unwrap_or(0);
+
+    // "Add to Collection" UX: 'modal' (default) or 'submenu'. Fetched when a menu opens.
+    let add_ui_mode = use_state(|| "modal".to_string());
+    let submenu_open = use_state(|| false);
+    let submenu_collections = use_state(|| Vec::<Collection>::new());
+    let submenu_members = use_state(|| HashSet::<i32>::new());
+    let submenu_loaded = use_state(|| false);
+
+    // Load the add-UI preference once per menu open
+    {
+        let add_ui_mode = add_ui_mode.clone();
+        let server = cm_server.clone();
+        let api_key = cm_api_key.clone();
+        let uid = cm_user_id;
+        use_effect_with(dropdown_open, move |open| {
+            if *open && !server.is_empty() && !api_key.is_empty() {
+                spawn_local(async move {
+                    if let Ok(mode) = call_get_collection_add_ui(&server, &api_key, uid).await {
+                        add_ui_mode.set(mode);
+                    }
+                });
+            }
+            || ()
+        });
+    }
 
     // Update dropdown_state if show_menu_only prop changes
     {
@@ -887,6 +922,170 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     #[cfg(feature = "server_build")]
     let local_download_options = html! {};
+
+    // ---- Add to Collection (modal or submenu) ----
+    // Modal mode opens the single global picker overlay via its store.
+    let open_picker = {
+        let dropdown_state = dropdown_state.clone();
+        let episode = props.episode.clone();
+        Callback::from(move |_: ()| {
+            dropdown_state.set(None);
+            let episode = episode.clone();
+            Dispatch::<CollectionModalState>::global().reduce_mut(move |s| {
+                s.open = true;
+                s.episode = Some(episode);
+            });
+        })
+    };
+
+    let on_add_to_collection_click = {
+        let add_ui_mode = add_ui_mode.clone();
+        let submenu_open = submenu_open.clone();
+        let submenu_loaded = submenu_loaded.clone();
+        let submenu_collections = submenu_collections.clone();
+        let submenu_members = submenu_members.clone();
+        let open_picker = open_picker.clone();
+        let server = cm_server.clone();
+        let api_key = cm_api_key.clone();
+        let uid = cm_user_id;
+        let ep_id = props.episode.episodeid;
+        let is_yt = props.episode.is_youtube;
+        Callback::from(move |_: ()| {
+            if *add_ui_mode == "submenu" {
+                let opening = !*submenu_open;
+                submenu_open.set(opening);
+                if opening && !*submenu_loaded {
+                    let submenu_collections = submenu_collections.clone();
+                    let submenu_members = submenu_members.clone();
+                    let submenu_loaded = submenu_loaded.clone();
+                    let server = server.clone();
+                    let api_key = api_key.clone();
+                    spawn_local(async move {
+                        let cols = call_get_collections(&server, &api_key, uid).await.unwrap_or_default();
+                        let members = call_get_episode_collections(&server, &api_key, uid, ep_id, is_yt)
+                            .await.unwrap_or_default();
+                        submenu_collections.set(cols);
+                        submenu_members.set(members.into_iter().collect());
+                        submenu_loaded.set(true);
+                    });
+                }
+            } else {
+                open_picker.emit(());
+            }
+        })
+    };
+
+    let add_click_onclick = {
+        let cb = on_add_to_collection_click.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            cb.emit(());
+        })
+    };
+
+    // Produces a per-row toggle callback for submenu membership
+    let toggle_member = {
+        let submenu_members = submenu_members.clone();
+        let submenu_collections = submenu_collections.clone();
+        let server = cm_server.clone();
+        let api_key = cm_api_key.clone();
+        let uid = cm_user_id;
+        let ep_id = props.episode.episodeid;
+        let is_yt = props.episode.is_youtube;
+        let episode = props.episode.clone();
+        move |col_id: i32, is_member: bool| -> Callback<MouseEvent> {
+            let submenu_members = submenu_members.clone();
+            let is_default = submenu_collections.iter()
+                .find(|c| c.collection_id == col_id)
+                .map(|c| c.is_default)
+                .unwrap_or(false);
+            let server = server.clone();
+            let api_key = api_key.clone();
+            let episode = episode.clone();
+            Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                let mut set = (*submenu_members).clone();
+                let now_member = if is_member {
+                    set.remove(&col_id);
+                    false
+                } else {
+                    set.insert(col_id);
+                    true
+                };
+                submenu_members.set(set);
+                let req = CollectionEpisodeRequest { user_id: uid, episode_id: ep_id, is_youtube: is_yt };
+                let server = server.clone();
+                let api_key = api_key.clone();
+                let episode = episode.clone();
+                spawn_local(async move {
+                    if now_member {
+                        let _ = call_add_episode_to_collection(&server, &api_key, col_id, &req).await;
+                    } else {
+                        let _ = call_remove_episode_from_collection(&server, &api_key, col_id, &req).await;
+                    }
+                    if is_default {
+                        if now_member {
+                            let ep = episode.clone();
+                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |s| {
+                                if !s.saved_episode_ids().any(|id| id == ep_id) {
+                                    s.saved_episodes.push(ep);
+                                }
+                            });
+                        } else {
+                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |s| {
+                                s.saved_episodes.retain(|e| e.episodeid != ep_id);
+                            });
+                        }
+                    }
+                });
+            })
+        }
+    };
+
+    let new_from_submenu = {
+        let open_picker = open_picker.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            open_picker.emit(());
+        })
+    };
+
+    let is_submenu = *add_ui_mode == "submenu";
+    let add_to_collection_section = html! {
+        <>
+            <li class="dropdown-option" onclick={add_click_onclick.clone()}>
+                { &i18n_add_to_collection }
+                { if is_submenu { html! { <i class="ph ph-caret-right" style="float:right"></i> } } else { html! {} } }
+            </li>
+            {
+                if is_submenu && *submenu_open {
+                    html! {
+                        <>
+                            {
+                                for submenu_collections.iter().map(|c| {
+                                    let is_member = submenu_members.contains(&c.collection_id);
+                                    let onclick = toggle_member(c.collection_id, is_member);
+                                    html! {
+                                        <li class="dropdown-option flex items-center gap-2" style="padding-left:1.5rem;" {onclick}>
+                                            <i class={classes!("ph", if is_member { "ph-check-square" } else { "ph-square" })}></i>
+                                            <span>{ c.name.clone() }</span>
+                                        </li>
+                                    }
+                                })
+                            }
+                            <li class="dropdown-option flex items-center gap-2" style="padding-left:1.5rem;" onclick={new_from_submenu}>
+                                <i class="ph ph-plus"></i>
+                                <span>{ i18n.t("collections.new_collection") }</span>
+                            </li>
+                        </>
+                    }
+                } else {
+                    html! {}
+                }
+            }
+        </>
+    };
+
     let action_buttons = match props.page_type {
         PageType::Saved => html! {
             <>
@@ -896,6 +1095,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
                     { &i18n_remove_from_saved_episodes }
                 </li>
+                { add_to_collection_section.clone() }
                 {
                     download_button.clone()
                 }
@@ -926,6 +1126,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
                     { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
                 </li>
+                { add_to_collection_section.clone() }
                 {
                     download_button.clone()
                 }
@@ -933,7 +1134,10 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             </>
         },
         PageType::LocalDownloads => html! {
-            local_download_options
+            <>
+                { local_download_options }
+                { add_to_collection_section.clone() }
+            </>
         },
         PageType::Default => html! {
             <>
@@ -943,6 +1147,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
                     { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
                 </li>
+                { add_to_collection_section.clone() }
                 {
                     download_button.clone()
                 }

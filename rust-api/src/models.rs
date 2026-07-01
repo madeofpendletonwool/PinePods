@@ -230,6 +230,72 @@ pub struct SavedEpisodesResponse {
     pub total: i64,
 }
 
+// ---- Collections ----------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct Collection {
+    pub collection_id: i32,
+    pub user_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_default: bool,
+    pub icon: String,
+    pub created_at: String,
+    pub last_updated: String,
+    pub episode_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CollectionsResponse {
+    pub collections: Vec<Collection>,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct CreateCollectionRequest {
+    pub user_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct CreateCollectionResponse {
+    pub detail: String,
+    pub collection_id: i32,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct UpdateCollectionRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct CollectionDetailResponse {
+    pub detail: String,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct CollectionEpisodeRequest {
+    pub user_id: i32,
+    pub episode_id: i32,
+    pub is_youtube: bool,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct BulkAddCollectionRequest {
+    pub user_id: i32,
+    pub collection_id: i32,
+    /// Each entry is (episode_id, is_youtube)
+    pub episodes: Vec<(i32, bool)>,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct EpisodeCollectionsResponse {
+    pub collection_ids: Vec<i32>,
+}
+
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PlaylistInfo {
     pub name: String,

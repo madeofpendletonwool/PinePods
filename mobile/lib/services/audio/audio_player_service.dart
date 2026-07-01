@@ -96,6 +96,15 @@ abstract class AudioPlayerService {
   /// Call to toggle trim silence.
   Future<void> trimSilence(bool trim);
 
+  /// Apply silence-trim for the *current* episode without changing the global
+  /// user preference (#727 per-podcast override). On Android this enables the
+  /// native ExoPlayer skip-silence; on iOS it applies the server-provided
+  /// [segments] (list of {'start': seconds, 'end': seconds}) as auto-skip ranges.
+  Future<void> applyEpisodeSilenceTrim(
+    bool enabled,
+    List<Map<String, double>> segments,
+  );
+
   /// Call to toggle trim silence.
   Future<void> volumeBoost(bool boost);
 

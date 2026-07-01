@@ -377,7 +377,10 @@
     "youtube_download_limit": "Youtube Download Episoden Limit (Tage):",
     "youtube_episode_limit_updated": "YouTube Folgen Limit angepasst!",
     "youtube_limit_description": "Passt an, wie lange Youtube Feed Audio beim Download beibehalten wird, um über den Server gestreamt zu werden. Youtube Episoden werden danach entfernt, um Speicherplatz freizugeben.",
-    "video": "Video"
+    "video": "Video",
+    "trim_silence": "Trim silence",
+    "trim_silence_description": "Auto-detect and skip silence on new downloads",
+    "aggressiveness": "Aggressiveness"
   },
   "export_settings": {
     "download_export_opml": "Herunterladen/Exportieren OPML",

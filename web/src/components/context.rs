@@ -170,6 +170,15 @@ pub struct NotificationState {
     pub refresh_progress: Option<RefreshProgress>,
 }
 
+/// Drives the global "Add to Collection" picker overlay. Kept as its own store so a
+/// single modal instance lives at the app root (not inside each row's context menu),
+/// which avoids remount/flicker when the episode list re-renders.
+#[derive(Default, Clone, PartialEq, Store, Debug)]
+pub struct CollectionModalState {
+    pub open: bool,
+    pub episode: Option<Episode>,
+}
+
 /// Episode-specific status state kept separate from AppState so that the
 /// ~50+ components subscribing to AppState do NOT re-render on every
 /// save/download/queue/complete action.
@@ -416,6 +425,8 @@ pub struct UIState {
     pub local_download_increment: Option<i32>,
     pub episode_chapters: Option<Vec<Chapter>>,
     pub current_chapter_index: Option<usize>,
+    // Auto-skip ranges (silence #727; later ads #790) for the currently-playing episode.
+    pub skip_segments: Option<Vec<crate::requests::pod_req::SkipSegment>>,
     pub podcast_people: Option<Vec<Person>>,
     pub episode_people: Option<Vec<Person>>,
     pub episode_transcript: Option<Vec<Transcript>>,

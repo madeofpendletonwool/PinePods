@@ -15,7 +15,8 @@ import 'package:pinepods_mobile/state/transcript_state_event.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_html/flutter_html.dart';
+import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
+import 'package:pinepods_mobile/ui/widgets/pinepods_widget_factory.dart';
 import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
@@ -38,6 +39,7 @@ class _TranscriptViewState extends State<TranscriptView> {
   final ScrollOffsetListener _scrollOffsetListener = ScrollOffsetListener.create(recordProgrammaticScrolls: false);
   final _transcriptSearchController = TextEditingController();
   late StreamSubscription<PositionState> _positionSubscription;
+  StreamSubscription? _scrollOffsetSubscription;
   int position = 0;
   bool autoScroll = true;
   bool autoScrollEnabled = true;
@@ -56,7 +58,7 @@ class _TranscriptViewState extends State<TranscriptView> {
     Subtitle? subtitle;
     int index = 0;
     // If the user initiates scrolling, disable auto scroll.
-    _scrollOffsetListener.changes.listen((event) {
+    _scrollOffsetSubscription = _scrollOffsetListener.changes.listen((event) {
       if (!scrolling) {
         setState(() {
           autoScroll = false;
@@ -169,8 +171,9 @@ class _TranscriptViewState extends State<TranscriptView> {
 
   @override
   void dispose() {
-    super.dispose();
     _positionSubscription.cancel();
+    _scrollOffsetSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -445,72 +448,67 @@ class SubtitleWidget extends StatelessWidget {
     if (data.startsWith('{{HTMLFULL}}')) {
       final htmlContent = data.substring(12); // Remove '{{HTMLFULL}}' marker
       
-      return Html(
-        data: htmlContent,
-        style: {
-          'body': Style(
-            margin: Margins.zero,
-            padding: HtmlPaddings.zero,
-            fontSize: FontSize(Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14),
-            color: Theme.of(context).textTheme.bodyMedium?.color,
-            fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
-            lineHeight: const LineHeight(1.5),
-          ),
-          'a': Style(
-            color: Theme.of(context).primaryColor,
-            textDecoration: TextDecoration.underline,
-          ),
-          'p': Style(
-            margin: Margins.only(bottom: 12),
-            padding: HtmlPaddings.zero,
-          ),
-          'h1, h2, h3, h4, h5, h6': Style(
-            margin: Margins.only(top: 16, bottom: 8),
-            fontWeight: FontWeight.bold,
-          ),
-          'strong, b': Style(
-            fontWeight: FontWeight.bold,
-          ),
-          'em, i': Style(
-            fontStyle: FontStyle.italic,
-          ),
-        },
-        onLinkTap: (url, attributes, element) {
-          if (url != null) {
-            final uri = Uri.parse(url);
-            launchUrl(uri);
+      return HtmlWidget(
+        htmlContent,
+        factoryBuilder: () => PinepodsWidgetFactory(),
+        textStyle: TextStyle(
+          fontSize: Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14,
+          color: Theme.of(context).textTheme.bodyMedium?.color,
+          fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
+          height: 1.5,
+        ),
+        customStylesBuilder: (element) {
+          switch (element.localName) {
+            case 'a':
+              return {
+                'color': _cssColor(Theme.of(context).primaryColor),
+                'text-decoration': 'underline',
+              };
+            case 'p':
+              return {'margin': '0 0 12px 0'};
+            case 'h1':
+            case 'h2':
+            case 'h3':
+            case 'h4':
+            case 'h5':
+            case 'h6':
+              return {'margin': '16px 0 8px 0', 'font-weight': 'bold'};
           }
+          return null;
+        },
+        onTapUrl: (url) async {
+          final uri = Uri.parse(url);
+          return launchUrl(uri);
         },
       );
-    } 
+    }
     // Check if this is chunked HTML content (legacy)
     else if (data.startsWith('{{HTML}}')) {
       final htmlContent = data.substring(8); // Remove '{{HTML}}' marker
       
-      return Html(
-        data: htmlContent,
-        style: {
-          'body': Style(
-            margin: Margins.zero,
-            padding: HtmlPaddings.zero,
-            fontSize: FontSize(Theme.of(context).textTheme.titleMedium?.fontSize ?? 16),
-            color: Theme.of(context).textTheme.titleMedium?.color,
-            fontFamily: Theme.of(context).textTheme.titleMedium?.fontFamily,
-          ),
-          'a': Style(
-            color: Theme.of(context).primaryColor,
-            textDecoration: TextDecoration.underline,
-          ),
-          'p': Style(
-            margin: Margins.zero,
-            padding: HtmlPaddings.zero,
-          ),
-        },
-        onLinkTap: (url, attributes, element) {
-          if (url != null) {
-            final uri = Uri.parse(url);
-            launchUrl(uri);
+      return HtmlWidget(
+        htmlContent,
+        factoryBuilder: () => PinepodsWidgetFactory(),
+        textStyle: TextStyle(
+          fontSize: Theme.of(context).textTheme.titleMedium?.fontSize ?? 16,
+          color: Theme.of(context).textTheme.titleMedium?.color,
+          fontFamily: Theme.of(context).textTheme.titleMedium?.fontFamily,
+        ),
+        customStylesBuilder: (element) {
+          switch (element.localName) {
+            case 'a':
+              return {
+                'color': _cssColor(Theme.of(context).primaryColor),
+                'text-decoration': 'underline',
+              };
+            case 'p':
+              return {'margin': '0'};
           }
+          return null;
+        },
+        onTapUrl: (url) async {
+          final uri = Uri.parse(url);
+          return launchUrl(uri);
         },
       );
     } else {
@@ -528,5 +526,12 @@ class SubtitleWidget extends StatelessWidget {
     final ss = (duration.inSeconds % 60).toString().padLeft(2, '0');
 
     return '$hh:$mm:$ss';
+  }
+
+  /// Converts a [Color] into a CSS hex string (e.g. `#539e8a`) for use in
+  /// flutter_widget_from_html style maps.
+  String _cssColor(Color color) {
+    final rgb = (color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0');
+    return '#$rgb';
   }
 }

@@ -1,6 +1,7 @@
 use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_get_startpage, call_set_startpage, call_set_global_podcast_cover_preference, call_get_podcast_cover_preference};
+use crate::requests::pod_req::{call_get_collection_add_ui, call_set_collection_add_ui};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{HtmlSelectElement, HtmlInputElement};
 use yew::prelude::*;
@@ -18,6 +19,10 @@ pub fn startpage() -> Html {
     // State for podcast cover preference
     let use_podcast_covers = use_state(|| false);
     let covers_loading = use_state(|| true);
+
+    // State for collection add-mode preference
+    let collection_add_ui = use_state(|| "modal".to_string());
+    let collection_loading = use_state(|| true);
 
     {
         let selected_startpage = selected_startpage.clone();
@@ -88,11 +93,71 @@ pub fn startpage() -> Html {
         });
     }
 
+    // Load collection add-mode preference
+    {
+        let collection_add_ui = collection_add_ui.clone();
+        let collection_loading = collection_loading.clone();
+        let state = state.clone();
+        use_effect_with((), move |_| {
+            if let (Some(api_key), Some(user_id), Some(server_name)) = (
+                state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
+                state.user_details.as_ref().map(|d| d.UserID),
+                state.auth_details.as_ref().map(|d| d.server_name.clone()),
+            ) {
+                spawn_local(async move {
+                    match call_get_collection_add_ui(&server_name, &api_key, user_id).await {
+                        Ok(mode) => {
+                            collection_add_ui.set(mode);
+                            collection_loading.set(false);
+                        }
+                        Err(_) => {
+                            collection_add_ui.set("modal".to_string());
+                            collection_loading.set(false);
+                        }
+                    }
+                });
+            }
+            || ()
+        });
+    }
+
     let on_change = {
         let selected_startpage = selected_startpage.clone();
         Callback::from(move |e: Event| {
             if let Some(select) = e.target_dyn_into::<HtmlSelectElement>() {
                 selected_startpage.set(select.value());
+            }
+        })
+    };
+
+    let on_collection_mode_change = {
+        let collection_add_ui = collection_add_ui.clone();
+        let state = state.clone();
+        Callback::from(move |e: Event| {
+            if let Some(select) = e.target_dyn_into::<HtmlSelectElement>() {
+                let mode = select.value();
+                collection_add_ui.set(mode.clone());
+                if let (Some(api_key), Some(user_id), Some(server_name)) = (
+                    state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
+                    state.user_details.as_ref().map(|d| d.UserID),
+                    state.auth_details.as_ref().map(|d| d.server_name.clone()),
+                ) {
+                    spawn_local(async move {
+                        match call_set_collection_add_ui(&server_name, &api_key, user_id, &mode).await {
+                            Ok(_) => {
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                                    s.info_message = Some("Setting saved".to_string());
+                                });
+                            }
+                            Err(e) => {
+                                let formatted_error = format_error_message(&e.to_string());
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                                    s.error_message = Some(formatted_error);
+                                });
+                            }
+                        }
+                    });
+                }
             }
         })
     };
@@ -246,6 +311,25 @@ pub fn startpage() -> Html {
                             />
                             <span class="toggle-track"><span class="toggle-thumb"></span></span>
                         </label>
+                    }
+                </div>
+            </div>
+
+            <div class="settings-subsection-title">{i18n.t("collections.collections")}</div>
+
+            <div class="settings-row">
+                <div>
+                    <div class="settings-row-label">{i18n.t("collections.add_mode")}</div>
+                    <div class="settings-row-description">{i18n.t("collections.add_mode_description")}</div>
+                </div>
+                <div class="settings-row-control">
+                    if *collection_loading {
+                        <i class="ph ph-spinner"></i>
+                    } else {
+                        <select onchange={on_collection_mode_change} class="select">
+                            <option value="modal" selected={*collection_add_ui == "modal"}>{i18n.t("collections.add_mode_modal")}</option>
+                            <option value="submenu" selected={*collection_add_ui == "submenu"}>{i18n.t("collections.add_mode_submenu")}</option>
+                        </select>
                     }
                 </div>
             </div>
