@@ -7211,12 +7211,19 @@ impl DatabasePool {
         prev_etag: Option<&str>,
         prev_last_modified: Option<&str>,
     ) -> AppResult<FeedFetch> {
+        // SSRF guard: url is a stored feed URL (originally user-supplied/imported).
+        if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(url).await {
+            warn!("Refusing to refresh feed from unsafe URL {}: {}", url, reason);
+            return Err(AppError::bad_request(format!("Refused to fetch feed URL: {}", reason)));
+        }
+
         // Always issue the request (even with no prior validators) so we can capture ETag /
         // Last-Modified for next time. Conditional headers are only added when we have a prior
         // value to revalidate against.
         let client = reqwest::Client::builder()
             .user_agent("PinePods/1.0")
             .timeout(std::time::Duration::from_secs(30))
+            .redirect(crate::services::url_guard::guarded_redirect_policy())
             .build()
             .map_err(AppError::Http)?;
 
@@ -7379,13 +7386,20 @@ impl DatabasePool {
         } else {
             debug!("No authentication for feed: {}", url);
         }
-        
+
+        // SSRF guard: url is a stored feed URL (originally user-supplied/imported).
+        if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(url).await {
+            warn!("Refusing to fetch feed from unsafe URL {}: {}", url, reason);
+            return Err(AppError::bad_request(format!("Refused to fetch feed URL: {}", reason)));
+        }
+
         // Build HTTP client with proper configuration for container environment.
         // Use podcast client UA first — many hosts (e.g. Omny) return full episode lists to
         // podcast apps but truncated/paginated feeds to browser UAs.
         let client = reqwest::Client::builder()
             .user_agent("PinePods/1.0")
             .timeout(std::time::Duration::from_secs(30))
+            .redirect(crate::services::url_guard::guarded_redirect_policy())
             .build()
             .map_err(|e| {
                 warn!("Failed to build HTTP client: {}", e);
@@ -7414,12 +7428,13 @@ impl DatabasePool {
                 let podcast_client = reqwest::Client::builder()
                     .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     .timeout(std::time::Duration::from_secs(30))
+                    .redirect(crate::services::url_guard::guarded_redirect_policy())
                     .build()
                     .map_err(|e| {
                         warn!("Failed to build podcast client: {}", e);
                         AppError::Http(e)
                     })?;
-                
+
                 let mut podcast_request = podcast_client.get(url);
                 
                 if let (Some(user), Some(pass)) = (username, password) {
@@ -7449,6 +7464,12 @@ impl DatabasePool {
             };
             
             debug!("Trying alternate URL: {}", alternate_url);
+            // SSRF guard: alternate_url is a www/non-www variant not covered by the
+            // up-front check, so validate it before fetching.
+            if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(&alternate_url).await {
+                warn!("Refusing to fetch alternate feed URL {}: {}", alternate_url, reason);
+                return Err(AppError::bad_request(format!("Refused to fetch feed URL: {}", reason)));
+            }
             let mut alt_request = client.get(&alternate_url);
             
             if let (Some(user), Some(pass)) = (username, password) {
@@ -16603,12 +16624,21 @@ impl DatabasePool {
         
         
         debug!("Fetching podcast values from feed URL: {}", feed_url);
-        
+
+        // SSRF guard: feed_url is attacker-controlled (add_podcast request body).
+        // Reject loopback/private/link-local/reserved destinations before any
+        // server-side request; redirects are re-validated on each client below.
+        if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(feed_url).await {
+            warn!("Refusing to fetch feed from unsafe URL {}: {}", feed_url, reason);
+            return Err(AppError::bad_request(format!("Refused to fetch feed URL: {}", reason)));
+        }
+
         // Build HTTP client with podcast client UA first — many hosts serve full feeds to
         // podcast apps but truncated versions to browser UAs.
         let client = reqwest::Client::builder()
             .user_agent("PinePods/1.0")
             .timeout(std::time::Duration::from_secs(30))
+            .redirect(crate::services::url_guard::guarded_redirect_policy())
             .build()
             .map_err(|e| {
                 warn!("Failed to build HTTP client in get_podcast_values: {}", e);
@@ -16642,6 +16672,7 @@ impl DatabasePool {
                 let podcast_client = reqwest::Client::builder()
                     .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     .timeout(std::time::Duration::from_secs(30))
+                    .redirect(crate::services::url_guard::guarded_redirect_policy())
                     .build()
                     .map_err(|e| {
                         warn!("Failed to build podcast client in get_podcast_values: {}", e);
@@ -16744,11 +16775,18 @@ impl DatabasePool {
         
         // Get stored authentication credentials for this feed
         let (username, password) = self.get_feed_auth_credentials(feed_url, user_id).await?;
-        
+
+        // SSRF guard: feed_url originates from user-supplied/imported feed data.
+        if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(feed_url).await {
+            warn!("Refusing to fetch feed episodes from unsafe URL {}: {}", feed_url, reason);
+            return Err(AppError::bad_request(format!("Refused to fetch feed URL: {}", reason)));
+        }
+
         // Build HTTP client with proper configuration
         let client = reqwest::Client::builder()
             .user_agent("PinePods/1.0")
             .timeout(std::time::Duration::from_secs(30))
+            .redirect(crate::services::url_guard::guarded_redirect_policy())
             .build()
             .map_err(|e| AppError::external_error(&format!("Failed to build HTTP client: {}", e)))?;
         

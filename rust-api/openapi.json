@@ -10049,8 +10049,19 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "API key does not belong to the requested user"
           }
-        }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
       }
     },
     "/api/tasks/user/{user_id}": {
@@ -10084,8 +10095,19 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "API key does not belong to the requested user"
           }
-        }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
       }
     },
     "/api/tasks/{task_id}": {
@@ -10115,8 +10137,19 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Task does not belong to the requesting user"
           }
-        }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
       }
     }
   },

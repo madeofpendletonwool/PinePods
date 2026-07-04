@@ -115,6 +115,23 @@ pub async fn ensure_safe_public_url_async(raw_url: &str) -> Result<(), String> {
         .map_err(|e| format!("URL guard task failed: {}", e))?
 }
 
+/// A reqwest redirect policy that re-validates every hop through the SSRF guard,
+/// so a public URL cannot 30x into a private/reserved address. Caps at 10 hops.
+///
+/// Attach to any client that fetches an attacker-controlled URL; pair it with an
+/// up-front `ensure_safe_public_url_async` check on the initial URL.
+pub fn guarded_redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 10 {
+            return attempt.stop();
+        }
+        match ensure_safe_public_url(attempt.url().as_str()) {
+            Ok(()) => attempt.follow(),
+            Err(_) => attempt.stop(),
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
