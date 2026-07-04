@@ -3,12 +3,14 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Path, Query, State,
     },
+    http::HeaderMap,
     response::Response,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, RwLock};
 use crate::{
+    handlers::{check_user_access, extract_api_key, validate_api_key},
     services::task_manager::{TaskUpdate, WebSocketMessage},
     AppState,
 };
@@ -188,14 +190,26 @@ async fn handle_task_progress_socket(socket: WebSocket, user_id: i32, state: App
     tag = "tasks",
     summary = "Get user tasks",
     params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
     responses(
         (status = 200, description = "Success", body = Vec<crate::services::task_manager::TaskInfo>),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "API key does not belong to the requested user"),
     ),
 )]
 pub async fn get_user_tasks(
+    headers: HeaderMap,
     Path(user_id): Path<i32>,
     State(state): State<AppState>,
 ) -> Result<axum::Json<Vec<crate::services::task_manager::TaskInfo>>, crate::error::AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !validate_api_key(&state, &api_key).await? {
+        return Err(crate::error::AppError::unauthorized("Invalid API key"));
+    }
+    if !check_user_access(&state, &api_key, user_id).await? {
+        return Err(crate::error::AppError::forbidden("You can only view your own tasks!"));
+    }
+
     let tasks = state.task_manager.get_user_tasks(user_id).await?;
     Ok(axum::Json(tasks))
 }
@@ -206,15 +220,28 @@ pub async fn get_user_tasks(
     tag = "tasks",
     summary = "Get task status",
     params(("task_id" = String, Path)),
+    security(("api_key" = [])),
     responses(
         (status = 200, description = "Success", body = crate::services::task_manager::TaskInfo),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Task does not belong to the requesting user"),
     ),
 )]
 pub async fn get_task_status(
+    headers: HeaderMap,
     Path(task_id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<axum::Json<crate::services::task_manager::TaskInfo>, crate::error::AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !validate_api_key(&state, &api_key).await? {
+        return Err(crate::error::AppError::unauthorized("Invalid API key"));
+    }
+
     let task = state.task_manager.get_task(&task_id).await?;
+    if !check_user_access(&state, &api_key, task.user_id).await? {
+        return Err(crate::error::AppError::forbidden("You can only view your own tasks!"));
+    }
+
     Ok(axum::Json(task))
 }
 
@@ -223,19 +250,31 @@ pub async fn get_task_status(
     path = "/active",
     tag = "tasks",
     summary = "Get active tasks",
+    security(("api_key" = [])),
     responses(
         (status = 200, description = "Success", body = Vec<crate::services::task_manager::TaskInfo>),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "API key does not belong to the requested user"),
     ),
 )]
 pub async fn get_active_tasks(
+    headers: HeaderMap,
     Query(params): Query<std::collections::HashMap<String, String>>,
     State(state): State<AppState>,
 ) -> Result<axum::Json<Vec<crate::services::task_manager::TaskInfo>>, crate::error::AppError> {
+    let api_key = extract_api_key(&headers)?;
+    if !validate_api_key(&state, &api_key).await? {
+        return Err(crate::error::AppError::unauthorized("Invalid API key"));
+    }
+
     // Get user_id from query parameter
     let user_id: Option<i32> = params.get("user_id")
         .and_then(|id| id.parse().ok());
-    
+
     if let Some(user_id) = user_id {
+        if !check_user_access(&state, &api_key, user_id).await? {
+            return Err(crate::error::AppError::forbidden("You can only view your own tasks!"));
+        }
         // Get active tasks for specific user
         let tasks = state.task_manager.get_user_tasks(user_id).await?;
         // Filter only active tasks (status = Running or Pending)

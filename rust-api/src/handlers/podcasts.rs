@@ -286,11 +286,8 @@ pub async fn add_podcast(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only add podcasts for themselves
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
-    if !check_user_access(&state, &api_key, requesting_user_id).await? {
+    // Check authorization - users can only add podcasts for themselves (or web key / admin)
+    if !check_user_access(&state, &api_key, request.podcast_values.user_id).await? {
         return Err(AppError::forbidden("You can only add podcasts for yourself!"));
     }
 
@@ -366,11 +363,8 @@ pub async fn remove_podcast(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only remove their own podcasts
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
-    if !check_user_access(&state, &api_key, requesting_user_id).await? {
+    // Check authorization - users can only remove their own podcasts (or web key / admin)
+    if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only remove your own podcasts!"));
     }
 
@@ -450,11 +444,8 @@ pub async fn remove_podcast_by_name(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only remove their own podcasts
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
-    if !check_user_access(&state, &api_key, requesting_user_id).await? {
+    // Check authorization - users can only remove their own podcasts (or web key / admin)
+    if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only remove your own podcasts!"));
     }
 
@@ -3643,8 +3634,8 @@ pub async fn update_podcast_info(
 
     // Check authorization - users can only modify their own podcasts
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    if !check_user_access(&state, &api_key, requesting_user_id).await? {
+
+    if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only modify your own podcasts!"));
     }
 
