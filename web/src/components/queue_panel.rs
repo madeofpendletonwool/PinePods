@@ -1,6 +1,7 @@
 use crate::components::audio::on_play_pause;
 use crate::components::context::{AppState, EpisodeStatusState, UIState};
 use crate::components::gen_components::FallbackImage;
+use crate::components::queue_manage_modal::QueueManageModal;
 use crate::requests::pod_req::{
     call_clear_queue, call_get_queued_episodes, call_remove_queued_episode, call_reorder_queue,
     QueuePodcastRequest, QueuedEpisodesResponse,
@@ -25,6 +26,12 @@ pub fn queue_panel() -> Html {
 
     let is_open = ui_state.queue_panel_open;
     let dragging_id = use_state(|| None::<i32>);
+    let manage_open = use_state(|| false);
+
+    let open_manage = {
+        let manage_open = manage_open.clone();
+        Callback::from(move |_: MouseEvent| manage_open.set(true))
+    };
 
     let close = {
         let ui_dispatch = ui_dispatch.clone();
@@ -235,6 +242,33 @@ pub fn queue_panel() -> Html {
 
     let current_dragging = *dragging_id;
 
+    // Queue Management modal (issue #661). Mounted conditionally so it re-snapshots the queue on
+    // each open and re-renders live when the store changes (e.g. after a bulk remove).
+    let manage_modal = if *manage_open {
+        if let (Some(auth), Some(user)) = (
+            app_state.auth_details.as_ref(),
+            app_state.user_details.as_ref(),
+        ) {
+            let on_close = {
+                let manage_open = manage_open.clone();
+                Callback::from(move |_| manage_open.set(false))
+            };
+            html! {
+                <QueueManageModal
+                    episodes={queued.clone()}
+                    server={auth.server_name.clone()}
+                    api_key={auth.api_key.clone()}
+                    user_id={user.UserID}
+                    on_close={on_close}
+                />
+            }
+        } else {
+            Html::default()
+        }
+    } else {
+        Html::default()
+    };
+
     html! {
         <>
             <div
@@ -251,6 +285,9 @@ pub fn queue_panel() -> Html {
                         </div>
                     </div>
                     <div class="queue-head-actions">
+                        <button class="player-btn" onclick={open_manage} title="Manage queue">
+                            <i class="ph ph-sliders-horizontal"></i>
+                        </button>
                         <button class="player-btn" onclick={on_clear_queue} title="Clear queue">
                             <i class="ph ph-broom"></i>
                         </button>
@@ -458,6 +495,7 @@ pub fn queue_panel() -> Html {
                     }
                 </div>
             </aside>
+            { manage_modal }
         </>
     }
 }

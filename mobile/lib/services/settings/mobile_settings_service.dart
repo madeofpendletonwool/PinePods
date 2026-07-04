@@ -244,6 +244,28 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  set fastForwardInterval(int seconds) {
+    _sharedPreferences.setInt('fastForwardInterval', seconds);
+    settingsNotifier.sink.add('fastForwardInterval');
+  }
+
+  @override
+  int get fastForwardInterval {
+    return _sharedPreferences.getInt('fastForwardInterval') ?? 30;
+  }
+
+  @override
+  set rewindInterval(int seconds) {
+    _sharedPreferences.setInt('rewindInterval', seconds);
+    settingsNotifier.sink.add('rewindInterval');
+  }
+
+  @override
+  int get rewindInterval {
+    return _sharedPreferences.getInt('rewindInterval') ?? 10;
+  }
+
+  @override
   set layoutMode(int mode) {
     _sharedPreferences.setInt('layout', mode);
     settingsNotifier.sink.add('layout');

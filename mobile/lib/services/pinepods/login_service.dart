@@ -1,28 +1,88 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+
+/// Outcome of checking whether a URL is a reachable PinePods server.
+///
+/// Distinguishes the failure modes that the old generic
+/// "Not a valid PinePods server" message used to collapse together (TLS/cert
+/// trust, DNS/connection, timeout, non-PinePods response) so the UI can tell
+/// the user what actually went wrong.
+class ServerCheckResult {
+  const ServerCheckResult._(this.isPinepods, this.errorMessage);
+
+  final bool isPinepods;
+  final String? errorMessage;
+
+  static const ServerCheckResult ok = ServerCheckResult._(true, null);
+  factory ServerCheckResult.error(String message) =>
+      ServerCheckResult._(false, message);
+}
 
 class PinepodsLoginService {
   static const String userAgent = 'PinePods Mobile/1.0';
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
-  /// Verify if the server is a valid PinePods instance
+  /// Verify if the server is a valid PinePods instance.
+  ///
+  /// Kept for backwards compatibility; prefer [checkServer] which reports *why*
+  /// a check failed.
   static Future<bool> verifyPinepodsInstance(String serverUrl) async {
+    return (await checkServer(serverUrl)).isPinepods;
+  }
+
+  /// Check whether [serverUrl] is a reachable PinePods instance, surfacing the
+  /// specific failure reason (TLS/certificate, DNS/connection, timeout, or a
+  /// reachable-but-not-PinePods host).
+  static Future<ServerCheckResult> checkServer(String serverUrl) async {
+    final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
+    final url = Uri.parse('$normalizedUrl/api/pinepods_check');
+
     try {
-      final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
-      final url = Uri.parse('$normalizedUrl/api/pinepods_check');
-      
-      final response = await http.get(
-        url,
-        headers: {'User-Agent': userAgent},
-      );
+      final response = await http
+          .get(url, headers: {'User-Agent': userAgent})
+          .timeout(_requestTimeout);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['pinepods_instance'] == true;
+        try {
+          final data = jsonDecode(response.body);
+          if (data['pinepods_instance'] == true) {
+            return ServerCheckResult.ok;
+          }
+        } on FormatException {
+          // fall through to the not-PinePods message below
+        }
+        return ServerCheckResult.error(
+            'Reachable, but this does not look like a PinePods server.');
       }
-      return false;
+      return ServerCheckResult.error(
+          'Server responded with HTTP ${response.statusCode}. This does not look like a PinePods server.');
+    } on HandshakeException catch (e) {
+      return ServerCheckResult.error(_tlsMessage(e));
+    } on TlsException catch (e) {
+      return ServerCheckResult.error(_tlsMessage(e));
+    } on SocketException catch (e) {
+      final detail = e.osError?.message ?? e.message;
+      return ServerCheckResult.error(
+          "Couldn't reach the server (connection/DNS failure): $detail");
+    } on TimeoutException {
+      return ServerCheckResult.error(
+          'The server took too long to respond. Check the address and your connection.');
+    } on http.ClientException catch (e) {
+      return ServerCheckResult.error('Connection failed: ${e.message}');
+    } on FormatException {
+      return ServerCheckResult.error(
+          "That doesn't look like a valid server address.");
     } catch (e) {
-      return false;
+      return ServerCheckResult.error('Could not connect: $e');
     }
+  }
+
+  static String _tlsMessage(Exception e) {
+    return "The server's TLS certificate isn't trusted. If it uses a private or "
+        'self-signed certificate, import its CA under Advanced → Certificates. '
+        'If the server requires a client certificate (mTLS), import that too.';
   }
 
   /// Initial login - returns either API key or MFA session info
@@ -264,9 +324,10 @@ class PinepodsLoginService {
   static Future<LoginResult> login(String serverUrl, String username, String password) async {
     try {
       // Step 1: Verify server
-      final isPinepods = await verifyPinepodsInstance(serverUrl);
-      if (!isPinepods) {
-        return LoginResult.failure('Not a valid PinePods server');
+      final serverCheck = await checkServer(serverUrl);
+      if (!serverCheck.isPinepods) {
+        return LoginResult.failure(
+            serverCheck.errorMessage ?? 'Not a valid PinePods server');
       }
 
       // Step 2: Initial login - get API key or MFA session

@@ -7,6 +7,11 @@ class RemoteCommandManager {
     private weak var player: PinepodsAudioPlayer?
     private let commandCenter = MPRemoteCommandCenter.shared()
 
+    // Configurable skip intervals (ms). Kept in sync with the in-app setting
+    // via updateSkipIntervals(...). Defaults match podcast conventions.
+    private var forwardMs: Int = 30000
+    private var backwardMs: Int = 10000
+
     init(player: PinepodsAudioPlayer) {
         self.player = player
         setupRemoteCommands()
@@ -47,31 +52,50 @@ class RemoteCommandManager {
             return .success
         }
 
-        // Skip forward command (fast forward 30s - standard for podcasts)
+        // Skip forward command (fast forward - standard for podcasts)
         commandCenter.skipForwardCommand.isEnabled = true
-        commandCenter.skipForwardCommand.preferredIntervals = [30]
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: forwardMs / 1000)]
         commandCenter.skipForwardCommand.addTarget { [weak self] event in
             NSLog("[RemoteCommandManager] Remote command: skip forward")
             if let skipEvent = event as? MPSkipIntervalCommandEvent {
                 let milliseconds = Int(skipEvent.interval * 1000)
                 self?.player?.fastForward(milliseconds: milliseconds)
             } else {
-                self?.player?.fastForward(milliseconds: 30000)
+                self?.player?.fastForward(milliseconds: self?.forwardMs ?? 30000)
             }
             return .success
         }
 
-        // Skip backward command (rewind 10s - standard for podcasts)
+        // Skip backward command (rewind - standard for podcasts)
         commandCenter.skipBackwardCommand.isEnabled = true
-        commandCenter.skipBackwardCommand.preferredIntervals = [10]
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: backwardMs / 1000)]
         commandCenter.skipBackwardCommand.addTarget { [weak self] event in
             NSLog("[RemoteCommandManager] Remote command: skip backward")
             if let skipEvent = event as? MPSkipIntervalCommandEvent {
                 let milliseconds = Int(skipEvent.interval * 1000)
                 self?.player?.rewind(milliseconds: milliseconds)
             } else {
-                self?.player?.rewind(milliseconds: 10000)
+                self?.player?.rewind(milliseconds: self?.backwardMs ?? 10000)
             }
+            return .success
+        }
+
+        // Next / previous track commands. Many car head units and steering-wheel
+        // controls emit these for their physical seek buttons rather than the
+        // skip-interval commands. For podcasts we map them to fast-forward /
+        // rewind by the configured interval so those buttons actually work
+        // (see #874) instead of doing nothing.
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            NSLog("[RemoteCommandManager] Remote command: next track -> fast forward")
+            self?.player?.fastForward(milliseconds: self?.forwardMs ?? 30000)
+            return .success
+        }
+
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            NSLog("[RemoteCommandManager] Remote command: previous track -> rewind")
+            self?.player?.rewind(milliseconds: self?.backwardMs ?? 10000)
             return .success
         }
 
@@ -99,13 +123,22 @@ class RemoteCommandManager {
             return .commandFailed
         }
 
-        // Disable commands we don't support for podcasts
-        commandCenter.nextTrackCommand.isEnabled = false
-        commandCenter.previousTrackCommand.isEnabled = false
+        // Disable the continuous press-and-hold seek commands; we use the
+        // discrete skip / track commands above instead.
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
 
         NSLog("[RemoteCommandManager] Remote commands configured")
+    }
+
+    /// Update the skip intervals used by the lock-screen / CarPlay / head-unit
+    /// controls to match the user's in-app setting.
+    func updateSkipIntervals(forwardMs: Int, backwardMs: Int) {
+        if forwardMs > 0 { self.forwardMs = forwardMs }
+        if backwardMs > 0 { self.backwardMs = backwardMs }
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: self.forwardMs / 1000)]
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: self.backwardMs / 1000)]
+        NSLog("[RemoteCommandManager] Skip intervals updated: forward=\(self.forwardMs)ms back=\(self.backwardMs)ms")
     }
 
     private func disableRemoteCommands() {
@@ -114,6 +147,8 @@ class RemoteCommandManager {
         commandCenter.togglePlayPauseCommand.isEnabled = false
         commandCenter.skipForwardCommand.isEnabled = false
         commandCenter.skipBackwardCommand.isEnabled = false
+        commandCenter.nextTrackCommand.isEnabled = false
+        commandCenter.previousTrackCommand.isEnabled = false
         commandCenter.changePlaybackPositionCommand.isEnabled = false
         commandCenter.changePlaybackRateCommand.isEnabled = false
 
@@ -122,6 +157,8 @@ class RemoteCommandManager {
         commandCenter.togglePlayPauseCommand.removeTarget(nil)
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.removeTarget(nil)
+        commandCenter.nextTrackCommand.removeTarget(nil)
+        commandCenter.previousTrackCommand.removeTarget(nil)
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
         commandCenter.changePlaybackRateCommand.removeTarget(nil)
 

@@ -599,7 +599,7 @@ pub fn user_settings() -> Html {
                                             Err(_e) => {
                                                 error_container_user
                                                     .set(error_container_state::Shown);
-                                                error_message_container_user.set("Error updating username. Usernames must be at least 4 characters long.".to_string());
+                                                error_message_container_user.set("Error updating username. Username cannot be empty.".to_string());
                                             }
                                         }
                                     }

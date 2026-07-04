@@ -191,6 +191,13 @@ class AudioPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     result.success(null)
                 }
 
+                "setSkipIntervals" -> {
+                    val forwardMs = (call.argument<Int>("forwardMs") ?: 30000).toLong()
+                    val backwardMs = (call.argument<Int>("backwardMs") ?: 10000).toLong()
+                    mediaService?.setSkipIntervals(forwardMs, backwardMs)
+                    result.success(null)
+                }
+
                 "getPosition" -> {
                     val position = mediaService?.getCurrentPosition() ?: 0
                     result.success(position)

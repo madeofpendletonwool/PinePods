@@ -5,6 +5,7 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/draggable_queue_episode_card.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
@@ -168,9 +169,10 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
   Future<void> _showContextMenu(int episodeIndex) async {
     final episode = _episodes[episodeIndex];
     final isDownloadedLocally = await LocalDownloadUtils.isEpisodeDownloadedLocally(context, episode);
-    
+
     if (!mounted) return;
-    
+
+    final pageContext = context;
     showDialog(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.3),
@@ -213,10 +215,19 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
         onDismiss: () {
           Navigator.of(context).pop();
         },
+        onPodcastTap: () {
+          Navigator.of(context).pop();
+          navigateToPodcastById(
+            pageContext,
+            episode.podcastId,
+            fallbackTitle: episode.podcastName,
+            fallbackArtwork: episode.episodeArtwork,
+          );
+        },
       ),
     );
   }
-  
+
   Future<void> _localDownloadEpisode(int episodeIndex) async {
     final episode = _episodes[episodeIndex];
     

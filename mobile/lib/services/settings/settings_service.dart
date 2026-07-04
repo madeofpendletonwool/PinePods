@@ -61,6 +61,14 @@ abstract class SettingsService {
 
   bool get volumeBoost;
 
+  set fastForwardInterval(int seconds);
+
+  int get fastForwardInterval;
+
+  set rewindInterval(int seconds);
+
+  int get rewindInterval;
+
   set layoutMode(int mode);
 
   int get layoutMode;

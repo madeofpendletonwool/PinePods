@@ -11,6 +11,7 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/downloadable.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
@@ -41,6 +42,27 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
   int _offset = 0;
   int _total = 0;
   bool _isLoadingMore = false;
+
+  // Favorites-only filter: when on, only show episodes whose podcast is a
+  // favorite. Podcast-level favorite state comes from return_pods.
+  bool _favoritesOnly = false;
+  Set<int> _favoritePodcastIds = {};
+
+  /// Original indices into [_episodes] that are currently visible given the
+  /// favorites filter. Used so index-based handlers still address [_episodes].
+  List<int> get _visibleIndices {
+    if (!_favoritesOnly) {
+      return List<int>.generate(_episodes.length, (i) => i);
+    }
+    final indices = <int>[];
+    for (var i = 0; i < _episodes.length; i++) {
+      final pid = _episodes[i].podcastId;
+      if (pid != null && _favoritePodcastIds.contains(pid)) {
+        indices.add(i);
+      }
+    }
+    return indices;
+  }
 
   @override
   void initState() {
@@ -106,11 +128,39 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
 
       // After loading episodes, check their local download status
       await _loadLocalDownloadStatuses();
+      await _loadFavoritePodcastIds(userId);
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to load recent episodes: ${e.toString()}';
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _loadFavoritePodcastIds(int userId) async {
+    try {
+      final podcasts = await _pinepodsService.getUserPodcasts(userId);
+      if (!mounted) return;
+      setState(() {
+        _favoritePodcastIds = podcasts
+            .where((p) => p.isFavorite && p.id != null)
+            .map((p) => p.id!)
+            .toSet();
+      });
+    } catch (e) {
+      // Non-fatal: favorites filter just won't have data.
+    }
+  }
+
+  void _toggleFavoritesFilter() {
+    setState(() => _favoritesOnly = !_favoritesOnly);
+    if (_favoritesOnly) {
+      final settings =
+          Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+      final userId = settings.pinepodsUserId;
+      if (userId != null) {
+        _loadFavoritePodcastIds(userId);
+      }
     }
   }
 
@@ -248,9 +298,10 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
   Future<void> _showContextMenu(int episodeIndex) async {
     final episode = _episodes[episodeIndex];
     final isDownloadedLocally = await _isEpisodeDownloadedLocally(episode);
-    
+
     if (!mounted) return;
-    
+
+    final pageContext = context;
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.3),
@@ -292,6 +343,15 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
         },
         onDismiss: () {
           Navigator.of(context).pop();
+        },
+        onPodcastTap: () {
+          Navigator.of(context).pop();
+          navigateToPodcastById(
+            pageContext,
+            episode.podcastId,
+            fallbackTitle: episode.podcastName,
+            fallbackArtwork: episode.episodeArtwork,
+          );
         },
       ),
     );
@@ -835,6 +895,9 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
 
   Widget _buildEpisodesList() {
     final showFooter = _isLoadingMore || _offset < _total;
+    final visibleIndices = _visibleIndices;
+    final showEmptyFavorites =
+        _favoritesOnly && visibleIndices.isEmpty && !showFooter;
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
@@ -852,19 +915,45 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
-                    onPressed: _refresh,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          _favoritesOnly ? Icons.star : Icons.star_border,
+                          color: _favoritesOnly
+                              ? Colors.amber
+                              : Theme.of(context).iconTheme.color,
+                        ),
+                        tooltip: _favoritesOnly
+                            ? 'Show all podcasts'
+                            : 'Show favorites only',
+                        onPressed: _toggleFavoritesFilter,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _refresh,
+                      ),
+                    ],
                   ),
                 ],
               ),
             );
           }
 
-          final episodeIndex = index - 1;
+          if (showEmptyFavorites && index == 1) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32.0, horizontal: 16.0),
+              child: Center(
+                child: Text('No episodes from favorite podcasts.'),
+              ),
+            );
+          }
+
+          final position = index - 1;
 
           // Footer: loading spinner that triggers the next page when rendered
-          if (showFooter && episodeIndex == _episodes.length) {
+          if (showFooter && position == visibleIndices.length) {
             if (!_isLoadingMore) {
               WidgetsBinding.instance.addPostFrameCallback((_) => _loadMoreEpisodes());
             }
@@ -873,6 +962,8 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
               child: Center(child: CircularProgressIndicator()),
             );
           }
+
+          final episodeIndex = visibleIndices[position];
 
           return PinepodsEpisodeCard(
             episode: _episodes[episodeIndex],
@@ -890,7 +981,10 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
             onPlayPressed: () => _playEpisode(_episodes[episodeIndex]),
           );
         },
-        childCount: _episodes.length + 1 + (showFooter ? 1 : 0), // +1 header, +1 optional footer
+        // +1 header, + visible episodes, + optional footer or empty message
+        childCount: 1 +
+            (showEmptyFavorites ? 1 : visibleIndices.length) +
+            (showFooter ? 1 : 0),
       ),
     );
   }

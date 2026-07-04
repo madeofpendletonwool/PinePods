@@ -23,6 +23,7 @@ import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
@@ -563,8 +564,10 @@ class _PinepodsHomeState extends State<PinepodsHome> {
           queued: homeEpisode.queued,
           downloaded: homeEpisode.downloaded,
           isYoutube: homeEpisode.isYoutube,
+          podcastId: homeEpisode.podcastId,
         );
 
+        final pageContext = context;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           showDialog(
             context: context,
@@ -601,6 +604,16 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               onDismiss: () {
                 Navigator.of(context).pop();
                 _hideContextMenu();
+              },
+              onPodcastTap: () {
+                Navigator.of(context).pop();
+                _hideContextMenu();
+                navigateToPodcastById(
+                  pageContext,
+                  episode.podcastId,
+                  fallbackTitle: episode.podcastName,
+                  fallbackArtwork: episode.episodeArtwork,
+                );
               },
             ),
           );

@@ -368,6 +368,7 @@ pub struct QueueResponse {
 pub struct QueuedEpisode {
     pub episodetitle: String,
     pub podcastname: String,
+    pub podcastid: i32,
     pub episodepubdate: String,
     pub episodedescription: String,
     pub episodeartwork: String,

@@ -6,6 +6,7 @@ import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
 import 'package:pinepods_mobile/services/auth_notifier.dart';
+import 'package:pinepods_mobile/ui/widgets/certificate_import_section.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:math';
@@ -643,7 +644,28 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                           ),
                         ],
 
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 8),
+
+                        // Advanced: custom TLS certificates. Available before the
+                        // first connection so a private CA can be trusted / a
+                        // client certificate provided up front.
+                        Theme(
+                          data: Theme.of(context)
+                              .copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.security),
+                            title: const Text('Advanced: Certificates'),
+                            subtitle: const Text(
+                              'Custom server CA / client certificate (mTLS)',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            children: const [CertificateImportSection()],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
 
                         // Connect Button
                         ElevatedButton(

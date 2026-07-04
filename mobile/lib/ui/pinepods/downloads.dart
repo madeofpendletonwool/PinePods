@@ -11,6 +11,7 @@ import 'package:pinepods_mobile/bloc/podcast/episode_bloc.dart';
 import 'package:pinepods_mobile/state/bloc_state.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
@@ -591,6 +592,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
   }
 
   void _showServerContextMenu(PinepodsEpisode episode, int podcastId) {
+    final pageContext = context;
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.3),
@@ -605,6 +607,15 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
           _localDownloadServerEpisode(episode);
         },
         onDismiss: () => Navigator.of(context).pop(),
+        onPodcastTap: () {
+          Navigator.of(context).pop();
+          navigateToPodcastById(
+            pageContext,
+            podcastId,
+            fallbackTitle: episode.podcastName,
+            fallbackArtwork: episode.episodeArtwork,
+          );
+        },
       ),
     );
   }
@@ -652,6 +663,8 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
   }
 
   void _showLocalContextMenu(PinepodsEpisode pe, Episode episode) {
+    final pageContext = context;
+    final podcastId = pe.podcastId;
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.3),
@@ -663,6 +676,17 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
           _handleLocalEpisodeDelete(episode);
         },
         onDismiss: () => Navigator.of(context).pop(),
+        onPodcastTap: (podcastId != null && podcastId > 0)
+            ? () {
+                Navigator.of(context).pop();
+                navigateToPodcastById(
+                  pageContext,
+                  podcastId,
+                  fallbackTitle: pe.podcastName,
+                  fallbackArtwork: pe.episodeArtwork,
+                );
+              }
+            : null,
       ),
     );
   }

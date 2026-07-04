@@ -65,6 +65,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   bool _isLoading = false;
   bool _isFollowing = false;
   bool _isFollowButtonLoading = false;
+  bool _isFavorite = false;
+  bool _isFavoriteLoading = false;
   String? _errorMessage;
   List<PinepodsEpisode> _episodes = [];
   List<PinepodsEpisode> _filteredEpisodes = [];
@@ -93,6 +95,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _loadAutoDownloadPreference();
     _loadAutoPlayNextPreference();
     _checkFollowStatus();
+    _checkFavoriteStatus();
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -387,6 +390,80 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       print('Error checking follow status: $e');
       // Use the passed value as fallback
       _loadPodcastFeed();
+    }
+  }
+
+  Future<void> _checkFavoriteStatus() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0) return;
+
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+    if (userId == null ||
+        settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null) {
+      return;
+    }
+
+    _pinepodsService.setCredentials(
+        settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+    try {
+      final isFavorite =
+          await _pinepodsService.getPodcastFavoriteStatus(podcastId, userId);
+      if (mounted) {
+        setState(() {
+          _isFavorite = isFavorite;
+        });
+      }
+    } catch (e) {
+      print('Error checking favorite status: $e');
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0 || _isFavoriteLoading) return;
+
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+    if (userId == null ||
+        settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
+    }
+
+    _pinepodsService.setCredentials(
+        settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+    // Optimistically flip, revert on failure.
+    final newValue = !_isFavorite;
+    setState(() {
+      _isFavorite = newValue;
+      _isFavoriteLoading = true;
+    });
+
+    final success = await _pinepodsService.togglePodcastFavorite(
+        podcastId, userId, newValue);
+
+    if (!mounted) return;
+    setState(() {
+      _isFavoriteLoading = false;
+      if (!success) {
+        _isFavorite = !newValue;
+      }
+    });
+
+    if (!success) {
+      _showSnackBar('Failed to update favorite', Colors.red);
+    } else {
+      _showSnackBar(
+        newValue ? 'Added to favorites' : 'Removed from favorites',
+        Colors.green,
+      );
     }
   }
 
@@ -1135,6 +1212,27 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
               ),
             ),
             actions: [
+              if (widget.podcast.id > 0)
+                IconButton(
+                  onPressed: _isFavoriteLoading ? null : _toggleFavorite,
+                  icon: _isFavoriteLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.0,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Icon(
+                          _isFavorite ? Icons.star : Icons.star_border,
+                          color: _isFavorite ? Colors.amber : Colors.white,
+                        ),
+                  tooltip: _isFavorite
+                      ? 'Remove from favorites'
+                      : 'Add to favorites',
+                ),
               if (_isFollowing && widget.podcast.id > 0)
                 IconButton(
                   onPressed: _toggleAutoDownload,

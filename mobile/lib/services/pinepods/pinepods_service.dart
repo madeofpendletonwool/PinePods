@@ -157,6 +157,7 @@ class PinepodsService {
               link: podData['websiteurl'] ?? '',
               copyright: podData['author'] ?? '',
               guid: podData['feedurl'] ?? '',
+              isFavorite: podData['isfavorite'] ?? false,
               // Empty episodes list - episodes are loaded separately when needed
               episodes: [],
               // Store episode count for display (if Podcast model supports it)
@@ -226,6 +227,7 @@ class PinepodsService {
               link: podData['websiteurl'] ?? '',
               copyright: podData['author'] ?? '',
               guid: podData['feedurl'] ?? '',
+              isFavorite: podData['isfavorite'] ?? false,
               episodes: [],
             ),
           );
@@ -454,6 +456,65 @@ class PinepodsService {
       return response.statusCode == 200;
     } catch (e) {
       _devLog('Error incrementing played: $e');
+      return false;
+    }
+  }
+
+  // Toggle a podcast's favorite status (podcast-level favorite, matching web).
+  Future<bool> togglePodcastFavorite(
+    int podcastId,
+    int userId,
+    bool isFavorite,
+  ) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/podcast/toggle_favorite');
+    final requestBody = jsonEncode({
+      'user_id': userId,
+      'podcast_id': podcastId,
+      'is_favorite': isFavorite,
+    });
+
+    try {
+      final response = await http.put(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: requestBody,
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      _devLog('Error toggling podcast favorite: $e');
+      return false;
+    }
+  }
+
+  // Get a podcast's favorite status.
+  Future<bool> getPodcastFavoriteStatus(int podcastId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/podcast/favorite_status');
+    final requestBody = jsonEncode({
+      'user_id': userId,
+      'podcast_id': podcastId,
+    });
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: requestBody,
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['is_favorite'] ?? false;
+      }
+      return false;
+    } catch (e) {
+      _devLog('Error getting podcast favorite status: $e');
       return false;
     }
   }
@@ -2688,6 +2749,7 @@ class SearchEpisodeResult {
       queued: queued,
       downloaded: downloaded,
       isYoutube: isYoutube,
+      podcastId: podcastId,
     );
   }
 

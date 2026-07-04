@@ -96,7 +96,7 @@ fn parse_silencedetect(stderr: &str) -> Vec<(f64, f64)> {
 }
 
 /// Look up a locally downloaded file path for an episode (any user — the file content is the same).
-async fn downloaded_location(db_pool: &DatabasePool, episode_id: i32) -> Result<Option<String>, String> {
+pub async fn downloaded_location(db_pool: &DatabasePool, episode_id: i32) -> Result<Option<String>, String> {
     let loc = match db_pool {
         DatabasePool::Postgres(pool) => {
             sqlx::query(r#"SELECT downloadedlocation FROM "DownloadedEpisodes" WHERE episodeid = $1 LIMIT 1"#)

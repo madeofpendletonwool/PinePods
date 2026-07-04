@@ -49,6 +49,9 @@ pub struct AppState {
     /// and to block first-admin creation (which would otherwise race the restore and
     /// corrupt it). Shared across clones via Arc.
     pub restore_in_progress: Arc<std::sync::atomic::AtomicBool>,
+    /// Whether the optional pinepods-ai sidecar is reachable. Kept fresh by a
+    /// background health monitor; handlers gate AI features on this.
+    pub ai_available: crate::services::ai_client::AiAvailability,
 }
 
 #[tokio::main]
@@ -113,7 +116,11 @@ async fn main() -> AppResult<()> {
         import_progress_manager,
         notification_manager,
         restore_in_progress: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        ai_available: crate::services::ai_client::AiAvailability::new(),
     };
+
+    // Start the AI sidecar health monitor (no-op if PINEPODS_AI_URL is unset).
+    crate::services::ai_client::spawn_health_monitor(app_state.ai_available.clone());
 
     // Build the application with routes
     let app = create_app(app_state.clone());
@@ -235,6 +242,8 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::podcasts::user_history))
         .routes(routes!(handlers::podcasts::increment_listen_time))
         .routes(routes!(handlers::podcasts::get_playback_speed))
+        .routes(routes!(handlers::podcasts::get_auto_download_delete_days))
+        .routes(routes!(handlers::podcasts::get_default_volume))
         .routes(routes!(handlers::podcasts::add_podcast))
         .routes(routes!(handlers::podcasts::update_podcast_info))
         .routes(routes!(handlers::podcasts::merge_podcasts))
@@ -271,6 +280,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::podcasts::get_episode_metadata))
         .routes(routes!(handlers::podcasts::fetch_podcasting_2_data))
         .routes(routes!(handlers::podcasts::get_auto_download_status))
+        .routes(routes!(handlers::podcasts::get_auto_queue_status))
         .routes(routes!(handlers::podcasts::get_auto_play_next_status))
         .routes(routes!(handlers::podcasts::get_next_podcast_episode))
         .routes(routes!(handlers::podcasts::get_next_playlist_episode))
@@ -391,6 +401,8 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::local_podcast::detect_local_cover))
         .routes(routes!(handlers::settings::get_notification_settings, handlers::settings::update_notification_settings))
         .routes(routes!(handlers::settings::set_playback_speed_user))
+        .routes(routes!(handlers::settings::set_default_volume_user))
+        .routes(routes!(handlers::settings::set_auto_download_delete_days_user))
         .routes(routes!(handlers::settings::set_global_podcast_cover_preference))
         .routes(routes!(handlers::settings::get_global_podcast_cover_preference))
         .routes(routes!(handlers::settings::test_notification))
@@ -408,8 +420,14 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::youtube::subscribe_to_youtube_channel))
         .routes(routes!(handlers::youtube::check_youtube_channel))
         .routes(routes!(handlers::settings::enable_auto_download))
+        .routes(routes!(handlers::settings::enable_auto_queue))
         .routes(routes!(handlers::settings::enable_auto_play_next))
         .routes(routes!(handlers::settings::adjust_skip_times))
+        .routes(routes!(handlers::settings::ai_status))
+        .routes(routes!(handlers::settings::transcribe_episode))
+        .routes(routes!(handlers::settings::get_episode_transcript))
+        .routes(routes!(handlers::settings::adjust_auto_transcribe))
+        .routes(routes!(handlers::settings::get_auto_transcribe))
         .routes(routes!(handlers::settings::adjust_silence_trim))
         .routes(routes!(handlers::settings::get_silence_trim))
         .routes(routes!(handlers::settings::get_episode_skip_segments))
@@ -418,6 +436,8 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::settings::add_category))
         .routes(routes!(handlers::settings::set_podcast_playback_speed))
         .routes(routes!(handlers::settings::clear_podcast_playback_speed))
+        .routes(routes!(handlers::settings::set_podcast_auto_download_delete_days))
+        .routes(routes!(handlers::settings::clear_podcast_auto_download_delete_days))
         .routes(routes!(handlers::settings::set_podcast_cover_preference))
         .routes(routes!(handlers::settings::clear_podcast_cover_preference))
         .routes(routes!(handlers::settings::toggle_podcast_notifications))

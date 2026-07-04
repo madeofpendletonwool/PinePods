@@ -14,3 +14,6 @@ data:
   DB_PORT: "5432"
   DB_NAME: "pypods_database"
   DEBUG_MODE: "False"
+  # Optional AI features (#726 transcripts). Uncomment this AND apply pinepods-ai.yml
+  # to enable transcription; leave it out to keep AI features disabled.
+  # PINEPODS_AI_URL: "http://pinepods-ai:8100"

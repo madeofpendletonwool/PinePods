@@ -161,7 +161,7 @@ pub enum ValidationError {
 pub fn validate_user_input(username: &str, password: &str, email: &str) -> Vec<ValidationError> {
     let mut errors = Vec::new();
 
-    if username.len() < 4 {
+    if username.trim().is_empty() {
         errors.push(ValidationError::UsernameTooShort);
     }
 
@@ -190,7 +190,7 @@ pub fn unix_timestamp_to_datetime_string(timestamp: i64) -> String {
 pub fn validate_username(username: &str) -> Vec<ValidationError> {
     let mut errors = Vec::new();
 
-    if username.len() < 4 {
+    if username.trim().is_empty() {
         errors.push(ValidationError::UsernameTooShort);
     }
 

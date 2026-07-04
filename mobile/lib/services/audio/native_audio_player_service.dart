@@ -79,6 +79,15 @@ class NativeAudioPlayerService extends AudioPlayerService {
     // Retry with increasing delays until the plugin is ready (max ~5s total).
     _subscribeToEventChannelWithRetry();
 
+    // Re-push skip intervals to the native media session whenever the user
+    // changes them, so car/notification rewind & fast-forward buttons stay in
+    // sync without needing to restart playback.
+    settingsService.settingsListener.listen((key) {
+      if (key == 'fastForwardInterval' || key == 'rewindInterval') {
+        _applySkipIntervals();
+      }
+    });
+
     _loadQueue();
   }
 
@@ -364,6 +373,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
         await platform.invokeMethod('setTrimSilence', {'enabled': _trimSilence});
         await platform.invokeMethod('setVolumeBoost', {'enabled': _volumeBoost});
       }
+      await _applySkipIntervals();
 
       // Start tracking
       _episodeStartTime = DateTime.now();
@@ -446,7 +456,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
   Future<void> rewind() async {
     log.info('rewind');
     try {
-      await platform.invokeMethod('rewind', {'milliseconds': 10000});
+      await platform.invokeMethod('rewind', {'milliseconds': settingsService.rewindInterval * 1000});
     } catch (e) {
       log.severe('Error rewinding: $e');
     }
@@ -456,9 +466,23 @@ class NativeAudioPlayerService extends AudioPlayerService {
   Future<void> fastForward() async {
     log.info('fastForward');
     try {
-      await platform.invokeMethod('fastForward', {'milliseconds': 30000});
+      await platform.invokeMethod('fastForward', {'milliseconds': settingsService.fastForwardInterval * 1000});
     } catch (e) {
       log.severe('Error fast forwarding: $e');
+    }
+  }
+
+  /// Push the user-configured skip intervals down to the native media
+  /// session so the car/notification rewind & fast-forward buttons honor
+  /// the same values as the in-app controls.
+  Future<void> _applySkipIntervals() async {
+    try {
+      await platform.invokeMethod('setSkipIntervals', {
+        'forwardMs': settingsService.fastForwardInterval * 1000,
+        'backwardMs': settingsService.rewindInterval * 1000,
+      });
+    } catch (e) {
+      log.warning('Error setting skip intervals: $e');
     }
   }
 

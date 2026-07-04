@@ -76,6 +76,11 @@ resource "aws_ecs_task_definition" "pinepods" {
   cpu                      = "1"
   memory                   = "4"
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  # Optional AI features (#726 transcripts): run the madeofpendletonwool/pinepods-ai
+  # image as a SECOND container in this task definition (so it shares localhost with the
+  # app), mount a shared EFS volume at /opt/pinepods/downloads on both containers, and add
+  # an environment entry { "name": "PINEPODS_AI_URL", "value": "http://localhost:8100" }
+  # to the pinepods container below. Omit all of that to keep AI features disabled.
   container_definitions    = <<DEFINITION
 [
   {

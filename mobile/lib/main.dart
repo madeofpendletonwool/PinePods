@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
 import 'package:pinepods_mobile/services/logging/app_logger.dart';
+import 'package:pinepods_mobile/services/security/certificate_manager.dart';
 import 'package:pinepods_mobile/ui/pinepods_podcast_app.dart';
 import 'package:pinepods_mobile/ui/widgets/restart_widget.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -55,7 +56,15 @@ void main() async {
 
   var mobileSettingsService = (await MobileSettingsService.instance())!;
   certificateAuthorityBytes = await setupCertificateAuthority();
-  
+
+  // Apply any user-imported certificates (server CA trust + mTLS client cert)
+  // to the process-wide SecurityContext before the app makes any requests.
+  try {
+    await CertificateManager.instance.init();
+  } catch (e) {
+    print('Failed to initialize user certificates: $e');
+  }
+
 
   runApp(RestartWidget(
     child: PinepodsPodcastApp(

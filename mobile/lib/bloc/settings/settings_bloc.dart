@@ -27,6 +27,8 @@ class SettingsBloc extends Bloc {
   final BehaviorSubject<bool> _showFunding = BehaviorSubject<bool>();
   final BehaviorSubject<bool> _trimSilence = BehaviorSubject<bool>();
   final BehaviorSubject<bool> _volumeBoost = BehaviorSubject<bool>();
+  final BehaviorSubject<int> _fastForwardInterval = BehaviorSubject<int>();
+  final BehaviorSubject<int> _rewindInterval = BehaviorSubject<int>();
   final BehaviorSubject<int> _autoUpdatePeriod = BehaviorSubject<int>();
   final BehaviorSubject<int> _layoutMode = BehaviorSubject<int>();
   final BehaviorSubject<String?> _pinepodsServer = BehaviorSubject<String?>();
@@ -98,6 +100,8 @@ class SettingsBloc extends Bloc {
       autoUpdateEpisodePeriod: _settingsService.autoUpdateEpisodePeriod,
       trimSilence: _settingsService.trimSilence,
       volumeBoost: _settingsService.volumeBoost,
+      fastForwardInterval: _settingsService.fastForwardInterval,
+      rewindInterval: _settingsService.rewindInterval,
       layout: _settingsService.layoutMode,
       pinepodsServer: _settingsService.pinepodsServer,
       pinepodsApiKey: _settingsService.pinepodsApiKey,
@@ -198,6 +202,18 @@ class SettingsBloc extends Bloc {
       _settingsService.volumeBoost = boost;
     });
 
+    _fastForwardInterval.listen((seconds) {
+      _currentSettings = _currentSettings.copyWith(fastForwardInterval: seconds);
+      _settings.add(_currentSettings);
+      _settingsService.fastForwardInterval = seconds;
+    });
+
+    _rewindInterval.listen((seconds) {
+      _currentSettings = _currentSettings.copyWith(rewindInterval: seconds);
+      _settings.add(_currentSettings);
+      _settingsService.rewindInterval = seconds;
+    });
+
     _pinepodsServer.listen((server) {
       _currentSettings = _currentSettings.copyWith(pinepodsServer: server);
       _settings.add(_currentSettings);
@@ -266,6 +282,10 @@ class SettingsBloc extends Bloc {
   void Function(bool) get trimSilence => _trimSilence.add;
 
   void Function(bool) get volumeBoost => _volumeBoost.add;
+
+  void Function(int) get setFastForwardInterval => _fastForwardInterval.add;
+
+  void Function(int) get setRewindInterval => _rewindInterval.add;
 
   void Function(int) get layoutMode => _layoutMode.add;
 
@@ -349,6 +369,8 @@ class SettingsBloc extends Bloc {
     _showFunding.close();
     _trimSilence.close();
     _volumeBoost.close();
+    _fastForwardInterval.close();
+    _rewindInterval.close();
     _autoUpdatePeriod.close();
     _layoutMode.close();
     _pinepodsServer.close();

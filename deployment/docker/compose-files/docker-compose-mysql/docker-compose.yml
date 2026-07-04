@@ -44,11 +44,12 @@ services:
       TZ: "America/New_York"
       # Language Configuration
       DEFAULT_LANGUAGE: "en"
+      # Optional AI features (#726 transcripts). Uncomment + run the pinepods-ai
+      # service below to enable; leave unset to keep AI features disabled.
+      # PINEPODS_AI_URL: "http://pinepods-ai:8100"
     volumes:
       # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that.
       # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
-
-    volumes:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
@@ -60,3 +61,20 @@ services:
     depends_on:
       - db
       - valkey
+
+  # Optional AI sidecar for transcription (#726). Disabled by default — uncomment
+  # this whole service AND the PINEPODS_AI_URL var above to enable AI features.
+  # It only needs read-only access to the downloads directory.
+  # pinepods-ai:
+  #   image: madeofpendletonwool/pinepods-ai:latest
+  #   environment:
+  #     WHISPER_MODEL: "base"        # tiny|base|small|medium|large-v3
+  #     WHISPER_DEVICE: "cpu"        # cuda if using a GPU image
+  #     WHISPER_COMPUTE_TYPE: "int8"
+  #   volumes:
+  #     - /home/user/pinepods/downloads:/opt/pinepods/downloads:ro
+  #     - pinepods-ai-models:/models
+  #   restart: always
+
+# volumes:
+#   pinepods-ai-models:

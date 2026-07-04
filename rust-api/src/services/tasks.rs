@@ -546,6 +546,9 @@ impl TaskSpawner {
                 // detached so it never delays the download's completion.
                 crate::services::audio_processing::maybe_detect_silence_after_download(db_pool.clone(), episode_id);
 
+                // Likewise auto-transcribe if the podcast opted in and the AI sidecar is configured.
+                crate::services::transcription::maybe_transcribe_episode(db_pool.clone(), episode_id);
+
                 Ok(serde_json::json!({
                     "episode_id": episode_id,
                     "user_id": user_id,
@@ -595,6 +598,71 @@ impl TaskSpawner {
             },
         )
         .await
+    }
+
+    /// Manually (re-)transcribe a single episode as a tracked background task. Reports live
+    /// progress (streamed from the AI sidecar) so the queue shows a moving percentage rather than
+    /// sitting on "pending" for a long episode.
+    pub async fn spawn_transcribe_episode(&self, episode_id: i32, user_id: i32, force: bool) -> AppResult<String> {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::time::Duration;
+
+        let db_pool = self.db_pool.clone();
+        let task_manager = self.task_manager.clone();
+        let task_id = task_manager
+            .create_task_with_item_id("transcribe_episode".to_string(), user_id, Some(episode_id))
+            .await?;
+        let task_id_clone = task_id.clone();
+
+        tokio::spawn(async move {
+            // Nudge to "Running" immediately so the UI reflects work in progress.
+            let _ = task_manager
+                .update_task_progress_with_item_id(&task_id_clone, 1.0, Some("Transcribing…".to_string()), Some(episode_id), Some("transcribe_episode".to_string()))
+                .await;
+
+            // Latest progress (0–100) shared with a ticker that publishes it to the task system,
+            // decoupling the sync progress callback from async task updates.
+            let progress = Arc::new(AtomicU32::new(1));
+            let ticker = {
+                let tm = task_manager.clone();
+                let tid = task_id_clone.clone();
+                let prog = progress.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        let p = prog.load(Ordering::Relaxed).max(1) as f64;
+                        let _ = tm
+                            .update_task_progress_with_item_id(&tid, p, Some("Transcribing…".to_string()), Some(episode_id), Some("transcribe_episode".to_string()))
+                            .await;
+                    }
+                })
+            };
+
+            let cb_progress = progress.clone();
+            let on_progress = move |p: f64| {
+                cb_progress.store((p * 100.0).round() as u32, Ordering::Relaxed);
+            };
+
+            let result = crate::services::transcription::transcribe_episode(&db_pool, episode_id, force, on_progress).await;
+            ticker.abort();
+
+            match result {
+                Ok(_) => {
+                    if let Err(e) = task_manager
+                        .complete_task(&task_id_clone, Some(serde_json::json!({ "episode_id": episode_id })), None)
+                        .await
+                    {
+                        tracing::error!("Failed to mark transcribe task {} completed: {}", task_id_clone, e);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Transcribe task {} failed: {}", task_id_clone, e);
+                    let _ = task_manager.fail_task(&task_id_clone, e).await;
+                }
+            }
+        });
+
+        Ok(task_id)
     }
 
     pub async fn spawn_download_youtube_video(&self, video_id: i32, user_id: i32) -> AppResult<String> {

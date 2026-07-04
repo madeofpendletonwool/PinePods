@@ -44,6 +44,12 @@ class AppSettings {
   /// If true, volume is boosted. Currently Android only.
   final bool volumeBoost;
 
+  /// Number of seconds the fast-forward control skips ahead.
+  final int fastForwardInterval;
+
+  /// Number of seconds the rewind control skips back.
+  final int rewindInterval;
+
   /// If 0, list view; else grid view
   final int layout;
 
@@ -74,6 +80,8 @@ class AppSettings {
     required this.autoUpdateEpisodePeriod,
     required this.trimSilence,
     required this.volumeBoost,
+    required this.fastForwardInterval,
+    required this.rewindInterval,
     required this.layout,
     this.pinepodsServer,
     this.pinepodsApiKey,
@@ -97,6 +105,8 @@ class AppSettings {
         autoUpdateEpisodePeriod = -1,
         trimSilence = false,
         volumeBoost = false,
+        fastForwardInterval = 30,
+        rewindInterval = 10,
         layout = 0,
         pinepodsServer = null,
         pinepodsApiKey = null,
@@ -119,6 +129,8 @@ class AppSettings {
     int? autoUpdateEpisodePeriod,
     bool? trimSilence,
     bool? volumeBoost,
+    int? fastForwardInterval,
+    int? rewindInterval,
     int? layout,
     String? pinepodsServer,
     String? pinepodsApiKey,
@@ -141,6 +153,8 @@ class AppSettings {
         autoUpdateEpisodePeriod: autoUpdateEpisodePeriod ?? this.autoUpdateEpisodePeriod,
         trimSilence: trimSilence ?? this.trimSilence,
         volumeBoost: volumeBoost ?? this.volumeBoost,
+        fastForwardInterval: fastForwardInterval ?? this.fastForwardInterval,
+        rewindInterval: rewindInterval ?? this.rewindInterval,
         layout: layout ?? this.layout,
         pinepodsServer: pinepodsServer ?? this.pinepodsServer,
         pinepodsApiKey: pinepodsApiKey ?? this.pinepodsApiKey,

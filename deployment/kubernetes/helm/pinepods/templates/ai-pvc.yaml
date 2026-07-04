@@ -1,0 +1,18 @@
+{{- if and .Values.ai.enabled .Values.ai.persistence.enabled (not .Values.ai.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pinepods.fullname" . }}-ai-models
+  labels:
+    {{- include "pinepods.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai
+spec:
+  accessModes:
+    - {{ .Values.ai.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.ai.persistence.size }}
+  {{- if .Values.ai.persistence.storageClass }}
+  storageClassName: {{ .Values.ai.persistence.storageClass }}
+  {{- end }}
+{{- end }}

@@ -190,10 +190,12 @@ def migration_001_core_tables(conn, db_type: str):
                     auth_type VARCHAR(50) DEFAULT 'standard',
                     oidc_provider_id INT,
                     oidc_subject VARCHAR(255),
-                    PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0
+                    PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0,
+                    AutoDownloadDeleteDays INT DEFAULT 0,
+                    DefaultVolume INT DEFAULT 100
                 )
             """)
-            
+
             # Create OIDCProviders table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS "OIDCProviders" (
@@ -248,10 +250,12 @@ def migration_001_core_tables(conn, db_type: str):
                     auth_type VARCHAR(50) DEFAULT 'standard',
                     oidc_provider_id INT,
                     oidc_subject VARCHAR(255),
-                    PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0
+                    PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0,
+                    AutoDownloadDeleteDays INT DEFAULT 0,
+                    DefaultVolume INT DEFAULT 100
                 )
             """)
-            
+
             # Create OIDCProviders table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS OIDCProviders (
@@ -612,6 +616,7 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     Explicit BOOLEAN,
                     UserID INT,
                     AutoDownload BOOLEAN DEFAULT FALSE,
+                    AutoQueue BOOLEAN DEFAULT FALSE,
                     StartSkip INT DEFAULT 0,
                     EndSkip INT DEFAULT 0,
                     Username TEXT,
@@ -621,6 +626,8 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     FeedCutoffDays INT DEFAULT 0,
                     PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0,
                     PlaybackSpeedCustomized BOOLEAN DEFAULT FALSE,
+                    AutoDownloadDeleteDays INT DEFAULT 0,
+                    AutoDownloadDeleteCustomized BOOLEAN DEFAULT FALSE,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                 )
             """)
@@ -683,6 +690,7 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     Explicit TINYINT(1),
                     UserID INT,
                     AutoDownload TINYINT(1) DEFAULT 0,
+                    AutoQueue TINYINT(1) DEFAULT 0,
                     StartSkip INT DEFAULT 0,
                     EndSkip INT DEFAULT 0,
                     Username TEXT,
@@ -692,6 +700,8 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     FeedCutoffDays INT DEFAULT 0,
                     PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0,
                     PlaybackSpeedCustomized TINYINT(1) DEFAULT 0,
+                    AutoDownloadDeleteDays INT DEFAULT 0,
+                    AutoDownloadDeleteCustomized TINYINT(1) DEFAULT 0,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )
             """)
@@ -5037,5 +5047,268 @@ def migration_050_create_skip_segments(conn, db_type: str):
     except Exception as e:
         logger.error(f"Error in skip segments migration: {e}")
         raise
+    finally:
+        cursor.close()
+
+
+@register_migration("051", "create_episode_transcripts", "Create EpisodeTranscripts table and add per-podcast AutoTranscribe", requires=["001", "005"])
+def migration_051_create_episode_transcripts(conn, db_type: str):
+    """Persistent store for generated (and, optionally, cached feed) transcripts (#726).
+
+    Today transcripts are never stored — they're parsed live from the podcast:transcript RSS
+    tag on every view. This table lets the AI sidecar's speech-to-text output be saved once and
+    reused. Like EpisodeSkipSegments, rows are content-level (per episode, NOT per user), since
+    an episode's audio/transcript is identical for every subscriber; it mirrors the dual-FK
+    (EpisodeID/VideoID) CHECK pattern for podcast episodes vs YouTube videos.
+
+    Columns: Source ('generated'|'feed'), Language, Model (which whisper model produced it),
+    TranscriptText (the whole transcript, for search later; 'FullText' avoided as it is a MySQL
+    reserved word), Segments (JSON: [{start,end,text}]),
+    Status ('pending'|'running'|'complete'|'failed') to reflect the async pipeline.
+
+    Podcasts.AutoTranscribe is the per-podcast opt-in for auto-transcribing new episodes
+    (default FALSE — transcription is never on by default; also triggerable manually per episode)."""
+    logger.info("Starting migration 051: Create EpisodeTranscripts + AutoTranscribe")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeTranscripts" (
+                    TranscriptID SERIAL PRIMARY KEY,
+                    EpisodeID INT,
+                    VideoID INT,
+                    Source VARCHAR(20) NOT NULL DEFAULT 'generated',
+                    Language VARCHAR(20),
+                    Model VARCHAR(100),
+                    TranscriptText TEXT,
+                    Segments JSONB,
+                    Status VARCHAR(20) NOT NULL DEFAULT 'complete',
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_episode_transcripts_episodeid ON "EpisodeTranscripts"(EpisodeID);
+                CREATE INDEX IF NOT EXISTS idx_episode_transcripts_videoid ON "EpisodeTranscripts"(VideoID);
+            """)
+
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'Podcasts' AND column_name = 'autotranscribe'
+            """)
+            if not cursor.fetchone():
+                cursor.execute('ALTER TABLE "Podcasts" ADD COLUMN autotranscribe BOOLEAN DEFAULT FALSE')
+                logger.info("Added autotranscribe column to Podcasts (PostgreSQL)")
+
+        else:  # MySQL / MariaDB
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS EpisodeTranscripts (
+                    TranscriptID INT AUTO_INCREMENT PRIMARY KEY,
+                    EpisodeID INT,
+                    VideoID INT,
+                    Source VARCHAR(20) NOT NULL DEFAULT 'generated',
+                    Language VARCHAR(20),
+                    Model VARCHAR(100),
+                    TranscriptText LONGTEXT,
+                    Segments JSON,
+                    Status VARCHAR(20) NOT NULL DEFAULT 'complete',
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+            for idx_sql in (
+                "CREATE INDEX idx_episode_transcripts_episodeid ON EpisodeTranscripts(EpisodeID)",
+                "CREATE INDEX idx_episode_transcripts_videoid ON EpisodeTranscripts(VideoID)",
+            ):
+                try:
+                    cursor.execute(idx_sql)
+                except Exception:
+                    pass  # Index may already exist
+
+            cursor.execute("""
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Podcasts' AND COLUMN_NAME = 'AutoTranscribe'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE Podcasts ADD COLUMN AutoTranscribe BOOLEAN DEFAULT FALSE")
+                logger.info("Added AutoTranscribe column to Podcasts (MySQL)")
+
+        logger.info("EpisodeTranscripts migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in EpisodeTranscripts migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("052", "add_auto_download_delete_columns", "Add auto-delete-downloads retention columns to Users and Podcasts tables (#655)", requires=["001", "005"])
+def add_auto_download_delete_columns(conn, db_type: str) -> None:
+    """Add server-download retention columns for existing installations (#655).
+
+    A per-user global default (Users.AutoDownloadDeleteDays) plus a per-podcast override
+    (Podcasts.AutoDownloadDeleteDays + AutoDownloadDeleteCustomized), mirroring the existing
+    PlaybackSpeed/PlaybackSpeedCustomized pattern. A value of 0 means "never auto-delete";
+    N means "delete server downloads older than N days". The AutoDownloadDeleteCustomized
+    boolean (not a NULL check) is the discriminator for whether the podcast overrides the
+    user default."""
+    logger.info("Starting migration 052: add auto-download-delete columns")
+    cursor = conn.cursor()
+
+    try:
+        # Add AutoDownloadDeleteDays to Users table if it doesn't exist
+        try:
+            if db_type == "postgresql":
+                cursor.execute("""
+                    ALTER TABLE "Users"
+                    ADD COLUMN IF NOT EXISTS AutoDownloadDeleteDays INT DEFAULT 0
+                """)
+            else:  # MySQL/MariaDB
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = 'Users'
+                    AND COLUMN_NAME = 'AutoDownloadDeleteDays'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Users
+                        ADD COLUMN AutoDownloadDeleteDays INT DEFAULT 0
+                    """)
+                    logger.info("Added AutoDownloadDeleteDays column to Users table")
+                else:
+                    logger.info("AutoDownloadDeleteDays column already exists in Users table")
+        except Exception as e:
+            logger.error(f"Error adding AutoDownloadDeleteDays to Users table: {e}")
+
+        # Add AutoDownloadDeleteDays + AutoDownloadDeleteCustomized to Podcasts table
+        try:
+            if db_type == "postgresql":
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN IF NOT EXISTS AutoDownloadDeleteDays INT DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS AutoDownloadDeleteCustomized BOOLEAN DEFAULT FALSE
+                """)
+            else:  # MySQL/MariaDB
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = 'Podcasts'
+                    AND COLUMN_NAME = 'AutoDownloadDeleteDays'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Podcasts
+                        ADD COLUMN AutoDownloadDeleteDays INT DEFAULT 0
+                    """)
+                    logger.info("Added AutoDownloadDeleteDays column to Podcasts table")
+                else:
+                    logger.info("AutoDownloadDeleteDays column already exists in Podcasts table")
+
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = 'Podcasts'
+                    AND COLUMN_NAME = 'AutoDownloadDeleteCustomized'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Podcasts
+                        ADD COLUMN AutoDownloadDeleteCustomized TINYINT(1) DEFAULT 0
+                    """)
+                    logger.info("Added AutoDownloadDeleteCustomized column to Podcasts table")
+                else:
+                    logger.info("AutoDownloadDeleteCustomized column already exists in Podcasts table")
+        except Exception as e:
+            logger.error(f"Error adding auto-delete columns to Podcasts table: {e}")
+
+        logger.info("Auto-download-delete columns migration completed")
+
+    finally:
+        cursor.close()
+
+
+@register_migration("053", "add_auto_queue_to_podcasts", "Add AutoQueue column to Podcasts table for auto-adding new episodes to the play queue (#648)", requires=["005"])
+def add_auto_queue_to_podcasts(conn, db_type: str) -> None:
+    """Add the per-podcast AutoQueue flag for existing installations (#648).
+
+    When enabled, newly-discovered episodes for the podcast are automatically appended to
+    the owning user's play queue during refresh. Mirrors the existing per-podcast
+    AutoDownload flag. Default FALSE (opt-in)."""
+    logger.info("Starting migration 053: add AutoQueue column to Podcasts")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                ALTER TABLE "Podcasts"
+                ADD COLUMN IF NOT EXISTS AutoQueue BOOLEAN DEFAULT FALSE
+            """)
+        else:  # MySQL/MariaDB
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'AutoQueue'
+            """)
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN AutoQueue TINYINT(1) DEFAULT 0
+                """)
+                logger.info("Added AutoQueue column to Podcasts table")
+            else:
+                logger.info("AutoQueue column already exists in Podcasts table")
+
+        logger.info("AutoQueue column migration completed")
+
+    finally:
+        cursor.close()
+
+
+@register_migration("054", "add_default_volume_to_users", "Add DefaultVolume column to Users table for per-user default playback volume (#828)", requires=["001"])
+def add_default_volume_to_users(conn, db_type: str) -> None:
+    """Add the per-user default playback volume column for existing installations (#828).
+
+    Volume is stored as an integer percentage 0-100 on the Users table, mirroring the
+    existing per-user PlaybackSpeed setting. Default 100 preserves today's behavior
+    (episodes start at full volume) for existing users."""
+    logger.info("Starting migration 054: add DefaultVolume column to Users")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                ALTER TABLE "Users"
+                ADD COLUMN IF NOT EXISTS DefaultVolume INT DEFAULT 100
+            """)
+        else:  # MySQL/MariaDB
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'Users'
+                AND COLUMN_NAME = 'DefaultVolume'
+            """)
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    ALTER TABLE Users
+                    ADD COLUMN DefaultVolume INT DEFAULT 100
+                """)
+                logger.info("Added DefaultVolume column to Users table")
+            else:
+                logger.info("DefaultVolume column already exists in Users table")
+
+        logger.info("DefaultVolume column migration completed")
+
     finally:
         cursor.close()

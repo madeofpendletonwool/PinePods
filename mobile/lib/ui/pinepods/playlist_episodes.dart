@@ -9,6 +9,7 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 
@@ -403,6 +404,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     if (_contextMenuEpisodeIndex != null) {
       final episodeIndex = _contextMenuEpisodeIndex!;
       final episode = _playlistResponse!.episodes[episodeIndex];
+      final pageContext = context;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         showDialog(
           context: context,
@@ -441,6 +443,16 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
             onDismiss: () {
               Navigator.of(context).pop();
               _hideContextMenu();
+            },
+            onPodcastTap: () {
+              Navigator.of(context).pop();
+              _hideContextMenu();
+              navigateToPodcastById(
+                pageContext,
+                episode.podcastId,
+                fallbackTitle: episode.podcastName,
+                fallbackArtwork: episode.episodeArtwork,
+              );
             },
           ),
         );

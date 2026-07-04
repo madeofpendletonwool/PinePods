@@ -12,6 +12,7 @@ class EpisodeContextMenu extends StatelessWidget {
   final VoidCallback? onQueue;
   final VoidCallback? onMarkComplete;
   final VoidCallback? onDismiss;
+  final VoidCallback? onPodcastTap;
   final bool isDownloadedLocally;
 
   const EpisodeContextMenu({
@@ -25,6 +26,7 @@ class EpisodeContextMenu extends StatelessWidget {
     this.onQueue,
     this.onMarkComplete,
     this.onDismiss,
+    this.onPodcastTap,
     this.isDownloadedLocally = false,
   }) : super(key: key);
 
@@ -64,14 +66,37 @@ class EpisodeContextMenu extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      episode.podcastName,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Theme.of(context).primaryColor,
+                    InkWell(
+                      onTap: onPodcastTap,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              episode.podcastName,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Theme.of(context).primaryColor,
+                                decoration: onPodcastTap != null
+                                    ? TextDecoration.underline
+                                    : null,
+                                decorationColor: Theme.of(context).primaryColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (onPodcastTap != null) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.chevron_right,
+                              size: 16,
+                              color: Theme.of(context).primaryColor,
+                            ),
+                          ],
+                        ],
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 16),
                     const Divider(height: 1),

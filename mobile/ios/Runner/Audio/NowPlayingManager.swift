@@ -71,6 +71,11 @@ class NowPlayingManager {
         // Set now playing info immediately (artwork will update later if needed)
         nowPlayingInfoCenter.nowPlayingInfo = nowPlayingInfo
 
+        // CarPlay's CPNowPlayingTemplate reads playbackState, NOT just the
+        // playback-rate key. Without this it shows "Nothing Playing" even when
+        // nowPlayingInfo is fully populated.
+        nowPlayingInfoCenter.playbackState = playbackRate > 0 ? .playing : .paused
+
         NSLog("[NowPlayingManager] Now playing updated: '\(title)' by '\(artist)', duration: \(duration)s, rate: \(playbackRate)")
 
         // Load artwork asynchronously if URL provided
@@ -96,10 +101,14 @@ class NowPlayingManager {
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = playbackRate
 
         nowPlayingInfoCenter.nowPlayingInfo = nowPlayingInfo
+
+        // Keep CarPlay / lock-screen playback state in sync with the rate.
+        nowPlayingInfoCenter.playbackState = playbackRate > 0 ? .playing : .paused
     }
 
     func clearNowPlaying() {
         nowPlayingInfoCenter.nowPlayingInfo = nil
+        nowPlayingInfoCenter.playbackState = .stopped
         currentArtwork = nil
         NSLog("[NowPlayingManager] Now playing cleared")
     }
