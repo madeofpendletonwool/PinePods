@@ -248,7 +248,21 @@
     "error_enabling_disabling_downloads": "Error enabling/disabling downloads: ",
     "error_getting_download_status": "Error getting download status: ",
     "server_download_description": "You can choose to enable or disable server downloads here. This does not effect local downloads. There's two types of downloads in Pinepods. Local and Server. Local downloads would be where a user clicks download and it downloads the podcast to their local machine. A server download is when a user downloads the podcast to the server specifically. This is meant as an archival option. If you're concerned the podcast may not be always available you may want to archive it using this option. See the Pinepods documentation for mapping a specific location (like a NAS) as the location server downloads download to. You might want to turn this option off if you have self service enabled or your Pinepods server accessible to the internet. You wouldn't want any random user filling up your server.",
-    "server_download_settings": "Server Download Settings:"
+    "server_download_settings": "Server Download Settings:",
+    "folder_cover_label": "Save podcast cover as folder.jpg",
+    "folder_cover_description": "Saves the podcast's cover image as folder.jpg in each podcast's download folder, so external players (Emby, Jellyfin, AudioBookShelf) show it as the album art.",
+    "episode_cover_label": "Save episode cover art sidecar",
+    "episode_cover_description": "Saves each episode's cover art as a separate image file next to the audio.",
+    "metadata_sidecar_label": "Save episode metadata sidecar",
+    "metadata_sidecar_description": "Saves episode metadata as a sidecar file (JSON/XML/FFMETADATA) for use with tools like kid3 and ffmpeg.",
+    "metadata_format_label": "Metadata sidecar format",
+    "metadata_format_json": "JSON",
+    "metadata_format_xml": "XML (RSS item)",
+    "metadata_format_ffmetadata": "FFMETADATA (ffmpeg)",
+    "metadata_format_both": "Both JSON + XML",
+    "metadata_subfolder_label": "Write sidecars into a metadata/ subfolder",
+    "error_getting_metadata_settings": "Error getting download metadata settings: ",
+    "error_saving_metadata_settings": "Error saving download metadata settings: "
   },
   "downloads": {
     "clear_all": "Clear All",

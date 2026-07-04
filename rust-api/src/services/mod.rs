@@ -1,6 +1,7 @@
 pub mod ai_client;
 pub mod audio_processing;
 pub mod auth;
+pub mod download_metadata;
 pub mod scheduler;
 pub mod task_manager;
 pub mod tasks;

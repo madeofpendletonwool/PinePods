@@ -358,6 +358,10 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::settings::rss_feed_status))
         .routes(routes!(handlers::settings::toggle_rss_feeds))
         .routes(routes!(handlers::settings::download_status))
+        .routes(routes!(
+            handlers::settings::get_download_metadata_settings,
+            handlers::settings::set_download_metadata_settings
+        ))
         .routes(routes!(handlers::settings::self_service_status))
         .routes(routes!(handlers::settings::save_email_settings))
         .routes(routes!(handlers::settings::get_email_settings))

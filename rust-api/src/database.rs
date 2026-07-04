@@ -13044,6 +13044,105 @@ impl DatabasePool {
         }
     }
 
+    // Get the admin download-metadata settings (#451/#533/#658). Missing row or
+    // NULLs fall back to the disabled/default set.
+    pub async fn get_download_settings(&self) -> AppResult<crate::services::download_metadata::DownloadSettings> {
+        use crate::services::download_metadata::DownloadSettings;
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT downloadfoldercover, downloadepisodecover, downloadmetadatasidecar,
+                           downloadmetadataformat, downloadmetadatasubfolder
+                    FROM "AppSettings"
+                    LIMIT 1
+                "#)
+                .fetch_optional(pool)
+                .await?;
+
+                Ok(match row {
+                    Some(row) => DownloadSettings {
+                        folder_cover: row.try_get::<Option<bool>, _>("downloadfoldercover")?.unwrap_or(false),
+                        episode_cover: row.try_get::<Option<bool>, _>("downloadepisodecover")?.unwrap_or(false),
+                        metadata_sidecar: row.try_get::<Option<bool>, _>("downloadmetadatasidecar")?.unwrap_or(false),
+                        metadata_format: row.try_get::<Option<String>, _>("downloadmetadataformat")?.unwrap_or_else(|| "both".to_string()),
+                        metadata_subfolder: row.try_get::<Option<bool>, _>("downloadmetadatasubfolder")?.unwrap_or(true),
+                    },
+                    None => DownloadSettings::disabled(),
+                })
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("
+                    SELECT DownloadFolderCover, DownloadEpisodeCover, DownloadMetadataSidecar,
+                           DownloadMetadataFormat, DownloadMetadataSubfolder
+                    FROM AppSettings
+                    LIMIT 1
+                ")
+                .fetch_optional(pool)
+                .await?;
+
+                Ok(match row {
+                    Some(row) => DownloadSettings {
+                        folder_cover: row.try_get::<Option<i32>, _>("DownloadFolderCover")?.unwrap_or(0) == 1,
+                        episode_cover: row.try_get::<Option<i32>, _>("DownloadEpisodeCover")?.unwrap_or(0) == 1,
+                        metadata_sidecar: row.try_get::<Option<i32>, _>("DownloadMetadataSidecar")?.unwrap_or(0) == 1,
+                        metadata_format: row.try_get::<Option<String>, _>("DownloadMetadataFormat")?.unwrap_or_else(|| "both".to_string()),
+                        metadata_subfolder: row.try_get::<Option<i32>, _>("DownloadMetadataSubfolder")?.unwrap_or(1) == 1,
+                    },
+                    None => DownloadSettings::disabled(),
+                })
+            }
+        }
+    }
+
+    // Update the admin download-metadata settings (#451/#533/#658).
+    pub async fn set_download_settings(
+        &self,
+        settings: &crate::services::download_metadata::DownloadSettings,
+    ) -> AppResult<()> {
+        // Normalize the format to a known value so the UI can't persist junk.
+        let format = match settings.metadata_format.as_str() {
+            "json" | "xml" | "ffmetadata" | "both" => settings.metadata_format.as_str(),
+            _ => "both",
+        };
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"
+                    UPDATE "AppSettings"
+                    SET downloadfoldercover = $1,
+                        downloadepisodecover = $2,
+                        downloadmetadatasidecar = $3,
+                        downloadmetadataformat = $4,
+                        downloadmetadatasubfolder = $5
+                "#)
+                .bind(settings.folder_cover)
+                .bind(settings.episode_cover)
+                .bind(settings.metadata_sidecar)
+                .bind(format)
+                .bind(settings.metadata_subfolder)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("
+                    UPDATE AppSettings
+                    SET DownloadFolderCover = ?,
+                        DownloadEpisodeCover = ?,
+                        DownloadMetadataSidecar = ?,
+                        DownloadMetadataFormat = ?,
+                        DownloadMetadataSubfolder = ?
+                ")
+                .bind(settings.folder_cover as i32)
+                .bind(settings.episode_cover as i32)
+                .bind(settings.metadata_sidecar as i32)
+                .bind(format)
+                .bind(settings.metadata_subfolder as i32)
+                .execute(pool)
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
     // Get self service status - matches Python self_service_status function exactly
     pub async fn self_service_status(&self) -> AppResult<SelfServiceStatus> {
         match self {

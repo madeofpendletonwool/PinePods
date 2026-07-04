@@ -807,7 +807,96 @@ pub async fn download_status(
     Ok(Json(result))
 }
 
-// Get self service status - matches Python api_self_service_status function exactly  
+// Admin download-metadata settings payload (#451/#533/#658). Used for both the
+// GET response and the POST request body.
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+pub struct DownloadMetadataSettings {
+    pub folder_cover: bool,
+    pub episode_cover: bool,
+    pub metadata_sidecar: bool,
+    pub metadata_format: String,
+    pub metadata_subfolder: bool,
+}
+
+impl From<crate::services::download_metadata::DownloadSettings> for DownloadMetadataSettings {
+    fn from(s: crate::services::download_metadata::DownloadSettings) -> Self {
+        Self {
+            folder_cover: s.folder_cover,
+            episode_cover: s.episode_cover,
+            metadata_sidecar: s.metadata_sidecar,
+            metadata_format: s.metadata_format,
+            metadata_subfolder: s.metadata_subfolder,
+        }
+    }
+}
+
+impl From<DownloadMetadataSettings> for crate::services::download_metadata::DownloadSettings {
+    fn from(s: DownloadMetadataSettings) -> Self {
+        Self {
+            folder_cover: s.folder_cover,
+            episode_cover: s.episode_cover,
+            metadata_sidecar: s.metadata_sidecar,
+            metadata_format: s.metadata_format,
+            metadata_subfolder: s.metadata_subfolder,
+        }
+    }
+}
+
+// Get the admin download-metadata settings (#451/#533/#658).
+#[utoipa::path(
+    get,
+    path = "/download_metadata_settings",
+    tag = "settings",
+    summary = "Get download metadata settings",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = DownloadMetadataSettings),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_download_metadata_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<DownloadMetadataSettings>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let settings = state.db_pool.get_download_settings().await?;
+    Ok(Json(settings.into()))
+}
+
+// Update the admin download-metadata settings (#451/#533/#658). Admin only.
+#[utoipa::path(
+    post,
+    path = "/download_metadata_settings",
+    tag = "settings",
+    summary = "Set download metadata settings",
+    request_body = DownloadMetadataSettings,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn set_download_metadata_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<DownloadMetadataSettings>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+
+    state.db_pool.set_download_settings(&payload.into()).await?;
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+// Get self service status - matches Python api_self_service_status function exactly
 #[utoipa::path(
     get,
     path = "/admin_self_service_status",

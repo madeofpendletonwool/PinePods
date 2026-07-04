@@ -2329,6 +2329,70 @@
         ]
       }
     },
+    "/api/data/download_metadata_settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get download metadata settings",
+        "operationId": "get_download_metadata_settings",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadMetadataSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Set download metadata settings",
+        "operationId": "set_download_metadata_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadMetadataSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/download_podcast": {
       "post": {
         "tags": [
@@ -11879,6 +11943,33 @@
               "boolean",
               "null"
             ]
+          }
+        }
+      },
+      "DownloadMetadataSettings": {
+        "type": "object",
+        "required": [
+          "folder_cover",
+          "episode_cover",
+          "metadata_sidecar",
+          "metadata_format",
+          "metadata_subfolder"
+        ],
+        "properties": {
+          "folder_cover": {
+            "type": "boolean"
+          },
+          "episode_cover": {
+            "type": "boolean"
+          },
+          "metadata_sidecar": {
+            "type": "boolean"
+          },
+          "metadata_format": {
+            "type": "string"
+          },
+          "metadata_subfolder": {
+            "type": "boolean"
           }
         }
       },

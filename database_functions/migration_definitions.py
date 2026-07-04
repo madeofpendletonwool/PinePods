@@ -344,7 +344,12 @@ def migration_002_app_settings(conn, db_type: str):
                     SelfServiceUser BOOLEAN DEFAULT false,
                     DownloadEnabled BOOLEAN DEFAULT true,
                     EncryptionKey BYTEA,
-                    NewsFeedSubscribed BOOLEAN DEFAULT false
+                    NewsFeedSubscribed BOOLEAN DEFAULT false,
+                    DownloadFolderCover BOOLEAN DEFAULT false,
+                    DownloadEpisodeCover BOOLEAN DEFAULT false,
+                    DownloadMetadataSidecar BOOLEAN DEFAULT false,
+                    DownloadMetadataFormat VARCHAR(20) DEFAULT 'both',
+                    DownloadMetadataSubfolder BOOLEAN DEFAULT true
                 )
             """)
             
@@ -380,7 +385,12 @@ def migration_002_app_settings(conn, db_type: str):
                     SelfServiceUser TINYINT(1) DEFAULT 0,
                     DownloadEnabled TINYINT(1) DEFAULT 1,
                     EncryptionKey BINARY(44),
-                    NewsFeedSubscribed TINYINT(1) DEFAULT 0
+                    NewsFeedSubscribed TINYINT(1) DEFAULT 0,
+                    DownloadFolderCover TINYINT(1) DEFAULT 0,
+                    DownloadEpisodeCover TINYINT(1) DEFAULT 0,
+                    DownloadMetadataSidecar TINYINT(1) DEFAULT 0,
+                    DownloadMetadataFormat VARCHAR(20) DEFAULT 'both',
+                    DownloadMetadataSubfolder TINYINT(1) DEFAULT 1
                 )
             """)
             
@@ -5309,6 +5319,60 @@ def add_default_volume_to_users(conn, db_type: str) -> None:
                 logger.info("DefaultVolume column already exists in Users table")
 
         logger.info("DefaultVolume column migration completed")
+
+    finally:
+        cursor.close()
+
+
+@register_migration("055", "add_download_metadata_columns", "Add server-download sidecar/metadata columns to AppSettings (#451, #533, #658)", requires=["001"])
+def add_download_metadata_columns(conn, db_type: str) -> None:
+    """Add admin-controlled download-metadata options for existing installations.
+
+    These global AppSettings toggles control the extra files written to the server
+    download tree: the podcast cover as folder.jpg (#658), an episode cover sidecar
+    image, and an episode metadata sidecar (#451). All file-writing options default
+    OFF so existing installs are unchanged; the metadata format defaults to 'both'
+    (JSON + XML) and sidecars default to a metadata/ subfolder. The always-on ID3
+    feed-URL/description enrichment (#533) needs no column."""
+    logger.info("Starting migration 055: add download-metadata columns to AppSettings")
+    cursor = conn.cursor()
+
+    # (column_name, postgres_type_default, mysql_type_default)
+    columns = [
+        ("DownloadFolderCover", "BOOLEAN DEFAULT FALSE", "TINYINT(1) DEFAULT 0"),
+        ("DownloadEpisodeCover", "BOOLEAN DEFAULT FALSE", "TINYINT(1) DEFAULT 0"),
+        ("DownloadMetadataSidecar", "BOOLEAN DEFAULT FALSE", "TINYINT(1) DEFAULT 0"),
+        ("DownloadMetadataFormat", "VARCHAR(20) DEFAULT 'both'", "VARCHAR(20) DEFAULT 'both'"),
+        ("DownloadMetadataSubfolder", "BOOLEAN DEFAULT TRUE", "TINYINT(1) DEFAULT 1"),
+    ]
+
+    try:
+        for name, pg_def, my_def in columns:
+            try:
+                if db_type == "postgresql":
+                    cursor.execute(
+                        f'ALTER TABLE "AppSettings" ADD COLUMN IF NOT EXISTS {name} {pg_def}'
+                    )
+                else:  # MySQL/MariaDB
+                    cursor.execute(
+                        """
+                        SELECT COUNT(*)
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE()
+                        AND TABLE_NAME = 'AppSettings'
+                        AND COLUMN_NAME = %s
+                        """,
+                        (name,),
+                    )
+                    if cursor.fetchone()[0] == 0:
+                        cursor.execute(f"ALTER TABLE AppSettings ADD COLUMN {name} {my_def}")
+                        logger.info(f"Added {name} column to AppSettings table")
+                    else:
+                        logger.info(f"{name} column already exists in AppSettings table")
+            except Exception as e:
+                logger.error(f"Error adding {name} to AppSettings table: {e}")
+
+        logger.info("Download-metadata columns migration completed")
 
     finally:
         cursor.close()

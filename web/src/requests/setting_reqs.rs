@@ -585,6 +585,71 @@ pub async fn call_download_status(server_name: String, api_key: String) -> Resul
     }
 }
 
+// Admin download-metadata settings (#451/#533/#658). Used for both GET and POST.
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct DownloadMetadataSettings {
+    pub folder_cover: bool,
+    pub episode_cover: bool,
+    pub metadata_sidecar: bool,
+    pub metadata_format: String,
+    pub metadata_subfolder: bool,
+}
+
+pub async fn call_get_download_metadata_settings(
+    server_name: String,
+    api_key: String,
+) -> Result<DownloadMetadataSettings, Error> {
+    let url = format!("{}/api/data/download_metadata_settings", server_name);
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response
+            .json::<DownloadMetadataSettings>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!(
+            "Error fetching download metadata settings: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_set_download_metadata_settings(
+    server_name: String,
+    api_key: String,
+    settings: &DownloadMetadataSettings,
+) -> Result<SuccessResponse, Error> {
+    let url = format!("{}/api/data/download_metadata_settings", server_name);
+    let body = serde_json::to_string(settings)
+        .map_err(|e| Error::msg(format!("Error serializing settings: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(body)
+        .map_err(|e| Error::msg(format!("Error building request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response
+            .json::<SuccessResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!(
+            "Error saving download metadata settings: {}",
+            response.status_text()
+        )))
+    }
+}
+
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct SelfServiceStatusResponse {
     status: bool,
