@@ -745,18 +745,30 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         0.0
                     };
 
-                    // Auto-skip: if the playhead is inside a detected silence range, jump to its end.
-                    // Segments are pre-computed server-side (#727); a small tolerance avoids
-                    // skipping when we're already essentially at the range's end.
-                    if let Some(segments) = &state_clone.skip_segments {
+                    // Auto-skip: if the playhead is inside a detected silence range (#727) or an
+                    // active detected ad range (#790), jump to its end. Segments are pre-computed
+                    // server-side; a small tolerance avoids skipping when we're already at the end.
+                    // Ads only skip when the user's effective status is active/confirmed (the server
+                    // resolves per-user auto-activate vs. confirm-first + confirm/deny overrides).
+                    // Read the freshest state from the store, not the captured `state_clone`
+                    // snapshot: this handler is created at episode load, but skip segments are
+                    // fetched asynchronously afterward (and ad reviews can change them), so the
+                    // snapshot would be stale and nothing would ever skip.
+                    let live_state = audio_dispatch.get();
+                    if let Some(segments) = &live_state.skip_segments {
                         if let Some(seg) = segments.iter().find(|s| {
-                            s.kind == "silence"
+                            let applies = match s.kind.as_str() {
+                                "silence" => true,
+                                "ad" => matches!(s.status.as_deref(), Some("active") | Some("confirmed")),
+                                _ => false,
+                            };
+                            applies
                                 && time_in_seconds >= s.start_time
                                 && time_in_seconds < s.end_time - 0.25
                         }) {
-                            if let Some(media_element) = state_clone.media_element.as_ref() {
+                            if let Some(media_element) = live_state.media_element.as_ref() {
                                 media_element.set_current_time(seg.end_time);
-                            } else if let Some(audio_element) = state_clone.audio_element.as_ref() {
+                            } else if let Some(audio_element) = live_state.audio_element.as_ref() {
                                 audio_element.set_current_time(seg.end_time);
                             }
                         }

@@ -5376,3 +5376,148 @@ def add_download_metadata_columns(conn, db_type: str) -> None:
 
     finally:
         cursor.close()
+
+
+@register_migration("056", "create_ad_detection_and_ai_settings", "Ad-detection: EpisodeAdSkipReview + per-podcast ad toggles + Episodes.AdsDetected + global AISettings (#790)", requires=["001", "050", "051"])
+def migration_056_create_ad_detection_and_ai_settings(conn, db_type: str):
+    """AI ad-detection over transcripts (#790), built on the #726/#727 foundation.
+
+    Detected ads reuse the existing content-level EpisodeSkipSegments table with
+    Kind='ad'/Source='auto-ad' (shared across subscribers — detect once). Because this
+    is a multi-user app, the *review/skip* decision is per-user, so EpisodeAdSkipReview
+    stores each user's per-segment override ('confirmed'|'rejected'); absence of a row
+    falls back to the podcast's AdSkipAutoActivate default.
+
+    Per-podcast controls (per-user, like AutoTranscribe/TrimSilence):
+      AutoAdDetect       - opt-in to auto-detect ads on new episodes (only meaningful
+                           when AutoTranscribe is also on — ads need the transcript)
+      AdSkipAutoActivate - are detected ads skipped immediately (TRUE) or held pending
+                           user confirmation on the episode page (FALSE); default TRUE
+
+    Episodes.AdsDetected marks that ad detection has already run for an episode (its own
+    guard, since Episodes.SilenceDetected is silence-specific).
+
+    AISettings is a singleton (AISettingsID=1, like EmailSettings) holding admin-level
+    global AI config resolved per-request into sidecar calls: the whisper transcription
+    model, and the LLM backend used for ad detection (local bundled GGUF vs a remote
+    OpenAI-compatible endpoint). LlmApiKey is stored encrypted like other secrets."""
+    logger.info("Starting migration 056: ad-detection tables/columns + AISettings")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == "postgresql":
+            # Per-user review override of a shared ad segment
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeAdSkipReview" (
+                    ReviewID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SegmentID INT NOT NULL,
+                    Status VARCHAR(20) NOT NULL,
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (SegmentID) REFERENCES "EpisodeSkipSegments"(SegmentID) ON DELETE CASCADE,
+                    UNIQUE (UserID, SegmentID)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_ad_skip_review_segmentid ON "EpisodeAdSkipReview"(SegmentID);
+                CREATE INDEX IF NOT EXISTS idx_ad_skip_review_userid ON "EpisodeAdSkipReview"(UserID);
+            """)
+
+            # Per-podcast ad controls
+            for col_name, col_def in (
+                ("autoaddetect", "BOOLEAN DEFAULT FALSE"),
+                ("adskipautoactivate", "BOOLEAN DEFAULT TRUE"),
+            ):
+                cursor.execute(f'ALTER TABLE "Podcasts" ADD COLUMN IF NOT EXISTS {col_name} {col_def}')
+
+            # Detection-complete marker (ad-specific, separate from silencedetected)
+            cursor.execute('ALTER TABLE "Episodes" ADD COLUMN IF NOT EXISTS adsdetected BOOLEAN DEFAULT FALSE')
+
+            # Global AI config singleton
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "AISettings" (
+                    AISettingsID SERIAL PRIMARY KEY,
+                    TranscriptionModel VARCHAR(100) NOT NULL DEFAULT 'base',
+                    LlmBackend VARCHAR(20) NOT NULL DEFAULT 'local',
+                    LlmModel VARCHAR(200),
+                    LlmUrl VARCHAR(500),
+                    LlmApiKey TEXT,
+                    WhisperDevice VARCHAR(20) NOT NULL DEFAULT 'cpu',
+                    WhisperComputeType VARCHAR(20) NOT NULL DEFAULT 'int8',
+                    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute('SELECT COUNT(*) FROM "AISettings" WHERE AISettingsID = 1')
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO "AISettings" (AISettingsID, TranscriptionModel, LlmBackend)
+                    VALUES (1, 'base', 'local')
+                """)
+                logger.info("Seeded default AISettings row (PostgreSQL)")
+
+        else:  # MySQL / MariaDB
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS EpisodeAdSkipReview (
+                    ReviewID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SegmentID INT NOT NULL,
+                    Status VARCHAR(20) NOT NULL,
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (SegmentID) REFERENCES EpisodeSkipSegments(SegmentID) ON DELETE CASCADE,
+                    UNIQUE KEY uq_ad_skip_review_user_segment (UserID, SegmentID)
+                )
+            """)
+            for idx_sql in (
+                "CREATE INDEX idx_ad_skip_review_segmentid ON EpisodeAdSkipReview(SegmentID)",
+                "CREATE INDEX idx_ad_skip_review_userid ON EpisodeAdSkipReview(UserID)",
+            ):
+                try:
+                    cursor.execute(idx_sql)
+                except Exception:
+                    pass  # Index may already exist
+
+            for table, col_name, col_def in (
+                ("Podcasts", "AutoAdDetect", "BOOLEAN DEFAULT FALSE"),
+                ("Podcasts", "AdSkipAutoActivate", "BOOLEAN DEFAULT TRUE"),
+                ("Episodes", "AdsDetected", "BOOLEAN DEFAULT FALSE"),
+            ):
+                cursor.execute(
+                    """
+                    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s
+                    """,
+                    (table, col_name),
+                )
+                if not cursor.fetchone():
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+                    logger.info(f"Added column {col_name} to {table} (MySQL)")
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS AISettings (
+                    AISettingsID INT AUTO_INCREMENT PRIMARY KEY,
+                    TranscriptionModel VARCHAR(100) NOT NULL DEFAULT 'base',
+                    LlmBackend VARCHAR(20) NOT NULL DEFAULT 'local',
+                    LlmModel VARCHAR(200),
+                    LlmUrl VARCHAR(500),
+                    LlmApiKey TEXT,
+                    WhisperDevice VARCHAR(20) NOT NULL DEFAULT 'cpu',
+                    WhisperComputeType VARCHAR(20) NOT NULL DEFAULT 'int8',
+                    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("SELECT COUNT(*) FROM AISettings WHERE AISettingsID = 1")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute(
+                    "INSERT INTO AISettings (AISettingsID, TranscriptionModel, LlmBackend) VALUES (1, 'base', 'local')"
+                )
+                logger.info("Seeded default AISettings row (MySQL)")
+
+        logger.info("Ad-detection + AISettings migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in ad-detection/AISettings migration: {e}")
+        raise
+    finally:
+        cursor.close()

@@ -3996,7 +3996,29 @@ pub async fn ai_status(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
-    Ok(Json(serde_json::json!({ "available": state.ai_available.is_available() })))
+    let available = state.ai_available.is_available();
+    // Per-capability readiness: transcription needs a whisper model (always defaulted); ad removal
+    // needs a configured LLM backend (a local model, or a remote URL).
+    let (transcription_ready, ad_removal_ready) = if available {
+        match crate::services::ai_settings::get_ai_settings(&state.db_pool).await {
+            Ok(s) => {
+                let tr = !s.transcription_model.is_empty();
+                let ad = match s.llm_backend.as_str() {
+                    "remote" | "anthropic" => s.llm_url.as_deref().map(|u| !u.is_empty()).unwrap_or(false),
+                    _ => s.llm_model.as_deref().map(|m| !m.is_empty()).unwrap_or(false),
+                };
+                (tr, ad)
+            }
+            Err(_) => (available, false),
+        }
+    } else {
+        (false, false)
+    };
+    Ok(Json(serde_json::json!({
+        "available": available,
+        "transcription_ready": transcription_ready,
+        "ad_removal_ready": ad_removal_ready,
+    })))
 }
 
 // ---- Transcription endpoints (#726) ----
@@ -4295,9 +4317,13 @@ pub async fn get_episode_skip_segments(
         return Err(AppError::forbidden("You can only view your own episodes."));
     }
 
-    let segments = crate::services::audio_processing::get_episode_skip_segments(&state.db_pool, query.episode_id)
-        .await
-        .map_err(|e| AppError::internal(&e))?;
+    // Per-user view: enriches each segment with its DB id and (for ads) the requesting user's
+    // effective status, so the player and transcript review UI share one shape.
+    let segments = crate::services::ad_detection::get_episode_skip_segments_for_user(
+        &state.db_pool, query.user_id, query.episode_id,
+    )
+    .await
+    .map_err(|e| AppError::internal(&e))?;
 
     Ok(Json(serde_json::json!({ "segments": segments })))
 }
@@ -4343,6 +4369,419 @@ pub async fn detect_silence(
         .await?;
 
     Ok(Json(serde_json::json!({ "task_id": task_id, "detail": "Silence detection started." })))
+}
+
+// ---- Ad-detection endpoints (#790) ----
+
+// Manually (re-)detect ads for an episode via the AI sidecar (transcribes first if needed)
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct DetectAdsRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    #[serde(default)]
+    pub force: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/detect_ads",
+    tag = "settings",
+    summary = "Detect ads for an episode (AI sidecar)",
+    request_body = DetectAdsRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 503, description = "AI service unavailable"),
+    ),
+)]
+pub async fn detect_ads(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<DetectAdsRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only process your own episodes."));
+    }
+    if !state.ai_available.is_available() {
+        return Err(AppError::service_unavailable("AI service is not available."));
+    }
+
+    let task_id = state
+        .task_spawner
+        .spawn_detect_ads(request.episode_id, request.user_id, request.force)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "task_id": task_id, "detail": "Ad detection started." })))
+}
+
+// Per-user confirm/deny of a detected ad segment
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct AdSegmentReviewRequest {
+    pub segment_id: i32,
+    pub user_id: i32,
+    pub status: String, // "confirmed" | "rejected"
+}
+
+#[utoipa::path(
+    post,
+    path = "/adjust_ad_segment_review",
+    tag = "settings",
+    summary = "Confirm or deny a detected ad segment (per-user)",
+    request_body = AdSegmentReviewRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn adjust_ad_segment_review(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AdSegmentReviewRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only review your own ad segments."));
+    }
+
+    crate::services::ad_detection::set_ad_segment_review(
+        &state.db_pool, request.user_id, request.segment_id, &request.status,
+    )
+    .await
+    .map_err(|e| AppError::bad_request(e))?;
+
+    Ok(Json(serde_json::json!({ "detail": "Ad review updated." })))
+}
+
+// Per-podcast auto-ad-detect opt-in (get + set)
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct AutoAdDetectRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/adjust_auto_ad_detect",
+    tag = "settings",
+    summary = "Set per-podcast auto-ad-detect",
+    request_body = AutoAdDetectRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn adjust_auto_ad_detect(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AutoAdDetectRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    crate::services::ad_detection::set_auto_ad_detect(
+        &state.db_pool, request.podcast_id, request.user_id, request.enabled,
+    )
+    .await
+    .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "detail": "Auto ad-detect updated." })))
+}
+
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct AutoAdDetectQuery {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+#[utoipa::path(
+    get,
+    path = "/get_auto_ad_detect",
+    tag = "settings",
+    summary = "Get per-podcast auto-ad-detect setting",
+    params(AutoAdDetectQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_auto_ad_detect(
+    State(state): State<AppState>,
+    Query(query): Query<AutoAdDetectQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own podcasts."));
+    }
+
+    let enabled = crate::services::ad_detection::get_auto_ad_detect(&state.db_pool, query.podcast_id)
+        .await
+        .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "enabled": enabled })))
+}
+
+// Per-podcast ad-skip auto-activate (skip immediately vs. require confirmation)
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct AdSkipAutoActivateRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/adjust_ad_skip_auto_activate",
+    tag = "settings",
+    summary = "Set per-podcast ad-skip auto-activate",
+    request_body = AdSkipAutoActivateRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn adjust_ad_skip_auto_activate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AdSkipAutoActivateRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    crate::services::ad_detection::set_ad_skip_auto_activate(
+        &state.db_pool, request.podcast_id, request.user_id, request.enabled,
+    )
+    .await
+    .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "detail": "Ad-skip auto-activate updated." })))
+}
+
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct AdSkipAutoActivateQuery {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+#[utoipa::path(
+    get,
+    path = "/get_ad_skip_auto_activate",
+    tag = "settings",
+    summary = "Get per-podcast ad-skip auto-activate setting",
+    params(AdSkipAutoActivateQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_ad_skip_auto_activate(
+    State(state): State<AppState>,
+    Query(query): Query<AdSkipAutoActivateQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own podcasts."));
+    }
+
+    let enabled = crate::services::ad_detection::get_ad_skip_auto_activate(&state.db_pool, query.podcast_id)
+        .await
+        .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "enabled": enabled })))
+}
+
+// ---- AI settings + model management (admin-only) ----
+
+#[utoipa::path(
+    get,
+    path = "/ai_settings",
+    tag = "settings",
+    summary = "Get global AI settings (admin)",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Admin access required"),
+    ),
+)]
+pub async fn get_ai_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if !state.db_pool.user_admin_check(key_id).await? {
+        return Err(AppError::forbidden("Admin access required."));
+    }
+
+    let settings = crate::services::ai_settings::get_ai_settings(&state.db_pool)
+        .await
+        .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "settings": settings })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/ai_settings",
+    tag = "settings",
+    summary = "Update global AI settings (admin)",
+    request_body = crate::services::ai_settings::AiSettingsUpdate,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Admin access required"),
+    ),
+)]
+pub async fn update_ai_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<crate::services::ai_settings::AiSettingsUpdate>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if !state.db_pool.user_admin_check(key_id).await? {
+        return Err(AppError::forbidden("Admin access required."));
+    }
+
+    crate::services::ai_settings::set_ai_settings(&state.db_pool, request)
+        .await
+        .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "detail": "AI settings updated." })))
+}
+
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct AiModelsQuery {
+    pub remote_url: Option<String>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/ai_models",
+    tag = "settings",
+    summary = "List models installed in the AI sidecar (admin)",
+    params(AiModelsQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Admin access required"),
+        (status = 503, description = "AI service unavailable"),
+    ),
+)]
+pub async fn get_ai_models(
+    State(state): State<AppState>,
+    Query(query): Query<AiModelsQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if !state.db_pool.user_admin_check(key_id).await? {
+        return Err(AppError::forbidden("Admin access required."));
+    }
+    if !state.ai_available.is_available() {
+        return Err(AppError::service_unavailable("AI service is not available."));
+    }
+
+    let models = crate::services::ai_client::list_models(query.remote_url.as_deref())
+        .await
+        .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "models": models })))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct AiPullModelRequest {
+    pub kind: String, // "whisper" | "gguf" | "ollama"
+    pub model: String,
+    pub repo: Option<String>,
+    pub filename: Option<String>,
+    pub url: Option<String>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/ai_pull_model",
+    tag = "settings",
+    summary = "Pull a model into the AI sidecar (admin)",
+    request_body = AiPullModelRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Admin access required"),
+        (status = 503, description = "AI service unavailable"),
+    ),
+)]
+pub async fn ai_pull_model(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AiPullModelRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if !state.db_pool.user_admin_check(key_id).await? {
+        return Err(AppError::forbidden("Admin access required."));
+    }
+    if !state.ai_available.is_available() {
+        return Err(AppError::service_unavailable("AI service is not available."));
+    }
+
+    let spec = crate::services::ai_client::PullSpec {
+        kind: request.kind,
+        model: request.model,
+        repo: request.repo,
+        filename: request.filename,
+        url: request.url,
+    };
+    let task_id = state.task_spawner.spawn_pull_model(spec, key_id).await?;
+
+    Ok(Json(serde_json::json!({ "task_id": task_id, "detail": "Model pull started." })))
 }
 
 // Request struct for remove_category - matches Python RemoveCategoryData model

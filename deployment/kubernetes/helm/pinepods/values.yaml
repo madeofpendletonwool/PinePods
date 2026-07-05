@@ -320,6 +320,13 @@ ai:
     model: "base"          # tiny|base|small|medium|large-v3
     device: "cpu"          # cuda if using a GPU-enabled image/node
     computeType: "int8"
+  # -- Ad-detection LLM (#790) initial defaults. Models are best managed at runtime from
+  #    Settings → AI in the web UI; these only seed the sidecar's defaults.
+  llm:
+    model: ""              # local GGUF filename under /models (bundled backend)
+    url: ""                # OpenAI-compatible endpoint, e.g. http://ollama:11434/v1
+    modelName: ""          # remote model id, e.g. qwen2.5:3b
+    apiKey: ""             # remote API key (optional)
   # -- Persistent cache for downloaded Whisper model weights (optional but recommended)
   persistence:
     enabled: true

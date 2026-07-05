@@ -1,5 +1,10 @@
 name: Publish Pinepods Nightly Multi-Architecture Image to DockerHub
 
+# Least-privilege default; the image-push jobs override this with their own
+# per-job permissions block below.
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: "23 1 * * *"

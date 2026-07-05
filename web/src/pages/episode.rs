@@ -19,6 +19,8 @@ use crate::requests::pod_req::{
     call_save_episode, DownloadEpisodeRequest, EpisodeRequest, FetchPodcasting2DataRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest, Transcript,
     call_get_ai_status, call_get_episode_transcript, call_transcribe_episode, StoredTranscript,
+    call_get_episode_skip_segments, SkipSegment, call_detect_ads, call_adjust_ad_segment_review,
+    AdSegmentReviewRequest,
 };
 use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_parse_podcast_url};
 use i18nrs::yew::use_translation;
@@ -197,6 +199,61 @@ pub struct TranscriptInlineProps {
     pub transcripts: Vec<Transcript>,
     pub server_name: String,
     pub api_key: String,
+    /// Detected ad time ranges (seconds) to highlight within the transcript (#790).
+    #[prop_or_default]
+    pub ad_ranges: Vec<(f64, f64)>,
+}
+
+/// One timed transcript cue parsed from SRT/VTT.
+struct TranscriptCue {
+    start: f64,
+    end: f64,
+    text: String,
+}
+
+/// Parse an SRT/VTT timestamp (`HH:MM:SS,mmm`, `MM:SS.mmm`, …) into seconds.
+fn parse_ts(s: &str) -> Option<f64> {
+    let s = s.trim().replace(',', ".");
+    let parts: Vec<&str> = s.split(':').collect();
+    let (h, m, sec) = match parts.as_slice() {
+        [h, m, s] => (h.trim().parse::<f64>().ok()?, m.parse::<f64>().ok()?, s.parse::<f64>().ok()?),
+        [m, s] => (0.0, m.trim().parse::<f64>().ok()?, s.parse::<f64>().ok()?),
+        _ => return None,
+    };
+    Some(h * 3600.0 + m * 60.0 + sec)
+}
+
+/// Parse SRT/VTT content into timed cues, so we can render the transcript as timestamped,
+/// clickable segments instead of an undifferentiated text blob (#790). Returns empty for content
+/// that has no cue timings (e.g. plain text / HTML), so callers can fall back to paragraphs.
+fn parse_transcript_cues(content: &str) -> Vec<TranscriptCue> {
+    let speaker_re = Regex::new(r"<v\s+[^>]*>").unwrap();
+    let mut cues = Vec::new();
+    let mut lines = content.lines().peekable();
+    while let Some(line) = lines.next() {
+        let Some(idx) = line.find("-->") else { continue };
+        let start = parse_ts(&line[..idx]);
+        let end = parse_ts(line[idx + 3..].split_whitespace().next().unwrap_or(""));
+        let (Some(start), Some(end)) = (start, end) else { continue };
+        let mut text_parts: Vec<String> = Vec::new();
+        while let Some(peek) = lines.peek() {
+            if peek.trim().is_empty() || peek.contains("-->") {
+                break;
+            }
+            let l = lines.next().unwrap();
+            let l = speaker_re.replace_all(l, "");
+            let l = l.replace("</v>", "");
+            let t = l.trim();
+            if !t.is_empty() {
+                text_parts.push(t.to_string());
+            }
+        }
+        let text = text_parts.join(" ");
+        if !text.is_empty() {
+            cues.push(TranscriptCue { start, end, text });
+        }
+    }
+    cues
 }
 
 /// Fetches and renders a transcript's text directly (no modal chrome), so it
@@ -228,9 +285,6 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
                 let mime_type = transcript.mime_type.clone();
 
                 spawn_local(async move {
-                    let speaker_regex = Regex::new(r"<v\s+[^>]+>").unwrap();
-                    let simple_speaker_regex = Regex::new(r"<v\s+").unwrap();
-
                     let api_url = format!("{}/api/data/fetch_transcript", server_name);
                     let request_body = serde_json::json!({ "url": url });
 
@@ -264,24 +318,9 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
                                                         div.set_inner_html(content);
                                                         div.text_content().unwrap_or_default()
                                                     }
-                                                    _ => content
-                                                        .lines()
-                                                        .filter(|line| {
-                                                            !line.trim().is_empty()
-                                                                && !line.trim().parse::<i32>().is_ok()
-                                                                && !line.starts_with("WEBVTT")
-                                                                && !line.contains("-->")
-                                                        })
-                                                        .map(|line| {
-                                                            let line =
-                                                                speaker_regex.replace_all(line, "");
-                                                            let line = simple_speaker_regex
-                                                                .replace_all(&line, "");
-                                                            line.trim().to_string()
-                                                        })
-                                                        .filter(|line| !line.is_empty())
-                                                        .collect::<Vec<_>>()
-                                                        .join("\n"),
+                                                    // Keep raw SRT/VTT so the render can parse
+                                                    // timecodes into clickable cues (#790).
+                                                    _ => content.to_string(),
                                                 };
                                                 transcript_content.set(Some(cleaned_text));
                                                 loading.set(false);
@@ -337,6 +376,20 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
         },
     );
 
+    // Seek the global player to a transcript timestamp when a cue is clicked.
+    let (ui_state, _) = use_store::<UIState>();
+    let seek = {
+        let ui_state = ui_state.clone();
+        Callback::from(move |t: f64| {
+            if let Some(me) = ui_state.media_element.as_ref() {
+                me.set_current_time(t);
+            } else if let Some(ae) = ui_state.audio_element.as_ref() {
+                ae.set_current_time(t);
+            }
+        })
+    };
+    let ad_ranges = props.ad_ranges.clone();
+
     html! {
         <div class="ep-transcript-content space-y-4 item_container-text prose dark:prose-invert max-w-none">
             if *loading {
@@ -346,8 +399,30 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
             } else if let Some(err) = &*error {
                 <div class="text-red-500 dark:text-red-400 p-2">{err}</div>
             } else if let Some(content) = &*transcript_content {
-                {
-                    if content.contains('<') && content.contains('>') {
+                {{
+                    let cues = parse_transcript_cues(content);
+                    if !cues.is_empty() {
+                        // Timecoded, clickable transcript with ad ranges highlighted (#790).
+                        html! {
+                            <div class="ep-transcript-cues">
+                                { for cues.iter().map(|cue| {
+                                    let is_ad = ad_ranges.iter().any(|(s, e)| cue.start < *e && cue.end > *s);
+                                    let start = cue.start;
+                                    let seek = seek.clone();
+                                    let onclick = Callback::from(move |_: MouseEvent| seek.emit(start));
+                                    let cls = if is_ad { "ep-transcript-cue is-ad" } else { "ep-transcript-cue" };
+                                    html! {
+                                        <div class={cls}>
+                                            <button class="ep-transcript-cue-ts" {onclick} title="Jump to this point">
+                                                { format_time(start as i32) }
+                                            </button>
+                                            <span class="ep-transcript-cue-text">{ &cue.text }</span>
+                                        </div>
+                                    }
+                                }) }
+                            </div>
+                        }
+                    } else if content.contains('<') && content.contains('>') {
                         html! { <div class="transcript-content" ref={content_ref}/> }
                     } else {
                         html! {
@@ -356,7 +431,7 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
                             </div>
                         }
                     }
-                }
+                }}
             }
         </div>
     }
@@ -708,6 +783,28 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
         });
     }
 
+    // Load detected ad segments for inline review + transcript highlighting (#790).
+    let ad_segments = use_state(Vec::<SkipSegment>::new);
+    let ad_refresh = use_state(|| 0u32);
+    {
+        let ad_segments = ad_segments.clone();
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        let refresh = *ad_refresh;
+        use_effect_with((episode_id, user_id, refresh), move |(episode_id, user_id, _)| {
+            let episode_id = *episode_id;
+            if let Some(user_id) = *user_id {
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(segs) = call_get_episode_skip_segments(&server_name, &Some(api_key), user_id, episode_id).await {
+                        ad_segments.set(segs.into_iter().filter(|s| s.kind == "ad").collect());
+                    }
+                });
+            }
+            || ()
+        });
+    }
+    let ad_ranges: Vec<(f64, f64)> = ad_segments.iter().map(|s| (s.start_time, s.end_time)).collect();
+
     let status = ai_transcript.as_ref().map(|t| t.status.clone());
     let ai_complete = status.as_deref() == Some("complete");
     let is_running = matches!(status.as_deref(), Some("running") | Some("pending"));
@@ -767,6 +864,7 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
                 transcripts={vec![t.clone()]}
                 server_name={props.server_name.clone()}
                 api_key={props.api_key.clone()}
+                ad_ranges={ad_ranges.clone()}
             />
         }
     } else {
@@ -798,11 +896,92 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
         return html! {};
     }
 
+    // Ad detection (#790): manual trigger + per-user confirm/deny of detected ads.
+    let on_detect_ads = {
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        let started = i18n.t("episode.ad_detection_started").to_string();
+        let err = i18n.t("episode.ad_detection_error").to_string();
+        Callback::from(move |_: MouseEvent| {
+            if let Some(user_id) = user_id {
+                let (server_name, api_key) = (server_name.clone(), api_key.clone());
+                let (started, err) = (started.clone(), err.clone());
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_detect_ads(&server_name, &Some(api_key), episode_id, user_id, true).await {
+                        Ok(_) => Dispatch::<NotificationState>::global().reduce_mut(|s| s.info_message = Some(started)),
+                        Err(e) => Dispatch::<NotificationState>::global().reduce_mut(|s| s.error_message = Some(format!("{}: {}", err, e))),
+                    }
+                });
+            }
+        })
+    };
+
+    let review_cb = {
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        let ad_refresh = ad_refresh.clone();
+        Callback::from(move |(segment_id, status): (i32, String)| {
+            if let Some(user_id) = user_id {
+                let (server_name, api_key) = (server_name.clone(), api_key.clone());
+                let ad_refresh = ad_refresh.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let req = AdSegmentReviewRequest { segment_id, user_id, status };
+                    let _ = call_adjust_ad_segment_review(&server_name, &Some(api_key), &req).await;
+                    ad_refresh.set(*ad_refresh + 1);
+                });
+            }
+        })
+    };
+
+    let detect_action = if props.ai_available {
+        html! {
+            <button class="ep-ai-transcript-btn ep-transcript-gen" onclick={on_detect_ads}>
+                <i class="ph ph-magnifying-glass"></i>{ i18n.t("episode.detect_ads") }
+            </button>
+        }
+    } else {
+        html! {}
+    };
+
+    let ad_review = if !ad_segments.is_empty() {
+        html! {
+            <div class="ep-ad-review">
+                <h4 class="ep-ad-review-title">{ i18n.t("episode.detected_ads") }</h4>
+                { for ad_segments.iter().map(|seg| {
+                    let seg_id = seg.segment_id;
+                    let status = seg.status.clone().unwrap_or_default();
+                    let range = format!("{} – {}", format_time(seg.start_time as i32), format_time(seg.end_time as i32));
+                    let skipping = matches!(status.as_str(), "active" | "confirmed");
+                    let confirm = { let r = review_cb.clone(); Callback::from(move |_: MouseEvent| r.emit((seg_id, "confirmed".to_string()))) };
+                    let deny = { let r = review_cb.clone(); Callback::from(move |_: MouseEvent| r.emit((seg_id, "rejected".to_string()))) };
+                    html! {
+                        <div class="ep-ad-review-row">
+                            <span class="ep-ad-review-range">{ range }</span>
+                            <span class={ if skipping { "ep-ad-status skipping" } else { "ep-ad-status kept" } }>
+                                { if skipping { i18n.t("episode.ad_skipping") } else { i18n.t("episode.ad_kept") } }
+                            </span>
+                            <button class="ep-ad-btn confirm" onclick={confirm} title="Skip this ad">
+                                <i class="ph ph-check"></i>
+                            </button>
+                            <button class="ep-ad-btn deny" onclick={deny} title="Keep this ad">
+                                <i class="ph ph-x"></i>
+                            </button>
+                        </div>
+                    }
+                }) }
+            </div>
+        }
+    } else {
+        html! {}
+    };
+
     html! {
         <div class="ep-pane">
             { selector }
             { content }
             { action }
+            { detect_action }
+            { ad_review }
         </div>
     }
 }

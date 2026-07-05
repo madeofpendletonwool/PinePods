@@ -702,6 +702,129 @@ impl TaskSpawner {
         Ok(task_id)
     }
 
+    /// Detect ads for a single episode as a tracked background task, reporting live progress
+    /// (streamed from the AI sidecar's detection windows). Transcribes first if needed (#790).
+    pub async fn spawn_detect_ads(&self, episode_id: i32, user_id: i32, force: bool) -> AppResult<String> {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::time::Duration;
+
+        let db_pool = self.db_pool.clone();
+        let task_manager = self.task_manager.clone();
+        let task_id = task_manager
+            .create_task_with_item_id("detect_ads".to_string(), user_id, Some(episode_id))
+            .await?;
+        let task_id_clone = task_id.clone();
+
+        tokio::spawn(async move {
+            let _ = task_manager
+                .update_task_progress_with_item_id(&task_id_clone, 1.0, Some("Detecting ads…".to_string()), Some(episode_id), Some("detect_ads".to_string()))
+                .await;
+
+            let progress = Arc::new(AtomicU32::new(1));
+            let ticker = {
+                let tm = task_manager.clone();
+                let tid = task_id_clone.clone();
+                let prog = progress.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        let p = prog.load(Ordering::Relaxed).max(1) as f64;
+                        let _ = tm
+                            .update_task_progress_with_item_id(&tid, p, Some("Detecting ads…".to_string()), Some(episode_id), Some("detect_ads".to_string()))
+                            .await;
+                    }
+                })
+            };
+
+            let cb_progress = progress.clone();
+            let on_progress = move |p: f64| {
+                cb_progress.store((p * 100.0).round() as u32, Ordering::Relaxed);
+            };
+
+            let result = crate::services::ad_detection::detect_episode_ads(&db_pool, episode_id, force, on_progress).await;
+            ticker.abort();
+
+            match result {
+                Ok(count) => {
+                    if let Err(e) = task_manager
+                        .complete_task(&task_id_clone, Some(serde_json::json!({ "episode_id": episode_id, "ads": count })), None)
+                        .await
+                    {
+                        tracing::error!("Failed to mark detect_ads task {} completed: {}", task_id_clone, e);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Detect-ads task {} failed: {}", task_id_clone, e);
+                    let _ = task_manager.fail_task(&task_id_clone, e).await;
+                }
+            }
+        });
+
+        Ok(task_id)
+    }
+
+    /// Pull a model into the AI sidecar as a tracked background task, reporting download progress.
+    pub async fn spawn_pull_model(&self, spec: crate::services::ai_client::PullSpec, user_id: i32) -> AppResult<String> {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::time::Duration;
+
+        let task_manager = self.task_manager.clone();
+        let task_id = task_manager
+            .create_task_with_item_id("pull_model".to_string(), user_id, None)
+            .await?;
+        let task_id_clone = task_id.clone();
+        let label = spec.model.clone();
+
+        tokio::spawn(async move {
+            let msg = format!("Pulling {}…", label);
+            let _ = task_manager
+                .update_task_progress_with_item_id(&task_id_clone, 1.0, Some(msg.clone()), None, Some("pull_model".to_string()))
+                .await;
+
+            let progress = Arc::new(AtomicU32::new(1));
+            let ticker = {
+                let tm = task_manager.clone();
+                let tid = task_id_clone.clone();
+                let prog = progress.clone();
+                let msg = msg.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        let p = prog.load(Ordering::Relaxed).max(1) as f64;
+                        let _ = tm
+                            .update_task_progress_with_item_id(&tid, p, Some(msg.clone()), None, Some("pull_model".to_string()))
+                            .await;
+                    }
+                })
+            };
+
+            let cb_progress = progress.clone();
+            let on_progress = move |p: f64| {
+                cb_progress.store((p * 100.0).round() as u32, Ordering::Relaxed);
+            };
+
+            let result = crate::services::ai_client::pull_model(&spec, on_progress).await;
+            ticker.abort();
+
+            match result {
+                Ok(_) => {
+                    if let Err(e) = task_manager
+                        .complete_task(&task_id_clone, Some(serde_json::json!({ "model": label })), None)
+                        .await
+                    {
+                        tracing::error!("Failed to mark pull_model task {} completed: {}", task_id_clone, e);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Pull-model task {} failed: {}", task_id_clone, e);
+                    let _ = task_manager.fail_task(&task_id_clone, e).await;
+                }
+            }
+        });
+
+        Ok(task_id)
+    }
+
     pub async fn spawn_download_youtube_video(&self, video_id: i32, user_id: i32) -> AppResult<String> {
         self.spawn_task(
             "download_video".to_string(),

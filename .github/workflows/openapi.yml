@@ -1,5 +1,8 @@
 name: OpenAPI Spec Check
 
+permissions:
+  contents: read
+
 # Regenerates the OpenAPI document from the Rust source and fails if the committed
 # spec (rust-api/openapi.json) is out of date, so the generated API reference can
 # never silently drift from the code. Also validates the spec with Redocly.

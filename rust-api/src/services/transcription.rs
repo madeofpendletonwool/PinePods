@@ -271,7 +271,9 @@ pub async fn transcribe_episode(
     clear_generated(db_pool, episode_id).await?;
     let transcript_id = insert_running(db_pool, episode_id).await?;
 
-    let result = ai_client::transcribe(&file_path, None, on_progress).await;
+    // Use the admin-configured whisper model (AISettings), falling back to the sidecar default.
+    let model = crate::services::ai_settings::transcription_model(db_pool).await;
+    let result = ai_client::transcribe(&file_path, None, Some(&model), on_progress).await;
     if is_temp {
         let _ = std::fs::remove_file(&file_path); // best-effort cleanup
     }
@@ -287,6 +289,9 @@ pub async fn transcribe_episode(
             .unwrap_or_else(|_| "[]".to_string());
             complete_row(db_pool, transcript_id, &result.language, &result.model, &result.text, &segments_json).await?;
             debug!("Stored transcript for episode {} ({} segments)", episode_id, result.segments.len());
+            // Chain ad detection if any subscriber to this feed opted in (safe against the
+            // ad-path's own transcription trigger via an in-flight guard).
+            crate::services::ad_detection::maybe_detect_ads_after_transcript(db_pool.clone(), episode_id);
             Ok(())
         }
         Err(e) => {

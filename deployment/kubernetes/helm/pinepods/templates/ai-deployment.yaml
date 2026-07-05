@@ -37,6 +37,24 @@ spec:
               value: {{ .Values.ai.whisper.computeType | quote }}
             - name: PINEPODS_AI_PORT
               value: {{ .Values.ai.service.port | quote }}
+            {{- if .Values.ai.llm }}
+            # Ad detection (#790) — initial defaults; models are managed at runtime from
+            # Settings → AI in the web UI.
+            - name: AI_LLM_MODEL
+              value: {{ .Values.ai.llm.model | default "" | quote }}
+            {{- if .Values.ai.llm.url }}
+            - name: AI_LLM_URL
+              value: {{ .Values.ai.llm.url | quote }}
+            {{- end }}
+            {{- if .Values.ai.llm.modelName }}
+            - name: AI_LLM_MODEL_NAME
+              value: {{ .Values.ai.llm.modelName | quote }}
+            {{- end }}
+            {{- if .Values.ai.llm.apiKey }}
+            - name: AI_LLM_API_KEY
+              value: {{ .Values.ai.llm.apiKey | quote }}
+            {{- end }}
+            {{- end }}
           volumeMounts:
             # Read-only view of the SAME downloads volume the main app writes to,
             # mounted at the identical path so absolute file paths resolve.

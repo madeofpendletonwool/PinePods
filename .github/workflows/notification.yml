@@ -1,5 +1,10 @@
 name: Notifications on release
 
+# Least-privilege default; the notification job overrides this with its own
+# per-job permissions block below.
+permissions:
+  contents: read
+
 on:
   workflow_run:
     workflows: ["Publish Pinepods Multi-Architecture Image to DockerHub"]

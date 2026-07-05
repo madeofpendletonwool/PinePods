@@ -1,4 +1,6 @@
+pub mod ad_detection;
 pub mod ai_client;
+pub mod ai_settings;
 pub mod audio_processing;
 pub mod auth;
 pub mod download_metadata;

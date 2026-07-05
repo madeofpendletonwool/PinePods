@@ -389,7 +389,13 @@
     "transcript_ai": "AI",
     "generate_ai_transcript": "Generate with AI",
     "regenerate_ai_transcript": "Regenerate with AI",
-    "view_ai_transcript": "View AI transcript"
+    "view_ai_transcript": "View AI transcript",
+    "detect_ads": "Detect ads with AI",
+    "detected_ads": "Detected ads",
+    "ad_skipping": "Skipping",
+    "ad_kept": "Kept",
+    "ad_detection_started": "Ad detection started — this can take a while.",
+    "ad_detection_error": "Could not start ad detection"
   },
   "episode_list_item": {
     "completed": "Completed"
@@ -543,6 +549,9 @@
     "silence_high": "High",
     "auto_transcribe": "Auto-transcribe new episodes",
     "auto_transcribe_desc": "Transcribe new episodes automatically as they arrive",
+    "auto_ad_detect": "Auto-detect ads on new episodes",
+    "auto_ad_detect_desc": "Detect ads automatically (requires auto-transcribe)",
+    "ad_skip_auto_activate_desc": "Skip detected ads automatically (off = confirm each on the episode page first)",
     "silence_trim_updated": "Silence trim settings updated.",
     "silence_trim_error": "Error updating silence trim."
   },
@@ -1394,7 +1403,8 @@
     "username_min_length": "Username cannot be empty",
     "yes": "Yes",
     "custom_themes": "Custom Themes",
-    "transcription": "Transcription"
+    "transcription": "Transcription",
+    "ai": "AI"
   },
   "shared_episode": {
     "episode_transcript": "Episode Transcript",
@@ -1544,15 +1554,48 @@
     "empty_title": "No episodes in this collection yet",
     "empty_instructions": "Add episodes by opening any episode's three-dot menu and choosing \"Add to Collection\"."
   },
-  "transcription": {
+  "ai_settings": {
     "ai_service": "AI service:",
     "connected": "Connected",
     "not_connected": "Not connected",
     "checking": "Checking…",
-    "intro": "Transcription runs on the optional pinepods-ai container. Enable auto-transcribe per podcast from that podcast's settings, or transcribe individual episodes from the episode page. Nothing is transcribed automatically without opting in.",
-    "enable_hint": "To enable AI features, run the pinepods-ai service and set the PINEPODS_AI_URL environment variable on the server.",
-    "queue": "Transcription queue",
-    "no_active_jobs": "No active transcription jobs.",
-    "episode": "Episode"
+    "intro": "AI features run on the optional pinepods-ai container. Enable transcription or ad detection per podcast from that podcast's settings, or run them on individual episodes from the episode page. Nothing runs automatically without opting in.",
+    "ready": "Ready",
+    "not_configured": "Not configured",
+    "capabilities": "Capabilities",
+    "transcription": "Transcription",
+    "ad_removal": "Ad removal",
+    "ad_removal_hint": "Ad removal needs a language model. Below, either pull a local GGUF model and select it, or switch the ad-detection model to Remote and point it at an OpenAI-compatible endpoint (e.g. Ollama). Then save.",
+    "models": "Models",
+    "transcription_model": "Transcription model (Whisper)",
+    "llm_backend": "Ad-detection model",
+    "backend_local": "Local (bundled)",
+    "backend_remote": "Remote (OpenAI-compatible)",
+    "backend_anthropic": "Remote (Anthropic-compatible)",
+    "llm_url": "Endpoint URL",
+    "llm_model_name": "Model name",
+    "llm_api_key": "API key",
+    "api_key_set": "•••••• (leave blank to keep)",
+    "llm_local_model": "Local model",
+    "select_model": "Select a model…",
+    "saving": "Saving…",
+    "save": "Save AI settings",
+    "saved": "AI settings saved.",
+    "save_error": "Could not save AI settings",
+    "pull_model": "Pull a model",
+    "hf_repo": "HF repo (e.g. org/model-GGUF)",
+    "hf_filename": "File (e.g. model.Q4_K_M.gguf)",
+    "model_name": "Model name",
+    "pull": "Pull",
+    "pull_started": "Model pull started — this can take a while.",
+    "pull_error": "Could not start model pull",
+    "queue": "AI job queue",
+    "no_active_jobs": "No active AI jobs.",
+    "job_ads": "Ad detection",
+    "job_pull": "Model pull",
+    "job_transcribe": "Transcription",
+    "running": "Running",
+    "done": "Done",
+    "failed": "Failed"
   }
 }

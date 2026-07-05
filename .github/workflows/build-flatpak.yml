@@ -1,5 +1,8 @@
 name: Build Pinepods Flatpak
 
+permissions:
+  contents: read
+
 on:
   workflow_run:
     workflows: ["Build Tauri Clients"]

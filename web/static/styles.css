@@ -9636,6 +9636,70 @@ body.search-takeover-open .drawer-icon { display: none; }
     line-height: 1.6;
 }
 .ep-transcript-content p { margin: 0 0 8px; }
+
+/* Timecoded transcript cues (#790) */
+.ep-transcript-cues { display: flex; flex-direction: column; gap: 2px; }
+.ep-transcript-cue {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    padding: 4px 6px;
+    border-radius: var(--radius-sm);
+}
+.ep-transcript-cue:hover { background: color-mix(in srgb, var(--accent-color) 8%, transparent); }
+.ep-transcript-cue.is-ad {
+    background: color-mix(in srgb, var(--warning-color, #e0a800) 14%, transparent);
+    border-left: 3px solid var(--warning-color, #e0a800);
+}
+.ep-transcript-cue-ts {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent-color);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    min-width: 44px;
+    text-align: right;
+}
+.ep-transcript-cue-ts:hover { text-decoration: underline; }
+.ep-transcript-cue-text { flex: 1; min-width: 0; color: var(--text-color); }
+
+/* Inline ad review (#790) */
+.ep-ad-review { margin-top: 14px; }
+.ep-ad-review-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0 0 6px;
+}
+.ep-ad-review-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--text-secondary-color) 20%, transparent);
+}
+.ep-ad-review-range { font-family: var(--font-mono); font-size: 13px; color: var(--text-color); }
+.ep-ad-status { font-size: 12px; margin-left: auto; }
+.ep-ad-status.skipping { color: var(--success-color); }
+.ep-ad-status.kept { color: var(--text-secondary-color); }
+.ep-ad-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--text-secondary-color) 30%, transparent);
+    background: none;
+    cursor: pointer;
+    color: var(--text-secondary-color);
+}
+.ep-ad-btn.confirm:hover { color: var(--success-color); border-color: var(--success-color); }
+.ep-ad-btn.deny:hover { color: var(--error-color); border-color: var(--error-color); }
+
 .ep-chapter-play {
     display: inline-flex;
     align-items: center;
