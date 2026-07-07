@@ -22,6 +22,26 @@ class PinepodsService {
   String? _server;
   String? _apiKey;
 
+  /// Shared across every PinepodsService instance (widgets each construct
+  /// their own `PinepodsService()`) so requests reuse keep-alive connections
+  /// instead of paying a fresh TCP+TLS handshake per call - which is what
+  /// happens with the top-level http.get/post/put functions, since each of
+  /// those creates and immediately closes its own client.
+  static final http.Client _client = http.Client();
+  static const Duration _timeout = Duration(seconds: 15);
+
+  Future<http.Response> _get(Uri url, {Map<String, String>? headers}) {
+    return _client.get(url, headers: headers).timeout(_timeout);
+  }
+
+  Future<http.Response> _post(Uri url, {Map<String, String>? headers, Object? body}) {
+    return _client.post(url, headers: headers, body: body).timeout(_timeout);
+  }
+
+  Future<http.Response> _put(Uri url, {Map<String, String>? headers, Object? body}) {
+    return _client.put(url, headers: headers, body: body).timeout(_timeout);
+  }
+
   // Method to initialize with existing credentials
   void initializeWithCredentials(String server, String apiKey) {
     _server = server;
@@ -36,7 +56,7 @@ class PinepodsService {
     final url = Uri.parse('$normalizedUrl/api/pinepods_check');
 
     try {
-      final response = await http.get(url);
+      final response = await _get(url);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -61,7 +81,7 @@ class PinepodsService {
     final url = Uri.parse('$normalizedUrl/api/data/get_key');
 
     try {
-      final response = await http.get(
+      final response = await _get(
         url,
         headers: {'Authorization': authHeader},
       );
@@ -88,7 +108,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/verify_key');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -111,7 +131,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/podcasts');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as List;
@@ -134,7 +154,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -184,7 +204,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/return_pods/$userId');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -258,7 +278,7 @@ class PinepodsService {
     );
 
     try {
-      final response = await http.get(
+      final response = await _get(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
@@ -323,7 +343,7 @@ class PinepodsService {
         'episode_url': episodeUrl,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -356,7 +376,7 @@ class PinepodsService {
     );
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         // Parse the response as a plain integer
@@ -392,7 +412,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -422,7 +442,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -446,7 +466,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.put(url, headers: {'Api-Key': _apiKey!});
+      final response = await _put(url, headers: {'Api-Key': _apiKey!});
 
       _devLog(
         'Increment played response: ${response.statusCode} - ${response.body}',
@@ -473,7 +493,7 @@ class PinepodsService {
     );
 
     try {
-      final response = await http.get(
+      final response = await _get(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
@@ -509,7 +529,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -542,7 +562,7 @@ class PinepodsService {
       '$_server/api/data/get_silence_trim?podcast_id=$podcastId&user_id=$userId',
     );
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return SilenceTrimSettings(
@@ -565,7 +585,7 @@ class PinepodsService {
       '$_server/api/data/episode_skip_segments?episode_id=$episodeId&user_id=$userId',
     );
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final segments = (data['segments'] as List?) ?? [];
@@ -605,7 +625,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -643,7 +663,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -669,7 +689,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.put(url, headers: {'Api-Key': _apiKey!});
+      final response = await _put(url, headers: {'Api-Key': _apiKey!});
 
       _devLog(
         'Increment listen time response: ${response.statusCode} - ${response.body}',
@@ -697,7 +717,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -731,7 +751,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -767,7 +787,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -787,7 +807,7 @@ class PinepodsService {
     if (_server == null || _apiKey == null) return [];
     final url = Uri.parse('$_server/api/tasks/user/$userId');
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as List;
         return data
@@ -818,7 +838,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -854,7 +874,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -890,7 +910,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -926,7 +946,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -952,7 +972,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       // User history API response received
 
@@ -1012,7 +1032,7 @@ class PinepodsService {
     );
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1061,7 +1081,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       _devLog(
         'Queued episodes response: ${response.statusCode} - ${response.body}',
@@ -1112,7 +1132,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       // Saved episodes API response received
 
@@ -1176,7 +1196,7 @@ class PinepodsService {
     );
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1234,7 +1254,7 @@ class PinepodsService {
         'is_youtube': isYoutube,
       });
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -1281,7 +1301,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1327,7 +1347,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/podcast_download_summary/$userId');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1368,7 +1388,7 @@ class PinepodsService {
     });
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1442,7 +1462,7 @@ class PinepodsService {
 
     try {
       _devLog('Making search request to: $url');
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1476,7 +1496,7 @@ class PinepodsService {
     );
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1513,7 +1533,7 @@ class PinepodsService {
     };
 
     try {
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode(body),
@@ -1548,7 +1568,7 @@ class PinepodsService {
     };
 
     try {
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode(body),
@@ -1591,7 +1611,7 @@ class PinepodsService {
         );
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1626,7 +1646,7 @@ class PinepodsService {
 
     try {
       _devLog('Getting podcast details by ID from: $url');
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1663,7 +1683,7 @@ class PinepodsService {
 
     try {
       _devLog('Getting podcast ID from: $url');
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1699,7 +1719,7 @@ class PinepodsService {
     );
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1738,7 +1758,7 @@ class PinepodsService {
     ).replace(queryParameters: {'user_id': userId.toString()});
 
     try {
-      final response = await http.get(
+      final response = await _get(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
@@ -1764,7 +1784,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/get_pinepods_version');
 
     try {
-      final response = await http.get(
+      final response = await _get(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
@@ -1792,7 +1812,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/user_details_id/$userId');
 
     try {
-      final response = await http.get(
+      final response = await _get(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
@@ -1818,7 +1838,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/id_from_api_key');
 
     try {
-      final response = await http.get(
+      final response = await _get(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
@@ -1845,7 +1865,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(
+      final response = await _get(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
@@ -1872,7 +1892,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(
+      final response = await _get(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
@@ -1901,7 +1921,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(
+      final response = await _get(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
@@ -1932,7 +1952,7 @@ class PinepodsService {
     try {
       final requestBody = jsonEncode({'user_id': userId, 'new_theme': theme});
 
-      final response = await http.put(
+      final response = await _put(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
@@ -1962,7 +1982,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       _devLog(
         'Get playlists response: ${response.statusCode} - ${response.body}',
@@ -1997,7 +2017,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode(request.toJson()),
@@ -2023,7 +2043,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode({'user_id': userId, 'playlist_id': playlistId}),
@@ -2056,7 +2076,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       _devLog(
         'Get playlist episodes response: ${response.statusCode} - ${response.body}',
@@ -2086,7 +2106,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode({'episode_ids': episodeIds}),
@@ -2131,7 +2151,7 @@ class PinepodsService {
         body['categories'] = categories;
       }
 
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode(body),
@@ -2176,7 +2196,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       _devLog(
         'Podcast 2.0 data response: ${response.statusCode} - ${response.body}',
@@ -2215,7 +2235,7 @@ class PinepodsService {
     _devLog('Making API call to: $url');
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       _devLog(
         'Podcast 2.0 pod data response: ${response.statusCode} - ${response.body}',
@@ -2242,7 +2262,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/get_auto_play_next_status');
 
     try {
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode({'podcast_id': podcastId, 'user_id': userId}),
@@ -2268,7 +2288,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/get_next_podcast_episode');
 
     try {
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode({'episode_id': episodeId, 'user_id': userId}),
@@ -2312,7 +2332,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/get_next_playlist_episode');
 
     try {
-      final response = await http.post(
+      final response = await _post(
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode(
@@ -2358,7 +2378,7 @@ class PinepodsService {
     );
 
     try {
-      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
