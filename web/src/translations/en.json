@@ -718,9 +718,11 @@
     "no_devices_found": "No devices found. Create your first device below.",
     "pushing_to_device": "Pushing to device: {} (ID: {}, remote: {})",
     "select_a_device": "-- Select a device --",
+    "no_default_device_set": "No default device set.",
     "select_device_for_operations": "Select device for operations:",
     "selected_device": "Selected device: {} (ID: {}, remote: {:?})",
     "set_as_default": "Set as default",
+    "loading_default_device": "Loading default device...",
     "setting_default": "Setting default...",
     "setting_device_as_default": "Setting device {} ({}) as default, is_remote: {}",
     "successfully_set_device_as_default": "Successfully set device as default",
@@ -759,6 +761,7 @@
     "username": "Username",
     "password": "Password",
     "test_connection": "Test Connection",
+    "testing": "Testing...",
     "connection": "Endpoint Test",
     "devices": "Current Device Count",
     "subscriptions": "Synced Subscription Count",
@@ -768,6 +771,8 @@
     "last_sync_colon": "Last Sync:",
     "api_endpoint_status": "API Endpoint Status",
     "recent_episode_actions": "Recent Episode Actions",
+    "no_statistics_available": "No statistics available.",
+    "click_refresh": "Click refresh to load the latest data.",
     "hide_extra_options": "Hide Extra Options",
     "intial_sync": "Initial Sync",
     "loading_server_statistics": "Loading Server Statistics",
@@ -781,7 +786,9 @@
     "nextcloud_advanced_hint": "If you need more advanced sync features (like device management), consider using the internal gpodder API or a dedicated gpodder server instead.",
     "external_gpodder_active": "External GPodder sync is currently active with ",
     "gpodder_full_sync": "GPodder sync provides full podcast synchronization capabilities including managing multiple devices, subscription synchronization, and episode status tracking.",
-    "gpodder_compatible": "You can use this sync method with any gpodder-compatible clients like AntennaPod, and others."
+    "gpodder_compatible": "You can use this sync method with any gpodder-compatible clients like AntennaPod, and others.",
+    "gpodder_device_mgmt": "You can manage your connected devices below.",
+    "no_sync_configured": "No sync method configured yet. Choose an option above to get started."
   },
   "notification_center": {
     "active_tasks": "Active Tasks",
@@ -863,6 +870,8 @@
     "back_to_login": "Back to Login",
     "could_not_get_user_id": "Could not get user ID",
     "date_format": "Date Format",
+    "date_format_iso8601": "ISO 8601",
+    "date_format_julian": "YY/DDD (Julian)",
     "error_checking_first_login_status": "Error checking first login status",
     "error_setting_timezone": "Error setting timezone",
     "failed_to_get_server_configuration": "Failed to get server configuration",
@@ -895,9 +904,15 @@
     "client_secret": "Client Secret",
     "edit_oidc_provider": "Edit OIDC Provider",
     "email_claim": "Email Claim",
+    "environment": "Environment",
     "failed_to_add_provider": "Failed to add provider: ",
     "failed_to_fetch_oidc_providers": "Failed to fetch OIDC providers: ",
     "failed_to_remove_provider": "Failed to remove provider: ",
+    "failed_to_update_provider": "Failed to update provider: ",
+    "github_no_standard_scopes": "GitHub doesn't support standard OIDC scopes. Select from the GitHub scopes below instead.",
+    "github_provider_detected": "GitHub Detected",
+    "github_scopes": "GitHub Scopes",
+    "google_scopes": "Google Scopes",
     "icon_svg_optional": "Icon SVG (optional)",
     "name_claim": "Name Claim",
     "no_oidc_providers_configured": "No OIDC providers configured yet. Add one to enable single sign-on.",
@@ -909,6 +924,7 @@
     "provider_successfully_removed": "Provider successfully removed",
     "roles_claim": "Roles Claim",
     "scopes": "Scopes",
+    "standard_oidc_scopes": "Standard OIDC Scopes",
     "token_url": "Token URL",
     "use_this_url_when_configuring": "Use this URL when configuring your OIDC provider's callback/redirect settings.",
     "user_info_url": "User Info URL",
@@ -1059,6 +1075,7 @@
     "no_ignored_podcasts": "No podcasts are ignored from index matching.",
     "no_unmatched_podcasts": "No podcasts need Podcast Index matching.",
     "podcast_index_matching": "Match Podcasts to Podcast Index",
+    "loading_podcasts": "Loading Podcasts...",
     "search_results": "Search Results",
     "show_ignored": "Show Ignored",
     "show_unmatched": "Show Unmatched",
@@ -1076,7 +1093,9 @@
     "match_btn": "Match",
     "enter_podcast_id": "Search By Podcast Index ID",
     "search": "Search",
-    "searching": "Searching..."
+    "searching": "Searching...",
+    "no_matches_found": "No Matches Found",
+    "try_manual_search": "Try a manual search below."
   },
   "podcast_layout": {
     "add_error": "Error adding podcast",
@@ -1453,5 +1472,6 @@
     "add_mode_description": "Choose how the \"Add to Collection\" menu behaves on episodes.",
     "empty_title": "No episodes in this collection yet",
     "empty_instructions": "Add episodes by opening any episode's three-dot menu and choosing \"Add to Collection\"."
-  }
+  },
+  "failed_to_find_podcast_metadata": "Failed to find podcast metadata"
 }
