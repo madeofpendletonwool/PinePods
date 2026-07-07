@@ -14,4 +14,12 @@ None of the action handlers in `mobile/lib/ui/pinepods/episode_details.dart` (`_
 
 ## Fix
 
-Added a single `_actionInProgress` guard: the first tap on any of these buttons disables all of them (via `onPressed: null`, which also grays them out for visual feedback) until that action's `Future` completes, then re-enables them. This prevents re-entrant taps from firing duplicate/overlapping requests and gives the user visible confirmation that something is happening.
+Added a single guard: the first tap on any of these buttons disables all of them (via `onPressed: null`, which also grays them out for visual feedback) until that action's `Future` completes, then re-enables them. This prevents re-entrant taps from firing duplicate/overlapping requests and gives the user visible confirmation that something is happening.
+
+The guard logic itself is extracted into a small, plain-Dart `ActionGuard` class (`mobile/lib/ui/utils/action_guard.dart`) rather than inlined as a bool + setState directly in the widget's State, so it's unit-testable without any widget/Provider scaffolding.
+
+## Tests
+
+There was no existing unit test setup for the mobile app (no `test/` directory, `flutter_test`/`mockito` were unused dev dependencies). Added `mobile/test/ui/utils/action_guard_test.dart`, covering: it starts out not in progress; it flips to in-progress synchronously as soon as `run()` starts (before the action resolves); a second call while one is in flight is dropped without running its action; `inProgress` resets (and the error still propagates) if the action throws; and a new action can run once the previous one finishes.
+
+I couldn't run `flutter test` in the environment these changes were written in (no Flutter/Dart SDK available there) - please run it before merging.

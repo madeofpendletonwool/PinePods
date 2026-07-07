@@ -15,6 +15,7 @@ import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
+import 'package:pinepods_mobile/ui/utils/action_guard.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
@@ -46,7 +47,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
   /// this a slow response invites the user to tap again - firing a second,
   /// overlapping request that can race with the first (e.g. double-toggling
   /// a save/queue state).
-  bool _actionInProgress = false;
+  final ActionGuard _actionGuard = ActionGuard();
 
   @override
   void initState() {
@@ -59,14 +60,10 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
   PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
 
   /// Run [action] only if no other guarded action is currently in flight.
-  Future<void> _runGuarded(Future<void> Function() action) async {
-    if (_actionInProgress) return;
-    setState(() => _actionInProgress = true);
-    try {
-      await action();
-    } finally {
-      if (mounted) setState(() => _actionInProgress = false);
-    }
+  Future<void> _runGuarded(Future<void> Function() action) {
+    return _actionGuard.run(action, onChange: () {
+      if (mounted) setState(() {});
+    });
   }
 
   /// Enqueue an interaction in the offline outbox so it syncs when back online,
@@ -829,7 +826,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                           }
                           
                           return OutlinedButton.icon(
-                            onPressed: _actionInProgress ? null : () => _runGuarded(_togglePlayPause),
+                            onPressed: _actionGuard.inProgress ? null : () => _runGuarded(_togglePlayPause),
                             icon: Icon(icon),
                             label: Text(label),
                           );
@@ -841,7 +838,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                     // Save/Unsave button
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _actionInProgress
+                        onPressed: _actionGuard.inProgress
                             ? null
                             : () => _runGuarded(_episode!.saved ? _removeSavedEpisode : _saveEpisode),
                         icon: Icon(
@@ -856,7 +853,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                     // Queue button
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _actionInProgress ? null : () => _runGuarded(_toggleQueue),
+                        onPressed: _actionGuard.inProgress ? null : () => _runGuarded(_toggleQueue),
                         icon: Icon(
                           _episode!.queued ? Icons.queue_music : Icons.queue_music_outlined,
                           color: _episode!.queued ? Colors.purple : null,
@@ -875,7 +872,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                     // Download button
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _actionInProgress ? null : () => _runGuarded(_toggleDownload),
+                        onPressed: _actionGuard.inProgress ? null : () => _runGuarded(_toggleDownload),
                         icon: Icon(
                           _episode!.downloaded ? Icons.download_done : Icons.download_outlined,
                           color: _episode!.downloaded ? Colors.blue : null,
@@ -888,7 +885,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                     // Complete button
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _actionInProgress ? null : () => _runGuarded(_toggleComplete),
+                        onPressed: _actionGuard.inProgress ? null : () => _runGuarded(_toggleComplete),
                         icon: Icon(
                           _episode!.completed ? Icons.check_circle : Icons.check_circle_outline,
                           color: _episode!.completed ? Colors.green : null,
@@ -906,7 +903,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _actionInProgress
+                        onPressed: _actionGuard.inProgress
                             ? null
                             : () => _runGuarded(
                                 _isDownloadedLocally ? _deleteLocalDownload : _localDownloadEpisode),
