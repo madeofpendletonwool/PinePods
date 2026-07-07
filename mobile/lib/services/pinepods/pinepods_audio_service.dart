@@ -1,6 +1,7 @@
 // lib/services/pinepods/pinepods_audio_service.dart
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:pinepods_mobile/entities/downloadable.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
@@ -467,6 +468,24 @@ class PinepodsAudioService {
     _onStopCallback?.call();
   }
 
+  /// Pop the next episode off the PinePods server queue, if any, removing it
+  /// from that queue so it isn't replayed the next time an episode finishes.
+  /// Split out from [playNextFromServerQueue] so the queue-selection logic can
+  /// be unit tested without exercising the full playback pipeline.
+  @visibleForTesting
+  Future<PinepodsEpisode?> peekAndDequeueNextServerEpisode(int userId) async {
+    final queued = await _pinepodsService.getQueuedEpisodes(userId);
+    if (queued.isEmpty) return null;
+
+    final next = queued.first;
+    try {
+      await _pinepodsService.removeQueuedEpisode(next.episodeId, userId, next.isYoutube);
+    } catch (e) {
+      log.warning('Could not remove next episode from server queue (continuing): $e');
+    }
+    return next;
+  }
+
   /// Play the next episode from the PinePods server queue and remove it from
   /// that queue. This is the queue the PinePods UI actually manages (Queue tab
   /// / Up Next view), used as the auto-advance source when an episode
@@ -476,18 +495,8 @@ class PinepodsAudioService {
     if (userId == null) return false;
 
     try {
-      final queued = await _pinepodsService.getQueuedEpisodes(userId);
-      if (queued.isEmpty) return false;
-
-      final next = queued.first;
-
-      // Remove it from the server queue before playing so it isn't replayed
-      // the next time an episode finishes.
-      try {
-        await _pinepodsService.removeQueuedEpisode(next.episodeId, userId, next.isYoutube);
-      } catch (e) {
-        log.warning('Could not remove next episode from server queue (continuing): $e');
-      }
+      final next = await peekAndDequeueNextServerEpisode(userId);
+      if (next == null) return false;
 
       await playPinepodsEpisode(
         pinepodsEpisode: next,

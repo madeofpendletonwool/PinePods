@@ -23,3 +23,7 @@ This looks like a leftover from migrating the queue feature to be server-backed 
 ## Fix
 
 `_handleCompletedEvent()` now falls back to the PinePods server queue (via a new `PinepodsAudioService.playNextFromServerQueue()`, mirroring the existing manual "tap to play from queue" flow in `queue.dart`) when the local legacy queue is empty: it fetches the next queued episode, removes it from the server queue, and plays it.
+
+## Tests
+
+There was no existing unit test setup for the mobile app (no `test/` directory, `flutter_test`/`mockito` were unused dev dependencies), so this adds the first one: `mobile/test/services/pinepods/pinepods_audio_service_test.dart`, covering `peekAndDequeueNextServerEpisode()` and `playNextFromServerQueue()` with hand-written mocks (no `build_runner` in this project yet, so no `@GenerateMocks` codegen). I couldn't run `flutter test` in the environment these changes were written in (no Flutter/Dart SDK available there) - please run it before merging.
