@@ -7,6 +7,7 @@ use futures::Future;
 use serde_json::Value;
 use std::sync::Arc;
 use sqlx::Row;
+use tracing::{debug, warn};
 
 // New function that actually downloads an episode and waits for completion
 async fn download_episode_and_wait(
@@ -76,15 +77,7 @@ async fn download_episode_and_wait(
     if !download_dir.exists() {
         std::fs::create_dir_all(&download_dir)
             .map_err(|e| crate::error::AppError::Internal(format!("Failed to create download directory: {}", e)))?;
-        
-        // Set ownership using PUID/PGID environment variables
-        let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-        let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-        
-        // Set directory ownership (ignore errors for NFS mounts)
-        let _ = std::process::Command::new("chown")
-            .args(&[format!("{}:{}", puid, pgid), download_dir.to_string_lossy().to_string()])
-            .output();
+        // Ownership is handled by running the process as PUID:PGID (see startup.sh); no chown needed.
     }
     
     let pub_date_str = if let Some(date) = pub_date {
@@ -96,9 +89,27 @@ async fn download_episode_and_wait(
     let filename = format!("{}_{}_{}_{}.mp3", pub_date_str, safe_episode_title, user_id, episode_id);
     let file_path = download_dir.join(&filename);
     
-    // Download the file
-    let client = reqwest::Client::new();
+    // SSRF guard: episode_url originates from the podcast RSS <enclosure url>,
+    // which is fully attacker-controlled. Reject loopback/private/link-local/
+    // reserved destinations before issuing any server-side request.
+    crate::services::url_guard::ensure_safe_public_url_async(&episode_url)
+        .await
+        .map_err(|reason| crate::error::AppError::Internal(format!("Refusing to download episode URL: {}", reason)))?;
+
+    // Download the file. Redirects are re-validated by the same guard so a
+    // public URL cannot 30x-redirect into the internal network.
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            match crate::services::url_guard::ensure_safe_public_url(attempt.url().as_str()) {
+                Ok(()) => attempt.follow(),
+                Err(_) => attempt.stop(),
+            }
+        }))
+        .build()
+        .map_err(|e| crate::error::AppError::Internal(format!("Failed to build HTTP client: {}", e)))?;
     let mut response = client.get(&episode_url)
+        .header("Accept", "*/*")
+        .header("User-Agent", "PinePods/1.0")
         .send()
         .await
         .map_err(|e| crate::error::AppError::Internal(format!("Failed to start download: {}", e)))?;
@@ -116,19 +127,11 @@ async fn download_episode_and_wait(
             .map_err(|e| crate::error::AppError::Internal(format!("Failed to write file: {}", e)))?;
     }
     
-    // Close the file before setting ownership
+    // Close the file
     drop(file);
-    
-    // Set file ownership using PUID/PGID environment variables
-    let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-    let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-    
-    // Set file ownership (ignore errors for NFS mounts)
-    let _ = std::process::Command::new("chown")
-        .args(&[format!("{}:{}", puid, pgid), file_path.to_string_lossy().to_string()])
-        .output();
-    
-    // Record download in database  
+    // Ownership is handled by running the process as PUID:PGID (see startup.sh); no chown needed.
+
+    // Record download in database
     let file_size = tokio::fs::metadata(&file_path).await
         .map(|m| m.len() as i64)
         .unwrap_or(0);
@@ -179,6 +182,7 @@ impl TaskSpawner {
         F: FnOnce(String, Arc<TaskManager>, DatabasePool) -> Fut + Send + 'static,
         Fut: Future<Output = AppResult<Value>> + Send + 'static,
     {
+        let task_type_for_log = task_type.clone();
         let task_id = self.task_manager.create_task(task_type, user_id).await?;
         let task_manager = self.task_manager.clone();
         let db_pool = self.db_pool.clone();
@@ -195,6 +199,10 @@ impl TaskSpawner {
                     }
                 }
                 Err(e) => {
+                    // Surface the failure in the server logs too -- otherwise it only reaches the
+                    // task/websocket layer, which makes background failures (e.g. a restore that
+                    // errors out) invisible in the container logs.
+                    tracing::error!("Task {} ({}) failed: {}", task_id_clone, task_type_for_log, e);
                     if let Err(err) = task_manager
                         .fail_task(&task_id_clone, e.to_string())
                         .await
@@ -344,8 +352,10 @@ impl TaskSpawner {
                     }
                 };
 
-                let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, description, feed_username, feed_password) = episode_info;
-                
+                let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, _description, feed_username, feed_password) = episode_info;
+
+                task_manager.set_task_metadata(&task_id_clone, Some(episode_title.clone()), Some(podcast_name.clone())).await?;
+
                 let status_message = format!("Preparing {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 10.0, Some(status_message.clone()), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
                 
@@ -367,15 +377,7 @@ impl TaskSpawner {
                 if !download_dir.exists() {
                     std::fs::create_dir_all(&download_dir)
                         .map_err(|e| crate::error::AppError::internal(&format!("Failed to create download directory: {}", e)))?;
-                    
-                    // Set ownership using PUID/PGID environment variables
-                    let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-                    let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-                    
-                    // Set directory ownership (ignore errors for NFS mounts)
-                    let _ = std::process::Command::new("chown")
-                        .args(&[format!("{}:{}", puid, pgid), download_dir.to_string_lossy().to_string()])
-                        .output();
+                    // Ownership is handled by running the process as PUID:PGID (see startup.sh); no chown needed.
                 }
                 
                 // Format date for filename (like Python version)
@@ -392,26 +394,44 @@ impl TaskSpawner {
                 let status_message = format!("Connecting to {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 20.0, Some(status_message), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
                 
-                // Download the file
+                // Download the file. Send a podcast-client User-Agent first; some hosts
+                // (e.g. Buzzsprout) reject requests without one with 403 Forbidden.
                 let client = reqwest::Client::new();
-                let mut request = client.get(&episode_url);
-
-                // Apply basic auth if feed credentials are provided
-                if let (Some(ref username), Some(ref password)) = (&feed_username, &feed_password) {
-                    if !username.is_empty() {
-                        request = request.basic_auth(username, Some(password));
+                let build_request = |client: &reqwest::Client, user_agent: &str| {
+                    let mut request = client
+                        .get(&episode_url)
+                        .header("User-Agent", user_agent)
+                        .header("Accept", "*/*");
+                    if let (Some(ref username), Some(ref password)) = (&feed_username, &feed_password) {
+                        if !username.is_empty() {
+                            request = request.basic_auth(username, Some(password));
+                        }
                     }
-                }
+                    request
+                };
 
-                let mut response = request
+                let mut response = build_request(&client, "PinePods/1.0")
                     .send()
                     .await
                     .map_err(|e| crate::error::AppError::internal(&format!("Failed to start download: {}", e)))?;
-                
+
+                // If we get a 403, the host may be blocking podcast-client User-Agents.
+                // Retry with a browser User-Agent as a fallback (mirrors feed-refresh fetch).
+                if response.status() == reqwest::StatusCode::FORBIDDEN {
+                    tracing::debug!("Download got 403 for episode {}, retrying with browser User-Agent", episode_id);
+                    let browser_response = build_request(&client, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                        .send()
+                        .await
+                        .map_err(|e| crate::error::AppError::internal(&format!("Failed to start download: {}", e)))?;
+                    if browser_response.status().is_success() {
+                        response = browser_response;
+                    }
+                }
+
                 if !response.status().is_success() {
                     return Err(crate::error::AppError::internal(&format!("Server returned error: {}", response.status())));
                 }
-                
+
                 let total_size = response.content_length().unwrap_or(0);
                 let mut downloaded = 0;
                 let mut file = std::fs::File::create(&file_path)
@@ -455,16 +475,8 @@ impl TaskSpawner {
                     .map_err(|e| crate::error::AppError::internal(&format!("Failed to flush file: {}", e)))?;
                 
                 drop(file); // Close the file handle before metadata operations
-                
-                // Set file ownership using PUID/PGID environment variables
-                let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-                let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-                
-                // Set file ownership (ignore errors for NFS mounts)
-                let _ = std::process::Command::new("chown")
-                    .args(&[format!("{}:{}", puid, pgid), file_path.to_string_lossy().to_string()])
-                    .output();
-                
+                // Ownership is handled by running the process as PUID:PGID (see startup.sh); no chown needed.
+
                 let status_message = format!("Processing {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 85.0, Some(status_message), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
                 
@@ -529,7 +541,11 @@ impl TaskSpawner {
                 
                 let status_message = format!("Downloaded {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 100.0, Some(status_message), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
-                
+
+                // Kick off silence detection in the background if the podcast opted in. Runs
+                // detached so it never delays the download's completion.
+                crate::services::audio_processing::maybe_detect_silence_after_download(db_pool.clone(), episode_id);
+
                 Ok(serde_json::json!({
                     "episode_id": episode_id,
                     "user_id": user_id,
@@ -560,6 +576,25 @@ impl TaskSpawner {
         });
 
         Ok(task_id)
+    }
+
+    /// Manually (re-)run silence detection for a single episode as a tracked background task.
+    /// `force` re-analyzes even if the episode was already processed.
+    pub async fn spawn_detect_silence(&self, episode_id: i32, user_id: i32, force: bool) -> AppResult<String> {
+        let db_pool = self.db_pool.clone();
+        self.spawn_simple_task(
+            "detect_silence".to_string(),
+            user_id,
+            move || async move {
+                let count = crate::services::audio_processing::analyze_episode_silence(
+                    &db_pool, episode_id, force, None,
+                )
+                .await
+                .map_err(|e| crate::error::AppError::internal(&e))?;
+                Ok(serde_json::json!({ "episode_id": episode_id, "segments": count }))
+            },
+        )
+        .await
     }
 
     pub async fn spawn_download_youtube_video(&self, video_id: i32, user_id: i32) -> AppResult<String> {
@@ -601,8 +636,10 @@ impl TaskSpawner {
                     }
                 };
                 
+                task_manager.set_task_metadata(&task_id, Some(video_title.clone()), Some("YouTube".to_string())).await?;
+
                 let output_path = format!("/opt/pinepods/downloads/youtube/{}.mp3", youtube_video_id);
-                
+
                 // Check if file already exists
                 if tokio::fs::metadata(&output_path).await.is_ok() {
                     tracing::info!("Video {} already downloaded", video_title);
@@ -650,7 +687,7 @@ impl TaskSpawner {
         // Create the task first
         let task_id = self.task_manager.create_task("download_all_episodes".to_string(), user_id).await?;
         let task_manager = self.task_manager.clone();
-        let task_spawner = self.clone();
+        let _task_spawner = self.clone();
         let db_pool = self.db_pool.clone();
         let task_id_clone = task_id.clone();
         let task_manager_for_completion = task_manager.clone();
@@ -994,7 +1031,7 @@ impl TaskSpawner {
             user_id,
             move |task_id, task_manager, db_pool| {
                 Box::pin(async move {
-                    println!("Starting episode processing for podcast {} (user {})", podcast_id, user_id);
+                    debug!("Starting episode processing for podcast {} (user {})", podcast_id, user_id);
                     
                     // Update progress - starting
                     task_manager.update_task_progress(&task_id, 10.0, Some("Fetching podcast feed...".to_string())).await?;
@@ -1031,7 +1068,7 @@ impl TaskSpawner {
                             // Final progress update
                             task_manager.update_task_progress(&task_id, 100.0, Some(format!("Added {} episodes", episode_count))).await?;
                             
-                            println!("✅ Added {} episodes for podcast {} (user {})", episode_count, podcast_id, user_id);
+                            debug!("✅ Added {} episodes for podcast {} (user {})", episode_count, podcast_id, user_id);
                             
                             Ok(serde_json::json!({
                                 "podcast_id": podcast_id,
@@ -1042,7 +1079,7 @@ impl TaskSpawner {
                             }))
                         }
                         Err(e) => {
-                            println!("Failed to add episodes for podcast {}: {}", podcast_id, e);
+                            warn!("Failed to add episodes for podcast {}: {}", podcast_id, e);
                             task_manager.update_task_progress(&task_id, 0.0, Some(format!("Failed to add episodes: {}", e))).await?;
                             Err(e)
                         }

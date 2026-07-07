@@ -3446,6 +3446,101 @@ def migration_106_optimize_subscription_sync_performance(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("108", "gpodder_subscription_snapshot", "Add subscription snapshot table for delta-based sync upload", requires=["008"])
+def migration_108_gpodder_subscription_snapshot(conn, db_type: str):
+    """Create GpodderSubscriptionSnapshot table.
+
+    Stores, per (user, sync target), the set of local feed URLs at the end of the last sync.
+    The sync code diffs the current local feeds against this snapshot to compute genuine local
+    add/remove deltas to push up - instead of re-uploading the full list every sync (which bloats
+    the server change log) and without a per-change queue.
+    """
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting gpodder migration 108: Add subscription snapshot table")
+
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS "GpodderSubscriptionSnapshot" (
+                    SnapshotID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SyncTarget TEXT NOT NULL,
+                    FeedURL TEXT NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, SyncTarget, FeedURL)
+                )
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_subsnapshot_user_target ON "GpodderSubscriptionSnapshot"(UserID, SyncTarget)
+            ''', conn=conn)
+        else:  # mysql
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS GpodderSubscriptionSnapshot (
+                    SnapshotID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SyncTarget VARCHAR(512) NOT NULL,
+                    FeedURL VARCHAR(2048) NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, SyncTarget, FeedURL(512))
+                )
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_subsnapshot_user_target ON GpodderSubscriptionSnapshot(UserID, SyncTarget)
+            ''', conn=conn)
+
+        logger.info("Created GpodderSubscriptionSnapshot table successfully")
+
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 108: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("109", "host_feed_cache", "Add shared host-feed cache table for the live person feed", requires=["009"])
+def migration_109_host_feed_cache(conn, db_type: str):
+    """Create HostFeedCache table.
+
+    A DB-backed warm cache for the live host feed (/api/data/person/feed). Building a host's feed
+    means fetching+parsing every RSS feed they appear in, which is expensive for prolific hosts.
+    The short-lived Redis cache absorbs repeat visits; this table is the longer-lived warm layer so
+    a cold/expired Redis entry doesn't force a full N-feed rebuild, and so the cache survives a
+    Redis restart. Keyed by the lowercased host name + whether podcasts are included.
+    """
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration 109: Add host feed cache table")
+
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS "HostFeedCache" (
+                    CacheKey TEXT PRIMARY KEY,
+                    FeedJSON TEXT NOT NULL,
+                    RefreshedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            ''', conn=conn)
+        else:  # mysql
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS HostFeedCache (
+                    CacheKey VARCHAR(512) PRIMARY KEY,
+                    FeedJSON LONGTEXT NOT NULL,
+                    RefreshedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            ''', conn=conn)
+
+        logger.info("Created HostFeedCache table successfully")
+
+    except Exception as e:
+        logger.error(f"Error in migration 109: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("033", "add_http_notification_columns", "Add generic HTTP notification columns to UserNotificationSettings table", requires=["011"])
 def migration_033_add_http_notification_columns(conn, db_type: str):
     """Add generic HTTP notification columns for platforms like Telegram"""
@@ -4149,3 +4244,798 @@ def migration_038_add_is_video_to_episodes(conn, db_type: str):
         logger.error(f"Error adding is_video column to Episodes: {e}")
         conn.rollback()
         raise
+
+
+@register_migration("039", "add_auto_play_next_to_podcasts", "Add autoplaynext column to Podcasts table for serial podcast auto-play", requires=["005"])
+def migration_039_add_auto_play_next_to_podcasts(conn, db_type: str):
+    """
+    Add autoplaynext column to Podcasts table to support auto-playing
+    the next chronological episode when the current one finishes.
+    This is useful for serial/fiction podcasts where episode order matters.
+    """
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration to add autoplaynext column to Podcasts table...")
+
+        if db_type == "postgresql":
+            # Check if column already exists
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'Podcasts'
+                AND column_name = 'autoplaynext'
+            """)
+
+            if cursor.fetchone():
+                logger.info("autoplaynext column already exists in Podcasts table (PostgreSQL)")
+                return
+
+            # Add autoplaynext column (default to false for existing podcasts)
+            logger.info("Adding autoplaynext column to Podcasts table (PostgreSQL)...")
+            cursor.execute("""
+                ALTER TABLE "Podcasts"
+                ADD COLUMN autoplaynext BOOLEAN DEFAULT FALSE
+            """)
+            conn.commit()
+            logger.info("Successfully added autoplaynext column to Podcasts table (PostgreSQL)")
+
+        else:  # MySQL/MariaDB
+            # Check if column already exists
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'AutoPlayNext'
+            """)
+
+            if cursor.fetchone():
+                logger.info("AutoPlayNext column already exists in Podcasts table (MySQL)")
+                return
+
+            # Add AutoPlayNext column (default to 0/false for existing podcasts)
+            logger.info("Adding AutoPlayNext column to Podcasts table (MySQL)...")
+            cursor.execute("""
+                ALTER TABLE Podcasts
+                ADD COLUMN AutoPlayNext BOOLEAN DEFAULT FALSE
+            """)
+            conn.commit()
+            logger.info("Successfully added AutoPlayNext column to Podcasts table (MySQL)")
+
+    except Exception as e:
+        logger.error(f"Error adding autoplaynext column to Podcasts: {e}")
+        conn.rollback()
+        raise
+
+
+@register_migration("040", "add_is_favorite_to_podcasts", "Add IsFavorite column to Podcasts table for favoriting podcasts", requires=["005"])
+def migration_040_add_is_favorite_to_podcasts(conn, db_type: str):
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration to add isfavorite column to Podcasts table...")
+
+        if db_type == "postgresql":
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'Podcasts'
+                AND column_name = 'isfavorite'
+            """)
+            if cursor.fetchone():
+                logger.info("isfavorite column already exists in Podcasts table (PostgreSQL)")
+                return
+            logger.info("Adding isfavorite column to Podcasts table (PostgreSQL)...")
+            cursor.execute("""
+                ALTER TABLE "Podcasts"
+                ADD COLUMN isfavorite BOOLEAN DEFAULT FALSE
+            """)
+            conn.commit()
+            logger.info("Successfully added isfavorite column to Podcasts table (PostgreSQL)")
+
+        else:  # MySQL/MariaDB
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'IsFavorite'
+            """)
+            if cursor.fetchone():
+                logger.info("IsFavorite column already exists in Podcasts table (MySQL)")
+                return
+            logger.info("Adding IsFavorite column to Podcasts table (MySQL)...")
+            cursor.execute("""
+                ALTER TABLE Podcasts
+                ADD COLUMN IsFavorite BOOLEAN DEFAULT FALSE
+            """)
+            conn.commit()
+            logger.info("Successfully added IsFavorite column to Podcasts table (MySQL)")
+
+    except Exception as e:
+        logger.error(f"Error adding isfavorite column to Podcasts: {e}")
+        conn.rollback()
+        raise
+
+
+@register_migration("041", "create_custom_themes_table", "Create CustomThemes table for user-defined themes", requires=["001"])
+def migration_041_create_custom_themes_table(conn, db_type: str):
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration to create CustomThemes table...")
+
+        if db_type == "postgresql":
+            cursor.execute("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_name = 'CustomThemes'
+            """)
+            if cursor.fetchone():
+                logger.info("CustomThemes table already exists (PostgreSQL)")
+                return
+            logger.info("Creating CustomThemes table (PostgreSQL)...")
+            cursor.execute("""
+                CREATE TABLE "CustomThemes" (
+                    themeid SERIAL PRIMARY KEY,
+                    userid INT NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    background_color VARCHAR(7) NOT NULL DEFAULT '#3C4252',
+                    button_color VARCHAR(7) NOT NULL DEFAULT '#3e4555',
+                    container_button_color VARCHAR(7) NOT NULL DEFAULT 'transparent',
+                    button_text_color VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    text_color VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    text_secondary_color VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    border_color VARCHAR(7) NOT NULL DEFAULT '#000000',
+                    accent_color VARCHAR(7) NOT NULL DEFAULT '#6d747f',
+                    prog_bar_color VARCHAR(7) NOT NULL DEFAULT '#3550af',
+                    error_color VARCHAR(7) NOT NULL DEFAULT '#ff0000',
+                    bonus_color VARCHAR(7) NOT NULL DEFAULT '#000000',
+                    secondary_background VARCHAR(7) NOT NULL DEFAULT '#2e3440',
+                    container_background VARCHAR(7) NOT NULL DEFAULT '#2b2f3a',
+                    standout_color VARCHAR(7) NOT NULL DEFAULT '#6e8e92',
+                    hover_color VARCHAR(7) NOT NULL DEFAULT '#5d80aa',
+                    link_color VARCHAR(7) NOT NULL DEFAULT '#5d80aa',
+                    thumb_color VARCHAR(7) NOT NULL DEFAULT '#3550af',
+                    unfilled_color VARCHAR(7) NOT NULL DEFAULT '#d4d6d7',
+                    check_box_color VARCHAR(7) NOT NULL DEFAULT '#ffffff',
+                    FOREIGN KEY (userid) REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    UNIQUE(userid, name)
+                )
+            """)
+            conn.commit()
+            logger.info("Successfully created CustomThemes table (PostgreSQL)")
+
+        else:  # MySQL/MariaDB
+            cursor.execute("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = DATABASE()
+                AND table_name = 'CustomThemes'
+            """)
+            if cursor.fetchone():
+                logger.info("CustomThemes table already exists (MySQL)")
+                return
+            logger.info("Creating CustomThemes table (MySQL)...")
+            cursor.execute("""
+                CREATE TABLE CustomThemes (
+                    ThemeID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    BackgroundColor VARCHAR(7) NOT NULL DEFAULT '#3C4252',
+                    ButtonColor VARCHAR(7) NOT NULL DEFAULT '#3e4555',
+                    ContainerButtonColor VARCHAR(7) NOT NULL DEFAULT '#3C4252',
+                    ButtonTextColor VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    TextColor VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    TextSecondaryColor VARCHAR(7) NOT NULL DEFAULT '#f6f5f4',
+                    BorderColor VARCHAR(7) NOT NULL DEFAULT '#000000',
+                    AccentColor VARCHAR(7) NOT NULL DEFAULT '#6d747f',
+                    ProgBarColor VARCHAR(7) NOT NULL DEFAULT '#3550af',
+                    ErrorColor VARCHAR(7) NOT NULL DEFAULT '#ff0000',
+                    BonusColor VARCHAR(7) NOT NULL DEFAULT '#000000',
+                    SecondaryBackground VARCHAR(7) NOT NULL DEFAULT '#2e3440',
+                    ContainerBackground VARCHAR(7) NOT NULL DEFAULT '#2b2f3a',
+                    StandoutColor VARCHAR(7) NOT NULL DEFAULT '#6e8e92',
+                    HoverColor VARCHAR(7) NOT NULL DEFAULT '#5d80aa',
+                    LinkColor VARCHAR(7) NOT NULL DEFAULT '#5d80aa',
+                    ThumbColor VARCHAR(7) NOT NULL DEFAULT '#3550af',
+                    UnfilledColor VARCHAR(7) NOT NULL DEFAULT '#d4d6d7',
+                    CheckBoxColor VARCHAR(7) NOT NULL DEFAULT '#ffffff',
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE KEY unique_user_theme (UserID, Name)
+                )
+            """)
+            conn.commit()
+            logger.info("Successfully created CustomThemes table (MySQL)")
+
+    except Exception as e:
+        logger.error(f"Error creating CustomThemes table: {e}")
+        conn.rollback()
+        raise
+
+
+@register_migration("042", "add_episode_pagination_composite_indexes", "Add composite (PodcastID, EpisodePubDate) indexes so per-podcast paginated scans are index-only", requires=["001"])
+def migration_042_add_episode_pagination_composite_indexes(conn, db_type: str):
+    """The episode_layout pagination query orders by EpisodePubDate DESC and filters by
+    PodcastID. With only single-column indexes Postgres/MySQL must scan and sort. A composite
+    (PodcastID, EpisodePubDate DESC) makes it an index-only scan and is the difference between
+    sub-100ms and multi-second response times on large podcasts."""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting episode pagination composite indexes migration")
+
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+
+        safe_add_index(
+            cursor, db_type,
+            f'CREATE INDEX idx_episodes_podcastid_pubdate ON {table_prefix}Episodes{table_suffix}(PodcastID, EpisodePubDate DESC)',
+            'idx_episodes_podcastid_pubdate'
+        )
+        safe_add_index(
+            cursor, db_type,
+            f'CREATE INDEX idx_youtubevideos_podcastid_publishedat ON {table_prefix}YouTubeVideos{table_suffix}(PodcastID, PublishedAt DESC)',
+            'idx_youtubevideos_podcastid_publishedat'
+        )
+
+        logger.info("Episode pagination composite indexes migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in episode pagination composite indexes migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("043", "add_episode_dedup_indexes", "Add (PodcastID, EpisodeTitle) index to speed up title-based episode deduplication", requires=["001"])
+def migration_043_add_episode_dedup_indexes(conn, db_type: str):
+    """The episode insertion path uses title-based dedup for episodes without audio URLs.
+    A composite (PodcastID, EpisodeTitle) index makes those lookups index-only instead of
+    full-podcast table scans."""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting episode dedup indexes migration")
+
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+
+        safe_add_index(
+            cursor, db_type,
+            f'CREATE INDEX idx_episodes_podcastid_title ON {table_prefix}Episodes{table_suffix}(PodcastID, EpisodeTitle)',
+            'idx_episodes_podcastid_title'
+        )
+
+        logger.info("Episode dedup indexes migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in episode dedup indexes migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("044", "add_feed_refresh_metadata", "Add HTTP caching (ETag/Last-Modified) and refresh failure-tracking columns to Podcasts", requires=["001"])
+def migration_044_add_feed_refresh_metadata(conn, db_type: str):
+    """Conditional-GET caching and failure backoff for the refresh system.
+
+    FeedETag / FeedLastModified let the refresher send If-None-Match / If-Modified-Since so
+    unchanged feeds short-circuit on a 304 instead of being fully re-downloaded and re-parsed.
+    LastRefreshAttempt/Success + ConsecutiveFailures + LastErrorMessage let the refresher back
+    off feeds that keep failing instead of retrying them at full cost every cycle."""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration to add feed refresh metadata columns to Podcasts...")
+
+        if db_type == "postgresql":
+            columns = [
+                ("feedetag", "TEXT"),
+                ("feedlastmodified", "TEXT"),
+                ("lastrefreshattempt", "TIMESTAMP"),
+                ("lastrefreshsuccess", "TIMESTAMP"),
+                ("consecutivefailures", "INT DEFAULT 0"),
+                ("lasterrormessage", "TEXT"),
+            ]
+            for col_name, col_def in columns:
+                cursor.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = 'Podcasts' AND column_name = %s
+                    """,
+                    (col_name,),
+                )
+                if cursor.fetchone():
+                    logger.info(f"Column {col_name} already exists in Podcasts (PostgreSQL)")
+                    continue
+                cursor.execute(f'ALTER TABLE "Podcasts" ADD COLUMN {col_name} {col_def}')
+                logger.info(f"Added column {col_name} to Podcasts (PostgreSQL)")
+            conn.commit()
+
+        else:  # MySQL/MariaDB
+            columns = [
+                ("FeedETag", "TEXT"),
+                ("FeedLastModified", "TEXT"),
+                ("LastRefreshAttempt", "DATETIME NULL DEFAULT NULL"),
+                ("LastRefreshSuccess", "DATETIME NULL DEFAULT NULL"),
+                ("ConsecutiveFailures", "INT DEFAULT 0"),
+                ("LastErrorMessage", "TEXT"),
+            ]
+            for col_name, col_def in columns:
+                cursor.execute(
+                    """
+                    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Podcasts' AND COLUMN_NAME = %s
+                    """,
+                    (col_name,),
+                )
+                if cursor.fetchone():
+                    logger.info(f"Column {col_name} already exists in Podcasts (MySQL)")
+                    continue
+                cursor.execute(f"ALTER TABLE Podcasts ADD COLUMN {col_name} {col_def}")
+                logger.info(f"Added column {col_name} to Podcasts (MySQL)")
+            conn.commit()
+
+        logger.info("Feed refresh metadata migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error adding feed refresh metadata columns to Podcasts: {e}")
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("045", "add_episode_guid", "Add EpisodeGUID column + index to Episodes for stable RSS GUID-based deduplication", requires=["001"])
+def migration_045_add_episode_guid(conn, db_type: str):
+    """RSS <guid> is the canonical, stable identity of an episode. Dedup previously relied on
+    audio-URL base / title only, which duplicates episodes when a feed migrates CDNs (URL change)
+    and collapses distinct episodes that share a title. Storing the feed GUID lets the refresher
+    dedup on GUID first, falling back to URL/title for legacy rows that have a NULL guid."""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration to add EpisodeGUID column to Episodes...")
+
+        if db_type == "postgresql":
+            cursor.execute(
+                """
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'Episodes' AND column_name = 'episodeguid'
+                """
+            )
+            if not cursor.fetchone():
+                cursor.execute('ALTER TABLE "Episodes" ADD COLUMN episodeguid TEXT')
+                logger.info("Added episodeguid column to Episodes (PostgreSQL)")
+            else:
+                logger.info("episodeguid column already exists in Episodes (PostgreSQL)")
+            conn.commit()
+
+            safe_add_index(
+                cursor, db_type,
+                'CREATE INDEX idx_episodes_podcastid_guid ON "Episodes"(PodcastID, EpisodeGUID)',
+                'idx_episodes_podcastid_guid'
+            )
+            conn.commit()
+
+        else:  # MySQL/MariaDB
+            cursor.execute(
+                """
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Episodes' AND COLUMN_NAME = 'EpisodeGUID'
+                """
+            )
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE Episodes ADD COLUMN EpisodeGUID TEXT")
+                logger.info("Added EpisodeGUID column to Episodes (MySQL)")
+            else:
+                logger.info("EpisodeGUID column already exists in Episodes (MySQL)")
+            conn.commit()
+
+            # MySQL cannot index a full TEXT column; use a prefix length.
+            safe_add_index(
+                cursor, db_type,
+                'CREATE INDEX idx_episodes_podcastid_guid ON Episodes(PodcastID, EpisodeGUID(255))',
+                'idx_episodes_podcastid_guid'
+            )
+            conn.commit()
+
+        logger.info("Episode GUID migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error adding EpisodeGUID column to Episodes: {e}")
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("046", "add_home_overview_history_index", "Add composite (UserID, ListenDate) index on UserEpisodeHistory for the home overview in-progress sort and weekly-stats window", requires=["006"])
+def migration_046_add_home_overview_history_index(conn, db_type: str):
+    """The home overview's in-progress section orders UserEpisodeHistory by ListenDate DESC
+    per user, and the new weekly-stats widget sums listenduration over a 7-day ListenDate
+    window. Existing UserEpisodeHistory indexes cover (UserID) and (UserID, EpisodeID) but
+    not ListenDate, forcing a filter+sort. A composite (UserID, ListenDate DESC) makes both
+    the recent-history sort and the time-window scan index-friendly."""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting home overview history index migration")
+
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+
+        safe_add_index(
+            cursor, db_type,
+            f'CREATE INDEX idx_userepisodehistory_userid_listendate ON {table_prefix}UserEpisodeHistory{table_suffix}(UserID, ListenDate DESC)',
+            'idx_userepisodehistory_userid_listendate'
+        )
+
+        logger.info("Home overview history index migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in home overview history index migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("047", "add_scheduled_backup_retention", "Add retention_count and last_run columns to ScheduledBackups for working scheduled backups + retention", requires=["027"])
+def migration_047_add_scheduled_backup_retention(conn, db_type: str):
+    """Scheduled backups now actually run via the background scheduler, which needs a
+    last_run timestamp to decide when a schedule is due, and an optional retention_count
+    so old scheduled backups can be pruned automatically (NULL/0 = keep all)."""
+    logger.info("Starting migration 047: Add retention/last_run columns to ScheduledBackups")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "ScheduledBackups"
+                ADD COLUMN IF NOT EXISTS retention_count INTEGER
+            ''', conn=conn)
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "ScheduledBackups"
+                ADD COLUMN IF NOT EXISTS last_run TIMESTAMP
+            ''', conn=conn)
+            logger.info("Added retention_count and last_run columns to ScheduledBackups (PostgreSQL)")
+
+        else:  # MySQL
+            for column_name, column_def in (
+                ('RetentionCount', 'INT NULL'),
+                ('LastRun', 'TIMESTAMP NULL'),
+            ):
+                safe_execute_sql(cursor, f'''
+                    SELECT COUNT(*)
+                    FROM information_schema.columns
+                    WHERE table_name = 'ScheduledBackups'
+                    AND column_name = '{column_name}'
+                    AND table_schema = DATABASE()
+                ''', conn=conn)
+
+                result = cursor.fetchone()
+                if result[0] == 0:
+                    safe_execute_sql(cursor, f'''
+                        ALTER TABLE ScheduledBackups
+                        ADD COLUMN {column_name} {column_def}
+                    ''', conn=conn)
+                    logger.info(f"Added {column_name} column to ScheduledBackups (MySQL)")
+                else:
+                    logger.info(f"{column_name} column already exists in ScheduledBackups (MySQL)")
+
+        logger.info("ScheduledBackups retention/last_run migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in ScheduledBackups retention/last_run migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("048", "create_collections_tables", "Create Collections + CollectionEpisodes tables and a per-user default 'Saved' collection", requires=["010"])
+def migration_048_create_collections_tables(conn, db_type: str):
+    """Collections evolve the flat Saved page into manual, user-curated lists.
+
+    The legacy "Saved" bucket becomes a pinned, undeletable default collection per user.
+    Episodes can belong to multiple collections at once, and both podcast episodes and
+    YouTube videos are supported via the same dual-FK CHECK pattern used by PlaylistContents.
+
+    Note: the default ("Saved") collection keeps SavedEpisodes/SavedVideos as its backing
+    store — we do NOT copy those rows into CollectionEpisodes. CollectionEpisodes only ever
+    holds membership rows for non-default collections.
+    """
+    logger.info("Starting migration 048: Create Collections tables")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "Collections" (
+                    CollectionID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    Description TEXT,
+                    IsDefault BOOLEAN NOT NULL DEFAULT FALSE,
+                    Icon VARCHAR(50) NOT NULL DEFAULT 'ph-bookmark-simple',
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    LastUpdated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Name)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "CollectionEpisodes" (
+                    CollectionEpisodeID SERIAL PRIMARY KEY,
+                    CollectionID INT NOT NULL,
+                    EpisodeID INT,
+                    VideoID INT,
+                    AddedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (CollectionID) REFERENCES "Collections"(CollectionID) ON DELETE CASCADE,
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+
+            # Indexes for fast per-collection scans and membership lookups
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_collections_userid ON "Collections"(UserID);
+                CREATE INDEX IF NOT EXISTS idx_collection_episodes_collectionid ON "CollectionEpisodes"(CollectionID);
+                CREATE INDEX IF NOT EXISTS idx_collection_episodes_episodeid ON "CollectionEpisodes"(EpisodeID);
+                CREATE INDEX IF NOT EXISTS idx_collection_episodes_videoid ON "CollectionEpisodes"(VideoID);
+            """)
+
+            # Enforce exactly one default collection per user (Postgres partial unique index)
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_one_default_per_user
+                ON "Collections"(UserID) WHERE IsDefault = TRUE
+            """)
+
+            # Seed a default "Saved" collection for every existing user (idempotent)
+            cursor.execute("""
+                INSERT INTO "Collections" (UserID, Name, IsDefault, Icon)
+                SELECT u.UserID, 'Saved', TRUE, 'ph-bookmark-simple'
+                FROM "Users" u
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM "Collections" c
+                    WHERE c.UserID = u.UserID AND c.IsDefault = TRUE
+                )
+            """)
+        else:  # MySQL / MariaDB
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS Collections (
+                    CollectionID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    Description TEXT,
+                    IsDefault BOOLEAN NOT NULL DEFAULT FALSE,
+                    Icon VARCHAR(50) NOT NULL DEFAULT 'ph-bookmark-simple',
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    LastUpdated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Name)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS CollectionEpisodes (
+                    CollectionEpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                    CollectionID INT NOT NULL,
+                    EpisodeID INT,
+                    VideoID INT,
+                    AddedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (CollectionID) REFERENCES Collections(CollectionID) ON DELETE CASCADE,
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+
+            # Create indexes for better performance (MySQL doesn't support IF NOT EXISTS for indexes)
+            try:
+                cursor.execute("CREATE INDEX idx_collections_userid ON Collections(UserID)")
+            except:
+                pass  # Index may already exist
+            try:
+                cursor.execute("CREATE INDEX idx_collection_episodes_collectionid ON CollectionEpisodes(CollectionID)")
+            except:
+                pass  # Index may already exist
+            try:
+                cursor.execute("CREATE INDEX idx_collection_episodes_episodeid ON CollectionEpisodes(EpisodeID)")
+            except:
+                pass  # Index may already exist
+            try:
+                cursor.execute("CREATE INDEX idx_collection_episodes_videoid ON CollectionEpisodes(VideoID)")
+            except:
+                pass  # Index may already exist
+
+            # MySQL/MariaDB has no partial unique index — "one default per user" is enforced
+            # by the idempotent seed below plus application logic in the API layer.
+            cursor.execute("""
+                INSERT INTO Collections (UserID, Name, IsDefault, Icon)
+                SELECT u.UserID, 'Saved', TRUE, 'ph-bookmark-simple'
+                FROM Users u
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM Collections c
+                    WHERE c.UserID = u.UserID AND c.IsDefault = TRUE
+                )
+            """)
+
+        logger.info("Created Collections tables and seeded default collections")
+
+    except Exception as e:
+        logger.error(f"Error in Collections tables migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("049", "add_collection_add_ui_to_usersettings", "Add collection_add_ui preference column to UserSettings", requires=["003"])
+def migration_049_add_collection_add_ui(conn, db_type: str):
+    """Drives the 'Add to Collection' UX choice: 'modal' (default) picker or 'submenu' flyout."""
+    logger.info("Starting migration 049: Add collection_add_ui column to UserSettings")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == 'postgresql':
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserSettings'
+                AND column_name = 'collection_add_ui'
+                AND table_schema = 'public'
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE "UserSettings"
+                    ADD COLUMN collection_add_ui VARCHAR(10) DEFAULT 'modal'
+                """)
+                logger.info("Added collection_add_ui column to UserSettings table (PostgreSQL)")
+            else:
+                logger.info("collection_add_ui column already exists in UserSettings table (PostgreSQL)")
+        else:  # MySQL
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserSettings'
+                AND column_name = 'CollectionAddUI'
+                AND table_schema = DATABASE()
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE UserSettings
+                    ADD COLUMN CollectionAddUI VARCHAR(10) DEFAULT 'modal'
+                """)
+                logger.info("Added CollectionAddUI column to UserSettings table (MySQL)")
+            else:
+                logger.info("CollectionAddUI column already exists in UserSettings table (MySQL)")
+
+        logger.info("collection_add_ui migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in collection_add_ui migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("050", "create_skip_segments_and_silence_settings", "Create EpisodeSkipSegments table and add per-podcast silence-trim settings", requires=["001", "005"])
+def migration_050_create_skip_segments(conn, db_type: str):
+    """Server-side, multi-range skip model (foundation for silence-trim #727, later ad-skip #790).
+
+    EpisodeSkipSegments holds content-level (per-episode, NOT per-user) time ranges the player
+    should auto-skip. Because a given episode's audio is identical for every subscriber, the
+    segments are computed once and shared across all users — users only opt in to *applying* a
+    given Kind. It mirrors the dual-FK (EpisodeID/VideoID) CHECK pattern used by
+    CollectionEpisodes/PlaylistContents so podcast episodes and YouTube videos share one table.
+
+    Per-podcast controls live on Podcasts (matching the existing PlaybackSpeed/StartSkip pattern):
+      TrimSilence      - opt-in toggle to auto-detect silence on new episodes of this podcast
+      SilenceThreshold - aggressiveness preset (1=low, 2=medium, 3=high); default medium
+
+    Episodes.SilenceDetected marks that silence detection has already run for an episode, so we
+    don't re-analyze the same file on every playback (absence of segment rows is otherwise
+    indistinguishable from "not yet analyzed")."""
+    logger.info("Starting migration 050: Create EpisodeSkipSegments + silence-trim settings")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeSkipSegments" (
+                    SegmentID SERIAL PRIMARY KEY,
+                    EpisodeID INT,
+                    VideoID INT,
+                    Kind VARCHAR(20) NOT NULL,
+                    StartTime DOUBLE PRECISION NOT NULL,
+                    EndTime DOUBLE PRECISION NOT NULL,
+                    Source VARCHAR(30) NOT NULL,
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_skip_segments_episodeid ON "EpisodeSkipSegments"(EpisodeID);
+                CREATE INDEX IF NOT EXISTS idx_skip_segments_videoid ON "EpisodeSkipSegments"(VideoID);
+            """)
+
+            # Per-podcast silence-trim controls
+            for col_name, col_def in (
+                ("trimsilence", "BOOLEAN DEFAULT FALSE"),
+                ("silencethreshold", "INT DEFAULT 2"),
+            ):
+                cursor.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = 'Podcasts' AND column_name = %s
+                    """,
+                    (col_name,),
+                )
+                if not cursor.fetchone():
+                    cursor.execute(f'ALTER TABLE "Podcasts" ADD COLUMN {col_name} {col_def}')
+                    logger.info(f"Added column {col_name} to Podcasts (PostgreSQL)")
+
+            # Detection-complete marker so we don't re-analyze on every playback
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'Episodes' AND column_name = 'silencedetected'
+            """)
+            if not cursor.fetchone():
+                cursor.execute('ALTER TABLE "Episodes" ADD COLUMN silencedetected BOOLEAN DEFAULT FALSE')
+                logger.info("Added silencedetected column to Episodes (PostgreSQL)")
+
+        else:  # MySQL / MariaDB
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS EpisodeSkipSegments (
+                    SegmentID INT AUTO_INCREMENT PRIMARY KEY,
+                    EpisodeID INT,
+                    VideoID INT,
+                    Kind VARCHAR(20) NOT NULL,
+                    StartTime DOUBLE NOT NULL,
+                    EndTime DOUBLE NOT NULL,
+                    Source VARCHAR(30) NOT NULL,
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+            for idx_sql in (
+                "CREATE INDEX idx_skip_segments_episodeid ON EpisodeSkipSegments(EpisodeID)",
+                "CREATE INDEX idx_skip_segments_videoid ON EpisodeSkipSegments(VideoID)",
+            ):
+                try:
+                    cursor.execute(idx_sql)
+                except Exception:
+                    pass  # Index may already exist
+
+            for table, col_name, col_def in (
+                ("Podcasts", "TrimSilence", "BOOLEAN DEFAULT FALSE"),
+                ("Podcasts", "SilenceThreshold", "INT DEFAULT 2"),
+                ("Episodes", "SilenceDetected", "BOOLEAN DEFAULT FALSE"),
+            ):
+                cursor.execute(
+                    """
+                    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s
+                    """,
+                    (table, col_name),
+                )
+                if not cursor.fetchone():
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+                    logger.info(f"Added column {col_name} to {table} (MySQL)")
+
+        logger.info("Skip segments + silence-trim settings migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in skip segments migration: {e}")
+        raise
+    finally:
+        cursor.close()

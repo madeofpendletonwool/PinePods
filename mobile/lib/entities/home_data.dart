@@ -162,21 +162,51 @@ class HomeEpisode {
   }
 }
 
+class WeeklyStats {
+  final int secondsListened;
+  final int episodesCompleted;
+
+  WeeklyStats({
+    this.secondsListened = 0,
+    this.episodesCompleted = 0,
+  });
+
+  factory WeeklyStats.fromJson(Map<String, dynamic> json) {
+    return WeeklyStats(
+      secondsListened: json['seconds_listened'] ?? 0,
+      episodesCompleted: json['episodes_completed'] ?? 0,
+    );
+  }
+
+  bool get hasActivity => secondsListened > 0 || episodesCompleted > 0;
+
+  /// Human-friendly listened time, e.g. "1h 5m" or "29m".
+  String get formattedListened {
+    final hours = secondsListened ~/ 3600;
+    final minutes = (secondsListened % 3600) ~/ 60;
+    return hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
+  }
+}
+
 class HomeOverview {
   final List<HomeEpisode> recentEpisodes;
   final List<HomeEpisode> inProgressEpisodes;
+  final List<HomeEpisode> queuePreview;
   final List<HomePodcast> topPodcasts;
   final int savedCount;
   final int downloadedCount;
   final int queueCount;
+  final WeeklyStats weeklyStats;
 
   HomeOverview({
     required this.recentEpisodes,
     required this.inProgressEpisodes,
+    required this.queuePreview,
     required this.topPodcasts,
     required this.savedCount,
     required this.downloadedCount,
     required this.queueCount,
+    required this.weeklyStats,
   });
 
   factory HomeOverview.fromJson(Map<String, dynamic> json) {
@@ -187,12 +217,18 @@ class HomeOverview {
       inProgressEpisodes: (json['in_progress_episodes'] as List<dynamic>? ?? [])
           .map((e) => HomeEpisode.fromJson(e))
           .toList(),
+      queuePreview: (json['queue_preview'] as List<dynamic>? ?? [])
+          .map((e) => HomeEpisode.fromJson(e))
+          .toList(),
       topPodcasts: (json['top_podcasts'] as List<dynamic>? ?? [])
           .map((p) => HomePodcast.fromJson(p))
           .toList(),
       savedCount: json['saved_count'] ?? 0,
       downloadedCount: json['downloaded_count'] ?? 0,
       queueCount: json['queue_count'] ?? 0,
+      weeklyStats: json['weekly_stats'] != null
+          ? WeeklyStats.fromJson(json['weekly_stats'])
+          : WeeklyStats(),
     );
   }
 }

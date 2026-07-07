@@ -2,7 +2,7 @@ use crate::components::loading::Loading;
 use crate::components::gen_components::{empty_message, FallbackImage, UseScrollToTop};
 use crate::components::audio::on_play_click_shared;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, EpisodeDetailState, UIState, UserPreferencesState};
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
@@ -35,7 +35,9 @@ pub struct SharedProps {
 #[function_component(SharedEpisode)]
 pub fn shared_episode(_props: &SharedProps) -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, dispatch) = use_store::<AppState>();
+    let (episode_detail_state, _) = use_store::<EpisodeDetailState>();
+    let (prefs_state, _) = use_store::<UserPreferencesState>();
 
     let error = use_state(|| None);
 
@@ -103,7 +105,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                 location.protocol().unwrap(),
                 location.host().unwrap()
             ); // Extracts the protocol and host
-            let dispatch = effect_dispatch.clone();
+            let _dispatch = effect_dispatch.clone();
 
             // Fetch the URL key from the current window location
             let url_pathname = location.pathname().unwrap();
@@ -118,8 +120,8 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_get_episode_by_url_key(&server_name, &url_key).await {
                         Ok(shared_episode_data) => {
-                            dispatch.reduce_mut(move |state| {
-                                state.shared_fetched_episode = Some(shared_episode_data);
+                            Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
+                                s.shared_fetched_episode = Some(shared_episode_data);
                             });
 
                             loading_clone.set(false);
@@ -147,7 +149,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                 if *loading { // If loading is true, display the loading animation
                     html! { <Loading/> }
                 } else {
-                    if let Some(episode) = state.shared_fetched_episode.clone() {
+                    if let Some(episode) = episode_detail_state.shared_fetched_episode.clone() {
                         let episode_url_clone = episode.episode.episodeurl.clone();
                         let episode_title_clone = episode.episode.episodetitle.clone();
                         let episode_description_clone = episode.episode.episodedescription.clone();
@@ -182,10 +184,10 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                             episode_is_youtube.clone(),
                         );
 
-                        let datetime = parse_date(&episode.episode.episodepubdate, &state.user_tz);
-                        let date_format = match_date_format(state.date_format.as_deref());
+                        let datetime = parse_date(&episode.episode.episodepubdate, &prefs_state.user_tz);
+                        let date_format = match_date_format(prefs_state.date_format.as_deref());
                         let format_duration = format_time(episode.episode.episodeduration);
-                        let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+                        let format_release = format!("{}", format_datetime(&datetime, &prefs_state.hour_preference, date_format));
 
                         let open_in_new_tab = Callback::from(move |url: String| {
                             let window = web_sys::window().unwrap();
@@ -238,67 +240,67 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                             }
                         } else {
                             html! {
-                                <div class="episode-layout-container-shared" style="padding-top: 20px;">
-                                    <div class="episode-top-info">
-                                        <FallbackImage
-                                            src={episode.episode.episodeartwork.clone()}
-                                            alt="episode artwork"
-                                            class="episode-artwork"
-                                        />
-                                        <div class="episode-details">
-                                            <h1 class="podcast-title">{ &episode.episode.podcastname }</h1>
-                                            <div class="flex items-center space-x-2 cursor-pointer">
-                                                <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
+                                <div class="episode-layout-container" style="padding-top: 20px;">
+                                    <div class="ep-hero">
+                                        <div class="ep-hero-cover ep-hero-cover-static">
+                                            <FallbackImage
+                                                src={episode.episode.episodeartwork.clone()}
+                                                alt="episode artwork"
+                                                class="ep-hero-cover-img"
+                                            />
+                                        </div>
+                                        <div class="ep-hero-body">
+                                            <div class="ep-hero-show is-static">
+                                                <i class="ph ph-microphone-stage"></i>
+                                                <span>{ &episode.episode.podcastname }</span>
                                             </div>
-                                            // <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
-                                            <p class="episode-duration">{ format_duration }</p>
-                                            <p class="episode-release-date">{ format_release }</p>
-                                            {
-                                                if let Some(transcript) = &audio_state.episode_page_transcript {
-                                                    if !transcript.is_empty() {
-                                                        let transcript_clone = transcript.clone();
-                                                        html! {
-                                                            <>
-                                                            { for transcript_clone.iter().map(|transcript| {
-                                                                let open_in_new_tab = open_in_new_tab.clone();
-                                                                let url = transcript.url.clone();
-                                                                html! {
-                                                                    <div class="header-info pb-2 pt-2">
+                                            <h1 class="ep-hero-title">{ &episode.episode.episodetitle }</h1>
+                                            <div class="ep-hero-meta">
+                                                <span><i class="ph ph-calendar-blank"></i>{ format_release }</span>
+                                                <span class="ep-meta-dot">{"•"}</span>
+                                                <span><i class="ph ph-clock"></i>{ format_duration }</span>
+                                            </div>
+                                            <div class="ep-hero-actions">
+                                                <button onclick={on_play_click} class="ep-hero-play">
+                                                    <i class="ph ph-play"></i>
+                                                    <span>{ play_text.clone() }</span>
+                                                </button>
+                                                {
+                                                    if let Some(transcript) = &audio_state.episode_page_transcript {
+                                                        if !transcript.is_empty() {
+                                                            let transcript_clone = transcript.clone();
+                                                            html! {
+                                                                <>
+                                                                { for transcript_clone.iter().map(|transcript| {
+                                                                    let open_in_new_tab = open_in_new_tab.clone();
+                                                                    let url = transcript.url.clone();
+                                                                    html! {
                                                                         <button
                                                                             onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
                                                                             title={episode_transcript_text.clone()}
-                                                                            class="font-bold item-container-button"
+                                                                            class="ep-action"
                                                                         >
-                                                                            {episode_transcript_text.clone()}
+                                                                            <i class="ph ph-scroll"></i>
+                                                                            <span>{ episode_transcript_text.clone() }</span>
                                                                         </button>
-                                                                    </div>
-                                                                }
-                                                            })}
-                                                            </>
+                                                                    }
+                                                                })}
+                                                                </>
+                                                            }
+                                                        } else {
+                                                            html! {}
                                                         }
                                                     } else {
                                                         html! {}
                                                     }
-                                                } else {
-                                                    html! {}
                                                 }
-                                            }
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="episode-action-buttons">
-                                    <button onclick={on_play_click} class="play-button">
-                                    // <button class="play-button">
-                                        <i class="ph ph-play"></i>
-                                        <span style="margin-left: 8px;">{play_text.clone()}</span>
-                                    </button>
-
-                                    </div>
-                                    <hr class="episode-divider" />
-                                    <div class="episode-single-desc episode-description">
-                                    // <p>{ description }</p>
-                                    <div class="item_container-text episode-description-container">
-                                        <SafeHtml html={description} />
-                                    </div>
+                                    <div class="ep-pane ep-about">
+                                        <div class="item_container-text episode-description-container">
+                                            <SafeHtml html={description} />
+                                        </div>
                                     </div>
                                 </div>
                             }

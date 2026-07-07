@@ -5,7 +5,6 @@
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_html.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_html/flutter_html.dart';
 
 /// This class displays the show notes for the selected podcast.
 ///

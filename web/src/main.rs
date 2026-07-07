@@ -2,11 +2,10 @@ mod components;
 mod pages;
 mod requests;
 
-#[cfg(test)]
-mod tests;
-
 use crate::components::navigation::NavigationHandler;
 use crate::components::oauth_callback::OAuthCallback;
+use crate::components::restore_overlay::RestoreOverlay;
+use crate::components::collection_picker_modal::CollectionPickerModal;
 use crate::pages::downloads::Downloads;
 use crate::pages::episode::Episode;
 use crate::pages::episode_layout::EpisodeLayout;
@@ -28,6 +27,7 @@ use crate::pages::search_new::SearchNew;
 use crate::pages::settings::Settings;
 use crate::pages::shared_episode::SharedEpisode;
 use crate::pages::subscribed_people::SubscribedPeople;
+use crate::pages::discover_hosts::DiscoverHosts;
 use crate::pages::user_stats::UserStats;
 use crate::pages::youtube_layout::YouTubeLayout;
 
@@ -75,18 +75,20 @@ fn switch(route: Route) -> Html {
         Route::PodLayout => html! { <PodLayout /> },
         Route::Queue => html! { <Queue /> },
         Route::Saved => html! { <Saved /> },
+        Route::Collections => html! { <Saved /> },
         Route::Search => html! { <Search on_search={Callback::from(move |_| {})} /> },
         Route::SearchNew => html! { <SearchNew /> },
         Route::Settings => html! { <Settings /> },
         Route::SharedEpisode { url_key } => html! { <SharedEpisode url_key={url_key.clone()} /> },
         Route::SubscribedPeople => html! { <SubscribedPeople /> },
+        Route::DiscoverHosts => html! { <DiscoverHosts /> },
         Route::UserStats => html! { <UserStats /> },
         Route::YoutubeLayout => html! { <YouTubeLayout /> },
         #[cfg(not(feature = "server_build"))]
         Route::LocalDownloads => html! { <LocalDownloads /> },
         #[cfg(feature = "server_build")]
         Route::LocalDownloads => {
-            html! { <div>{"Local downloads not available on the web version"}</div> }
+            html! { <div>{"Local downloads not available on the web version"}</div> } // i18n-ignore
         }
     }
 }
@@ -156,28 +158,27 @@ fn language_handler() -> Html {
 
 #[function_component(LanguageManager)]
 fn language_manager() -> Html {
-    let (_state, _) = use_store::<AppState>();
     let (_i18n, set_language) = use_translation();
 
-    // Load appropriate language based on auth state
+    // Only subscribe to the auth fields that actually affect language selection.
+    // This prevents the entire app tree from re-rendering on episode save/download/etc.
+    let auth_sel = use_selector(|state: &AppState| {
+        (state.auth_details.clone(), state.user_details.clone())
+    });
+
     {
         let set_language = set_language.clone();
-        let state = _state.clone();
 
-        use_effect_with(state.clone(), move |state| {
+        use_effect_with(auth_sel, move |auth_sel| {
             let set_language = set_language.clone();
-            let state = state.clone();
+            let (auth_details, user_details) = (**auth_sel).clone();
 
             spawn_local(async move {
                 let server_name = web_sys::window()
                     .and_then(|w| w.location().origin().ok())
                     .unwrap_or_else(|| "".to_string());
 
-                // Check if user is authenticated
-                if let (Some(auth_details), Some(user_details)) =
-                    (&state.auth_details, &state.user_details)
-                {
-                    // User is logged in, get their language preference
+                if let (Some(auth_details), Some(user_details)) = (auth_details, user_details) {
                     if let Some(api_key) = &auth_details.api_key {
                         match crate::requests::setting_reqs::call_get_user_language(
                             server_name,
@@ -190,7 +191,6 @@ fn language_manager() -> Html {
                                 set_language.emit(user_lang);
                             }
                             Err(_) => {
-                                // Fall back to server default
                                 if let Ok(server_lang) = call_get_server_default_language(
                                     auth_details.server_name.clone(),
                                 )
@@ -204,7 +204,6 @@ fn language_manager() -> Html {
                         }
                     }
                 } else {
-                    // User not logged in, use server default
                     if !server_name.is_empty() {
                         match call_get_server_default_language(server_name).await {
                             Ok(server_lang) => {
@@ -223,11 +222,36 @@ fn language_manager() -> Html {
         });
     }
 
+    // Desktop only: load the set of episodes downloaded to THIS device once on startup,
+    // so local-first playback works from any list (home, feed, search, playlists) and not
+    // just the pages that already fetch local downloads (Downloads/Saved/Feed/Queue).
+    #[cfg(not(feature = "server_build"))]
+    {
+        use_effect_with((), move |_| {
+            spawn_local(async move {
+                if let Ok(mut local_episodes) =
+                    crate::pages::downloads_tauri::fetch_local_episodes().await
+                {
+                    Dispatch::<crate::components::context::EpisodeStatusState>::global()
+                        .reduce_mut(move |s| {
+                            s.downloaded_episodes.clear_local();
+                            for ep in local_episodes.drain(..) {
+                                s.downloaded_episodes.push_local(ep);
+                            }
+                        });
+                }
+            });
+            || ()
+        });
+    }
+
     html! {
         <BrowserRouter>
             <NavigationHandler>
                 <Switch<Route> render={switch} />
             </NavigationHandler>
+            <RestoreOverlay />
+            <CollectionPickerModal />
         </BrowserRouter>
     }
 }

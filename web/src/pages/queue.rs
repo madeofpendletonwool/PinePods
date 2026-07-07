@@ -1,30 +1,21 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{
-    empty_message, on_shownotes_click, Search_nav, UseScrollToTop,
+    empty_message, Search_nav, UseScrollToTop,
 };
 use crate::components::loading::Loading;
 
-use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
-use crate::components::episode_list_item::EpisodeListItem;
-use crate::components::gen_funcs::{
-    format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
-};
-use crate::pages::episode_layout::AppStateMsg;
+use crate::components::audio_player_bar::AudioPlayerBar;
+use crate::components::context::{AppState, EpisodeStatusState, FilterState, PodcastFeedState};
+use crate::components::episode_list_item::{DragCallbacks, EpisodeListItem};
 use crate::requests::episode::Episode;
 
-use crate::components::virtual_list::DragCallbacks;
-use crate::requests::pod_req::QueuedEpisodesResponse;
-use crate::requests::pod_req::{self};
-use gloo_events::EventListener;
-use gloo_utils::document;
+use crate::requests::pod_req::{self, PodcastResponseExtra, QueuedEpisodesResponse};
 use i18nrs::yew::use_translation;
 use wasm_bindgen::JsCast;
-use web_sys::Element;
-use web_sys::{window, DragEvent, HtmlElement, TouchEvent};
+use web_sys::{window, DragEvent, HtmlElement};
 use yew::prelude::*;
-use yew::{function_component, html, Html, UseStateHandle};
+use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 
@@ -85,12 +76,13 @@ fn stop_auto_scroll(interval_id: i32) {
 #[function_component(Queue)]
 pub fn queue() -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, dispatch) = use_store::<AppState>();
+    let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
+    let (ep_status, _ep_dispatch) = use_store::<EpisodeStatusState>();
+    let (filter_state, _filter_dispatch) = use_store::<FilterState>();
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, _audio_dispatch) = use_store::<UIState>();
-
     let loading = use_state(|| true);
 
     // Fetch episodes on component mount
@@ -120,6 +112,22 @@ pub fn queue() -> Html {
                 {
                     let dispatch = effect_dispatch.clone();
 
+                    {
+                        let _dispatch_pods = dispatch.clone();
+                        let server_name_pods = server_name.clone();
+                        let api_key_pods = api_key.clone();
+                        let user_id_pods = user_id.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            if let Ok(fetched_pods) = pod_req::call_get_podcasts_extra(&server_name_pods, &api_key_pods, &user_id_pods).await {
+                                Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
+                                    state.podcast_feed_return_extra = Some(PodcastResponseExtra {
+                                        pods: Some(fetched_pods),
+                                    });
+                                });
+                            }
+                        });
+                    }
+
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_queued_episodes(&server_name, &api_key, &user_id)
                             .await
@@ -128,29 +136,28 @@ pub fn queue() -> Html {
                                 fetched_episodes
                                     .sort_by_key(|ep| ep.queueposition.unwrap_or(i32::MAX));
 
-                                let completed_episode_ids: Vec<i32> = fetched_episodes
+                                let completed_episode_ids: std::collections::HashSet<i32> = fetched_episodes
                                     .iter()
                                     .filter(|ep| ep.completed)
                                     .map(|ep| ep.episodeid)
                                     .collect();
 
-                                dispatch.reduce_mut(move |state| {
+                                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                     state.queued_episodes = Some(QueuedEpisodesResponse {
                                         episodes: fetched_episodes,
                                     });
-                                    state.completed_episodes = Some(completed_episode_ids);
+                                    state.completed_episodes = completed_episode_ids;
                                 });
 
                                 // Fetch local episode IDs for Tauri mode
                                 #[cfg(not(feature = "server_build"))]
                                 {
-                                    let dispatch_local = dispatch.clone();
                                     wasm_bindgen_futures::spawn_local(async move {
                                         if let Ok(mut local_episodes) =
                                             crate::pages::downloads_tauri::fetch_local_episodes()
                                                 .await
                                         {
-                                            dispatch_local.reduce_mut(move |state| {
+                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                                                 state.downloaded_episodes.clear_local();
                                                 for ep in local_episodes.drain(..) {
                                                     state.downloaded_episodes.push_local(ep);
@@ -199,8 +206,31 @@ pub fn queue() -> Html {
                     }
 
                     {
-                        if let Some(queued_eps) = state.queued_episodes.clone() {
-                            if queued_eps.episodes.is_empty() {
+                        if let Some(queued_eps) = ep_status.queued_episodes.clone() {
+                            let favorite_podcast_ids: std::collections::HashSet<i32> = podcast_state
+                                .podcast_feed_return_extra
+                                .as_ref()
+                                .and_then(|pr| pr.pods.as_ref())
+                                .map(|pods| {
+                                    pods.iter()
+                                        .filter(|p| p.is_favorite)
+                                        .map(|p| p.podcastid)
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+
+                            let filtered_episodes: Vec<_> = queued_eps
+                                .episodes
+                                .into_iter()
+                                .filter(|ep| {
+                                    if !filter_state.favorites_only {
+                                        return true;
+                                    }
+                                    favorite_podcast_ids.contains(&ep.podcastid)
+                                })
+                                .collect();
+
+                            if filtered_episodes.is_empty() {
                                 // Render "No Queued Episodes Found" if episodes list is empty
                                 empty_message(
                                     &i18n.t("queue.no_queued_episodes_found"),
@@ -209,7 +239,7 @@ pub fn queue() -> Html {
                             } else {
                                 html! {
                                     <VirtualQueueList
-                                        episodes={queued_eps.episodes.clone()}
+                                        episodes={filtered_episodes}
                                     />
                                 }
                             }
@@ -221,30 +251,7 @@ pub fn queue() -> Html {
                         }
                 }
             }
-        {
-            if let Some(audio_props) = &audio_state.currently_playing {
-                html! {
-                    <AudioPlayer
-                        episode={audio_props.episode.clone()}
-                        src={audio_props.src.clone()}
-                        title={audio_props.title.clone()}
-                        description={audio_props.description.clone()}
-                        release_date={audio_props.release_date.clone()}
-                        artwork_url={audio_props.artwork_url.clone()}
-                        duration={audio_props.duration.clone()}
-                        episode_id={audio_props.episode_id.clone()}
-                        duration_sec={audio_props.duration_sec.clone()}
-                        start_pos_sec={audio_props.start_pos_sec.clone()}
-                        end_pos_sec={audio_props.end_pos_sec.clone()}
-                        offline={audio_props.offline.clone()}
-                        is_youtube={audio_props.is_youtube.clone()}
-                        is_video={audio_props.is_video.clone()}
-                    />
-                }
-            } else {
-                html! {}
-            }
-        }
+        <AudioPlayerBar />
         </div>
         <App_drawer />
         </>
@@ -258,9 +265,9 @@ pub struct VirtualQueueListProps {
 
 #[function_component(VirtualQueueList)]
 pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, _dispatch) = use_store::<AppState>();
+    let (_ep_status, ep_dispatch) = use_store::<EpisodeStatusState>();
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
     let server_name = post_state
         .auth_details
         .as_ref()
@@ -270,10 +277,10 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
         .as_ref()
         .map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let history = BrowserHistory::new();
+    let _history = BrowserHistory::new();
 
     let dragging_state = use_state(|| None::<i32>);
-    let is_dragging = use_state(|| false);
+    let _is_dragging = use_state(|| false);
 
     let ondragstart = {
         let dragging = dragging_state.clone();
@@ -308,7 +315,7 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
 
         // Find the virtual list container to scroll it instead of the window
         if let Some(document) = web_sys::window().and_then(|w| w.document()) {
-            if let Ok(Some(container)) = document.query_selector(".virtual-list-container") {
+            if let Ok(Some(container)) = document.query_selector(".queue-list-container") {
                 if let Some(container_element) = container.dyn_ref::<web_sys::HtmlElement>() {
                     let container_rect = container_element.get_bounding_client_rect();
                     let container_top = container_rect.top();
@@ -332,7 +339,7 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
 
     let ondrop = {
         let dragging = dragging_state.clone();
-        let dispatch = dispatch.clone();
+        let dispatch = ep_dispatch.clone();
         let all_episodes = props.episodes.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
@@ -484,11 +491,23 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
         })
     };
 
+    let drag_callbacks = DragCallbacks {
+        ondragstart: Some(ondragstart),
+        ondragenter: Some(ondragenter),
+        ondragover: Some(ondragover),
+        ondrop: Some(ondrop),
+    };
+
     html! {
-        <crate::components::virtual_list::VirtualList
-            episodes={ props.episodes.clone() }
-            page_type={ PageType::Queue }
-            drag_callbacks={ DragCallbacks{ ondragstart: Some(ondragstart), ondragenter: Some(ondragenter), ondragover: Some(ondragover), ondrop: Some(ondrop) } }
-            />
+        <div class="queue-list-container flex-grow overflow-y-auto">
+            { for props.episodes.iter().map(|ep| html! {
+                <EpisodeListItem
+                    key={ep.episodeid}
+                    episode={ep.clone()}
+                    page_type={PageType::Queue}
+                    drag_callbacks={drag_callbacks.clone()}
+                />
+            }) }
+        </div>
     }
 }

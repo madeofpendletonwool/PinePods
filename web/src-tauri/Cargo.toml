@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.0"
+version = "0.9.0"
 description = "Pinepods-tauri"
 authors = ["Gooseberry Development"]
 license = ""
@@ -12,18 +12,18 @@ rust-version = "1.95"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-tauri-build = { version = "2.5.1", features = [] }
+tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
-serde_json = "1.0.145"
+serde_json = "1.0.150"
 serde = { version = "1.0.228", features = ["derive"] }
-tauri = { version = "2.9.2", features = ["tray-icon"] }
+tauri = { version = "2.11.2", features = ["tray-icon"] }
 directories = "6.0.0"
 dirs = "6.0.0"
 # reqwest = { version = "0.12.5", features = ["blocking", "json"] }
-tokio = { version = "1.48.0", features = ["full"] }
-warp = { version = "0.4.2", features = ["server"] }
-ureq = "=3.1.2"
+tokio = { version = "1.52.3", features = ["full"] }
+warp = { version = "0.4.3", features = ["server"] }
+ureq = "=3.3.0"
 
 
 [features]

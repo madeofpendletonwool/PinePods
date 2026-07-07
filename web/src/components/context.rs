@@ -3,23 +3,20 @@ use crate::components::notification_center::TaskProgress;
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::pages::podcasts::PodcastLayout;
 use crate::requests::episode::Episode;
-use crate::requests::login_requests::AddUserRequest;
 use crate::requests::login_requests::GetUserDetails;
 use crate::requests::login_requests::LoginServerRequest;
-use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
+use crate::requests::login_requests::GetApiDetails;
 use crate::requests::pod_req::PodcastResponseExtra;
 
 use crate::requests::pod_req::{
-    Chapter, EpisodeDownloadResponse, Funding, HistoryDataResponse, HomeOverview, Person, Playlist,
-    PlaylistInfo, Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse, RecentEps,
-    RefreshProgress, SavedEpisodesResponse, SharedEpisodeResponse, Transcript, Value,
+    Chapter, Funding, HomeOverview, Person, Playlist, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
+    RefreshProgress, SharedEpisodeResponse, Transcript, Value,
 };
 use crate::requests::search_pods::{
     PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse, YouTubeChannel,
     YouTubeSearchResults,
 };
-use crate::requests::setting_reqs::{AddSettingsUserRequest, EditSettingsUserRequest};
-use crate::requests::stat_reqs::UserStats;
+use crate::requests::stat_reqs::{UserStats, ExtendedUserStats};
 use serde::Deserialize;
 use serde_json::{from_str, json};
 use std::collections::HashSet;
@@ -32,32 +29,17 @@ use yewdux::prelude::*;
 use js_sys;
 
 #[allow(dead_code)]
-#[allow(dead_code)]
 pub enum AppStateMsg {
-    ExpandEpisode(String),
-    CollapseEpisode(String),
-    SetLoading(bool),
-    UpdateSelectedEpisodesForDeletion(i32), // Add this line
-    DeleteSelectedEpisodes,                 // Add this line
+    UpdateSelectedEpisodesForDeletion(i32),
+    DeleteSelectedEpisodes,
 }
 
 impl Reducer<AppState> for AppStateMsg {
-    fn apply(self, state: Rc<AppState>) -> Rc<AppState> {
-        let mut load_state = state.clone();
-        let state_mut = Rc::make_mut(&mut load_state);
+    fn apply(self, mut state: Rc<AppState>) -> Rc<AppState> {
+        let state_mut = Rc::make_mut(&mut state);
 
         match self {
-            AppStateMsg::ExpandEpisode(guid) => {
-                state_mut.expanded_descriptions.insert(guid);
-            }
-            AppStateMsg::CollapseEpisode(guid) => {
-                state_mut.expanded_descriptions.remove(&guid);
-            }
-            AppStateMsg::SetLoading(is_loading) => {
-                state_mut.is_loading = Option::from(is_loading);
-            }
             AppStateMsg::UpdateSelectedEpisodesForDeletion(episode_id) => {
-                // Add this block
                 state_mut.selected_episodes_for_deletion.insert(episode_id);
             }
             AppStateMsg::DeleteSelectedEpisodes => {
@@ -98,69 +80,132 @@ pub struct AppState {
     pub user_details: Option<GetUserDetails>,
     pub auth_details: Option<LoginServerRequest>,
     pub server_details: Option<GetApiDetails>,
-    pub error_message: Option<String>,
-    pub info_message: Option<String>,
-    pub search_results: Option<PodcastSearchResult>,
-    pub podcast_feed_results: Option<PodcastFeedResult>,
-    pub people_feed_results: Option<PeopleFeedResult>,
-    pub server_feed_results: Option<RecentEps>,
-    pub queued_episodes: Option<QueuedEpisodesResponse>,
     #[serde(default)]
-    pub saved_episodes: Vec<Episode>,
-    pub episode_history: Option<HistoryDataResponse>,
-    #[serde(default)]
-    pub downloaded_episodes: DownloadedEpisodeRecords,
-    pub search_episodes: Option<SearchResponse>,
-    pub clicked_podcast_info: Option<ClickedFeedURL>,
-    pub pods: Option<Podcast>,
-    pub podcast_feed_return: Option<PodcastResponse>,
-    pub podcast_feed_return_extra: Option<PodcastResponseExtra>,
-    pub is_loading: Option<bool>,
-    pub is_refreshing: Option<bool>,
-    pub gravatar_url: Option<String>,
-    #[serde(default)]
-    pub expanded_descriptions: HashSet<String>,
-    pub selected_theme: Option<String>,
-    pub fetched_episode: Option<Episode>,
-    pub shared_fetched_episode: Option<SharedEpisodeResponse>,
+    pub selected_episodes_for_deletion: HashSet<i32>,
+    pub reload_occured: Option<bool>,
+}
+
+/// Episode navigation state kept separate from AppState to prevent re-renders on every episode
+/// navigation (clicking to view an episode page sets these before audio starts playing).
+/// Distinct from UIState.currently_playing, which tracks what is *playing*, not what is *viewed*.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct EpisodeNavigationState {
     pub selected_episode_id: Option<i32>,
     pub selected_episode_url: Option<String>,
     pub selected_episode_audio_url: Option<String>,
     pub selected_podcast_title: Option<String>,
-    pub person_episode: Option<bool>,
     #[serde(default)]
     pub selected_is_youtube: bool,
-    pub add_user_request: Option<AddUserRequest>,
-    pub time_zone_setup: Option<TimeZoneInfo>,
-    pub add_settings_user_reqeust: Option<AddSettingsUserRequest>,
-    pub edit_settings_user_reqeust: Option<EditSettingsUserRequest>,
-    #[serde(default)]
-    pub selected_episodes_for_deletion: HashSet<i32>,
-    pub reload_occured: Option<bool>,
-    pub user_tz: Option<String>,
-    pub hour_preference: Option<i16>,
-    pub date_format: Option<String>,
+}
+
+/// Podcast feed state kept separate from AppState so that podcast browsing
+/// and add/remove actions do not trigger re-renders across all ~50 AppState subscribers.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct PodcastFeedState {
+    pub clicked_podcast_info: Option<ClickedFeedURL>,
+    pub podcast_feed_return: Option<PodcastResponse>,
+    pub podcast_feed_return_extra: Option<PodcastResponseExtra>,
     pub podcast_added: Option<bool>,
-    pub completed_episodes: Option<Vec<i32>>,
-    pub queued_episode_ids: Option<Vec<i32>>,
-    pub podcast_layout: Option<PodcastLayout>,
-    pub refresh_progress: Option<RefreshProgress>,
+}
+
+/// Episode detail state kept separate from AppState so that episode page navigation
+/// and transcript modal interactions do not trigger re-renders across all ~50 AppState subscribers.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct EpisodeDetailState {
+    pub fetched_episode: Option<Episode>,
+    pub shared_fetched_episode: Option<SharedEpisodeResponse>,
+    pub person_episode: Option<bool>,
+    pub show_transcript_modal: Option<bool>,
+    pub current_transcripts: Option<Vec<Transcript>>,
+}
+
+/// Search-specific state kept separate from AppState so that search keystrokes
+/// (which mutate on every character typed) do not trigger re-renders across all
+/// ~50 AppState subscribers.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct SearchState {
+    pub search_results: Option<PodcastSearchResult>,
+    pub podcast_feed_results: Option<PodcastFeedResult>,
+    pub people_feed_results: Option<PeopleFeedResult>,
+    pub search_episodes: Option<SearchResponse>,
     pub youtube_search_results: Option<YouTubeSearchResults>,
     pub selected_youtube_channel: Option<YouTubeChannel>,
     pub is_youtube_loading: Option<bool>,
-    pub show_transcript_modal: Option<bool>,
-    pub current_transcripts: Option<Vec<Transcript>>,
-    pub home_overview: Option<HomeOverview>,
-    pub playlists: Option<Vec<Playlist>>,
-    pub current_playlist_info: Option<PlaylistInfo>,
-    pub current_playlist_episodes: Option<Vec<Episode>>,
-    pub active_tasks: Option<Vec<TaskProgress>>,
 }
 
-impl AppState {
+/// User preference state kept separate from AppState so that settings changes
+/// do not trigger re-renders across all ~50 AppState subscribers.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct UserPreferencesState {
+    pub user_tz: Option<String>,
+    pub hour_preference: Option<i16>,
+    pub date_format: Option<String>,
+    pub selected_theme: Option<String>,
+    pub podcast_layout: Option<PodcastLayout>,
+    pub gravatar_url: Option<String>,
+}
+
+
+/// Home page state kept separate from AppState so that home page data loading does not
+/// trigger re-renders across all ~50 AppState subscribers.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct HomePageState {
+    pub home_overview: Option<HomeOverview>,
+}
+
+/// Playlist data state kept separate from AppState so that playlist mutations do not
+/// trigger re-renders across all ~50 AppState subscribers.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct PlaylistDataState {
+    pub playlists: Option<Vec<Playlist>>,
+}
+
+/// Notification-only state, kept separate from AppState so that episode list pages
+/// do not re-render when a toast fires.
+#[derive(Default, Clone, PartialEq, Store, Debug)]
+pub struct NotificationState {
+    pub info_message: Option<String>,
+    pub error_message: Option<String>,
+    pub active_tasks: Option<Vec<TaskProgress>>,
+    pub refresh_progress: Option<RefreshProgress>,
+}
+
+/// Drives the global "Add to Collection" picker overlay. Kept as its own store so a
+/// single modal instance lives at the app root (not inside each row's context menu),
+/// which avoids remount/flicker when the episode list re-renders.
+#[derive(Default, Clone, PartialEq, Store, Debug)]
+pub struct CollectionModalState {
+    pub open: bool,
+    pub episode: Option<Episode>,
+}
+
+/// Episode-specific status state kept separate from AppState so that the
+/// ~50+ components subscribing to AppState do NOT re-render on every
+/// save/download/queue/complete action.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct EpisodeStatusState {
+    #[serde(default)]
+    pub saved_episodes: Vec<Episode>,
+    #[serde(default)]
+    pub downloaded_episodes: DownloadedEpisodeRecords,
+    pub queued_episodes: Option<QueuedEpisodesResponse>,
+    pub queued_episode_ids: Option<Vec<i32>>,
+    #[serde(default)]
+    pub completed_episodes: HashSet<i32>,
+}
+
+impl EpisodeStatusState {
     pub fn saved_episode_ids(&self) -> impl Iterator<Item = i32> + '_ {
         self.saved_episodes.iter().map(|e| e.episodeid)
     }
+}
+
+/// Loading state kept separate from AppState so that the ~50+ components
+/// subscribing to AppState do NOT re-render on every page navigation or fetch.
+#[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
+pub struct PageLoadState {
+    pub is_loading: Option<bool>,
+    pub is_refreshing: Option<bool>,
 }
 
 /// A collection of records for episodes downloaded either locally or on the server.
@@ -283,6 +328,7 @@ impl DownloadedEpisodeRecords {
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
 pub struct UserStatsStore {
     pub stats: Option<UserStats>,
+    pub extended_stats: Option<ExtendedUserStats>,
     pub pinepods_version: Option<String>,
 }
 
@@ -379,15 +425,21 @@ pub struct UIState {
     pub local_download_increment: Option<i32>,
     pub episode_chapters: Option<Vec<Chapter>>,
     pub current_chapter_index: Option<usize>,
+    // Auto-skip ranges (silence #727; later ads #790) for the currently-playing episode.
+    pub skip_segments: Option<Vec<crate::requests::pod_req::SkipSegment>>,
     pub podcast_people: Option<Vec<Person>>,
     pub episode_people: Option<Vec<Person>>,
     pub episode_transcript: Option<Vec<Transcript>>,
     pub episode_page_people: Option<Vec<Person>>,
     pub episode_page_transcript: Option<Vec<Transcript>>,
+    pub episode_page_chapters: Option<Vec<Chapter>>,
     pub podcast_funding: Option<Vec<Funding>>,
     pub podcast_podroll: Option<Vec<PodrollItem>>,
     pub podcast_value4value: Option<Vec<Value>>,
     pub is_mobile: Option<bool>,
+    pub loading_episode_id: Option<i32>,
+    pub queue_panel_open: bool,
+    pub current_playlist_id: Option<i32>,
 }
 
 impl UIState {
@@ -440,6 +492,20 @@ impl UIState {
     }
 
     pub fn set_media_source(&mut self, src: String, is_video: bool, dispatch: Dispatch<UIState>) {
+        // If the existing element is the wrong type (audio when we need video, or vice-versa),
+        // release it so a fresh element of the correct type gets created below.
+        let type_mismatch = matches!(
+            (&self.media_element, is_video),
+            (Some(MediaElement::Audio(_)), true) | (Some(MediaElement::Video(_)), false)
+        );
+        if type_mismatch {
+            if let Some(media) = &self.media_element {
+                let _ = media.pause();
+                media.set_src("");
+            }
+            self.media_element = None;
+        }
+
         if self.media_element.is_none() {
             self.media_element = if is_video {
                 // Create video element using DOM API
@@ -473,6 +539,7 @@ impl UIState {
                     Closure::wrap(Box::new(move || {
                         play_dispatch.reduce_mut(|state| {
                             state.audio_playing = Some(true);
+                            state.loading_episode_id = None;
                         });
                     }) as Box<dyn Fn()>)
                 };
@@ -572,6 +639,7 @@ impl AppState {
 pub struct FilterState {
     pub selected_category: Option<String>,
     pub category_filter_list: Option<Vec<String>>,
+    pub favorites_only: bool,
 }
 
 // Add this alongside your other state structs

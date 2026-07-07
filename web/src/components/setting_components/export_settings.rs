@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::call_backup_user;
 use wasm_bindgen::JsCast;
@@ -65,7 +65,7 @@ pub fn export_options() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        _dispatch.reduce_mut(|audio_state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                             audio_state.error_message =
                                 Option::from(format!("{}{}", error_prefix.clone(), formatted_error))
                         });
@@ -76,13 +76,16 @@ pub fn export_options() -> Html {
     };
 
     html! {
-        <div class="p-4"> // You can adjust the padding as needed
-            <p class="item_container-text text-lg font-bold mb-4">{i18n.t("export_settings.export_options")}</p> // Styled paragraph
-            <p class="item_container-text text-md mb-4">{i18n.t("export_settings.export_description")}</p> // Styled paragraph
-
-            <button onclick={onclick} class="mt-4 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                {i18n.t("export_settings.download_export_opml")}
-            </button>
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{i18n.t("export_settings.export_options")}</div>
+            </div>
+            <div class="settings-row-control">
+                <button onclick={onclick} class="btn btn-secondary" style="padding:6px 12px;">
+                    <i class="ph ph-download-simple"></i>
+                    <span>{i18n.t("export_settings.download_export_opml")}</span>
+                </button>
+            </div>
         </div>
     }
 }

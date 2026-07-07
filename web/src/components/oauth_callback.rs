@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, UserPreferencesState};
 use crate::requests::login_requests::{
     call_first_login_done, call_get_api_config, call_get_time_info, call_get_user_details,
     call_get_user_id, call_setup_timezone_info, call_verify_key, LoginServerRequest, TimeZoneInfo,
@@ -63,6 +63,8 @@ pub fn oauth_callback() -> Html {
     let i18n_no_auth_info = i18n
         .t("oauth_callback.no_authentication_information")
         .to_string();
+    let i18n_date_format_julian = i18n.t("oauth_callback.date_format_julian").to_string();
+    let i18n_date_format_iso8601 = i18n.t("oauth_callback.date_format_iso8601").to_string();
 
     let history = BrowserHistory::new();
     let (_, dispatch) = use_store::<AppState>();
@@ -120,7 +122,7 @@ pub fn oauth_callback() -> Html {
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             web_sys::console::log_1(&"Time zone submit clicked".into());
-            let call_dispatch = dispatch.clone();
+            let _call_dispatch = dispatch.clone();
             let call_history = history.clone();
             let call_page_state = page_state.clone();
             let i18n_failed_set_timezone = i18n_failed_set_timezone_callback.clone();
@@ -166,7 +168,7 @@ pub fn oauth_callback() -> Html {
                                 {
                                     Ok(success) => {
                                         if success.success {
-                                            call_dispatch.reduce_mut(move |state| {
+                                            Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
                                                 state.user_tz = Some(timezone_info.timezone);
                                                 state.hour_preference = Some(
                                                     timezone_info.hour_pref.try_into().unwrap(),
@@ -282,8 +284,10 @@ pub fn oauth_callback() -> Html {
                                                             state.auth_details = Some(auth_details);
                                                             state.server_details =
                                                                 Some(server_details); // Store server details
-                                                            state.gravatar_url = Some(gravatar_url);
                                                             state.store_app_state();
+                                                        });
+                                                        Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
+                                                            state.gravatar_url = Some(gravatar_url);
                                                         });
 
                                                         // Rest of the flow...
@@ -338,7 +342,7 @@ pub fn oauth_callback() -> Html {
                                                                         )
                                                                         .await
                                                                     {
-                                                                        dispatch.reduce_mut(move |state| {
+                                                                        Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
                                                                             state.user_tz =
                                                                                 Some(tz_response.timezone);
                                                                             state.hour_preference =
@@ -481,8 +485,8 @@ pub fn oauth_callback() -> Html {
                                     <option value="MDY">{"MM-DD-YYYY"}</option>
                                     <option value="DMY">{"DD-MM-YYYY"}</option>
                                     <option value="YMD">{"YYYY-MM-DD"}</option>
-                                    <option value="JUL">{"YY/DDD (Julian)"}</option>
-                                    <option value="ISO">{"ISO 8601"}</option>
+                                    <option value="JUL">{ &i18n_date_format_julian }</option>
+                                    <option value="ISO">{ &i18n_date_format_iso8601 }</option>
                                     <option value="USA">{"MM/DD/YYYY"}</option>
                                     <option value="EUR">{"DD.MM.YYYY"}</option>
                                     <option value="JIS">{"YYYY-MM-DD"}</option>

@@ -16,12 +16,15 @@ COPY validate_db.py /app/
 # Set working directory
 WORKDIR /app
 
-# Set default environment variables for MySQL (TEST ONLY - NOT SECURE)
+# Non-secret defaults for the throwaway CI test database. Overridable at build time
+# (--build-arg) or runtime (-e); never used by the production image.
+ARG DB_USER=root
+ARG DB_PASSWORD=test_password_123
 ENV DB_TYPE=mysql
 ENV DB_HOST=mysql_db
 ENV DB_PORT=3306
-ENV DB_USER=root
-ENV DB_PASSWORD=test_password_123
+ENV DB_USER=${DB_USER}
+ENV DB_PASSWORD=${DB_PASSWORD}
 ENV DB_NAME=pinepods_database
 
 # Run validator

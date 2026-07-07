@@ -993,6 +993,29 @@ pub async fn call_restore_server(
 }
 
 #[derive(Deserialize, Debug)]
+pub struct RestoreStatusResponse {
+    pub restore_in_progress: bool,
+}
+
+/// Polls the lightweight, DB-free restore-status probe. Stays responsive even while a
+/// restore holds DB locks, so the UI can show a "restore in progress" overlay.
+pub async fn call_restore_status(server_name: &str) -> Result<bool, Error> {
+    let url = format!("{}/api/data/restore_status", server_name);
+
+    let response = Request::get(&url).send().await.map_err(Error::msg)?;
+
+    if response.ok() {
+        let data: RestoreStatusResponse = response.json().await.map_err(Error::msg)?;
+        Ok(data.restore_in_progress)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting restore status: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Deserialize, Debug)]
 pub struct GenerateMFAResponse {
     pub(crate) secret: String,
     pub(crate) qr_code_svg: String,
@@ -1852,6 +1875,195 @@ pub async fn call_add_custom_feed(
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct AddLocalPodcastRequest {
+    user_id: i32,
+    directory_path: String,
+    podcast_name: String,
+    description: Option<String>,
+    author: Option<String>,
+    explicit: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct AddLocalPodcastResponse {
+    data: crate::requests::pod_req::Podcast,
+}
+
+pub async fn call_add_local_podcast(
+    server_name: &str,
+    user_id: i32,
+    directory_path: &str,
+    podcast_name: &str,
+    description: Option<String>,
+    author: Option<String>,
+    explicit: Option<bool>,
+    api_key: &str,
+) -> Result<crate::requests::pod_req::Podcast, Error> {
+    let url = format!("{}/api/data/add_local_podcast", server_name);
+    let request_body = AddLocalPodcastRequest {
+        user_id,
+        directory_path: directory_path.to_string(),
+        podcast_name: podcast_name.to_string(),
+        description,
+        author,
+        explicit,
+    };
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&request_body)?)?
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        let response_text = response.text().await.map_err(Error::msg)?;
+        let parsed: AddLocalPodcastResponse =
+            serde_json::from_str(&response_text).map_err(Error::msg)?;
+        Ok(parsed.data)
+    } else {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(Error::msg(format!("Error adding local podcast: {}", error_text)))
+    }
+}
+
+pub async fn call_add_local_podcast_artwork(
+    server_name: &str,
+    api_key: &str,
+    form_data: FormData,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/add_local_podcast_artwork", server_name);
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .body(form_data)?
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        let response_text = response.text().await.map_err(Error::msg)?;
+        let parsed: serde_json::Value =
+            serde_json::from_str(&response_text).map_err(Error::msg)?;
+        Ok(parsed["artwork_url"]
+            .as_str()
+            .unwrap_or("")
+            .to_string())
+    } else {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(Error::msg(format!("Error uploading artwork: {}", error_text)))
+    }
+}
+
+pub async fn call_refresh_local_podcast(
+    server_name: &str,
+    user_id: i32,
+    podcast_id: i32,
+    api_key: &str,
+) -> Result<serde_json::Value, Error> {
+    let url = format!("{}/api/data/refresh_local_podcast", server_name);
+    let request_body = serde_json::json!({
+        "user_id": user_id,
+        "podcast_id": podcast_id,
+    });
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&request_body)?)?
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        let response_text = response.text().await.map_err(Error::msg)?;
+        Ok(serde_json::from_str(&response_text).map_err(Error::msg)?)
+    } else {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(Error::msg(format!("Error refreshing local podcast: {}", error_text)))
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct LocalDirEntry {
+    pub name: String,
+    pub path: String,
+    pub audio_count: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct LocalDirListing {
+    pub current_path: String,
+    pub directories: Vec<LocalDirEntry>,
+}
+
+pub async fn call_list_local_directories(
+    server_name: &str,
+    api_key: &str,
+    path: &str,
+) -> Result<LocalDirListing, Error> {
+    let encoded = urlencoding::encode(path);
+    let url = format!(
+        "{}/api/data/list_local_directories?path={}",
+        server_name, encoded
+    );
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        let response_text = response.text().await.map_err(Error::msg)?;
+        Ok(serde_json::from_str(&response_text).map_err(Error::msg)?)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(Error::msg(format!("Error listing directories: {}", error_text)))
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DetectCoverResponse {
+    pub artwork_url: Option<String>,
+}
+
+pub async fn call_detect_local_cover(
+    server_name: &str,
+    api_key: &str,
+    path: &str,
+) -> Result<Option<String>, Error> {
+    let encoded = urlencoding::encode(path);
+    let url = format!(
+        "{}/api/data/detect_local_cover?path={}",
+        server_name, encoded
+    );
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(Error::msg)?;
+
+    if response.ok() {
+        let response_text = response.text().await.map_err(Error::msg)?;
+        let parsed: DetectCoverResponse =
+            serde_json::from_str(&response_text).map_err(Error::msg)?;
+        Ok(parsed.artwork_url)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        Err(Error::msg(format!("Error detecting cover: {}", error_text)))
+    }
+}
+
 pub async fn call_podcast_opml_import(
     server_name: &str,
     api_key: &Option<String>,
@@ -2584,6 +2796,14 @@ pub struct ScheduleBackupRequest {
     pub user_id: i32,
     pub cron_schedule: String,
     pub enabled: bool,
+    // Number of scheduled backups to keep; None/0 = keep all
+    pub retention_count: Option<i32>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DeleteBackupFileRequest {
+    pub user_id: i32,
+    pub backup_filename: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -2609,12 +2829,14 @@ pub async fn call_schedule_backup(
     user_id: i32,
     cron_schedule: &str,
     enabled: bool,
+    retention_count: Option<i32>,
 ) -> Result<serde_json::Value, Error> {
     let url = format!("{}/api/data/schedule_backup", server_name);
     let request_data = ScheduleBackupRequest {
         user_id,
         cron_schedule: cron_schedule.to_string(),
         enabled,
+        retention_count,
     };
 
     let response = Request::post(&url)
@@ -2711,6 +2933,36 @@ pub async fn call_restore_backup_file(
     } else {
         Err(Error::msg(format!(
             "Error restoring from backup file: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// Delete a backup file from the server backup directory
+pub async fn call_delete_backup_file(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    backup_filename: &str,
+) -> Result<serde_json::Value, Error> {
+    let url = format!("{}/api/data/delete_backup_file", server_name);
+    let request_data = DeleteBackupFileRequest {
+        user_id,
+        backup_filename: backup_filename.to_string(),
+    };
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_data)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| Error::msg(e.to_string()))
+    } else {
+        Err(Error::msg(format!(
+            "Error deleting backup file: {}",
             response.status_text()
         )))
     }
@@ -3244,9 +3496,156 @@ pub async fn call_extend_shared_link(
     if response.ok() {
         Ok(())
     } else {
+        let error_text = response.text().await.unwrap_or_default();
+        let msg = serde_json::from_str::<serde_json::Value>(&error_text)
+            .ok()
+            .and_then(|v| v["message"].as_str().map(|s| s.to_string()))
+            .unwrap_or(error_text);
+        Err(Error::msg(msg))
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
+pub struct CustomTheme {
+    pub themeid: i32,
+    pub name: String,
+    pub background_color: String,
+    pub button_color: String,
+    pub container_button_color: String,
+    pub button_text_color: String,
+    pub text_color: String,
+    pub text_secondary_color: String,
+    pub border_color: String,
+    pub accent_color: String,
+    pub prog_bar_color: String,
+    pub error_color: String,
+    pub bonus_color: String,
+    pub secondary_background: String,
+    pub container_background: String,
+    pub standout_color: String,
+    pub hover_color: String,
+    pub link_color: String,
+    pub thumb_color: String,
+    pub unfilled_color: String,
+    pub check_box_color: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
+pub struct CreateCustomThemeRequest {
+    pub user_id: i32,
+    pub name: String,
+    pub background_color: String,
+    pub button_color: String,
+    pub container_button_color: String,
+    pub button_text_color: String,
+    pub text_color: String,
+    pub text_secondary_color: String,
+    pub border_color: String,
+    pub accent_color: String,
+    pub prog_bar_color: String,
+    pub error_color: String,
+    pub bonus_color: String,
+    pub secondary_background: String,
+    pub container_background: String,
+    pub standout_color: String,
+    pub hover_color: String,
+    pub link_color: String,
+    pub thumb_color: String,
+    pub unfilled_color: String,
+    pub check_box_color: String,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+struct GetCustomThemesResponse {
+    themes: Vec<CustomTheme>,
+}
+
+pub async fn call_get_custom_themes(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<Vec<CustomTheme>, Error> {
+    let url = format!("{}/api/data/user/custom_themes/{}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await?;
+
+    if response.ok() {
+        let body = response.json::<GetCustomThemesResponse>().await?;
+        Ok(body.themes)
+    } else {
         Err(Error::msg(format!(
-            "Error extending shared link: {}",
+            "Error fetching custom themes: {}",
             response.status_text()
         )))
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+struct CreateCustomThemeResponse {
+    theme: CustomTheme,
+}
+
+pub async fn call_create_custom_theme(
+    server_name: &str,
+    api_key: &str,
+    req: &CreateCustomThemeRequest,
+) -> Result<CustomTheme, Error> {
+    let url = format!("{}/api/data/user/custom_themes", server_name);
+    let body = serde_json::to_string(req)?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let body = response.json::<CreateCustomThemeResponse>().await?;
+        Ok(body.theme)
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        let msg = serde_json::from_str::<serde_json::Value>(&error_text)
+            .ok()
+            .and_then(|v| v["message"].as_str().map(|s| s.to_string()))
+            .unwrap_or(error_text);
+        Err(Error::msg(msg))
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
+pub struct DeleteCustomThemeRequest {
+    pub user_id: i32,
+    pub theme_id: i32,
+}
+
+pub async fn call_delete_custom_theme(
+    server_name: &str,
+    api_key: &str,
+    req: &DeleteCustomThemeRequest,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/user/custom_themes", server_name);
+    let body = serde_json::to_string(req)?;
+
+    let response = Request::delete(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        let msg = serde_json::from_str::<serde_json::Value>(&error_text)
+            .ok()
+            .and_then(|v| v["message"].as_str().map(|s| s.to_string()))
+            .unwrap_or(error_text);
+        Err(Error::msg(msg))
     }
 }

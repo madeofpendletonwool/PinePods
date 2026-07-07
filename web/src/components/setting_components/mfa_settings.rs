@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::setting_reqs::{
@@ -18,7 +18,6 @@ pub fn mfa_options() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let _error_message = state.error_message.clone();
     let mfa_status = use_state(|| false);
     let code = use_state(|| "".to_string());
 
@@ -28,20 +27,17 @@ pub fn mfa_options() -> Html {
     let i18n_failed_to_verify_mfa_code = i18n.t("mfa_settings.failed_to_verify_mfa_code").to_string();
     let i18n_error_disabling_mfa = i18n.t("mfa_settings.error_disabling_mfa").to_string();
     let i18n_failed_to_generate_totp_secret = i18n.t("mfa_settings.failed_to_generate_totp_secret").to_string();
-    let i18n_close_modal = i18n.t("common.close_modal").to_string();
     let i18n_setup_mfa = i18n.t("mfa_settings.setup_mfa").to_string();
     let i18n_scan_qr_or_enter_code = i18n.t("mfa_settings.scan_qr_or_enter_code").to_string();
     let i18n_verify_code = i18n.t("mfa_settings.verify_code").to_string();
     let i18n_verify = i18n.t("mfa_settings.verify").to_string();
     let i18n_close = i18n.t("common.cancel").to_string();
-    let i18n_mfa_options = i18n.t("mfa_settings.mfa_options").to_string();
-    let i18n_mfa_description = i18n.t("mfa_settings.mfa_description").to_string();
     let i18n_enable_mfa = i18n.t("mfa_settings.enable_mfa").to_string();
 
     let effect_user_id = user_id.clone();
     let effect_api_key = api_key.clone();
     let effect_server_name = server_name.clone();
-    let dispatch_effect = _dispatch.clone();
+    let _dispatch_effect = _dispatch.clone();
     {
         let mfa_status = mfa_status.clone();
         let i18n_error_getting_mfa_status_clone1 = i18n_error_getting_mfa_status.clone();
@@ -64,7 +60,7 @@ pub fn mfa_options() -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                dispatch_effect.reduce_mut(|audio_state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                                     audio_state.error_message = Option::from(format!(
                                         "{}{}",
                                         i18n_error_getting_mfa_status.clone(),
@@ -81,7 +77,7 @@ pub fn mfa_options() -> Html {
             },
         );
     }
-    let dispatch_refresh = _dispatch.clone();
+    let _dispatch_refresh = _dispatch.clone();
     // Re-fetch MFA status after setup is complete
     {
         let mfa_status = mfa_status.clone();
@@ -105,7 +101,7 @@ pub fn mfa_options() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch_refresh.reduce_mut(|audio_state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                                 audio_state.error_message = Option::from(format!(
                                     "{}{}",
                                     i18n_error_getting_mfa_status.clone(),
@@ -262,7 +258,7 @@ pub fn mfa_options() -> Html {
                             mfa_status_update.set(true); // Update MFA status
                                                          // refresh_mfa_status.emit(());
                         } else {
-                            _dispatch.reduce_mut(|audio_state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                                 audio_state.error_message =
                                     Option::from(i18n_mfa_code_verification_failed.clone())
                             });
@@ -271,7 +267,7 @@ pub fn mfa_options() -> Html {
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        _dispatch.reduce_mut(|audio_state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|audio_state| {
                             audio_state.error_message = Option::from(format!(
                                 "{}{}",
                                 i18n_failed_to_verify_mfa_code,
@@ -298,42 +294,38 @@ pub fn mfa_options() -> Html {
     let qr_code_svg = (*mfa_code).clone();
     let setup_mfa_modal = html! {
         <div id="setup-mfa-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex flex-col items-start justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                        <button onclick={close_modal.clone()} class="self-end text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                            </svg>
-                            <span class="sr-only">{&i18n_close_modal}</span>
-                        </button>
-                        <h3 class="text-xl font-semibold">
-                            {&i18n_setup_mfa}
-                        </h3>
-                        <p class="item_container-text text-m font-semibold">
-                            {&i18n_scan_qr_or_enter_code}
-                        </p>
-                        <div class="mt-4 self-center bg-white rounded-lg overflow-hidden p-4 shadow-lg">
-                            <SafeHtml html={qr_code_svg} />
-                        </div>
-                        // More HTML as needed
-
-                        <div class="mfa-code-box mt-4 p-4 rounded-md overflow-x-auto whitespace-nowrap max-w-full">
-                            {(*mfa_secret).clone()}
-                        </div>
-                        <div>
-                            <label for="fullname" class="block mb-2 mt-2 text-sm font-semibold font-medium">{&i18n_verify_code}</label>
-                            <input oninput={on_code_change} type="text" id="fullname" name="fullname" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
-                        </div>
-                        <div class="flex justify-between space-x-4">
-                            <button onclick={verify_code.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                {&i18n_verify}
-                            </button>
-                            <button onclick={close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                {&i18n_close}
-                            </button>
-                        </div>
+            <div class="modal-container relative w-full max-w-md rounded-lg shadow" onclick={stop_propagation.clone()}>
+                <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                    <h3 style="font-size:16px;font-weight:600;color:var(--text-color);">
+                        {&i18n_setup_mfa}
+                    </h3>
+                    <button onclick={close_modal.clone()} class="iconbtn">
+                        <i class="ph ph-x" style="font-size:18px;"></i>
+                    </button>
+                </div>
+                <div class="p-4 md:p-5" style="display:flex;flex-direction:column;gap:14px;">
+                    <p style="font-size:13px;color:var(--text-secondary-color);">
+                        {&i18n_scan_qr_or_enter_code}
+                    </p>
+                    <div style="align-self:center;background:#fff;border-radius:8px;overflow:hidden;padding:16px;box-shadow:0 4px 12px rgba(0,0,0,.2);">
+                        <SafeHtml html={qr_code_svg} />
                     </div>
+                    <div class="mfa-code-box" style="padding:10px 14px;border-radius:6px;overflow-x:auto;white-space:nowrap;max-width:100%;font-size:13px;">
+                        {(*mfa_secret).clone()}
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:6px;">
+                        <label style="font-size:13px;font-weight:500;color:var(--text-color);">{&i18n_verify_code}</label>
+                        <input oninput={on_code_change} type="text" class="input" required=true />
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;padding:0 16px 16px;">
+                    <button onclick={close_modal.clone()} class="btn btn-secondary">
+                        {&i18n_close}
+                    </button>
+                    <button onclick={verify_code.clone()} class="btn btn-primary">
+                        <i class="ph ph-check"></i>
+                        {&i18n_verify}
+                    </button>
                 </div>
             </div>
         </div>
@@ -347,15 +339,16 @@ pub fn mfa_options() -> Html {
             _ => html! {},
             }
         }
-        <div class="p-4"> // You can adjust the padding as needed
-            <p class="item_container-text text-lg font-bold mb-4">{&i18n_mfa_options}</p>
-            <p class="item_container-text text-md mb-4">{&i18n_mfa_description}</p> // Styled paragraph
-
-            <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" disabled={**loading.borrow()} checked={**mfa_status.borrow()} class="sr-only peer" onclick={open_setup_modal.clone()} />
-                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                <span class="ms-3 text-sm font-medium item_container-text">{&i18n_enable_mfa}</span>
-            </label>
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{&i18n_enable_mfa}</div>
+            </div>
+            <div class="settings-row-control">
+                <label class="toggle">
+                    <input type="checkbox" disabled={**loading.borrow()} checked={**mfa_status.borrow()} onclick={open_setup_modal.clone()} />
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
+            </div>
         </div>
         </>
     }

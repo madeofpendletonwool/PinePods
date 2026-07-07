@@ -15,7 +15,7 @@ spec:
         app: postgres
     spec:
       containers:
-      - image: postgres:latest
+      - image: postgres:18
         name: postgres
         env:
         - name: POSTGRES_DB
@@ -28,13 +28,13 @@ spec:
               name: db-secret
               key: DB_PASSWORD
         - name: PGDATA
-          value: /var/lib/postgresql/data/pgdata
+          value: /var/lib/pgdata/pgdata
         ports:
         - containerPort: 5432
           name: postgres
         volumeMounts:
         - name: postgres-persistent-storage
-          mountPath: /var/lib/postgresql/data
+          mountPath: /var/lib/pgdata
       volumes:
       - name: postgres-persistent-storage
         persistentVolumeClaim:

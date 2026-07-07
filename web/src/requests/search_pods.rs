@@ -214,24 +214,24 @@ where
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
 pub struct PodcastFeedResult {
     pub(crate) episodes: Vec<Episode>,
+    pub(crate) total: i64,
 }
 
 pub async fn call_get_podcast_info(
     podcast_value: &String,
-    search_api_url: &Option<String>,
+    server_name: &str,
+    api_key: &str,
     search_index: &str,
 ) -> Result<PodcastSearchResult, anyhow::Error> {
-    let url = if let Some(api_url) = search_api_url {
-        format!(
-            "{}?query={}&index={}",
-            api_url,
-            urlencoding::encode(podcast_value),
-            search_index
-        )
-    } else {
-        return Err(anyhow::Error::msg("API URL is not provided"));
-    };
-    let response = Request::get(&url).send().await.map_err(|err| {
+    // Route through the backend search proxy so the browser never needs to
+    // reach SEARCH_API_URL directly (it may be an internal Docker hostname).
+    let url = format!(
+        "{}/api/data/proxy_search?query={}&index={}",
+        server_name,
+        urlencoding::encode(podcast_value),
+        search_index
+    );
+    let response = Request::get(&url).header("Api-Key", api_key).send().await.map_err(|err| {
         web_sys::console::log_1(&JsValue::from_str(&format!("Request error: {:?}", err)));
         anyhow::Error::new(err)
     })?;
@@ -305,20 +305,18 @@ pub struct PeopleFeedResult {
 #[allow(dead_code)]
 pub async fn call_get_person_info(
     person_name: &String,
-    search_api_url: &Option<String>,
+    server_name: &str,
+    api_key: &str,
     search_index: &str,
 ) -> Result<PeopleFeedResult, anyhow::Error> {
-    let url = if let Some(api_url) = search_api_url {
-        format!(
-            "{}?query={}&index={}&search_type=person",
-            api_url,
-            urlencoding::encode(person_name),
-            search_index
-        )
-    } else {
-        return Err(anyhow::Error::msg("API URL is not provided"));
-    };
+    let url = format!(
+        "{}/api/data/proxy_search?query={}&index={}&search_type=person",
+        server_name,
+        urlencoding::encode(person_name),
+        search_index
+    );
     let response = Request::get(&url)
+        .header("Api-Key", api_key)
         .send()
         .await
         .map_err(|err| anyhow::Error::new(err))?;
@@ -417,6 +415,8 @@ pub async fn test_connection(search_api_url: &Option<String>) -> Result<(), Erro
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct PodcastEpisodesResponse {
     pub episodes: Vec<Episode>,
+    #[serde(default)]
+    pub total: i64,
 }
 
 #[allow(dead_code)]
@@ -425,11 +425,34 @@ pub async fn call_get_podcast_episodes(
     api_key: &Option<String>,
     user_id: &i32,
     podcast_id: &i32,
+    limit: Option<i64>,
+    offset: Option<i64>,
+    sort_by: Option<&str>,
+    sort_order: Option<&str>,
+    search: Option<&str>,
+    filter: Option<&str>,
 ) -> Result<PodcastFeedResult, anyhow::Error> {
-    let url = format!(
+    let mut url = format!(
         "{}/api/data/podcast_episodes?user_id={}&podcast_id={}",
         server_name, user_id, podcast_id
     );
+    if let (Some(l), Some(o)) = (limit, offset) {
+        url.push_str(&format!("&limit={}&offset={}", l, o));
+    }
+    if let Some(s) = sort_by {
+        url.push_str(&format!("&sort_by={}", s));
+    }
+    if let Some(o) = sort_order {
+        url.push_str(&format!("&sort_order={}", o));
+    }
+    if let Some(s) = search {
+        if !s.is_empty() {
+            url.push_str(&format!("&search={}", urlencoding::encode(s)));
+        }
+    }
+    if let Some(f) = filter {
+        url.push_str(&format!("&filter={}", f));
+    }
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
@@ -445,6 +468,7 @@ pub async fn call_get_podcast_episodes(
     }
     let response_text = response.text().await?;
     let response_data: PodcastEpisodesResponse = serde_json::from_str(&response_text)?;
+    let total = response_data.total;
     let episodes = response_data
         .episodes
         .into_iter()
@@ -456,7 +480,7 @@ pub async fn call_get_podcast_episodes(
             episode
         })
         .collect::<Vec<_>>();
-    Ok(PodcastFeedResult { episodes })
+    Ok(PodcastFeedResult { episodes, total })
 }
 
 #[allow(dead_code)]
@@ -501,7 +525,8 @@ pub async fn call_get_youtube_episodes(
             episode
         })
         .collect::<Vec<_>>();
-    Ok(PodcastFeedResult { episodes })
+    let total = episodes.len() as i64;
+    Ok(PodcastFeedResult { episodes, total })
 }
 
 #[allow(dead_code)]
@@ -561,7 +586,8 @@ pub async fn call_parse_podcast_url(
             }
         });
 
-        Ok(PodcastFeedResult { episodes })
+        let total = episodes.len() as i64;
+        Ok(PodcastFeedResult { episodes, total })
     } else {
         Err(anyhow::Error::msg(format!(
             "Failed to fetch podcast feed: HTTP {}",
@@ -635,11 +661,56 @@ pub struct PodcastDetailsResponse {
 pub struct SearchRequest {
     pub search_term: String,
     pub user_id: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub categories: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct SearchResponse {
     pub data: Vec<Episode>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct SearchPage {
+    pub data: Vec<Episode>,
+    pub total: i64,
+}
+
+pub async fn call_search_database_paged(
+    server_name: &str,
+    api_key: &Option<String>,
+    request_data: &SearchRequest,
+    limit: i64,
+    offset: i64,
+    filter: &str,
+) -> Result<SearchPage, Error> {
+    let url = format!(
+        "{}/api/data/search_data?limit={}&offset={}&filter={}",
+        server_name, limit, offset, filter
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to search database: {}",
+            response.status_text()
+        )));
+    }
+
+    let text = response.text().await?;
+    serde_json::from_str::<SearchPage>(&text)
+        .map_err(|e| anyhow::Error::msg(format!("Deserialization failed: {}", e)))
 }
 
 #[allow(dead_code)]
@@ -722,19 +793,17 @@ pub struct YouTubeSearchResponse {
 
 pub async fn call_youtube_search(
     query: &str,
-    search_api_url: &Option<String>,
+    server_name: &str,
+    api_key: &str,
 ) -> Result<YouTubeSearchResponse, Error> {
-    let url = if let Some(api_url) = search_api_url {
-        format!(
-            "{}?query={}&index=youtube",
-            api_url,
-            urlencoding::encode(query)
-        )
-    } else {
-        return Err(anyhow::Error::msg("Search API URL is not provided"));
-    };
+    let url = format!(
+        "{}/api/data/proxy_search?query={}&index=youtube",
+        server_name,
+        urlencoding::encode(query)
+    );
 
     let response = Request::get(&url)
+        .header("Api-Key", api_key)
         .send()
         .await
         .map_err(|e| Error::msg(format!("Network request error: {}", e)))?;

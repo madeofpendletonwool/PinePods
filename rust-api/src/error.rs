@@ -60,6 +60,9 @@ pub enum AppError {
 
     #[error("Email sending error: {0}")]
     Email(String),
+
+    #[error("Too many requests: {0}")]
+    TooManyRequests(String),
 }
 
 impl IntoResponse for AppError {
@@ -82,6 +85,7 @@ impl IntoResponse for AppError {
             AppError::FeedParsing(_) => (StatusCode::BAD_REQUEST, "Feed parsing error"),
             AppError::Email(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Email error"),
             AppError::Scheduler(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Scheduler error"),
+            AppError::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "Too many requests"),
         };
 
         let body = Json(json!({
@@ -128,6 +132,18 @@ impl AppError {
 
     pub fn validation(msg: impl Into<String>) -> Self {
         AppError::Validation(msg.into())
+    }
+
+    pub fn too_many_requests(msg: impl Into<String>) -> Self {
+        AppError::TooManyRequests(msg.into())
+    }
+
+    pub fn conflict(msg: impl Into<String>) -> Self {
+        AppError::Conflict(msg.into())
+    }
+
+    pub fn service_unavailable(msg: impl Into<String>) -> Self {
+        AppError::ServiceUnavailable(msg.into())
     }
 
     pub fn external_error(msg: impl Into<String>) -> Self {

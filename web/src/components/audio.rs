@@ -1,4 +1,6 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, PodcastFeedState, UIState};
+#[cfg(not(feature = "server_build"))]
+use crate::components::context::NotificationState;
 use crate::components::gen_components::{EpisodeModal, FallbackImage};
 use crate::components::gen_funcs::format_time_rm_hour;
 #[cfg(not(feature = "server_build"))]
@@ -8,6 +10,8 @@ use crate::requests::pod_req::call_get_episode_id;
 use crate::requests::pod_req::FetchPodcasting2DataRequest;
 use crate::requests::pod_req::{
     call_add_history, call_check_episode_in_db, call_fetch_podcasting_2_data,
+    call_get_episode_skip_segments,
+    call_get_auto_play_next_status, call_get_next_playlist_episode, call_get_next_podcast_episode,
     call_get_play_episode_details, call_get_podcast_id_from_ep, call_get_queued_episodes,
     call_increment_listen_time, call_increment_played, call_mark_episode_completed,
     call_queue_episode, call_record_listen_duration, call_remove_queued_episode,
@@ -25,7 +29,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{window, HtmlAudioElement, HtmlVideoElement, HtmlElement, HtmlInputElement, TouchEvent};
+use web_sys::{window, HtmlAudioElement, HtmlElement, HtmlInputElement, TouchEvent};
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
@@ -81,9 +85,9 @@ pub fn playback_control(props: &PlaybackControlProps) -> Html {
         <div class="speed-control-container">
             <button
                 onclick={toggle_open}
-                class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center"
+                class="player-btn"
             >
-                <i class="ph ph-speedometer text-2xl"></i>
+                <i class="ph ph-speedometer"></i>
             </button>
             <div class={classes!("speed-slider-container", "item_container-bg", (*is_open).then(|| "visible"))}>
                 <div class="speed-control-content item_container-bg">
@@ -136,9 +140,9 @@ pub fn volume_control(props: &VolumeControlProps) -> Html {
         <div class="volume-control-container">
             <button
                 onclick={toggle_open}
-                class="skip-button audio-top-button selector-button font-bold py-2 px-4 mt-3 rounded-full w-10 h-10 flex items-center justify-center"
+                class="player-btn"
             >
-                <i class="ph ph-speaker-high text-2xl"></i>
+                <i class="ph ph-speaker-high"></i>
             </button>
 
             <div class={classes!("volume-slider-container", (*is_open).then(|| "visible"))}>
@@ -169,7 +173,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let show_modal = use_state(|| false);
 
     // Memoize the audio playing state to reduce re-renders
-    let is_playing = use_memo(
+    let _is_playing = use_memo(
         audio_state.audio_playing.unwrap_or(false),
         |state| *state
     );
@@ -179,8 +183,9 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let i18n_close_modal = i18n.t("common.close_modal").to_string();
     let i18n_no_audio_playing = i18n.t("audio.no_audio_playing").to_string();
     let i18n_no_chapters_available = i18n.t("audio.no_chapters_available").to_string();
-    let i18n_shownotes = i18n.t("audio.shownotes").to_string();
-    let i18n_shownotes_unavailable = i18n.t("audio.shownotes_unavailable").to_string();
+    let _i18n_shownotes = i18n.t("audio.shownotes").to_string();
+    let _i18n_shownotes_unavailable = i18n.t("audio.shownotes_unavailable").to_string();
+    let i18n_now_playing = i18n.t("audio.now_playing").to_string();
     let on_modal_close = {
         let show_modal = show_modal.clone();
         Callback::from(move |_: MouseEvent| show_modal.set(false))
@@ -192,6 +197,26 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     // Local state for current time to avoid triggering global re-renders every second
     let current_time_local = use_state(|| 0.0);
     let current_time_formatted_local = use_state(|| String::from("00:00:00"));
+
+    // Mark body so pages can add bottom padding to avoid player overlap
+    use_effect_with((), |_| {
+        if let Some(window) = web_sys::window() {
+            if let Some(document) = window.document() {
+                if let Some(body) = document.body() {
+                    body.class_list().add_1("audio-player-active").ok();
+                }
+            }
+        }
+        || {
+            if let Some(window) = web_sys::window() {
+                if let Some(document) = window.document() {
+                    if let Some(body) = document.body() {
+                        body.class_list().remove_1("audio-player-active").ok();
+                    }
+                }
+            }
+        }
+    });
 
     // Mount video element into the DOM when fullscreen and video is playing
     {
@@ -490,6 +515,34 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     let api_key = api_key.clone(); // Clone to make it owned
                     let server_name = server_name.clone(); // Clone to make it owned
 
+                    // Fetch auto-skip segments (silence trim #727) for this episode.
+                    if episode_id != 0 && !is_youtube_vid {
+                        let seg_dispatch = dispatch.clone();
+                        let seg_api_key = api_key.clone();
+                        let seg_server_name = server_name.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match call_get_episode_skip_segments(
+                                &seg_server_name,
+                                &seg_api_key,
+                                user_id,
+                                episode_id,
+                            )
+                            .await
+                            {
+                                Ok(segments) => {
+                                    seg_dispatch.reduce_mut(|state| {
+                                        state.skip_segments = Some(segments);
+                                    });
+                                }
+                                Err(e) => {
+                                    web_sys::console::log_1(
+                                        &format!("Error fetching skip segments: {}", e).into(),
+                                    );
+                                }
+                            }
+                        });
+                    }
+
                     // Only proceed if the episode_id is not zero
                     if episode_id != 0 && !is_youtube_vid {
                         wasm_bindgen_futures::spawn_local(async move {
@@ -656,6 +709,23 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     } else {
                         0.0
                     };
+
+                    // Auto-skip: if the playhead is inside a detected silence range, jump to its end.
+                    // Segments are pre-computed server-side (#727); a small tolerance avoids
+                    // skipping when we're already essentially at the range's end.
+                    if let Some(segments) = &state_clone.skip_segments {
+                        if let Some(seg) = segments.iter().find(|s| {
+                            s.kind == "silence"
+                                && time_in_seconds >= s.start_time
+                                && time_in_seconds < s.end_time - 0.25
+                        }) {
+                            if let Some(media_element) = state_clone.media_element.as_ref() {
+                                media_element.set_current_time(seg.end_time);
+                            } else if let Some(audio_element) = state_clone.audio_element.as_ref() {
+                                audio_element.set_current_time(seg.end_time);
+                            }
+                        }
+                    }
 
                     // Update local state instead of global dispatch to avoid re-rendering entire app
                     current_time_local.set(time_in_seconds);
@@ -869,12 +939,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     });
 
     // Effect for managing queued episodes
-    use_effect_with(audio_ref.clone(), {
+    // Depends on episode_id so the closure is recreated with the correct episode ID each time
+    // a new episode starts — preventing stale captures that broke playlist continuation.
+    use_effect_with((audio_ref.clone(), episode_id), {
         let audio_dispatch = _audio_dispatch.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
-        let current_episode_id = episode_id.clone(); // Assuming this is correctly obtained elsewhere
+        let current_episode_id = episode_id;
         let audio_state = audio_state.clone();
         let audio_state_cloned = audio_state.clone();
         let offline_status = offline_status.clone();
@@ -921,7 +993,128 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         processing_flag_for_reset.set(false);
                     } else {
                         wasm_bindgen_futures::spawn_local(async move {
-                            web_sys::console::log_1(&"Fetching queued episodes...".into());
+                            let mut auto_play_handled = false;
+
+                            // PRIORITY 1: Playlist context auto-play
+                            // Read live state via dispatch to avoid stale snapshot from render time.
+                            // The stale `audio_state` clone was captured when the effect ran and may
+                            // have current_playlist_id = None if the effect fired before the dispatch
+                            // that sets current_playlist_id completed.
+                            let live_playlist_id = audio_dispatch.get().current_playlist_id;
+                            web_sys::console::log_1(&format!(
+                                "ended: ep={:?}, live_playlist_id={:?}",
+                                current_episode_id, live_playlist_id
+                            ).into());
+                            if let (Some(Some(api_key_val)), Some(user_id_val), Some(server_name_val)) =
+                                (api_key.clone(), user_id, server_name.clone())
+                            {
+                                if let (Some(ep_id), Some(pid)) = (current_episode_id, live_playlist_id) {
+                                    web_sys::console::log_1(&format!(
+                                        "Playlist context active (playlist {}), looking for next episode...", pid
+                                    ).into());
+                                    match call_get_next_playlist_episode(
+                                        &server_name_val,
+                                        &Some(api_key_val.clone()),
+                                        ep_id,
+                                        pid,
+                                        user_id_val,
+                                    ).await {
+                                        Ok(Some(next_episode)) => {
+                                            web_sys::console::log_1(&format!(
+                                                "Playlist auto-play: {} (ID: {})",
+                                                next_episode.episodetitle, next_episode.episodeid
+                                            ).into());
+                                            on_play_click(
+                                                next_episode,
+                                                api_key_val,
+                                                user_id_val,
+                                                server_name_val,
+                                                audio_dispatch.clone(),
+                                                audio_state.clone(),
+                                                false,
+                                                true,
+                                                Some(pid),
+                                            )
+                                            .emit(MouseEvent::new("click").unwrap());
+                                            auto_play_handled = true;
+                                        }
+                                        Ok(None) => {
+                                            web_sys::console::log_1(&"Playlist exhausted, clearing playlist context".into());
+                                            audio_dispatch.reduce_mut(|state| {
+                                                state.current_playlist_id = None;
+                                            });
+                                        }
+                                        Err(e) => {
+                                            web_sys::console::log_1(&format!("Playlist next episode error: {:?}", e).into());
+                                        }
+                                    }
+                                }
+                            }
+
+                            if auto_play_handled {
+                                processing_flag_for_reset.set(false);
+                                return;
+                            }
+
+                            // PRIORITY 2: Serial podcast auto-play
+                            if let (Some(Some(api_key_val)), Some(user_id_val), Some(server_name_val)) =
+                                (api_key.clone(), user_id, server_name.clone())
+                            {
+                                if let Some(ep_id) = current_episode_id {
+                                    // Get the podcast ID for the current episode
+                                    if let Ok(podcast_id) = call_get_podcast_id_from_ep(
+                                        &server_name_val,
+                                        &Some(api_key_val.clone()),
+                                        ep_id,
+                                        user_id_val,
+                                        None,
+                                    ).await {
+                                        // Check if auto-play-next is enabled for this podcast
+                                        if let Ok(auto_play_next) = call_get_auto_play_next_status(
+                                            &server_name_val,
+                                            user_id_val,
+                                            &Some(api_key_val.clone()),
+                                            podcast_id,
+                                        ).await {
+                                            if auto_play_next {
+                                                web_sys::console::log_1(&"Auto-play-next enabled, looking for next episode in podcast...".into());
+                                                if let Ok(Some(next_episode)) = call_get_next_podcast_episode(
+                                                    &server_name_val,
+                                                    &Some(api_key_val.clone()),
+                                                    ep_id,
+                                                    user_id_val,
+                                                ).await {
+                                                    web_sys::console::log_1(&format!(
+                                                        "Auto-playing next episode: {} (ID: {})",
+                                                        next_episode.episodetitle, next_episode.episodeid
+                                                    ).into());
+                                                    on_play_click(
+                                                        next_episode,
+                                                        api_key_val,
+                                                        user_id_val,
+                                                        server_name_val,
+                                                        audio_dispatch.clone(),
+                                                        audio_state.clone(),
+                                                        false,
+                                                        true, // skip_queue: auto-play-next episodes shouldn't be added to queue
+                                                        None,
+                                                    )
+                                                    .emit(MouseEvent::new("click").unwrap());
+                                                    auto_play_handled = true;
+                                                } else {
+                                                    web_sys::console::log_1(&"No next episode found in podcast, falling through to queue".into());
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if auto_play_handled {
+                                processing_flag_for_reset.set(false);
+                                return;
+                            }
+
                             web_sys::console::log_1(&"Fetching queued episodes...".into());
                             let queued_episodes_result = call_get_queued_episodes(
                                 &server_name.clone().unwrap(),
@@ -936,90 +1129,105 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                             .into(),
                                     );
 
-                                    // If queue is empty, just stop playback
-                                    if episodes.is_empty() {
-                                        web_sys::console::log_1(
-                                            &"Queue is empty, stopping playback".into(),
-                                        );
-                                        audio_dispatch.reduce_mut(|state| {
-                                            state.audio_playing = Some(false);
-                                        });
-                                    } else {
-                                        // Try to find current episode first to remove it properly
-                                        if let Some(current_episode) = episodes
-                                            .iter()
-                                            .find(|ep| ep.episodeid == current_episode_id.unwrap())
-                                        {
-                                            web_sys::console::log_1(&format!("Found current episode in queue (ID: {}), removing it", current_episode.episodeid).into());
-                                            // Remove the currently playing episode from the queue
+                                    // Remove the current episode from the queue
+                                    if let Some(current_episode) = episodes
+                                        .iter()
+                                        .find(|ep| ep.episodeid == current_episode_id.unwrap())
+                                    {
+                                        web_sys::console::log_1(&format!("Found current episode in queue (ID: {}), removing it", current_episode.episodeid).into());
+                                        let request = QueuePodcastRequest {
+                                            episode_id: current_episode_id.clone().unwrap(),
+                                            user_id: user_id.clone().unwrap(),
+                                            is_youtube: current_episode.is_youtube,
+                                        };
+                                        let _ = call_remove_queued_episode(
+                                            &server_name.clone().unwrap(),
+                                            &api_key.clone().unwrap(),
+                                            &request,
+                                        )
+                                        .await;
+                                    }
+
+                                    // Remove any completed episodes from the queue
+                                    for ep in episodes.iter().filter(|ep| ep.completed) {
+                                        if Some(ep.episodeid) != current_episode_id {
+                                            web_sys::console::log_1(&format!("Removing completed episode from queue: {} (ID: {})", ep.episodetitle, ep.episodeid).into());
                                             let request = QueuePodcastRequest {
-                                                episode_id: current_episode_id.clone().unwrap(),
+                                                episode_id: ep.episodeid,
                                                 user_id: user_id.clone().unwrap(),
-                                                is_youtube: current_episode.is_youtube,
+                                                is_youtube: ep.is_youtube,
                                             };
-                                            let remove_result = call_remove_queued_episode(
+                                            let _ = call_remove_queued_episode(
                                                 &server_name.clone().unwrap(),
                                                 &api_key.clone().unwrap(),
                                                 &request,
                                             )
                                             .await;
-                                            match remove_result {
-                                                Ok(_) => {
-                                                    web_sys::console::log_1(&"Successfully removed current episode from queue".into());
-                                                }
-                                                Err(e) => {
-                                                    web_sys::console::log_1(&format!("Failed to remove episode from queue: {:?}", e).into());
-                                                }
-                                            }
-                                        } else {
-                                            web_sys::console::log_1(&"Current episode not found in queue (likely already removed)".into());
                                         }
+                                    }
 
-                                        // Now play the first episode in the queue (which is the next one to play)
-                                        // Sort by queue position to ensure we get the right one
-                                        let mut sorted_episodes = episodes.clone();
-                                        sorted_episodes
-                                            .sort_by_key(|ep| ep.queueposition.unwrap_or(999999));
+                                    // Re-fetch the queue to get updated positions after removals
+                                    let updated_result = call_get_queued_episodes(
+                                        &server_name.clone().unwrap(),
+                                        &api_key.clone().unwrap(),
+                                        &user_id.clone().unwrap(),
+                                    )
+                                    .await;
 
-                                        if let Some(next_episode) = sorted_episodes.first() {
-                                            web_sys::console::log_1(&format!("Playing first episode in queue: {} (ID: {}, Position: {})",
-                                                next_episode.episodetitle,
-                                                next_episode.episodeid,
-                                                next_episode.queueposition.unwrap_or(0)
-                                            ).into());
-
-                                            // Check if we have the required data
-                                            if let (
-                                                Some(Some(api_key_val)),
-                                                Some(user_id_val),
-                                                Some(server_name_val),
-                                            ) = (api_key.clone(), user_id, server_name.clone())
-                                            {
+                                    match updated_result {
+                                        Ok(updated_episodes) => {
+                                            if updated_episodes.is_empty() {
                                                 web_sys::console::log_1(
-                                                    &"Calling on_play_click for next episode"
-                                                        .into(),
+                                                    &"Queue is empty after cleanup, stopping playback".into(),
                                                 );
-                                                on_play_click(
-                                                    next_episode.clone(),
-                                                    api_key_val,
-                                                    user_id_val,
-                                                    server_name_val,
-                                                    audio_dispatch.clone(),
-                                                    audio_state.clone(),
-                                                    false,
-                                                )
-                                                .emit(MouseEvent::new("click").unwrap());
-                                                web_sys::console::log_1(&"Successfully emitted play click for next episode".into());
+                                                audio_dispatch.reduce_mut(|state| {
+                                                    state.audio_playing = Some(false);
+                                                });
                                             } else {
-                                                web_sys::console::log_1(&"ERROR: Missing required auth data (api_key, user_id, or server_name)".into());
+                                                // Sort by queue position and play the first one
+                                                let mut sorted_episodes = updated_episodes;
+                                                sorted_episodes
+                                                    .sort_by_key(|ep| ep.queueposition.unwrap_or(999999));
+
+                                                if let Some(next_episode) = sorted_episodes.first() {
+                                                    web_sys::console::log_1(&format!("Playing first episode in queue: {} (ID: {}, Position: {})",
+                                                        next_episode.episodetitle,
+                                                        next_episode.episodeid,
+                                                        next_episode.queueposition.unwrap_or(0)
+                                                    ).into());
+
+                                                    if let (
+                                                        Some(Some(api_key_val)),
+                                                        Some(user_id_val),
+                                                        Some(server_name_val),
+                                                    ) = (api_key.clone(), user_id, server_name.clone())
+                                                    {
+                                                        on_play_click(
+                                                            next_episode.clone(),
+                                                            api_key_val,
+                                                            user_id_val,
+                                                            server_name_val,
+                                                            audio_dispatch.clone(),
+                                                            audio_state.clone(),
+                                                            false,
+                                                            false,
+                                                            None,
+                                                        )
+                                                        .emit(MouseEvent::new("click").unwrap());
+                                                    } else {
+                                                        web_sys::console::log_1(&"ERROR: Missing required auth data".into());
+                                                    }
+                                                } else {
+                                                    audio_dispatch.reduce_mut(|state| {
+                                                        state.audio_playing = Some(false);
+                                                    });
+                                                }
                                             }
-                                        } else {
+                                        }
+                                        Err(e) => {
                                             web_sys::console::log_1(
-                                                &"No episodes found in queue after sorting".into(),
+                                                &format!("Failed to re-fetch queue: {:?}", e).into(),
                                             );
-                                            audio_dispatch.reduce_mut(|state| {
-                                                state.audio_playing = Some(false);
-                                            });
                                         }
                                     }
                                 }
@@ -1224,6 +1432,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 audio_dispatch.clone(),
                                 audio_state.clone(),
                                 false,
+                                false,
+                                None,
                             )
                             .emit(MouseEvent::new("click").unwrap());
                         } else {
@@ -1465,182 +1675,193 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                  } else {
                      String::new()
                  }}>
-                <div class="top-section">
-                    <div>
-                    <button onclick={title_click.clone()} class="retract-button">
-                        <div class="drawer-text flex items-center justify-center">
-                            <i class="ph ph-caret-circle-down text-4xl"></i>
-                        </div>
-                    </button>
-                    // Show video player if is_video is true, otherwise show artwork
-                    {
-                        if audio_props.is_video {
-                            // Render video container for video podcasts in fullscreen mode
-                            html! {
-                                <div class="video-player-container" style="width: 100%; background: #000;">
-                                    <div ref={video_container_ref.clone()} id="video-player-mount" style="width: 100%; max-height: 400px; display: flex; justify-content: center; align-items: center;">
-                                        // Video element will be mounted here via use_effect
-                                    </div>
-                                </div>
-                            }
-                        } else {
-                            // Show artwork for audio podcasts
-                            html! {
-                                <div onclick={title_click.clone()} class="audio-image-container">
-                                    <img src={(*current_chapter_image).clone()} />
-                                </div>
-                            }
-                        }
-                    }
-                    <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
-                    </div>
-                    // Desktop scrubber
-                    <div class="flex-grow flex items-center sm:block hidden">
-                        <div class="flex items-center flex-nowrap">
-                            <span class="time-display px-2">{(*current_time_formatted_local).clone()}</span>
-                            <input type="range"
-                                class="flex-grow h-1 cursor-pointer"
-                                min="0.0"
-                                max={audio_props.duration_sec.to_string().clone()}
-                                value={(*current_time_local).to_string()}
-                                oninput={update_time.clone()} />
-                            <span class="time-display px-2">{formatted_duration.clone()}</span>
-                        </div>
-                    </div>
-                    // Mobile scrubber
-                    <div class="w-full flex items-center justify-center sm:hidden">
-                        <div class="flex items-center flex-nowrap w-full px-4">
-                            <span class="time-display px-2">{(*current_time_formatted_local).clone()}</span>
-                            <input type="range"
-                                class="flex-grow h-1 cursor-pointer"
-                                min="0.0"
-                                max={audio_props.duration_sec.to_string().clone()}
-                                value={(*current_time_local).to_string()}
-                                oninput={update_time.clone()} />
-                            <span class="time-display px-2">{formatted_duration.clone()}</span>
-                        </div>
-                    </div>
+                // Blurred backdrop + overlay (only visible when expanded)
+                <div class="player-fs-backdrop"
+                    style={format!("background-image: url('{}');", audio_props.artwork_url)}
+                />
+                <div class="player-fs-overlay" />
 
-                    <div class="episode-button-container flex items-center justify-center">
-                        <PlaybackControl
-                            speed={audio_state.playback_speed}
-                            on_speed_change={update_playback_closure}
-                        />
-                        <button onclick={skip_backward.clone()} class="pronounce-mobile rewind-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                            <i class="ph ph-rewind md:text-2xl text-4xl"></i>
+                // Fullscreen layout
+                <div class="player-fs">
+                    <div class="player-fs-topbar">
+                        <button onclick={title_click.clone()} class="player-btn" title="Collapse">
+                            <i class="ph ph-caret-down" style="font-size:24px;"></i>
                         </button>
-                        <button onclick={toggle_playback.clone()} class="pronounce-mobile audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                                { if audio_state.audio_playing.unwrap_or(false) {
-                                    html! { <i class="ph ph-pause md:text-2xl text-4xl"></i> }
-                                } else {
-                                    html! { <i class="ph ph-play md:text-2xl text-4xl"></i> }
-                                }}
-                        </button>
-                        <button onclick={skip_forward.clone()} class="pronounce-mobile skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                            <i class="ph ph-fast-forward md:text-2xl text-4xl"></i>
-                        </button>
-                        <button onclick={skip_episode.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                            <i class="ph ph-skip-forward text-2xl"></i>
+                        <span class="player-fs-eyebrow">{ &i18n_now_playing }</span>
+                        <button onclick={Callback::from({
+                            let audio_dispatch = _audio_dispatch.clone();
+                            move |_: MouseEvent| {
+                                audio_dispatch.reduce_mut(|s| s.queue_panel_open = !s.queue_panel_open);
+                            }
+                        })} class="player-btn" title="Queue">
+                            <i class="ph ph-queue" style="font-size:22px;"></i>
                         </button>
                     </div>
 
-                    <div class="episode-button-container flex items-center justify-center">
-                    {
-                        if episode_in_db {
-                            html! {
-                                <>
-                                <button onclick={Callback::from(move |e: MouseEvent| {
-                                    on_shownotes_click.emit(e.clone());
-                                    // title_click_emit.emit(e);
-                                })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
-                                    { &i18n_shownotes }
-                                </button>
-                                {
-                                    if let Some(chapters) = &audio_state.episode_chapters {
-                                        if !chapters.is_empty() {
-                                            html! {
-                                                <button onclick={Callback::from(move |_: MouseEvent| {
-                                                    on_chapter_select.emit(());
-                                                })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
-                                                    { &i18n_chapters }
-                                                </button>
-                                            }
-                                        } else {
-                                            html! {}
-                                        }
-                                    } else {
-                                        html! {}
-                                    }
+                    <div class="player-fs-main">
+                        // Album art — inline, not fixed-position
+                        <div class="player-fs-cover-slot">
+                        {
+                            if audio_props.is_video {
+                                html! {
+                                    <div ref={video_container_ref.clone()} id="video-player-mount"
+                                        style="width:100%;height:100%;background:#000;display:flex;align-items:center;justify-content:center;" />
                                 }
-                                </>
-                            }
-                        } else {
-                            html! {
-                                <button disabled=true class="item-container-button audio-full-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center opacity-50 cursor-not-allowed">
-                                    { &i18n_shownotes_unavailable }
-                                </button>
+                            } else {
+                                html! {
+                                    <img
+                                        src={(*current_chapter_image).clone()}
+                                        alt="Album art"
+                                        class="player-fs-art"
+                                    />
+                                }
                             }
                         }
-                    }
-                    <VolumeControl
-                        volume={audio_state.audio_volume}
-                        on_volume_change={update_volume_closure}
-                    />
-                    </div>
-                    </div>
+                        </div>
 
-                </div>
-                <div class="line-content">
-                <div class="mobile-progress-container md:hidden">
-                    <div
-                        class="mobile-progress-bar"
-                        style={format!("width: {}%",
-                            (audio_state.current_time_seconds / audio_props.duration_sec * 100.0).clamp(0.0, 100.0)
-                        )}
-                    />
-                </div>
-                <div class="left-group"
-                     onclick={title_click.clone()}
-                     ontouchstart={on_touch_start.clone()}
-                     ontouchmove={on_touch_move.clone()}
-                     ontouchend={on_touch_end.clone()}
-                     style="cursor: pointer; touch-action: none;">
-                    <div class="artwork-container">
-                        <FallbackImage
-                            src={audio_props.artwork_url.clone()}
-                            alt={format!("Cover for audio")}
-                            class={Some(artwork_class.to_string())}
-                        />
-                    </div>
-                    <div class="title">
-                        <span>{ &audio_props.title }</span>
-                    </div>
-                </div>
-                <div class="right-group">
-                    <button onclick={toggle_playback} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                        { if audio_state.audio_playing.unwrap_or(false) {
-                            html! { <i class="ph ph-pause text-2xl"></i> }
-                        } else {
-                            html! { <i class="ph ph-play text-2xl"></i> }
-                        }}
-                    </button>
-                    <button onclick={skip_forward} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
-                        <i class="ph ph-fast-forward text-2xl"></i>
-                    </button>
-                    <div class="seek-bar-container md:flex hidden items-center">
-                        <div class="flex items-center flex-nowrap w-full">
-                            <span class="time-display px-2">{(*current_time_formatted_local).clone()}</span>
+                        <div class="player-fs-meta">
+                            <div class="player-fs-title">{ &audio_props.title }</div>
+                        </div>
+
+                        // Scrub bar
+                        <div class="player-fs-scrub-area">
+                            <span class="player-time">{(*current_time_formatted_local).clone()}</span>
                             <input type="range"
-                                class="flex-grow h-1 cursor-pointer mx-2"
+                                class="player-range"
                                 min="0.0"
-                                max={audio_props.duration_sec.to_string().clone()}
+                                max={audio_props.duration_sec.to_string()}
                                 value={(*current_time_local).to_string()}
                                 oninput={update_time.clone()} />
-                            <span class="time-display px-2">{formatted_duration.clone()}</span>
+                            <span class="player-time">{formatted_duration.clone()}</span>
+                        </div>
+
+                        // Transport controls
+                        <div class="player-fs-controls">
+                            <div class="player-fs-side-btns player-fs-side-btns--left">
+                                <button onclick={skip_backward.clone()} class="player-fs-ctrl" title="Back 15s">
+                                    <i class="ph ph-rewind"></i>
+                                </button>
+                            </div>
+                            <button onclick={toggle_playback.clone()} class="player-fs-ctrl player-fs-ctrl-big" title="Play / Pause">
+                                { if audio_state.audio_playing.unwrap_or(false) {
+                                    html! { <i class="ph ph-pause-circle"></i> }
+                                } else {
+                                    html! { <i class="ph ph-play-circle"></i> }
+                                }}
+                            </button>
+                            <div class="player-fs-side-btns">
+                                <button onclick={skip_forward.clone()} class="player-fs-ctrl" title="Forward 30s">
+                                    <i class="ph ph-fast-forward"></i>
+                                </button>
+                                <button onclick={skip_episode.clone()} class="player-fs-ctrl" title="Next episode">
+                                    <i class="ph ph-skip-forward"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        // Footer: speed, volume, shownotes
+                        <div class="player-fs-footer">
+                            <PlaybackControl
+                                speed={audio_state.playback_speed}
+                                on_speed_change={update_playback_closure}
+                            />
+                            <VolumeControl
+                                volume={audio_state.audio_volume}
+                                on_volume_change={update_volume_closure}
+                            />
+                            {
+                                if episode_in_db {
+                                    html! {
+                                        <>
+                                        <button onclick={Callback::from(move |e: MouseEvent| {
+                                            on_shownotes_click.emit(e);
+                                        })} class="player-btn" title="Show notes">
+                                            <i class="ph ph-article"></i>
+                                        </button>
+                                        {
+                                            if let Some(chapters) = &audio_state.episode_chapters {
+                                                if !chapters.is_empty() {
+                                                    html! {
+                                                        <button onclick={Callback::from(move |_: MouseEvent| {
+                                                            on_chapter_select.emit(());
+                                                        })} class="player-btn" title="Chapters">
+                                                            <i class="ph ph-list-numbers"></i>
+                                                        </button>
+                                                    }
+                                                } else { html! {} }
+                                            } else { html! {} }
+                                        }
+                                        </>
+                                    }
+                                } else { html! {} }
+                            }
                         </div>
                     </div>
                 </div>
-            </div>
+                <div class="player-bar">
+                    <div class="mobile-progress-container">
+                        <div
+                            class="mobile-progress-bar"
+                            style={format!("width: {}%",
+                                (audio_state.current_time_seconds / audio_props.duration_sec * 100.0).clamp(0.0, 100.0)
+                            )}
+                        />
+                    </div>
+                    // Left: artwork circle + episode title
+                    <div class="player-left"
+                         onclick={title_click.clone()}
+                         ontouchstart={on_touch_start.clone()}
+                         ontouchmove={on_touch_move.clone()}
+                         ontouchend={on_touch_end.clone()}>
+                        <div class="artwork-container">
+                            <FallbackImage
+                                src={audio_props.artwork_url.clone()}
+                                alt={format!("Cover for audio")}
+                                class={Some(artwork_class.to_string())}
+                            />
+                        </div>
+                        <div class="player-info">
+                            <div class="player-title">{ &audio_props.title }</div>
+                        </div>
+                    </div>
+                    // Center: transport controls + scrub bar
+                    <div class="player-center">
+                        <div class="player-buttons">
+                            <button onclick={skip_backward.clone()} class="player-btn" title="Skip back 15s">
+                                <i class="ph ph-rewind"></i>
+                            </button>
+                            <button onclick={toggle_playback.clone()} class="player-btn play" title="Play / Pause">
+                                { if audio_state.audio_playing.unwrap_or(false) {
+                                    html! { <i class="ph ph-pause"></i> }
+                                } else {
+                                    html! { <i class="ph ph-play"></i> }
+                                }}
+                            </button>
+                            <button onclick={skip_forward.clone()} class="player-btn" title="Skip forward 15s">
+                                <i class="ph ph-fast-forward"></i>
+                            </button>
+                            <button onclick={skip_episode.clone()} class="player-btn" title="Next episode">
+                                <i class="ph ph-skip-forward"></i>
+                            </button>
+                        </div>
+                        <div class="player-scrub">
+                            <span class="player-time">{(*current_time_formatted_local).clone()}</span>
+                            <input type="range"
+                                class="player-range"
+                                min="0.0"
+                                max={audio_props.duration_sec.to_string()}
+                                value={(*current_time_local).to_string()}
+                                oninput={update_time.clone()} />
+                            <span class="player-time">{formatted_duration.clone()}</span>
+                        </div>
+                    </div>
+                    // Right: expand button
+                    <div class="player-right">
+                        <button onclick={title_click.clone()} class="player-btn" title="Expand player">
+                            <i class="ph ph-arrows-out"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
             {
                 if *show_modal && audio_state.currently_playing.is_some() {
@@ -1662,19 +1883,25 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         Callback::from(move |e: MouseEvent| {
                             show_modal.set(false);  // Close modal before navigation
                             title_click.emit(e);
-                            let dispatch_clone = dispatch.clone();
+                            let _dispatch_clone = dispatch.clone();
                             let history_clone = history.clone();
                             let props = props.clone();
                             wasm_bindgen_futures::spawn_local(async move {
-                                dispatch_clone.reduce_mut(move |state| {
-                                    // Only clear fetched_episode if we're navigating to a different episode
-                                    if state.selected_episode_id != Some(episode_id) {
-                                        state.fetched_episode = None;
-                                    }
-                                    state.selected_episode_id = Some(episode_id);
+                                let old_episode_id = Dispatch::<EpisodeNavigationState>::global().get().selected_episode_id;
+                                Dispatch::<EpisodeNavigationState>::global().reduce_mut(move |s| {
+                                    s.selected_episode_id = Some(episode_id);
                                 });
+                                if old_episode_id != Some(episode_id) {
+                                    Dispatch::<EpisodeDetailState>::global().reduce_mut(|s| {
+                                        s.fetched_episode = None;
+                                    });
+                                }
                                 if episode_id != 0 {
-                                    history_clone.push(format!("/episode?episode_id={}", episode_id));
+                                    if props.is_youtube {
+                                        history_clone.push(format!("/episode?episode_id={}&youtube=true", episode_id));
+                                    } else {
+                                        history_clone.push(format!("/episode?episode_id={}", episode_id));
+                                    }
                                 } else {
                                     let mut new_url = "/episode".to_string();
                                     new_url.push_str("?podcast_title=");
@@ -1688,14 +1915,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                                     history_clone.push(new_url);
 
-                                    dispatch_clone.reduce_mut(move |state| {
-                                        state.selected_episode_id = Some(episode_id);
-                                        state.selected_episode_url = Some(props.episode.episodeurl.clone());
-                                        state.selected_episode_audio_url = Some(props.src.clone());
-                                        state.selected_podcast_title = Some(props.title.clone());
-                                        state.person_episode = Some(false);
-                                        state.selected_is_youtube = props.episode.is_youtube;
-                                        state.fetched_episode = None;
+                                    Dispatch::<EpisodeNavigationState>::global().reduce_mut(move |s| {
+                                        s.selected_episode_id = Some(episode_id);
+                                        s.selected_episode_url = Some(props.episode.episodeurl.clone());
+                                        s.selected_episode_audio_url = Some(props.src.clone());
+                                        s.selected_podcast_title = Some(props.title.clone());
+                                        s.selected_is_youtube = props.episode.is_youtube;
+                                    });
+                                    Dispatch::<EpisodeDetailState>::global().reduce_mut(|s| {
+                                        s.person_episode = Some(false);
+                                        s.fetched_episode = None;
                                     });
                                 }
                             });
@@ -1715,6 +1944,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             on_show_notes={nav_to_episode}
                             listen_duration_percentage={listen_duration_percentage as i32}
                             is_youtube={props.is_youtube}
+                            is_video={props.is_video}
                         />
                     }
                 } else {
@@ -1735,16 +1965,18 @@ pub fn on_play_pause(
     server_name: String,
     audio_dispatch: Dispatch<UIState>,
     audio_state: Rc<UIState>,
-    app_state: Rc<AppState>,
+    _app_state: Rc<AppState>,
 ) -> Callback<MouseEvent> {
-    let is_local = if app_state.podcast_added.unwrap_or(false) && episode.episodeid != 0 {
-        app_state
+    let ep_status = Dispatch::<EpisodeStatusState>::global().get();
+    let podcast_feed_state = Dispatch::<PodcastFeedState>::global().get();
+    let is_local = if podcast_feed_state.podcast_added.unwrap_or(false) && episode.episodeid != 0 {
+        ep_status
             .downloaded_episodes
             .is_server_download(episode.episodeid)
             || {
                 #[cfg(not(feature = "server_build"))]
                 {
-                    app_state
+                    ep_status
                         .downloaded_episodes
                         .is_local_download(episode.episodeid)
                 }
@@ -1782,6 +2014,8 @@ pub fn on_play_pause(
                 audio_dispatch.clone(),
                 audio_state.clone(),
                 is_local,
+                false,
+                None,
             )
             .emit(e);
         }
@@ -1796,12 +2030,37 @@ pub fn on_play_click(
     audio_dispatch: Dispatch<UIState>,
     _audio_state: Rc<UIState>,
     is_local: bool,
+    skip_queue: bool,
+    playlist_id: Option<i32>,
 ) -> Callback<MouseEvent> {
-    Callback::from(move |_: MouseEvent| {
+    Callback::from(move |_e: MouseEvent| {
+        // Local-first: on desktop, if this episode is downloaded to the device, play the
+        // on-device file instead of streaming. (No-op on the hosted web/server build.)
+        #[cfg(not(feature = "server_build"))]
+        {
+            let status = Dispatch::<EpisodeStatusState>::global().get();
+            let downloads = &status.downloaded_episodes;
+            if downloads.is_local_download(episode.episodeid) {
+                if let Some(local_ep) = downloads
+                    .episodes()
+                    .find(|ep| ep.episodeid == episode.episodeid && ep.downloadedlocation.is_some())
+                {
+                    on_play_click_offline(
+                        local_ep.clone(),
+                        audio_dispatch.clone(),
+                        Dispatch::<AppState>::global(),
+                    )
+                    .emit(_e.clone());
+                    return;
+                }
+            }
+        }
+
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
         let audio_dispatch = audio_dispatch.clone();
+        let playlist_id = playlist_id;
 
         let episode_pos: f32 = 0.0;
         let check_server_name = server_name.clone();
@@ -1896,24 +2155,51 @@ pub fn on_play_click(
                     }
                 }
 
-                let queue_server_name = check_server_name.clone();
-                let queue_api_key = check_api_key.clone();
-
-                let request = QueuePodcastRequest {
-                    episode_id: episode.episodeid,
-                    user_id,
-                    is_youtube: episode.is_youtube,
-                };
-
-                let queue_api = Option::from(queue_api_key);
-
-                let add_queue_future = call_queue_episode(&queue_server_name, &queue_api, &request);
-                match add_queue_future.await {
-                    Ok(_) => {
-                        // web_sys::console::log_1(&"Successfully Added Episode to Queue".into());
+                if !skip_queue {
+                    // Check if podcast has auto-play-next enabled — if so, skip queue add
+                    let mut should_queue = true;
+                    if episode.episodeid != 0 {
+                        if let Ok(podcast_id) = call_get_podcast_id_from_ep(
+                            &check_server_name,
+                            &Some(check_api_key.clone()),
+                            episode.episodeid,
+                            user_id,
+                            None,
+                        ).await {
+                            if let Ok(auto_play_next) = call_get_auto_play_next_status(
+                                &check_server_name,
+                                user_id,
+                                &Some(check_api_key.clone()),
+                                podcast_id,
+                            ).await {
+                                if auto_play_next {
+                                    should_queue = false;
+                                }
+                            }
+                        }
                     }
-                    Err(_e) => {
-                        // web_sys::console::log_1(&format!("Failed to add to queue: {:?}", e).into());
+
+                    if should_queue {
+                        let queue_server_name = check_server_name.clone();
+                        let queue_api_key = check_api_key.clone();
+
+                        let request = QueuePodcastRequest {
+                            episode_id: episode.episodeid,
+                            user_id,
+                            is_youtube: episode.is_youtube,
+                        };
+
+                        let queue_api = Option::from(queue_api_key);
+
+                        let add_queue_future = call_queue_episode(&queue_server_name, &queue_api, &request);
+                        match add_queue_future.await {
+                            Ok(_) => {
+                                // web_sys::console::log_1(&"Successfully Added Episode to Queue".into());
+                            }
+                            Err(_e) => {
+                                // web_sys::console::log_1(&format!("Failed to add to queue: {:?}", e).into());
+                            }
+                        }
                     }
                 }
             }
@@ -1938,13 +2224,22 @@ pub fn on_play_click(
             }
         });
 
-        // Determine the source URL
+        // Determine the source URL. Prefer the server download endpoint whenever the
+        // episode is downloaded to the server — regardless of which UI context started
+        // playback — so we never stream the original feed URL for a downloaded episode.
+        let is_server_download = episode.downloaded
+            || Dispatch::<EpisodeStatusState>::global()
+                .get()
+                .downloaded_episodes
+                .is_server_download(episode.episodeid);
         let src = if episode.episodeurl.contains("youtube.com") {
             format!(
                 "{}/api/data/stream/{}?api_key={}&user_id={}&type=youtube",
                 server_name, episode.episodeid, api_key, user_id
             )
-        } else if is_local {
+        } else if is_local || is_server_download || episode.episodeurl.starts_with("local://") {
+            // Server-downloaded episodes and local-media episodes both stream through the
+            // backend (a browser can't load a local:// URL directly).
             format!(
                 "{}/api/data/stream/{}?api_key={}&user_id={}",
                 server_name, episode.episodeid, api_key, user_id
@@ -2075,7 +2370,7 @@ pub fn on_play_click(
                         )
                         .await
                         {
-                            Ok((playback_speed, start_skip, end_skip)) => {
+                            Ok((playback_speed, start_skip, end_skip, _playback_speed_customized)) => {
                                 let start_pos_sec = episode.listenduration.max(start_skip) as f64;
                                 let end_pos_sec = end_skip as f64;
 
@@ -2086,6 +2381,7 @@ pub fn on_play_click(
                                     audio_state.playback_speed = playback_speed as f64;
                                     audio_state.audio_volume = 100.0;
                                     audio_state.offline = Some(false);
+                                    audio_state.current_playlist_id = playlist_id;
                                     audio_state.currently_playing = Some(AudioPlayerProps {
                                         episode: episode.clone(),
                                         src: src.clone(),
@@ -2118,11 +2414,17 @@ pub fn on_play_click(
                                 web_sys::console::log_1(
                                     &format!("Error getting episode detail: {}", e).into(),
                                 );
+                                audio_dispatch_for_duration.reduce_mut(|state| {
+                                    state.loading_episode_id = None;
+                                });
                             }
                         }
                     }
                     Err(e) => {
                         web_sys::console::log_1(&format!("Error getting podcast ID: {}", e).into());
+                        audio_dispatch_for_duration.reduce_mut(|state| {
+                            state.loading_episode_id = None;
+                        });
                     }
                 };
             } else {
@@ -2133,6 +2435,7 @@ pub fn on_play_click(
                     audio_state.playback_speed = 1.0;
                     audio_state.audio_volume = 100.0;
                     audio_state.offline = Some(false);
+                    audio_state.current_playlist_id = playlist_id;
                     audio_state.currently_playing = Some(AudioPlayerProps {
                         episode: episode.clone(),
                         src: src.clone(),
@@ -2200,13 +2503,13 @@ pub fn on_play_click_offline(
     Callback::from(move |_: MouseEvent| {
         let episode_info_for_closure = episode.clone();
         let audio_dispatch = audio_dispatch.clone();
-        let app_dispatch = app_dispatch.clone();
+        let _app_dispatch = app_dispatch.clone();
 
         // Early return if downloadedlocation is None
         let file_path = match episode_info_for_closure.downloadedlocation {
             Some(path) => path,
             None => {
-                app_dispatch.reduce_mut(|state| {
+                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                     state.error_message = Some("Episode file location not found".to_string());
                 });
                 return;

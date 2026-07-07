@@ -1,0 +1,18 @@
+# Lint config for the generated PinePods OpenAPI spec (rust-api/openapi.json).
+# Extends Redocly's recommended ruleset but relaxes rules that conflict with
+# intentional API design, so CI fails only on genuinely broken specs.
+extends:
+  - recommended
+
+rules:
+  # Several endpoints are intentionally public (health checks, RSS feed, shared
+  # episode links), so we don't require a security scheme on every operation.
+  security-defined: off
+  # Not every endpoint defines a 4xx response (e.g. health checks).
+  operation-4xx-response: off
+  # A license name without an SPDX URL is acceptable for our purposes.
+  info-license-strict: off
+  # Some paths mix literal segments with leading path params (e.g.
+  # `/{podcast_id}/merge` alongside `/check_episode_in_db/{user_id}`); axum
+  # resolves these unambiguously by registration order, so the overlap is fine.
+  no-ambiguous-paths: off

@@ -47,6 +47,12 @@ abstract class AudioPlayerService {
   /// Play a new episode, optionally resume at last save point.
   Future<void> playEpisode({required Episode episode, bool resume = true});
 
+  /// Look up a locally-downloaded copy of a PinePods episode by its server
+  /// episode id. Returns the stored [Episode] (carrying filepath/filename) if a
+  /// completed download exists, otherwise null. Used to prefer the on-disk file
+  /// over streaming when playing.
+  Future<Episode?> findDownloadedEpisode(int episodeId);
+
   /// Resume playing of current episode
   Future<void> play();
 
@@ -90,6 +96,15 @@ abstract class AudioPlayerService {
   /// Call to toggle trim silence.
   Future<void> trimSilence(bool trim);
 
+  /// Apply silence-trim for the *current* episode without changing the global
+  /// user preference (#727 per-podcast override). On Android this enables the
+  /// native ExoPlayer skip-silence; on iOS it applies the server-provided
+  /// [segments] (list of {'start': seconds, 'end': seconds}) as auto-skip ranges.
+  Future<void> applyEpisodeSilenceTrim(
+    bool enabled,
+    List<Map<String, double>> segments,
+  );
+
   /// Call to toggle trim silence.
   Future<void> volumeBoost(bool boost);
 
@@ -98,6 +113,8 @@ abstract class AudioPlayerService {
   Future<void> clearTranscript();
 
   void sleep(Sleep sleep);
+
+  void setPlaylistContext(int? playlistId);
 
   Episode? nowPlaying;
 

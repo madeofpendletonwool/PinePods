@@ -1,6 +1,8 @@
 // lib/ui/pinepods/podcast_details.dart
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
@@ -16,6 +18,8 @@ import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
+import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
+import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
@@ -75,6 +79,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   CompletedFilter _completedFilter = CompletedFilter.showAll;
   bool _showInProgress = false;
   bool _isAutoDownloadEnabled = false;
+  bool _isAutoPlayNextEnabled = false;
+
+  // Tracks episode being loaded for ghost mini player
+  PinepodsEpisode? _pendingEpisode;
 
   @override
   void initState() {
@@ -83,6 +91,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _initializeCredentials();
     _loadSortPreference();
     _loadAutoDownloadPreference();
+    _loadAutoPlayNextPreference();
     _checkFollowStatus();
     _searchController.addListener(_onSearchChanged);
   }
@@ -152,6 +161,70 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           duration: const Duration(seconds: 2),
         ),
       );
+    }
+  }
+
+  Future<void> _loadAutoPlayNextPreference() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0) return;
+
+    try {
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      final settings = settingsBloc.currentSettings;
+      if (settings.pinepodsServer != null && settings.pinepodsApiKey != null && settings.pinepodsUserId != null) {
+        _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+        final status = await _pinepodsService.getAutoPlayNextStatus(podcastId, settings.pinepodsUserId!);
+        if (mounted) {
+          setState(() {
+            _isAutoPlayNextEnabled = status;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading auto-play-next preference: $e');
+    }
+  }
+
+  Future<void> _toggleAutoPlayNext() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0) return;
+
+    final newValue = !_isAutoPlayNextEnabled;
+
+    try {
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      final settings = settingsBloc.currentSettings;
+      if (settings.pinepodsServer != null && settings.pinepodsApiKey != null && settings.pinepodsUserId != null) {
+        _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+        final url = Uri.parse('${settings.pinepodsServer}/api/data/enable_auto_play_next');
+        final response = await http.post(
+          url,
+          headers: {
+            'Api-Key': settings.pinepodsApiKey!,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'podcast_id': podcastId,
+            'user_id': settings.pinepodsUserId,
+            'auto_play_next': newValue,
+          }),
+        );
+
+        if (response.statusCode == 200 && mounted) {
+          setState(() {
+            _isAutoPlayNextEnabled = newValue;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(newValue ? 'Auto-play next enabled' : 'Auto-play next disabled'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error toggling auto-play-next: $e');
     }
   }
 
@@ -662,6 +735,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       return;
     }
 
+    setState(() => _pendingEpisode = episode);
+
     try {
       await playPinepodsEpisodeWithOptionalFullScreen(
         context,
@@ -671,6 +746,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       );
     } catch (e) {
       _showSnackBar('Failed to play episode: $e', Colors.red);
+    } finally {
+      if (mounted) setState(() => _pendingEpisode = null);
     }
   }
 
@@ -897,22 +974,36 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
     try {
-      final success = await _pinepodsService.markEpisodeCompleted(
-        episode.episodeId,
-        userId,
-        episode.isYoutube,
-      );
-
-      if (success) {
-        setState(() {
-          _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
-          _filteredEpisodes = _episodes.where((e) => 
-            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-          ).toList();
-        });
-        _showSnackBar('Episode marked as complete', Colors.green);
+      if (episode.completed) {
+        final success = await _pinepodsService.markEpisodeUncompleted(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
+        if (success) {
+          setState(() {
+            _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: false);
+            _filterEpisodes();
+          });
+          _showSnackBar('Episode marked as incomplete', Colors.green);
+        } else {
+          _showSnackBar('Failed to mark episode incomplete', Colors.red);
+        }
       } else {
-        _showSnackBar('Failed to mark episode complete', Colors.red);
+        final success = await _pinepodsService.markEpisodeCompleted(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
+        if (success) {
+          setState(() {
+            _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
+            _filterEpisodes();
+          });
+          _showSnackBar('Episode marked as complete', Colors.green);
+        } else {
+          _showSnackBar('Failed to mark episode complete', Colors.red);
+        }
       }
     } catch (e) {
       _showSnackBar('Error marking episode complete: $e', Colors.red);
@@ -981,7 +1072,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: SafeArea(child: Column(
         children: [
           Expanded(
             child: CustomScrollView(
@@ -1054,6 +1145,17 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     color: _isAutoDownloadEnabled ? Colors.blue[300] : Colors.white,
                   ),
                   tooltip: _isAutoDownloadEnabled ? 'Disable auto-download' : 'Enable auto-download',
+                ),
+              if (_isFollowing && widget.podcast.id > 0)
+                IconButton(
+                  onPressed: _toggleAutoPlayNext,
+                  icon: Icon(
+                    _isAutoPlayNextEnabled
+                        ? Icons.skip_next
+                        : Icons.skip_next_outlined,
+                    color: _isAutoPlayNextEnabled ? Colors.green[300] : Colors.white,
+                  ),
+                  tooltip: _isAutoPlayNextEnabled ? 'Disable auto-play next' : 'Enable auto-play next',
                 ),
               IconButton(
                 onPressed: _isFollowButtonLoading ? null : _toggleFollow,
@@ -1348,9 +1450,30 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
               ],
             ),
           ),
-          const MiniPlayer(),
+          _buildBottomPlayer(),
         ],
-      ),
+      )),
+    );
+  }
+
+  Widget _buildBottomPlayer() {
+    final audioBloc = Provider.of<AudioBloc>(context, listen: false);
+    return StreamBuilder<AudioState>(
+      stream: audioBloc.playingState,
+      initialData: AudioState.none,
+      builder: (context, snapshot) {
+        final audioState = snapshot.data ?? AudioState.none;
+        final isAudioActive = audioState != AudioState.none &&
+            audioState != AudioState.stopped &&
+            audioState != AudioState.error;
+
+        if (isAudioActive) {
+          return const MiniPlayer();
+        } else if (_pendingEpisode != null) {
+          return _PendingMiniPlayer(episode: _pendingEpisode!);
+        }
+        return const SizedBox.shrink();
+      },
     );
   }
 
@@ -1637,7 +1760,6 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           return PinepodsEpisodeCard(
             episode: episode,
             onTap: _isFollowing && hasValidServerEpisodeId ? () {
-              // Navigate to episode details only if following AND has valid server episode ID
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -1646,13 +1768,13 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   ),
                 ),
               );
-            } : null, // Disable tap if not following or no valid episode ID
+            } : null,
             onLongPress: _isFollowing && hasValidServerEpisodeId ? () {
               _showEpisodeContextMenu(originalIndex);
-            } : null, // Disable long press if not following or no valid episode ID  
+            } : null,
             onPlayPressed: _isFollowing ? () {
               _playEpisode(episode);
-            } : null, // Allow play for RSS episodes since it uses direct URL
+            } : null,
           );
         },
         childCount: _filteredEpisodes.length,
@@ -1698,6 +1820,129 @@ class _ExpandableDescriptionState extends State<_ExpandableDescription> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PendingMiniPlayer extends StatefulWidget {
+  final PinepodsEpisode episode;
+  const _PendingMiniPlayer({required this.episode});
+
+  @override
+  State<_PendingMiniPlayer> createState() => _PendingMiniPlayerState();
+}
+
+class _PendingMiniPlayerState extends State<_PendingMiniPlayer>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+    _fadeController.forward();
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Container(
+        height: 66,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withOpacity(0.92),
+          border: Border(
+            top: Divider.createBorderSide(context,
+                width: 1.0, color: theme.dividerColor),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 4.0, right: 4.0),
+          child: Row(
+            children: [
+              SizedBox(
+                height: 58,
+                width: 58,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: widget.episode.episodeArtwork.isNotEmpty
+                        ? Image.network(
+                            widget.episode.episodeArtwork,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: theme.colorScheme.surfaceVariant,
+                              child: Icon(Icons.music_note,
+                                  size: 20,
+                                  color: theme.colorScheme.onSurfaceVariant),
+                            ),
+                          )
+                        : Container(
+                            color: theme.colorScheme.surfaceVariant,
+                            child: Icon(Icons.music_note,
+                                size: 20,
+                                color: theme.colorScheme.onSurfaceVariant),
+                          ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.episode.episodeTitle,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4.0),
+                      child: Text(
+                        widget.episode.podcastName,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                height: 52,
+                width: 52,
+                child: Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        theme.iconTheme.color ?? theme.primaryColor,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

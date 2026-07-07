@@ -1,6 +1,6 @@
 // src/components/setting_components/playback_settings.rs
 
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_get_auto_complete_seconds, call_update_auto_complete_seconds};
 use anyhow::Error;
@@ -139,7 +139,6 @@ pub fn playback_settings() -> Html {
     let i18n_failed_to_update_playback_speed = i18n.t("playback_settings.failed_to_update_playback_speed").to_string();
     let i18n_auto_complete_seconds_updated_successfully = i18n.t("playback_settings.auto_complete_seconds_updated_successfully").to_string();
     let i18n_failed_to_update_auto_complete_seconds = i18n.t("playback_settings.failed_to_update_auto_complete_seconds").to_string();
-    let i18n_playback_preferences_description = i18n.t("playback_settings.playback_preferences_description").to_string();
     let i18n_default_playback_speed = i18n.t("playback_settings.default_playback_speed").to_string();
     let i18n_save = i18n.t("common.save").to_string();
     let i18n_range = i18n.t("playback_settings.range").to_string();
@@ -161,7 +160,7 @@ pub fn playback_settings() -> Html {
     {
         let default_playback_speed = default_playback_speed.clone();
         let is_loading = is_loading.clone();
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
 
         use_effect_with(
             (api_key.clone(), server_name.clone()),
@@ -180,7 +179,7 @@ pub fn playback_settings() -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}{}",
                                         i18n_failed_to_fetch_playback_speed.clone(),
@@ -203,7 +202,7 @@ pub fn playback_settings() -> Html {
     {
         let auto_complete_seconds = auto_complete_seconds.clone();
         let auto_complete_loading = auto_complete_loading.clone();
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
 
         use_effect_with(
             (api_key.clone(), server_name.clone()),
@@ -221,7 +220,7 @@ pub fn playback_settings() -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}{}",
                                         i18n_failed_to_fetch_auto_complete_seconds.clone(),
@@ -276,7 +275,7 @@ pub fn playback_settings() -> Html {
                 let speed = *default_playback_speed;
                 let show_success = show_success.clone();
                 let success_message = success_message.clone();
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_set_user_playback_speed(&server_name, &api_key, user_id, speed).await
@@ -295,7 +294,7 @@ pub fn playback_settings() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     i18n_failed_to_update_playback_speed,
@@ -345,7 +344,7 @@ pub fn playback_settings() -> Html {
                 let seconds = *auto_complete_seconds;
                 let show_success = show_success.clone();
                 let success_message = success_message.clone();
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_update_auto_complete_seconds(server_name, api_key.unwrap(), user_id, seconds).await
@@ -364,7 +363,7 @@ pub fn playback_settings() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}{}",
                                     i18n_failed_to_update_auto_complete_seconds,
@@ -379,74 +378,72 @@ pub fn playback_settings() -> Html {
     };
 
     html! {
-        <div class="playback-settings-container">
-            <div class="settings-description mb-4">
-                <p>{&i18n_playback_preferences_description}</p>
+        <>
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{&i18n_default_playback_speed}</div>
+                <div class="settings-row-desc">{&i18n_range}</div>
             </div>
-
-            <div class="playback-speed-control">
-                <div class="mt-4">
-                    <label for="default-playback-speed" class="block mb-2 text-sm font-medium">{&i18n_default_playback_speed}</label>
-                    <div class="flex items-center space-x-2">
-                        <input
-                            type="number"
-                            id="default-playback-speed"
-                            value={default_playback_speed.to_string()}
-                            oninput={on_playback_speed_change}
-                            class="form-input w-20"
-                            min="0.5"
-                            max="3.0"
-                            step="0.1"
-                            disabled={*is_loading}
-                        />
-                        <span class="text-sm">{"x"}</span>
-                        <button
-                            class="playback-submit-button ml-2"
-                            onclick={on_save_playback_speed}
-                            disabled={*is_loading}
-                        >
-                            <i class="ph ph-floppy-disk mr-1"></i>
-{&i18n_save}
-                        </button>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-1">{&i18n_range}</p>
-                </div>
+            <div class="settings-row-control" style="display:flex;align-items:center;gap:6px;">
+                <input
+                    type="number"
+                    value={default_playback_speed.to_string()}
+                    oninput={on_playback_speed_change}
+                    class="input"
+                    style="width:72px;"
+                    min="0.5"
+                    max="3.0"
+                    step="0.1"
+                    disabled={*is_loading}
+                />
+                <span style="font-size:12px;color:var(--text-secondary-color);">{"x"}</span>
+                <button
+                    class="btn btn-secondary"
+                    style="padding:6px 12px;"
+                    onclick={on_save_playback_speed}
+                    disabled={*is_loading}
+                >
+                    <i class="ph ph-floppy-disk"></i>
+                    <span>{&i18n_save}</span>
+                </button>
             </div>
-
-            <div class="auto-complete-control mt-6">
-                <div class="mt-4">
-                    <label for="auto-complete-seconds" class="block mb-2 text-sm font-medium">{&i18n_auto_complete_episode_threshold}</label>
-                    <div class="flex items-center space-x-2">
-                        <input
-                            type="number"
-                            id="auto-complete-seconds"
-                            value={auto_complete_seconds.to_string()}
-                            oninput={on_auto_complete_change}
-                            class="form-input w-20"
-                            min="0"
-                            max="3600"
-                            step="1"
-                            disabled={*auto_complete_loading}
-                        />
-                        <span class="text-sm">{&i18n_seconds}</span>
-                        <button
-                            class="playback-submit-button ml-2"
-                            onclick={on_save_auto_complete}
-                            disabled={*auto_complete_loading}
-                        >
-                            <i class="ph ph-floppy-disk mr-1"></i>
-{&i18n_save}
-                        </button>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-1">{&i18n_auto_complete_description}</p>
-                </div>
+        </div>
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{&i18n_auto_complete_episode_threshold}</div>
+                <div class="settings-row-desc">{&i18n_auto_complete_description}</div>
             </div>
-
-            if *show_success {
-                <div class="success-message mt-4">
+            <div class="settings-row-control" style="display:flex;align-items:center;gap:6px;">
+                <input
+                    type="number"
+                    value={auto_complete_seconds.to_string()}
+                    oninput={on_auto_complete_change}
+                    class="input"
+                    style="width:72px;"
+                    min="0"
+                    max="3600"
+                    step="1"
+                    disabled={*auto_complete_loading}
+                />
+                <span style="font-size:12px;color:var(--text-secondary-color);">{&i18n_seconds}</span>
+                <button
+                    class="btn btn-secondary"
+                    style="padding:6px 12px;"
+                    onclick={on_save_auto_complete}
+                    disabled={*auto_complete_loading}
+                >
+                    <i class="ph ph-floppy-disk"></i>
+                    <span>{&i18n_save}</span>
+                </button>
+            </div>
+        </div>
+        if *show_success {
+            <div class="settings-row">
+                <div class="success-message" style="font-size:12px;color:var(--hover-color);">
                     {(*success_message).clone()}
                 </div>
-            }
-        </div>
+            </div>
+        }
+        </>
     }
 }

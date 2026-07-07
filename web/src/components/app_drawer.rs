@@ -1,4 +1,5 @@
-use crate::components::context::{AppState, UserStatsStore};
+use crate::components::context::{AppState, FilterState, NotificationState, PageLoadState, UserPreferencesState, UserStatsStore};
+use crate::components::queue_panel::QueuePanel;
 use crate::components::navigation::use_back_button;
 use crate::pages::routes::Route;
 use crate::requests::pod_req::{call_get_pinepods_version, connect_to_episode_websocket};
@@ -7,6 +8,7 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use yew::prelude::*;
 use yew_router::prelude::Link;
+use yewdux::prelude::Dispatch;
 use yewdux::use_store;
 
 #[function_component(BackButton)]
@@ -37,18 +39,20 @@ pub fn app_drawer() -> Html {
     // let (state, _dispatch) = use_store::<AppState>();
 
     // Capture i18n strings before they get moved
-    let i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
+    #[cfg(not(feature = "server_build"))]
+    let _i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
     let i18n_pinepods = i18n.t("app_drawer.pinepods").to_string();
     let i18n_home = i18n.t("navigation.home").to_string();
     let i18n_feed = i18n.t("app_drawer.feed").to_string();
     let i18n_search_podcasts = i18n.t("app_drawer.search_podcasts").to_string();
-    let i18n_queue = i18n.t("navigation.queue").to_string();
-    let i18n_saved = i18n.t("navigation.saved").to_string();
+    let i18n_collections = i18n.t("navigation.collections").to_string();
     let i18n_playlists = i18n.t("navigation.playlists").to_string();
     let i18n_history = i18n.t("navigation.history").to_string();
     let i18n_server_downloads = i18n.t("app_drawer.server_downloads").to_string();
+    #[cfg(not(feature = "server_build"))]
     let i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
     let i18n_subscribed_people = i18n.t("app_drawer.subscribed_people").to_string();
+    let i18n_discover_hosts = i18n.t("app_drawer.discover_hosts").to_string();
     let i18n_podcasts = i18n.t("navigation.podcasts").to_string();
     let i18n_settings = i18n.t("app_drawer.settings").to_string();
     let i18n_sign_out = i18n.t("app_drawer.sign_out").to_string();
@@ -62,6 +66,9 @@ pub fn app_drawer() -> Html {
     };
     let (state, _dispatch) = use_store::<AppState>();
     let (post_state, _post_dispatch) = use_store::<AppState>();
+    let (prefs_state, _) = use_store::<UserPreferencesState>();
+    let (load_state, _) = use_store::<PageLoadState>();
+    let (_, notif_dispatch) = use_store::<NotificationState>();
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -120,6 +127,7 @@ pub fn app_drawer() -> Html {
         let user_id = user_id.clone();
         let api_key = api_key.clone();
         let dispatch = _dispatch.clone();
+        let notif_dispatch_refresh = notif_dispatch.clone();
 
         // Use Callback<MouseEvent> instead of just MouseEvent
         Callback::from(move |event: MouseEvent| {
@@ -129,12 +137,12 @@ pub fn app_drawer() -> Html {
             let server_name_call = server_name.clone();
             let user_id_call = user_id.clone();
             let api_key_call = api_key.clone();
-            let dispatch_clone = dispatch.clone();
+            let _dispatch_clone = dispatch.clone();
+            let notif_dispatch_clone = notif_dispatch_refresh.clone();
 
             // Set refreshing state before starting
-            dispatch_clone.reduce_mut(|state| {
+            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                 state.is_refreshing = Some(true);
-                state.clone()
             });
 
             spawn_local(async move {
@@ -145,7 +153,7 @@ pub fn app_drawer() -> Html {
                     &user_id_call.unwrap(),
                     &api_key_call.unwrap().unwrap(),
                     false,
-                    dispatch_clone.clone(),
+                    notif_dispatch_clone,
                 )
                 .await
                 {
@@ -158,10 +166,20 @@ pub fn app_drawer() -> Html {
                 }
 
                 // Reset the refreshing state after websocket completes
-                dispatch_clone.reduce_mut(|state| {
+                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
                     state.is_refreshing = Some(false);
-                    state.clone()
                 });
+            });
+        })
+    };
+
+    let (filter_state, filter_dispatch) = use_store::<FilterState>();
+    let toggle_favorites_filter = {
+        let filter_dispatch = filter_dispatch.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            filter_dispatch.reduce_mut(|state| {
+                state.favorites_only = !state.favorites_only;
             });
         })
     };
@@ -211,182 +229,115 @@ pub fn app_drawer() -> Html {
 
     html! {
         <div class="relative">
-            // Drawer
-            <div class={classes!("fixed", "drawer-background", "top-0", "left-0", "z-20", "h-full", "transition-all", "duration-400", "transform", "shadow-lg", "md:w-64", "w-less-full", "border-solid", "border-b-2", "border-r-2", "border-color", (*is_drawer_open).then(|| "translate-x-0").unwrap_or("-translate-x-full"))}>
-                <div class="flex flex-col justify-between h-full">
-                    <div class="px-6 py-4 mt-16 overflow-y-auto flex-1">
-                        <div class="flex items-center gap-2">
-                            <img
-                                src="/static/assets/favicon.png"
-                                alt="Pinepods Logo"
-                                class="w-6 h-6"
-                            />
-                            <h2 class="drawer-text text-lg font-semibold">{&i18n_pinepods}</h2>
-                        </div>
-                        <hr class="my-4 drawer-hr" />
-                        <div class="space-y-4">
-                            // User Account with Gravatar
-                        <div class="flex items-center space-x-3">
-                            <Link<Route> to={Route::UserStats}>
-                                <div class="align-avatar space-x-3">
-                                    <img
-                                        src={state.gravatar_url.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
-                                        style="width: 25px; height: 25px;"
-                                        class="icon-size rounded-full" // Added rounded-full for circular image
-                                        alt="User Avatar"
-                                    />
-                                    <span class="drawer-text text-lg text-adjust" style="margin-top: 7px; margin-left: -2px;">
-                                        {username} // Displaying the username
-                                    </span>
-                                </div>
-                            </Link<Route>>
-                        </div>
+            <QueuePanel />
+            // Sidebar drawer
+            <div class={classes!("fixed", "drawer-background", "top-0", "left-0", "z-20", "h-full", "transition-all", "duration-300", "transform", "shadow-lg", "md:w-64", "w-less-full", (*is_drawer_open).then(|| "translate-x-0").unwrap_or("-translate-x-full"))}>
+                // Brand header
+                <div class="sb-brand" style="margin-top: 60px;">
+                    <img src="/static/assets/favicon.png" alt="Pinepods" />
+                    <span>{&i18n_pinepods}</span>
+                </div>
 
-                            // Other Links
-                            <div class="m-0 p-0 flex items-center space-x-3">
-                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::Home}>
-                                        <div class="flex items-center">
-                                            <i class="ph ph-house text-2xl mr-3"></i>
-                                            <span class="text-lg">{&i18n_home}</span>
-                                        </div>
-                                    </Link<Route>>
-                                </div>
-                            </div>
-                            <div class="m-0 p-0 flex items-center space-x-3">
-                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::Feed}>
-                                        <div class="flex items-center">
-                                            <i class="ph ph-bell-ringing text-2xl mr-3"></i>
-                                            <span class="text-lg">{&i18n_feed}</span>
-                                        </div>
-                                    </Link<Route>>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::Search}>
-                                        <div class="flex items-center">
-                                            <i class="ph ph-magnifying-glass text-2xl mr-3"></i>
-                                            <span class="text-lg">{&i18n_search_podcasts}</span>
-                                        </div>
-                                    </Link<Route>>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::Queue}>
-                                        <div class="flex items-center">
-                                            <i class="ph ph-queue icon-space text-2xl mr-3"></i>
-                                            <span class="text-lg">{&i18n_queue}</span>
-                                        </div>
-                                    </Link<Route>>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::Saved}>
-                                        <div class="flex items-center">
-                                            <i class="ph ph-star text-2xl mr-3"></i>
-                                            <span class="text-lg">{&i18n_saved}</span>
-                                        </div>
-                                    </Link<Route>>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::Playlists}>
-                                        <div class="flex items-center">
-                                            <i class="ph ph-list-checks text-2xl mr-3"></i>
-                                            <span class="text-lg">{&i18n_playlists}</span>
-                                        </div>
-                                    </Link<Route>>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::PodHistory}>
-                                        <div class="flex items-center">
-                                            <i class="ph ph-clock-counter-clockwise text-2xl mr-3"></i>
-                                            <span class="text-lg">{&i18n_history}</span>
-                                        </div>
-                                    </Link<Route>>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                            <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                <Link<Route> to={Route::Downloads}>
-                                    <div class="flex items-center">
-                                        <i class="ph ph-download-simple text-2xl mr-3"></i>
-                                        <span class="text-lg">{&i18n_server_downloads}</span>
-                                    </div>
-                                </Link<Route>>
-                            </div>
-                        </div>
-                        {
-                            {
-                                local_download_link
-                            }
-                        }
-                            <div class="flex items-center space-x-3">
-                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::SubscribedPeople}>
-                                        <div class="flex items-center">
-                                            <i class="ph ph-user text-2xl mr-3"></i>
-                                            <span class="text-lg">{&i18n_subscribed_people}</span>
-                                        </div>
-                                    </Link<Route>>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::Podcasts}>
-                                        <div class="flex items-center">
-                                            <i class="ph ph-microphone-stage text-2xl mr-3"></i>
-                                            <span class="text-lg">{&i18n_podcasts}</span>
-                                        </div>
-                                    </Link<Route>>
-                                </div>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                                    <Link<Route> to={Route::Settings}>
-                                        <div class="flex items-center">
-                                            <i class="ph ph-gear text-2xl mr-3"></i>
-                                            <span class="text-lg">{&i18n_settings}</span>
-                                        </div>
-                                    </Link<Route>>
-                                </div>
-                            </div>
-                            <div class="flex-grow"></div>
-                                    </div>
-                            <div class="px-1 py-4">
-                <div class="flex items-center space-x-3">
-                    <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
-                        <Link<Route> to={Route::LogOut}>
-                            <div class="flex items-center">
-                                <i class="ph ph-sign-out text-2xl mr-3"></i>
-                                <span class="text-lg">{&i18n_sign_out}</span>
-                            </div>
+                // User account row
+                <div onclick={toggle_drawer.clone()} style="padding: 0 8px 4px;">
+                    <Link<Route> to={Route::UserStats} classes="sb-item">
+                        <img
+                            src={prefs_state.gravatar_url.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
+                            class="sb-avatar"
+                            alt="User avatar"
+                        />
+                        <span>{username.clone()}</span>
+                    </Link<Route>>
+                </div>
+
+                <hr class="sb-hr" />
+
+                // Navigation links
+                <div style="padding: 0 8px; display: flex; flex-direction: column; gap: 2px; flex: 1; overflow-y: auto;">
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::Home} classes="sb-item">
+                            <i class="ph ph-house"></i>
+                            <span>{&i18n_home}</span>
+                        </Link<Route>>
+                    </div>
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::Feed} classes="sb-item">
+                            <i class="ph ph-bell-ringing"></i>
+                            <span>{&i18n_feed}</span>
+                        </Link<Route>>
+                    </div>
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::Search} classes="sb-item">
+                            <i class="ph ph-magnifying-glass"></i>
+                            <span>{&i18n_search_podcasts}</span>
+                        </Link<Route>>
+                    </div>
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::Collections} classes="sb-item">
+                            <i class="ph ph-bookmark-simple"></i>
+                            <span>{&i18n_collections}</span>
+                        </Link<Route>>
+                    </div>
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::Playlists} classes="sb-item">
+                            <i class="ph ph-list-checks"></i>
+                            <span>{&i18n_playlists}</span>
+                        </Link<Route>>
+                    </div>
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::PodHistory} classes="sb-item">
+                            <i class="ph ph-clock-counter-clockwise"></i>
+                            <span>{&i18n_history}</span>
+                        </Link<Route>>
+                    </div>
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::Downloads} classes="sb-item">
+                            <i class="ph ph-download-simple"></i>
+                            <span>{&i18n_server_downloads}</span>
+                        </Link<Route>>
+                    </div>
+                    { local_download_link }
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::SubscribedPeople} classes="sb-item">
+                            <i class="ph ph-user"></i>
+                            <span>{&i18n_subscribed_people}</span>
+                        </Link<Route>>
+                    </div>
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::DiscoverHosts} classes="sb-item">
+                            <i class="ph ph-compass"></i>
+                            <span>{&i18n_discover_hosts}</span>
+                        </Link<Route>>
+                    </div>
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::Podcasts} classes="sb-item">
+                            <i class="ph ph-microphone-stage"></i>
+                            <span>{&i18n_podcasts}</span>
+                        </Link<Route>>
+                    </div>
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::Settings} classes="sb-item">
+                            <i class="ph ph-gear"></i>
+                            <span>{&i18n_settings}</span>
                         </Link<Route>>
                     </div>
                 </div>
 
-                        </div>
+                // Sign out + version at bottom
+                <div class="sb-bottom" style="padding: 8px 8px 4px; margin-top: auto;">
+                    <hr class="sb-hr" />
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::LogOut} classes="sb-item">
+                            <i class="ph ph-sign-out"></i>
+                            <span>{&i18n_sign_out}</span>
+                        </Link<Route>>
                     </div>
-                    // Version display at bottom of drawer
                     {
                         if let Some(version) = &stats_state.pinepods_version {
                             html! {
-                                <div class="text-center py-3 px-4">
-                                    <div class="text-xs opacity-50 drawer-text">
-                                        { format!("v{}", version) }
-                                    </div>
-                                </div>
+                                <div class="sb-version">{ format!("v{}", version) }</div>
                             }
-                        } else {
-                            html! {}
-                        }
+                        } else { html! {} }
                     }
                 </div>
             </div>
@@ -419,12 +370,12 @@ pub fn app_drawer() -> Html {
                     html! {
                         <button
                             onclick={on_refresh_click.clone()}
-                            onmouseup={on_refresh_click.clone()}  // Add this for better mobile handling
-                            class="rounded-lg cursor-pointer touch-manipulation"  // Add touch-manipulation
+                            onmouseup={on_refresh_click.clone()}
+                            class="ml-2 rounded-lg cursor-pointer touch-manipulation"
                         >
                             <div class="flex flex-col items-center">
                                 {
-                                    if state.is_refreshing.unwrap_or(false) {
+                                    if load_state.is_refreshing.unwrap_or(false) {
                                         html! {
                                             <div class="flex flex-col items-center">
                                                 <i class="ph ph-hourglass-medium md:text-4xl text-4xl"></i>
@@ -442,9 +393,29 @@ pub fn app_drawer() -> Html {
                 } else {
                     html! {}
                 }}
+                { if !show_back_button {
+                    let star_class = if filter_state.favorites_only {
+                        classes!("ph", "ph-star", "md:text-4xl", "text-4xl", "text-yellow-400")
+                    } else {
+                        classes!("ph", "ph-star", "md:text-4xl", "text-4xl")
+                    };
+                    html! {
+                        <button
+                            onclick={toggle_favorites_filter.clone()}
+                            class="ml-2 rounded-lg cursor-pointer"
+                            title="Toggle favorites filter"
+                        >
+                            <div class="flex flex-col items-center">
+                                <i class={star_class}></i>
+                            </div>
+                        </button>
+                    }
+                } else {
+                    html! {}
+                }}
 
                 {
-                    match state.is_loading {
+                    match load_state.is_loading {
                         Some(true) => html! {
                             <div role="status" class="ml-3">
                                 <svg aria-hidden="true" class="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600" viewBox="0 0 100 101" fill="none" xmlns="http://www.w3.org/2000/svg">

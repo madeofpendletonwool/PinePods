@@ -79,14 +79,14 @@ jobs:
         run: |
           rustup target add wasm32-unknown-unknown
 
-      - name: Install Trunk
+      - name: Install wasm-pack
         run: |
-          cargo binstall trunk -y
+          cargo binstall wasm-pack -y
 
       - name: Run frontend tests
         working-directory: ./web
         run: |
-          RUSTFLAGS="--cfg=web_sys_unstable_apis" cargo test --features server_build -- --nocapture
+          RUSTFLAGS="--cfg=web_sys_unstable_apis" wasm-pack test --node -- --features server_build
 
   # docker-build:
   #   runs-on: ubuntu-latest

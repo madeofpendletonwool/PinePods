@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, ExpandedDescriptions, UIState};
+use crate::components::context::{AppState, EpisodeStatusState, ExpandedDescriptions, NotificationState, PodcastFeedState, UIState};
 use crate::components::context_menu_button::PageType;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
@@ -8,7 +8,7 @@ use crate::components::loading::Loading;
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::requests::episode::Episode;
 
-use crate::requests::pod_req::{EpisodeDownloadResponse, Podcast, PodcastDetails, PodcastResponse};
+use crate::requests::pod_req::{Podcast, PodcastDetails, PodcastResponse};
 use i18nrs::yew::use_translation;
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
@@ -315,7 +315,9 @@ struct FileEntry {
 pub fn downloads() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
-    let (ui_state, ui_dispatch) = use_store::<UIState>();
+    let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
+    let (ep_status, _) = use_store::<EpisodeStatusState>();
+    let (_ui_state, ui_dispatch) = use_store::<UIState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let effect_dispatch = dispatch.clone();
 
@@ -349,8 +351,8 @@ pub fn downloads() -> Html {
         .t("downloads_tauri.failed_to_delete_episodes")
         .to_string();
     let history = BrowserHistory::new();
-    let session_dispatch = effect_dispatch.clone();
-    let session_state = state.clone();
+    let _session_dispatch = effect_dispatch.clone();
+    let _session_state = state.clone();
     let expanded_state = use_state(HashMap::new);
     let show_modal = use_state(|| false);
     let show_clonedal = show_modal.clone();
@@ -364,12 +366,12 @@ pub fn downloads() -> Html {
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let app_offline_mode = audio_state.app_offline_mode;
     let page_state = use_state(|| PageState::Normal);
-    let api_key = post_state
+    let _api_key = post_state
         .auth_details
         .as_ref()
         .map(|ud| ud.api_key.clone());
-    let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let server_name = post_state
+    let _user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let _server_name = post_state
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
@@ -388,12 +390,12 @@ pub fn downloads() -> Html {
         let effect_dispatch = dispatch.clone();
 
         use_effect_with((local_download_increment,), move |_| {
-            let error_clone = error.clone();
-            let dispatch = effect_dispatch.clone();
+            let _error_clone = error.clone();
+            let _dispatch = effect_dispatch.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 // First ensure we have a valid podcast feed state, even if empty
-                dispatch.reduce_mut(move |state| {
+                Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                     state.podcast_feed_return = Some(PodcastResponse {
                         pods: Some(Vec::new()),
                     });
@@ -405,7 +407,7 @@ pub fn downloads() -> Html {
                         web_sys::console::log_1(
                             &format!("Fetched podcasts: {:?}", fetched_podcasts).into(),
                         );
-                        dispatch.reduce_mut(move |state| {
+                        Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                             state.podcast_feed_return = Some(PodcastResponse {
                                 pods: Some(fetched_podcasts),
                             });
@@ -419,17 +421,17 @@ pub fn downloads() -> Html {
                 }
                 // Similar pattern for episodes
                 if let Ok(mut fetched_episodes) = fetch_local_episodes().await {
-                    let completed_episode_ids: Vec<i32> = fetched_episodes
+                    let completed_episode_ids: std::collections::HashSet<i32> = fetched_episodes
                         .iter()
                         .filter(|ep| ep.listenduration > 0)
                         .map(|ep| ep.episodeid)
                         .collect();
-                    dispatch.reduce_mut(move |state| {
+                    Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
                         state.downloaded_episodes.clear();
                         for ep in fetched_episodes.drain(..) {
                             state.downloaded_episodes.push_local(ep);
                         }
-                        state.completed_episodes = Some(completed_episode_ids);
+                        state.completed_episodes = completed_episode_ids;
                     });
                 } else {
                     web_sys::console::log_1(&"Critical CATDOG mistake".into());
@@ -493,7 +495,7 @@ pub fn downloads() -> Html {
                 state.selected_episodes_for_deletion.clear();
 
                 // Use local Tauri delete function for bulk deletion
-                let dispatch_for_future = dispatch_cloned.clone();
+                let _dispatch_for_future = dispatch_cloned.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     match remove_multiple_episodes_from_local_db(
                         selected_episodes.iter().cloned().collect(),
@@ -501,10 +503,12 @@ pub fn downloads() -> Html {
                     .await
                     {
                         Ok(_) => {
-                            dispatch_for_future.reduce_mut(|state| {
+                            Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
                                 for ep_id in selected_episodes.iter() {
                                     state.downloaded_episodes.remove_local(*ep_id);
                                 }
+                            });
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(format!(
                                     "{} {}",
                                     selected_episodes.len(),
@@ -516,7 +520,7 @@ pub fn downloads() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error deleting episodes: {:?}", e).into(),
                             );
-                            dispatch_for_future.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(i18n_failed_to_delete_episodes.clone());
                             });
                         }
@@ -591,7 +595,7 @@ pub fn downloads() -> Html {
     web_sys::console::log_1(
         &format!(
             "Podcast feed count: {:?}",
-            state
+            podcast_state
                 .podcast_feed_return
                 .as_ref()
                 .and_then(|pf| pf.pods.as_ref().map(|pods| pods.len()))
@@ -602,14 +606,14 @@ pub fn downloads() -> Html {
     web_sys::console::log_1(
         &format!(
             "Downloaded episodes count: {:?}",
-            state.downloaded_episodes.len()
+            ep_status.downloaded_episodes.len()
         )
         .into(),
     );
 
-    if state.downloaded_episodes.len() > 0 {
+    if ep_status.downloaded_episodes.len() > 0 {
         let grouped = group_episodes_by_podcast(
-            state
+            ep_status
                 .downloaded_episodes
                 .episodes()
                 .map(|e| e.clone())
@@ -624,7 +628,7 @@ pub fn downloads() -> Html {
             .into(),
         );
 
-        if let Some(podcast_feed) = state.podcast_feed_return.as_ref() {
+        if let Some(podcast_feed) = podcast_state.podcast_feed_return.as_ref() {
             if let Some(pods) = podcast_feed.pods.as_ref() {
                 web_sys::console::log_1(
                     &format!(
@@ -789,11 +793,11 @@ pub fn downloads() -> Html {
                     }
 
                     {
-                    if state.downloaded_episodes.len() > 0 {
+                    if ep_status.downloaded_episodes.len() > 0 {
                         let render_state = post_state.clone();
                         let dispatch_cloned = dispatch.clone();
 
-                        let grouped_episodes = group_episodes_by_podcast(state.downloaded_episodes.episodes().map(|e| e.clone()).collect());
+                        let grouped_episodes = group_episodes_by_podcast(ep_status.downloaded_episodes.episodes().map(|e| e.clone()).collect());
 
                         // Create filtered episodes
                         let filtered_grouped_episodes = {
@@ -836,7 +840,7 @@ pub fn downloads() -> Html {
                         html! {
                             <>
                             {
-                                if let Some(podcast_feed) = state.podcast_feed_return.as_ref() {
+                                if let Some(podcast_feed) = podcast_state.podcast_feed_return.as_ref() {
                                     if let Some(pods) = podcast_feed.pods.as_ref() {
                                         html! {
                                             <>
@@ -937,20 +941,20 @@ pub fn render_podcast_with_episodes(
     episodes: Vec<Episode>,
     is_expanded: bool,
     toggle_expanded: Callback<MouseEvent>,
-    state: Rc<AppState>,
+    _state: Rc<AppState>,
     dispatch: Dispatch<AppState>,
     is_delete_mode: bool,
-    desc_rc: Rc<ExpandedDescriptions>,
-    desc_state: Dispatch<ExpandedDescriptions>,
-    audio_dispatch: Dispatch<UIState>,
-    audio_state: Rc<UIState>,
+    _desc_rc: Rc<ExpandedDescriptions>,
+    _desc_state: Dispatch<ExpandedDescriptions>,
+    _audio_dispatch: Dispatch<UIState>,
+    _audio_state: Rc<UIState>,
     on_checkbox_change: Callback<i32>,
-    show_modal: bool,
-    on_modal_open: Callback<i32>,
-    on_modal_close: Callback<MouseEvent>,
+    _show_modal: bool,
+    _on_modal_open: Callback<i32>,
+    _on_modal_close: Callback<MouseEvent>,
     i18n_downloaded_episodes_count: &str,
 ) -> Html {
-    let history_clone = BrowserHistory::new();
+    let _history_clone = BrowserHistory::new();
 
     let on_podcast_checkbox_change = {
         let episodes = episodes.clone();
@@ -980,7 +984,7 @@ pub fn render_podcast_with_episodes(
         })
     };
 
-    let html_dispatch = dispatch.clone();
+    let _html_dispatch = dispatch.clone();
 
     html! {
         <div key={podcast.podcastid}>

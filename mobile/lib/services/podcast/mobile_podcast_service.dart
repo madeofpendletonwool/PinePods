@@ -14,14 +14,13 @@ import 'package:pinepods_mobile/entities/funding.dart';
 import 'package:pinepods_mobile/entities/person.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/entities/transcript.dart';
-import 'package:pinepods_mobile/l10n/messages_all.dart';
+import 'package:pinepods_mobile/l10n/app_localizations.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/state/episode_state.dart';
 import 'package:collection/collection.dart' show IterableExtension;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
-import 'package:intl/intl.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart';
 import 'package:podcast_search/podcast_search.dart' as podcast_search;
@@ -44,47 +43,46 @@ class MobilePodcastService extends PodcastService {
   }
 
   Future<void> _init() async {
-    final List<Locale> systemLocales = PlatformDispatcher.instance.locales;
+    // Resolve the best-matching supported locale from the system preference list,
+    // falling back to English. gen-l10n's [lookupAppLocalizations] gives us a
+    // context-free way to read localized strings for genre/category lists.
+    final supported = AppLocalizations.supportedLocales;
+    final candidates = <Locale>[
+      Locale(Platform.localeName.split(RegExp('[_-]')).first),
+      ...PlatformDispatcher.instance.locales,
+    ];
 
-    var currentLocale = Platform.localeName;
-    // Attempt to get current locale
-    var supportedLocale = await initializeMessages(Platform.localeName);
-
-    // If we do not support the default, try all supported locales
-    if (!supportedLocale) {
-      for (var l in systemLocales) {
-        supportedLocale = await initializeMessages('${l.languageCode}_${l.countryCode}');
-        if (supportedLocale) {
-          currentLocale = '${l.languageCode}_${l.countryCode}';
-          break;
-        }
-      }
-
-      if (!supportedLocale) {
-        // We give up! Default to English
-        currentLocale = 'en';
-        supportedLocale = await initializeMessages(currentLocale);
+    var resolvedLocale = const Locale('en');
+    for (final candidate in candidates) {
+      final match = supported.firstWhere(
+        (s) => s.languageCode == candidate.languageCode,
+        orElse: () => const Locale('und'),
+      );
+      if (match.languageCode != 'und') {
+        resolvedLocale = match;
+        break;
       }
     }
 
-    _setupGenres(currentLocale);
+    _setupGenres(resolvedLocale);
 
     /// Listen for user changes in search provider. If changed, reload the genre list
     settingsService.settingsListener.where((event) => event == 'search').listen((event) {
-      _setupGenres(currentLocale);
+      _setupGenres(resolvedLocale);
     });
   }
 
-  void _setupGenres(String locale) {
+  void _setupGenres(Locale locale) {
+    final l10n = lookupAppLocalizations(locale);
     var categoryList = '';
 
     /// Fetch the correct categories for the current local and selected provider.
     if (settingsService.searchProvider == 'itunes') {
       _categories = PodcastService.itunesGenres;
-      categoryList = Intl.message('discovery_categories_itunes', locale: locale);
+      categoryList = l10n.discovery_categories_itunes;
     } else {
       _categories = PodcastService.podcastIndexGenres;
-      categoryList = Intl.message('discovery_categories_pindex', locale: locale);
+      categoryList = l10n.discovery_categories_pindex;
     }
 
     _intlCategories = categoryList.split(',');

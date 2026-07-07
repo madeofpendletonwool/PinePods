@@ -1,5 +1,5 @@
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::setting_components;
 use crate::requests::setting_reqs::call_user_admin_check;
@@ -123,7 +123,8 @@ pub fn settings() -> Html {
         .map(|ud| ud.server_name.clone());
 
     let is_admin = use_state(|| false);
-    let audio_admin = _post_dispatch.clone();
+    let custom_themes_trigger = use_state(|| 0u32);
+    let _audio_admin = _post_dispatch.clone();
 
     // Pre-capture translation string for async block
     let admin_check_error_msg = i18n.t("settings.admin_check_error");
@@ -146,7 +147,7 @@ pub fn settings() -> Html {
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                audio_admin.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}: {:?}",
                                         admin_check_error_msg, formatted_error
@@ -177,71 +178,369 @@ pub fn settings() -> Html {
         <div class="main-container">
             <Search_nav />
             <UseScrollToTop />
-            <div class="my-4">
-                <div class="settings-header">
-                    <h1 class="item_container-text text-2xl font-bold">{ &i18n.t("settings.settings") }</h1>
-                    <div class="inline-flex tab-background p-1 rounded-lg bg-opacity-10 w-fit">
-                        <Tab
-                            is_active={*active_tab == "user"}
-                            class="text-base"
-                            label={i18n.t("settings.user_settings")}
-                            onclick={on_user_tab_click.clone()}
-                        />
-                        {
-                            if *is_admin {
-                                html! {
-                                    <Tab
-                                        is_active={*active_tab == "admin"}
-                                        class="text-base"
-                                        label={i18n.t("settings.admin_settings")}
-                                        onclick={on_admin_tab_click.clone()}
-                                    />
-                                }
-                            } else {
-                                html! {}
+            <div class="my-4 settings-page">
+                <div class="screen-title">{ &i18n.t("settings.settings") }</div>
+
+                // Tab switcher: User / Admin
+                <div class="settings-tabs">
+                    <button
+                        class={classes!("settings-tab", if *active_tab == "user" { "is-active" } else { "" })}
+                        onclick={on_user_tab_click.clone()}
+                    >
+                        { &i18n.t("settings.user_settings") }
+                    </button>
+                    {
+                        if *is_admin {
+                            html! {
+                                <button
+                                    class={classes!("settings-tab", if *active_tab == "admin" { "is-active" } else { "" })}
+                                    onclick={on_admin_tab_click.clone()}
+                                >
+                                    { &i18n.t("settings.admin_settings") }
+                                </button>
                             }
+                        } else {
+                            html! {}
                         }
-                    </div>
+                    }
                 </div>
-                <div class="rounded-xl theme-dropdown-arrow overflow-hidden">
+
                 {
                     if *active_tab == "user" {
                         html! {
-                        <div id="accordion-collapse" data-accordion="collapse" class="bg-custom-light">
-                            <AccordionItem title={i18n.t("settings.change_theme")} content={html!{ <setting_components::theme_options::ThemeOptions /> }} position={AccordionItemPosition::First}/>
-                            <AccordionItem title={i18n.t("settings.account_settings")} content={html!{ <setting_components::user_self_settings::UserSelfSettings /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.playback_settings")} content={html!{ <setting_components::playback_settings::PlaybackSettings /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.mfa_settings")} content={html!{ <setting_components::mfa_settings::MFAOptions /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.export_backup_podcasts")} content={html!{ <setting_components::export_settings::ExportOptions /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.import_podcasts")} content={html!{ <setting_components::import_options::ImportOptions /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.display_settings")} content={html!{ <setting_components::start_page_options::StartPageOptions /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.notification_settings")} content={html!{ <setting_components::notifications::NotificationOptions /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.add_custom_feed")} content={html!{ <setting_components::custom_feed::CustomFeed /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.podcast_sync")} content={html!{ <setting_components::nextcloud_options::SyncOptions /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.enable_disable_rss_feeds")} content={html!{ <setting_components::rss_feeds::RSSFeedSettings /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.match_podcasts_podcast_index")} content={html!{ <setting_components::podcast_index_matching::PodcastIndexMatching /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.api_keys")} content={html!{ <setting_components::api_keys::APIKeys /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.shared_links")} content={html!{ <setting_components::shared_links::SharedLinks /> }} position={AccordionItemPosition::Middle}/>
-                        </div>
+                            <>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-paint-roller"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.change_theme") }</div>
+                                            <button class="info-btn" title={i18n.t("settings.choose_preferred_theme").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::theme_options::ThemeOptions refresh_trigger={*custom_themes_trigger} />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-palette"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.custom_themes") }</div>
+                                            <button class="info-btn" title="Create your own themes with custom colors">{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::custom_theme_creator::CustomThemeCreator
+                                        on_created={{
+                                            let trigger = custom_themes_trigger.clone();
+                                            Callback::from(move |_| trigger.set(*trigger + 1))
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-user-circle"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.account_settings") }</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::user_self_settings::UserSelfSettings />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-play-circle"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.playback_settings") }</div>
+                                            <button class="info-btn" title={i18n.t("playback_settings.playback_preferences_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::playback_settings::PlaybackSettings />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-shield-check"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.mfa_settings") }</div>
+                                            <button class="info-btn" title={i18n.t("mfa_settings.mfa_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::mfa_settings::MFAOptions />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-download-simple"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.export_backup_podcasts") }</div>
+                                            <button class="info-btn" title={i18n.t("export_settings.export_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::export_settings::ExportOptions />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-upload-simple"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.import_podcasts") }</div>
+                                            <button class="info-btn" title={i18n.t("import_options.import_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::import_options::ImportOptions />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-monitor"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.display_settings") }</div>
+                                            <button class="info-btn" title={i18n.t("start_page_options.start_page_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::start_page_options::StartPageOptions />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-bell-ringing"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.notification_settings") }</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::notifications::NotificationOptions />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-rss"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.add_custom_feed") }</div>
+                                            <button class="info-btn" title={i18n.t("custom_feed.add_feed_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::custom_feed::CustomFeed />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-hard-drives"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.add_local_podcast") }</div>
+                                            <button class="info-btn" title={i18n.t("local_podcast.description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::local_podcast::LocalPodcast />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-arrows-clockwise"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.podcast_sync") }</div>
+                                            <button class="info-btn" title={i18n.t("nextcloud_options.gpodder_sync_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::nextcloud_options::SyncOptions />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-wifi"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.enable_disable_rss_feeds") }</div>
+                                            <button class="info-btn" title={i18n.t("rss_feeds.rss_feed_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::rss_feeds::RSSFeedSettings />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-magnifying-glass"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.match_podcasts_podcast_index") }</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::podcast_index_matching::PodcastIndexMatching />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-key"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.api_keys") }</div>
+                                            <button class="info-btn" title={i18n.t("api_keys.api_keys_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::api_keys::APIKeys />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-share-network"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.shared_links") }</div>
+                                            <button class="info-btn" title={i18n.t("shared_links.description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::shared_links::SharedLinks />
+                                </div>
+                            </div>
+                            </>
                         }
                     } else if *active_tab == "admin" {
                         html! {
-                        <div id="accordion-collapse" data-accordion="collapse" class="bg-custom-light">
-                            <AccordionItem title={i18n.t("settings.user_management")} content={html!{ <setting_components::user_settings::UserSettings /> }} position={AccordionItemPosition::First}/>
-                            <AccordionItem title={i18n.t("settings.oidc_sso_settings")} content={html!{ <setting_components::oidc::OIDCSettings /> }} position={AccordionItemPosition::Middle}/>
-                            // <AccordionItem title="Guest Settings" content={html!{ <setting_components::guest_settings::GuestSettings /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.download_settings")} content={html!{ <setting_components::download_settings::DownloadSettings /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.user_self_service_settings")} content={html!{ <setting_components::user_self_service::SelfServiceSettings /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.email_settings")} content={html!{ <setting_components::email_settings::EmailSettings /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.backup_server")} content={html!{ <setting_components::backup_server::BackupServer /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.restore_server")} content={html!{ <setting_components::restore_server::RestoreServer /> }} position={AccordionItemPosition::Middle}/>
-                        </div>
+                            <>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-users"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.user_management") }</div>
+                                            <button class="info-btn" title={i18n.t("settings.user_management_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::user_settings::UserSettings />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-lock-key"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.oidc_sso_settings") }</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::oidc::OIDCSettings />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-download-simple"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.download_settings") }</div>
+                                            <button class="info-btn" title={i18n.t("download_settings.server_download_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::download_settings::DownloadSettings />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-gear"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.user_self_service_settings") }</div>
+                                            <button class="info-btn" title={i18n.t("user_self_service.self_service_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::user_self_service::SelfServiceSettings />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-envelope"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.email_settings") }</div>
+                                            <button class="info-btn" title={i18n.t("email_settings.email_settings_description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::email_settings::EmailSettings />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-database"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.backup_server") }</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::backup_server::BackupServer />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-database-backup"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.restore_server") }</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::restore_server::RestoreServer />
+                                </div>
+                            </div>
+                            </>
                         }
                     } else {
                         html! {}
                     }
                 }
-                </div>
             </div>
             {
                 if let Some(audio_props) = &audio_state.currently_playing {

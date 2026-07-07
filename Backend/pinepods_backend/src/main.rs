@@ -5,10 +5,12 @@ use std::env;
 use dotenvy::dotenv;
 use std::time::{SystemTime, UNIX_EPOCH};
 use sha1::{Digest, Sha1};
-use log::{info, error};
+use log::error;
 use actix_cors::Cors;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use tokio::process::Command;
 use chrono;
 
 #[derive(Deserialize)]
@@ -66,107 +68,7 @@ impl HitCounters {
     }
 }
 
-// YouTube API response structures for search
-#[derive(Deserialize, Serialize)]
-struct YouTubeSearchResponse {
-    items: Vec<YouTubeChannelResult>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct YouTubeChannelResult {
-    id: YouTubeChannelId,
-    snippet: YouTubeChannelSnippet,
-}
-
-#[derive(Deserialize, Serialize)]
-struct YouTubeChannelId {
-    #[serde(rename = "channelId")]
-    channel_id: String,
-}
-
-#[derive(Deserialize, Serialize)]
-struct YouTubeChannelSnippet {
-    title: String,
-    description: String,
-    thumbnails: YouTubeThumbnails,
-    #[serde(rename = "channelTitle")]
-    channel_title: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct YouTubeThumbnails {
-    default: Option<YouTubeThumbnail>,
-    medium: Option<YouTubeThumbnail>,
-    high: Option<YouTubeThumbnail>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct YouTubeThumbnail {
-    url: String,
-}
-
-// YouTube API response structures for channel details
-#[derive(Deserialize)]
-struct YouTubeChannelDetailsResponse {
-    items: Vec<YouTubeChannelDetailsItem>,
-}
-
-#[derive(Deserialize)]
-struct YouTubeChannelDetailsItem {
-    snippet: YouTubeChannelDetailsSnippet,
-    statistics: Option<YouTubeChannelStatistics>,
-}
-
-#[derive(Deserialize)]
-struct YouTubeChannelDetailsSnippet {
-    title: String,
-    description: String,
-    thumbnails: YouTubeThumbnails,
-}
-
-#[derive(Deserialize)]
-struct YouTubeChannelStatistics {
-    #[serde(rename = "subscriberCount")]
-    subscriber_count: Option<String>,
-    #[serde(rename = "videoCount")]
-    video_count: Option<String>,
-}
-
-// YouTube API response structures for channel videos
-#[derive(Deserialize)]
-struct YouTubeVideosResponse {
-    items: Vec<YouTubeVideoItem>,
-}
-
-#[derive(Deserialize)]
-struct YouTubeVideoItem {
-    id: YouTubeVideoId,
-    snippet: YouTubeVideoSnippet,
-    #[serde(rename = "contentDetails")]
-    content_details: Option<YouTubeVideoContentDetails>,
-}
-
-#[derive(Deserialize)]
-struct YouTubeVideoId {
-    #[serde(rename = "videoId")]
-    video_id: String,
-}
-
-#[derive(Deserialize)]
-struct YouTubeVideoSnippet {
-    title: String,
-    description: String,
-    thumbnails: YouTubeThumbnails,
-    #[serde(rename = "publishedAt")]
-    published_at: String,
-}
-
-#[derive(Deserialize)]
-struct YouTubeVideoContentDetails {
-    duration: Option<String>,
-}
-
-// Simplified response format to match other APIs
+// Output format for YouTube channel search results
 #[derive(Serialize)]
 struct YouTubeSearchResult {
     results: Vec<YouTubeChannel>,
@@ -183,7 +85,8 @@ struct YouTubeChannel {
     url: String,
 }
 
-// YouTube channel details response (when user clicks a channel)
+// Output format for YouTube channel details (used by rust-api's get_youtube_channel_info
+// and process_youtube_channel — field names must stay stable)
 #[derive(Serialize)]
 struct YouTubeChannelDetails {
     #[serde(rename = "channelId")]
@@ -213,6 +116,37 @@ struct YouTubeVideo {
     duration: Option<String>,
 }
 
+// Converts yt-dlp float seconds to ISO 8601 duration string (e.g. 253.0 → "PT4M13S").
+// rust-api's parse_youtube_duration() expects this format.
+fn seconds_to_pt_duration(seconds: f64) -> String {
+    let total = seconds as u64;
+    let h = total / 3600;
+    let m = (total % 3600) / 60;
+    let s = total % 60;
+    if h > 0 {
+        format!("PT{}H{}M{}S", h, m, s)
+    } else if m > 0 {
+        format!("PT{}M{}S", m, s)
+    } else {
+        format!("PT{}S", s)
+    }
+}
+
+// Converts yt-dlp upload_date "YYYYMMDD" to RFC3339 "YYYY-MM-DDT00:00:00Z".
+// rust-api's process_youtube_channel parses publishedAt with DateTime::parse_from_rfc3339.
+fn upload_date_to_rfc3339(upload_date: &str) -> String {
+    if upload_date.len() == 8 {
+        format!(
+            "{}-{}-{}T00:00:00Z",
+            &upload_date[..4],
+            &upload_date[4..6],
+            &upload_date[6..8]
+        )
+    } else {
+        chrono::Utc::now().to_rfc3339()
+    }
+}
+
 async fn search_handler(
     query: web::Query<SearchQuery>,
     hit_counters: web::Data<HitCounters>,
@@ -234,14 +168,11 @@ async fn search_handler(
     println!("Client created");
 
     let response = if index == "itunes" {
-        // iTunes Search
         hit_counters.increment_itunes();
         let itunes_search_url = format!("https://itunes.apple.com/search?term={}&media=podcast", search_term);
         println!("Using iTunes search URL: {}", itunes_search_url);
-
         client.get(&itunes_search_url).send().await
     } else if index == "youtube" {
-        // YouTube Data API v3 Search
         hit_counters.increment_youtube();
         return search_youtube_channels(&search_term).await;
     } else {
@@ -274,7 +205,6 @@ async fn search_handler(
         };
 
         println!("Final Podcast Index URL: {}", podcast_search_url);
-
         client.get(&podcast_search_url).headers(headers).send().await
     };
 
@@ -282,75 +212,111 @@ async fn search_handler(
 }
 
 async fn search_youtube_channels(search_term: &str) -> HttpResponse {
-    println!("Searching YouTube for: {}", search_term);
-    
-    let youtube_api_key = match env::var("YOUTUBE_API_KEY") {
-        Ok(key) => key,
-        Err(_) => {
-            error!("YOUTUBE_API_KEY not set in the environment");
-            return HttpResponse::InternalServerError().body("YouTube API key not configured");
+    println!("Searching YouTube with yt-dlp for: {}", search_term);
+
+    let search_url = format!("ytsearch25:{}", search_term);
+    let output = Command::new("yt-dlp")
+        .args(&[
+            "--quiet",
+            "--no-warnings",
+            "--flat-playlist",
+            "--skip-download",
+            "--dump-json",
+            &search_url,
+        ])
+        .output()
+        .await;
+
+    let output = match output {
+        Ok(o) => o,
+        Err(e) => {
+            error!("Failed to execute yt-dlp: {}", e);
+            return HttpResponse::InternalServerError().body("yt-dlp not available");
         }
     };
 
-    let client = reqwest::Client::new();
-    let encoded_search_term = urlencoding::encode(search_term);
-    
-    // YouTube Data API v3 search for channels
-    let youtube_search_url = format!(
-        "https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q={}&maxResults=25&key={}",
-        encoded_search_term, youtube_api_key
-    );
-    
-    println!("Using YouTube search URL: {}", youtube_search_url);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        error!("yt-dlp search failed: {}", stderr);
+        return HttpResponse::InternalServerError().body("yt-dlp search failed");
+    }
 
-    match client.get(&youtube_search_url).send().await {
-        Ok(resp) => {
-            if resp.status().is_success() {
-                match resp.json::<YouTubeSearchResponse>().await {
-                    Ok(youtube_response) => {
-                        // Convert YouTube response to our format
-                        let channels: Vec<YouTubeChannel> = youtube_response.items.into_iter().map(|item| {
-                            let thumbnail_url = item.snippet.thumbnails.high
-                                .or(item.snippet.thumbnails.medium)
-                                .or(item.snippet.thumbnails.default)
-                                .map(|thumb| thumb.url)
-                                .unwrap_or_default();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut entries: Vec<serde_json::Value> = Vec::new();
+    for line in stdout.lines() {
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+            entries.push(entry);
+        }
+    }
 
-                            YouTubeChannel {
-                                channel_id: item.id.channel_id.clone(),
-                                name: item.snippet.title,
-                                description: item.snippet.description,
-                                thumbnail_url,
-                                url: format!("https://www.youtube.com/channel/{}", item.id.channel_id),
-                            }
-                        }).collect();
+    // First pass: collect up to 3 videos per channel
+    let mut channel_videos: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+    for entry in &entries {
+        let channel_id = entry.get("channel_id").and_then(|v| v.as_str())
+            .or_else(|| entry.get("uploader_id").and_then(|v| v.as_str()))
+            .unwrap_or("").to_string();
+        if channel_id.is_empty() { continue; }
+        let videos = channel_videos.entry(channel_id).or_default();
+        if videos.len() < 3 {
+            videos.push(entry.clone());
+        }
+    }
 
-                        let result = YouTubeSearchResult { results: channels };
-                        
-                        match serde_json::to_string(&result) {
-                            Ok(json_response) => {
-                                println!("YouTube search successful, found {} channels", result.results.len());
-                                HttpResponse::Ok().content_type("application/json").body(json_response)
-                            }
-                            Err(e) => {
-                                error!("Failed to serialize YouTube response: {}", e);
-                                HttpResponse::InternalServerError().body("Failed to process YouTube response")
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!("Failed to parse YouTube API response: {}", e);
-                        HttpResponse::InternalServerError().body("Failed to parse YouTube response")
-                    }
+    // Second pass: build deduplicated channel list
+    let mut seen_channels: HashSet<String> = HashSet::new();
+    let mut channels: Vec<YouTubeChannel> = Vec::new();
+    for entry in &entries {
+        let channel_id = entry.get("channel_id").and_then(|v| v.as_str())
+            .or_else(|| entry.get("uploader_id").and_then(|v| v.as_str()))
+            .unwrap_or("").to_string();
+        if channel_id.is_empty() || seen_channels.contains(&channel_id) { continue; }
+        seen_channels.insert(channel_id.clone());
+
+        let video_id = entry.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let thumbnail_url = entry.get("channel_thumbnail").and_then(|v| v.as_str())
+            .or_else(|| entry.get("thumbnail").and_then(|v| v.as_str()))
+            .map(|s| s.to_string())
+            .or_else(|| {
+                entry.get("thumbnails")
+                    .and_then(|v| v.as_array())
+                    .and_then(|arr| arr.last())
+                    .and_then(|t| t.get("url"))
+                    .and_then(|u| u.as_str())
+                    .map(|s| s.to_string())
+            })
+            .or_else(|| {
+                if !video_id.is_empty() {
+                    Some(format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", video_id))
+                } else {
+                    None
                 }
-            } else {
-                error!("YouTube API request failed with status: {}", resp.status());
-                HttpResponse::InternalServerError().body(format!("YouTube API error: {}", resp.status()))
-            }
+            })
+            .unwrap_or_default();
+        let name = entry.get("channel").and_then(|v| v.as_str())
+            .or_else(|| entry.get("uploader").and_then(|v| v.as_str()))
+            .unwrap_or("").to_string();
+
+        channels.push(YouTubeChannel {
+            channel_id: channel_id.clone(),
+            name,
+            description: entry.get("description").and_then(|v| v.as_str())
+                .unwrap_or("").chars().take(500).collect(),
+            thumbnail_url,
+            url: format!("https://www.youtube.com/channel/{}", channel_id),
+        });
+
+        if channels.len() >= 25 { break; }
+    }
+
+    let result = YouTubeSearchResult { results: channels };
+    match serde_json::to_string(&result) {
+        Ok(json) => {
+            println!("YouTube search found {} channels", result.results.len());
+            HttpResponse::Ok().content_type("application/json").body(json)
         }
         Err(e) => {
-            error!("YouTube API request error: {}", e);
-            HttpResponse::InternalServerError().body("YouTube API request failed")
+            error!("Serialization error: {}", e);
+            HttpResponse::InternalServerError().body("Failed to serialize response")
         }
     }
 }
@@ -388,143 +354,116 @@ async fn youtube_channel_handler(
 ) -> impl Responder {
     println!("youtube_channel_handler called for channel: {}", query.id);
     hit_counters.increment_youtube();
-    
-    let youtube_api_key = match env::var("YOUTUBE_API_KEY") {
-        Ok(key) => key,
-        Err(_) => {
-            error!("YOUTUBE_API_KEY not set in the environment");
-            return HttpResponse::InternalServerError().body("YouTube API key not configured");
-        }
-    };
 
-    let client = reqwest::Client::new();
-    let channel_id = &query.id;
-    
-    // Step 1: Get channel details and statistics
-    let channel_details_url = format!(
-        "https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id={}&key={}",
-        channel_id, youtube_api_key
-    );
-    
-    println!("Fetching channel details: {}", channel_details_url);
+    let channel_url = format!("https://www.youtube.com/channel/{}/videos", query.id);
+    let output = Command::new("yt-dlp")
+        .args(&[
+            "--quiet",
+            "--no-warnings",
+            "--skip-download",
+            "--dump-json",
+            "--playlist-end", "15",
+            &channel_url,
+        ])
+        .output()
+        .await;
 
-    let channel_details = match client.get(&channel_details_url).send().await {
-        Ok(resp) => {
-            if resp.status().is_success() {
-                match resp.json::<YouTubeChannelDetailsResponse>().await {
-                    Ok(details) => {
-                        if details.items.is_empty() {
-                            return HttpResponse::NotFound().body("Channel not found");
-                        }
-                        details.items.into_iter().next().unwrap()
-                    }
-                    Err(e) => {
-                        error!("Failed to parse channel details: {}", e);
-                        return HttpResponse::InternalServerError().body("Failed to parse channel details");
-                    }
-                }
-            } else {
-                error!("Channel details request failed with status: {}", resp.status());
-                return HttpResponse::InternalServerError().body(format!("YouTube API error: {}", resp.status()));
-            }
-        }
+    let output = match output {
+        Ok(o) => o,
         Err(e) => {
-            error!("Channel details request error: {}", e);
-            return HttpResponse::InternalServerError().body("YouTube API request failed");
+            error!("Failed to execute yt-dlp: {}", e);
+            return HttpResponse::InternalServerError().body("yt-dlp not available");
         }
     };
-    
-    // Step 2: Get recent videos from the channel
-    let videos_url = format!(
-        "https://www.googleapis.com/youtube/v3/search?part=snippet&channelId={}&type=video&order=date&maxResults=10&key={}",
-        channel_id, youtube_api_key
-    );
-    
-    println!("Fetching recent videos: {}", videos_url);
 
-    let videos = match client.get(&videos_url).send().await {
-        Ok(resp) => {
-            if resp.status().is_success() {
-                match resp.json::<YouTubeVideosResponse>().await {
-                    Ok(videos_response) => {
-                        videos_response.items.into_iter().map(|item| {
-                            let thumbnail_url = item.snippet.thumbnails.medium
-                                .or(item.snippet.thumbnails.high)
-                                .or(item.snippet.thumbnails.default)
-                                .map(|thumb| thumb.url)
-                                .unwrap_or_default();
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        error!("yt-dlp channel fetch failed: {}", stderr);
+        return HttpResponse::InternalServerError().body("yt-dlp channel fetch failed");
+    }
 
-                            YouTubeVideo {
-                                id: item.id.video_id.clone(),
-                                title: item.snippet.title,
-                                description: item.snippet.description,
-                                url: format!("https://www.youtube.com/watch?v={}", item.id.video_id),
-                                thumbnail: thumbnail_url,
-                                published_at: item.snippet.published_at,
-                                duration: item.content_details.and_then(|cd| cd.duration),
-                            }
-                        }).collect()
-                    }
-                    Err(e) => {
-                        error!("Failed to parse videos response: {}", e);
-                        return HttpResponse::InternalServerError().body("Failed to parse videos");
-                    }
-                }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut entries: Vec<serde_json::Value> = Vec::new();
+    for line in stdout.lines() {
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+            entries.push(entry);
+        }
+    }
+
+    if entries.is_empty() {
+        return HttpResponse::NotFound().body("Channel not found or has no videos");
+    }
+
+    let first = &entries[0];
+    let channel_name = first.get("channel").and_then(|v| v.as_str())
+        .or_else(|| first.get("uploader").and_then(|v| v.as_str()))
+        .unwrap_or("").to_string();
+    // channel_thumbnail is a URL string in full-metadata mode; fall back to first video thumbnail
+    let first_video_id = first.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let thumbnail_url = first.get("channel_thumbnail").and_then(|v| v.as_str())
+        .or_else(|| first.get("thumbnail").and_then(|v| v.as_str()))
+        .map(|s| s.to_string())
+        .or_else(|| {
+            if !first_video_id.is_empty() {
+                Some(format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", first_video_id))
             } else {
-                error!("Videos request failed with status: {}", resp.status());
-                // Continue without videos rather than failing completely
-                Vec::new()
+                None
             }
-        }
-        Err(e) => {
-            error!("Videos request error: {}", e);
-            // Continue without videos rather than failing completely
-            Vec::new()
-        }
-    };
-
-    // Extract thumbnail URL from channel details
-    let thumbnail_url = channel_details.snippet.thumbnails.high
-        .or(channel_details.snippet.thumbnails.medium)
-        .or(channel_details.snippet.thumbnails.default)
-        .map(|thumb| thumb.url)
+        })
         .unwrap_or_default();
 
-    // Parse subscriber and video counts
-    let subscriber_count = channel_details.statistics.as_ref()
-        .and_then(|stats| stats.subscriber_count.as_ref())
-        .and_then(|count| count.parse::<i64>().ok());
-    
-    let video_count = channel_details.statistics.as_ref()
-        .and_then(|stats| stats.video_count.as_ref())
-        .and_then(|count| count.parse::<i64>().ok());
+    let recent_videos: Vec<YouTubeVideo> = entries.iter().map(|entry| {
+        let video_id = entry.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let upload_date = entry.get("upload_date").and_then(|v| v.as_str()).unwrap_or("");
+        let duration_secs = entry.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let thumb = entry.get("thumbnail").and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                if !video_id.is_empty() {
+                    Some(format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", video_id))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default();
+
+        YouTubeVideo {
+            id: video_id.clone(),
+            title: entry.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            description: entry.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            url: format!("https://www.youtube.com/watch?v={}", video_id),
+            thumbnail: thumb,
+            published_at: upload_date_to_rfc3339(upload_date),
+            duration: Some(seconds_to_pt_duration(duration_secs)),
+        }
+    }).collect();
 
     let result = YouTubeChannelDetails {
-        channel_id: channel_id.to_string(),
-        name: channel_details.snippet.title,
-        description: channel_details.snippet.description,
+        channel_id: query.id.clone(),
+        name: channel_name.clone(),
+        description: String::new(),
         thumbnail_url,
-        url: format!("https://www.youtube.com/channel/{}", channel_id),
-        subscriber_count,
-        video_count,
-        recent_videos: videos,
+        url: format!("https://www.youtube.com/channel/{}", query.id),
+        subscriber_count: None,
+        video_count: None,
+        recent_videos,
     };
 
     match serde_json::to_string(&result) {
-        Ok(json_response) => {
-            println!("YouTube channel details successful for {}, found {} videos", result.name, result.recent_videos.len());
-            HttpResponse::Ok().content_type("application/json").body(json_response)
+        Ok(json) => {
+            println!("Channel details for '{}': {} videos", channel_name, result.recent_videos.len());
+            HttpResponse::Ok().content_type("application/json").body(json)
         }
         Err(e) => {
-            error!("Failed to serialize channel details response: {}", e);
-            HttpResponse::InternalServerError().body("Failed to process channel details")
+            error!("Serialization error: {}", e);
+            HttpResponse::InternalServerError().body("Failed to serialize response")
         }
     }
 }
 
 async fn stats_handler(hit_counters: web::Data<HitCounters>) -> impl Responder {
     let (itunes, podcast_index, youtube) = hit_counters.get_stats();
-    
+
     let stats = serde_json::json!({
         "api_usage": {
             "itunes_hits": itunes,
@@ -534,7 +473,7 @@ async fn stats_handler(hit_counters: web::Data<HitCounters>) -> impl Responder {
         },
         "timestamp": chrono::Utc::now().to_rfc3339()
     });
-    
+
     HttpResponse::Ok().content_type("application/json").json(stats)
 }
 
@@ -615,18 +554,17 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
     env_logger::init();
 
-    println!("Starting the Actix Web server with yt search");
-    
-    // Initialize hit counters
+    println!("Starting the Actix Web server with yt-dlp YouTube search");
+
     let hit_counters = web::Data::new(HitCounters::new());
 
     HttpServer::new(move || {
         let cors = Cors::default()
-            .allow_any_origin()  // Allow all origins since this is self-hostable
-            .allow_any_method()  // Allow all HTTP methods
-            .allow_any_header()  // Allow all headers
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header()
             .supports_credentials()
-            .max_age(3600);      // Cache preflight requests for 1 hour
+            .max_age(3600);
 
         App::new()
             .app_data(hit_counters.clone())

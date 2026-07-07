@@ -1,6 +1,6 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, SearchState, UIState};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{
@@ -23,8 +23,9 @@ pub struct YouTubeChannelItemProps {
 #[function_component(YouTubeLayout)]
 pub fn youtube_layout() -> Html {
     let (i18n, _) = use_translation();
-    let (state, _dispatch) = use_store::<AppState>();
+    let (_state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
+    let (search_state, _) = use_store::<SearchState>();
 
     // Track window width to apply responsive columns
     let columns = use_state(|| 2); // Default to 2 columns
@@ -84,7 +85,7 @@ pub fn youtube_layout() -> Html {
                 <UseScrollToTop />
                 <h1 class="item_container-text text-2xl font-bold my-6 text-center">{youtube_channels_title}</h1>
                 {
-                    if let Some(results) = &state.youtube_search_results {
+                    if let Some(results) = &search_state.youtube_search_results {
                         // Deduplicate channels based on channel_id
                         let unique_channels: Vec<_> = results.channels
                             .iter()
@@ -231,7 +232,7 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
             let channel = channel.clone();
             let set_loading = set_loading.clone();
             let is_subscribed = is_subscribed.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             let server_name_wasm = server_name.clone();
             let api_key_wasm = api_key.clone();
             let user_id_wasm = user_id.clone();
@@ -255,13 +256,13 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
                     {
                         Ok(_) => {
                             is_subscribed.set(true);
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(successfully_subscribed_msg.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}: {}",
                                     failed_to_subscribe_msg,
@@ -290,13 +291,13 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
                     {
                         Ok(_) => {
                             is_subscribed.set(false);
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(successfully_unsubscribed_msg.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(format!(
                                     "{}: {}",
                                     failed_to_unsubscribe_msg,

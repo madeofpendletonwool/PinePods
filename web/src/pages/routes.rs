@@ -17,6 +17,8 @@ pub enum Route {
     Queue,
     #[at("/saved")]
     Saved,
+    #[at("/collections")]
+    Collections,
     #[at("/settings")]
     Settings,
     #[at("/history")]
@@ -37,6 +39,8 @@ pub enum Route {
     PodLayout,
     #[at("/people_subs")]
     SubscribedPeople,
+    #[at("/discover_hosts")]
+    DiscoverHosts,
     #[at("/search_new")]
     SearchNew,
     #[at("/podcasts")]

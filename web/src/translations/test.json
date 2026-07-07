@@ -132,7 +132,8 @@
     "title_za": "ZZTEST-TITLE-ZA-ZZTEST",
     "update": "",
     "username": "ZZTEST-USERNAME-ZZTEST",
-    "yes": "ZZTEST-YES-ZZTEST"
+    "yes": "ZZTEST-YES-ZZTEST",
+    "close": "Close"
   },
   "custom_feed": {
     "add_feed": "ZZTEST-ADD-FEED-ZZTEST",
@@ -166,7 +167,8 @@
     "no_downloaded_episodes_found": "ZZTEST-NO-DOWNLOADED-EPISODES-FOUND-ZZTEST",
     "no_episode_downloads_found": "ZZTEST-NO-EPISODE-DOWNLOADS-FOUND-ZZTEST",
     "search_downloaded_episodes": "ZZTEST-SEARCH-DOWNLOADED-EPISODES-ZZTEST",
-    "select": "ZZTEST-SELECT-ZZTEST"
+    "select": "ZZTEST-SELECT-ZZTEST",
+    "load_more": "Load More"
   },
   "downloads_tauri": {
     "downloaded_episodes_count": "ZZTEST-DOWNLOADED-EPISODES-COUNT-ZZTEST",
@@ -368,7 +370,11 @@
     "youtube_channel_successfully_removed": "ZZTEST-YOUTUBE-CHANNEL-SUCCESSFULLY-REMOVED-ZZTEST",
     "youtube_download_limit": "ZZTEST-YOUTUBE-DOWNLOAD-LIMIT-ZZTEST",
     "youtube_episode_limit_updated": "ZZTEST-YOUTUBE-EPISODE-LIMIT-UPDATED-ZZTEST",
-    "youtube_limit_description": "ZZTEST-YOUTUBE-LIMIT-DESCRIPTION-ZZTEST"
+    "youtube_limit_description": "ZZTEST-YOUTUBE-LIMIT-DESCRIPTION-ZZTEST",
+    "video": "Video",
+    "trim_silence": "Trim silence",
+    "trim_silence_description": "Auto-detect and skip silence on new downloads",
+    "aggressiveness": "Aggressiveness"
   },
   "export_settings": {
     "download_export_opml": "ZZTEST-DOWNLOAD-EXPORT-OPML-ZZTEST",
@@ -591,7 +597,19 @@
     "task_download": "ZZTEST-TASK-DOWNLOAD-ZZTEST",
     "task_feed_refresh": "ZZTEST-TASK-FEED-REFRESH-ZZTEST",
     "task_playlist": "ZZTEST-TASK-PLAYLIST-ZZTEST",
-    "task_youtube_download": "ZZTEST-TASK-YOUTUBE-DOWNLOAD-ZZTEST"
+    "task_youtube_download": "ZZTEST-TASK-YOUTUBE-DOWNLOAD-ZZTEST",
+    "task_bulk_download": "ZZTEST-TASK-BULK-DOWNLOAD-ZZTEST",
+    "task_youtube_bulk_download": "ZZTEST-TASK-YOUTUBE-BULK-DOWNLOAD-ZZTEST",
+    "task_opml_import": "ZZTEST-TASK-OPML-IMPORT-ZZTEST",
+    "task_add_podcast": "ZZTEST-TASK-ADD-PODCAST-ZZTEST",
+    "task_backup": "ZZTEST-TASK-BACKUP-ZZTEST",
+    "task_restore": "ZZTEST-TASK-RESTORE-ZZTEST",
+    "task_gpodder_sync": "ZZTEST-TASK-GPODDER-SYNC-ZZTEST",
+    "task_nextcloud_sync": "ZZTEST-TASK-NEXTCLOUD-SYNC-ZZTEST",
+    "task_nextcloud_auth": "ZZTEST-TASK-NEXTCLOUD-AUTH-ZZTEST",
+    "task_playlist_update": "ZZTEST-TASK-PLAYLIST-UPDATE-ZZTEST",
+    "task_cleanup": "ZZTEST-TASK-CLEANUP-ZZTEST",
+    "task_refresh_hosts": "ZZTEST-TASK-REFRESH-HOSTS-ZZTEST"
   },
   "notifications": {
     "access_token": "ZZTEST-ACCESS-TOKEN-ZZTEST",
@@ -687,7 +705,9 @@
     "no_subscribed_people_found": "ZZTEST-NO-SUBSCRIBED-PEOPLE-FOUND-ZZTEST",
     "shows": "ZZTEST-SHOWS-ZZTEST",
     "subscribe_to_hosts_message": "ZZTEST-SUBSCRIBE-TO-HOSTS-MESSAGE-ZZTEST",
-    "subscribed_people": "ZZTEST-SUBSCRIBED-PEOPLE-ZZTEST"
+    "subscribed_people": "ZZTEST-SUBSCRIBED-PEOPLE-ZZTEST",
+    "loading_episodes": "Loading episodes...",
+    "no_recent_episodes_found": "No recent episodes found."
   },
   "person": {
     "add_podcasts_message": "ZZTEST-ADD-PODCASTS-MESSAGE-ZZTEST",
@@ -708,7 +728,8 @@
     "profile_alt": "ZZTEST-PROFILE-ALT-ZZTEST",
     "subscribe": "ZZTEST-SUBSCRIBE-ZZTEST",
     "unknown_author": "ZZTEST-UNKNOWN-AUTHOR-ZZTEST",
-    "unsubscribe": "ZZTEST-UNSUBSCRIBE-ZZTEST"
+    "unsubscribe": "ZZTEST-UNSUBSCRIBE-ZZTEST",
+    "loading_podcasts": "Loading podcasts..."
   },
   "playback_settings": {
     "auto_complete_description": "ZZTEST-AUTO-COMPLETE-DESCRIPTION-ZZTEST",
@@ -731,8 +752,21 @@
     "fresh_releases_empty": "ZZTEST-FRESH-RELEASES-EMPTY-ZZTEST",
     "no_episodes_found": "ZZTEST-NO-EPISODES-FOUND-ZZTEST",
     "no_episodes_match_criteria": "ZZTEST-NO-EPISODES-MATCH-CRITERIA-ZZTEST",
+    "play_from_top": "Play from Top",
     "refresh": "",
-    "refreshing": ""
+    "refreshing": "",
+    "edit_filter_by_podcasts": "Filter by Podcasts",
+    "edit_episode_status": "Episode Status",
+    "edit_include_unplayed": "Include Unplayed",
+    "edit_include_partially_played": "Include Partially Played",
+    "edit_include_played": "Include Played",
+    "edit_min_duration": "Min Duration (min)",
+    "edit_max_duration": "Max Duration (min)",
+    "edit_min_progress": "Min Progress (%)",
+    "edit_max_progress": "Max Progress (%)",
+    "edit_time_filter_hours": "Time Filter (hours)",
+    "edit_max_episodes": "Max Episodes",
+    "edit_group_by_podcast": "Group by Podcast"
   },
   "playlists": {
     "are_you_sure_delete": "ZZTEST-ARE-YOU-SURE-DELETE-ZZTEST",
@@ -894,7 +928,8 @@
   },
   "safehtml": {
     "start_episode_first": "ZZTEST-START-EPISODE-FIRST-ZZTEST",
-    "start_episode_first_audio": "ZZTEST-START-EPISODE-FIRST-AUDIO-ZZTEST"
+    "start_episode_first_audio": "ZZTEST-START-EPISODE-FIRST-AUDIO-ZZTEST",
+    "starting_episode_for_timecode": "ZZTEST-STARTING-EPISODE-FOR-TIMECODE-ZZTEST"
   },
   "saved": {
     "clear_all": "ZZTEST-CLEAR-ALL-ZZTEST",

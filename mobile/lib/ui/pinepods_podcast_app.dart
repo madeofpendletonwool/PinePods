@@ -18,18 +18,19 @@ import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/entities/feed.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
+import 'package:pinepods_mobile/l10n/app_localizations.dart';
 import 'package:pinepods_mobile/navigation/navigation_route_observer.dart';
 import 'package:pinepods_mobile/repository/repository.dart';
 import 'package:pinepods_mobile/repository/sembast/sembast_repository.dart';
 import 'dart:io';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
-import 'package:pinepods_mobile/services/audio/default_audio_player_service.dart';
 import 'package:pinepods_mobile/services/audio/native_audio_player_service.dart';
 import 'package:pinepods_mobile/services/download/download_service.dart';
 import 'package:pinepods_mobile/services/download/mobile_download_manager.dart';
 import 'package:pinepods_mobile/services/download/mobile_download_service.dart';
 import 'package:pinepods_mobile/services/podcast/mobile_podcast_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
+import 'package:pinepods_mobile/services/offline/offline_action_queue.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
@@ -92,6 +93,7 @@ class PinepodsPodcastApp extends StatefulWidget {
   List<int> certificateAuthorityBytes;
   late PinepodsAudioService pinepodsAudioService;
   late PinepodsService pinepodsService;
+  late OfflineActionQueue offlineActionQueue;
   CarPlayService? carPlayService;
 
   PinepodsPodcastApp({
@@ -115,19 +117,12 @@ class PinepodsPodcastApp extends StatefulWidget {
       podcastService: podcastService!,
     );
 
-    // Use native audio player on iOS for better stability, fall back to default on other platforms
-    if (Platform.isIOS) {
-      audioPlayerService = NativeAudioPlayerService(
-        repository: repository,
-        settingsService: mobileSettingsService,
-      );
-    } else {
-      audioPlayerService = DefaultAudioPlayerService(
-        repository: repository,
-        settingsService: mobileSettingsService,
-        podcastService: podcastService!,
-      );
-    }
+    // Use the native audio player on all platforms (ExoPlayer on Android,
+    // AVPlayer on iOS).
+    audioPlayerService = NativeAudioPlayerService(
+      repository: repository,
+      settingsService: mobileSettingsService,
+    );
 
     settingsBloc = SettingsBloc(mobileSettingsService);
 
@@ -140,20 +135,27 @@ class PinepodsPodcastApp extends StatefulWidget {
     );
 
     // Connect the services for listen duration recording
-    if (audioPlayerService is DefaultAudioPlayerService) {
-      (audioPlayerService as DefaultAudioPlayerService).setPinepodsAudioService(
-        pinepodsAudioService,
-      );
-    } else if (audioPlayerService is NativeAudioPlayerService) {
+    if (audioPlayerService is NativeAudioPlayerService) {
       (audioPlayerService as NativeAudioPlayerService).setPinepodsAudioService(
         pinepodsAudioService,
       );
     }
 
+    // Offline outbox: durably queues episode interactions and syncs them when
+    // online. Interaction recording in the audio service routes through it.
+    offlineActionQueue = OfflineActionQueue(
+      repository: repository,
+      pinepodsService: pinepodsService,
+      settingsService: mobileSettingsService,
+    );
+    pinepodsAudioService.setActionQueue(offlineActionQueue);
+    offlineActionQueue.start();
+
     // Initialize global services for app-wide access
     GlobalServices.initialize(
       pinepodsAudioService: pinepodsAudioService,
       pinepodsService: pinepodsService,
+      offlineActionQueue: offlineActionQueue,
     );
 
     // Initialize CarPlay service for iOS
@@ -249,7 +251,7 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
         title: 'Pinepods Podcast Client',
         navigatorObservers: [NavigationRouteObserver()],
         localizationsDelegates: const <LocalizationsDelegate<Object>>[
-          PinepodsLocalisationsDelegate(),
+          AppLocalizations.delegate,
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,

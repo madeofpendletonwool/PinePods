@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::call_add_custom_feed;
 use web_sys::HtmlInputElement;
@@ -72,7 +72,7 @@ pub fn custom_feed() -> Html {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let feed_url = feed_url.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             is_loading_call.set(true);
             let is_loading_wasm = is_loading_call.clone();
             let unstate_pod_user = (*pod_user).clone();
@@ -92,7 +92,7 @@ pub fn custom_feed() -> Html {
                 {
                     Ok(_) => {
                         // Update global state with success message
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg.clone());
                         });
                     }
@@ -101,7 +101,7 @@ pub fn custom_feed() -> Html {
                         let formatted_error = format_error_message(&e.to_string());
 
                         // Update global state with error message
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("{}{}", error_prefix.clone(), formatted_error));
                         });
@@ -131,7 +131,7 @@ pub fn custom_feed() -> Html {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let youtube_url = youtube_url.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             is_loading_call.set(true);
             let is_loading_wasm = is_loading_call.clone();
             wasm_bindgen_futures::spawn_local(async move {
@@ -149,7 +149,7 @@ pub fn custom_feed() -> Html {
                 {
                     Ok(_) => {
                         // Update global state with success message
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg.clone());
                         });
                     }
@@ -158,7 +158,7 @@ pub fn custom_feed() -> Html {
                         let formatted_error = format_error_message(&e.to_string());
 
                         // Update global state with error message
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("{}{}", error_prefix.clone(), formatted_error));
                         });
@@ -170,45 +170,86 @@ pub fn custom_feed() -> Html {
     };
 
     html! {
-        <div class="p-4">
-            <p class="item_container-text text-lg font-bold mb-4">{i18n.t("custom_feed.add_feed_title")}</p>
-            <p class="item_container-text text-md mb-4">{i18n.t("custom_feed.add_feed_description")}</p>
-
-            <br/>
-            // Podcast Feed Section
-            <div>
-                <div>
-                    <input id="feed_url" oninput={update_feed.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("custom_feed.feed_url_placeholder")} />
+        <>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("custom_feed.feed_url_placeholder")}</div></div>
+                <div class="settings-row-control">
+                    <input
+                        id="feed_url"
+                        oninput={update_feed.clone()}
+                        class="input"
+                        placeholder={i18n.t("custom_feed.feed_url_placeholder")}
+                    />
                 </div>
-                <div>
-                    <input id="username" oninput={update_pod_user.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder={i18n.t("custom_feed.username_optional")} />
+            </div>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("custom_feed.username_optional")}</div></div>
+                <div class="settings-row-control">
+                    <input
+                        id="username"
+                        oninput={update_pod_user.clone()}
+                        class="input"
+                        placeholder={i18n.t("custom_feed.username_optional")}
+                    />
                 </div>
-                <div>
-                    <input id="password" type="password" oninput={update_pod_pass.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder={i18n.t("custom_feed.password_optional")} />
+            </div>
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("custom_feed.password_optional")}</div></div>
+                <div class="settings-row-control">
+                    <input
+                        id="password"
+                        type="password"
+                        oninput={update_pod_pass.clone()}
+                        class="input"
+                        placeholder={i18n.t("custom_feed.password_optional")}
+                    />
                 </div>
-                <button onclick={add_custom_feed} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled={*is_loading}>
-                {i18n.t("custom_feed.add_feed")}
-                if *is_loading {
-                    <span class="ml-2 spinner-border animate-spin inline-block w-4 h-4 border-2 rounded-full"></span>
-                }
-                </button>
+            </div>
+            <div class="settings-row">
+                <div></div>
+                <div class="settings-row-control">
+                    <button
+                        onclick={add_custom_feed}
+                        class="btn btn-secondary"
+                        style="padding:6px 12px;"
+                        disabled={*is_loading}
+                    >
+                        <i class="ph ph-plus"></i>
+                        {i18n.t("custom_feed.add_feed")}
+                    </button>
+                </div>
             </div>
 
-            <hr class="my-4 border-t"/>
+            <div class="settings-subsection-title">{"YouTube"}</div>
 
-            // YouTube Channel Section
-            <div>
-                <p class="item_container-text text-sm mb-2">{i18n.t("podcasts.youtube_channel_instructions")}</p>
+            <div class="settings-row">
                 <div>
-                    <input id="youtube_url" oninput={update_youtube_url.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("podcasts.youtube_channel_url_placeholder")} />
+                    <div class="settings-row-label">{i18n.t("podcasts.youtube_channel_url_placeholder")}</div>
+                    <div class="settings-row-desc">{i18n.t("podcasts.youtube_channel_instructions")}</div>
                 </div>
-                <button onclick={add_youtube_channel} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled={*is_loading}>
-                {i18n.t("podcasts.add_channel")}
-                if *is_loading {
-                    <span class="ml-2 spinner-border animate-spin inline-block w-4 h-4 border-2 rounded-full"></span>
-                }
-                </button>
+                <div class="settings-row-control">
+                    <input
+                        id="youtube_url"
+                        oninput={update_youtube_url.clone()}
+                        class="input"
+                        placeholder={i18n.t("podcasts.youtube_channel_url_placeholder")}
+                    />
+                </div>
             </div>
-        </div>
+            <div class="settings-row">
+                <div></div>
+                <div class="settings-row-control">
+                    <button
+                        onclick={add_youtube_channel}
+                        class="btn btn-secondary"
+                        style="padding:6px 12px;"
+                        disabled={*is_loading}
+                    >
+                        <i class="ph ph-plus"></i>
+                        {i18n.t("podcasts.add_channel")}
+                    </button>
+                </div>
+            </div>
+        </>
     }
 }

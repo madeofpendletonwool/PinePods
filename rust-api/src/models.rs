@@ -1,51 +1,16 @@
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
-
-// Response models to match Python API
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ApiResponse<T> {
-    pub status_code: u16,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<T>,
-}
-
-impl<T> ApiResponse<T> {
-    pub fn success(data: T) -> Self {
-        Self {
-            status_code: 200,
-            message: None,
-            data: Some(data),
-        }
-    }
-
-    pub fn success_with_message(data: T, message: String) -> Self {
-        Self {
-            status_code: 200,
-            message: Some(message),
-            data: Some(data),
-        }
-    }
-
-    pub fn error(status_code: u16, message: String) -> ApiResponse<()> {
-        ApiResponse {
-            status_code,
-            message: Some(message),
-            data: None,
-        }
-    }
-}
+use utoipa::ToSchema;
 
 // PinePods check response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PinepodsCheckResponse {
     pub status_code: u16,
     pub pinepods_instance: bool,
 }
 
 // Health check response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthResponse {
     pub status: String,
     pub database: bool,
@@ -53,107 +18,8 @@ pub struct HealthResponse {
     pub timestamp: DateTime<Utc>,
 }
 
-// Authentication models
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LoginRequest {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LoginResponse {
-    pub status: String,
-    pub user_id: Option<i32>,
-    pub api_key: Option<String>,
-    pub message: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ApiKeyValidationResponse {
-    pub status: String,
-}
-
-// User models
-#[derive(Debug, Serialize, Deserialize)]
-pub struct User {
-    pub user_id: i32,
-    pub username: String,
-    pub email: Option<String>,
-    pub is_admin: bool,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserSettings {
-    pub user_id: i32,
-    pub theme: String,
-    pub auto_download_episodes: bool,
-    pub auto_delete_episodes: bool,
-    pub download_location: Option<String>,
-}
-
-// Podcast models
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Podcast {
-    pub podcast_id: i32,
-    pub podcast_name: String,
-    pub feed_url: String,
-    pub artwork_url: Option<String>,
-    pub author: Option<String>,
-    pub description: Option<String>,
-    pub website_url: Option<String>,
-    pub explicit: bool,
-    pub episode_count: i32,
-    pub categories: Option<String>,
-    pub user_id: i32,
-    pub auto_download: bool,
-    pub date_created: DateTime<Utc>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Episode {
-    pub episode_id: i32,
-    pub podcast_id: i32,
-    pub episode_title: String,
-    pub episode_description: Option<String>,
-    pub episode_url: Option<String>,
-    pub episode_artwork: Option<String>,
-    pub episode_pub_date: DateTime<Utc>,
-    pub episode_duration: i32,
-    pub completed: bool,
-    pub listen_duration: i32,
-    pub downloaded: bool,
-    pub saved: bool,
-}
-
-// Playlist models
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Playlist {
-    pub playlist_id: i32,
-    pub user_id: i32,
-    pub name: String,
-    pub description: Option<String>,
-    pub is_system_playlist: bool,
-    pub episode_count: i32,
-    pub created_at: DateTime<Utc>,
-    pub last_updated: DateTime<Utc>,
-}
-
 // Request models
-#[derive(Debug, Deserialize)]
-pub struct CreatePodcastRequest {
-    pub feed_url: String,
-    pub auto_download: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateEpisodeRequest {
-    pub listen_duration: Option<i32>,
-    pub completed: Option<bool>,
-    pub saved: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreatePlaylistRequest {
     pub user_id: i32,
     pub name: String,
@@ -173,75 +39,74 @@ pub struct CreatePlaylistRequest {
     pub icon_name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CreatePlaylistResponse {
     pub detail: String,
     pub playlist_id: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DeletePlaylistRequest {
     pub user_id: i32,
     pub playlist_id: i32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DeletePlaylistResponse {
     pub detail: String,
 }
 
-// Search models
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SearchRequest {
-    pub query: String,
-    pub search_type: Option<String>, // "podcasts", "episodes", "all"
-    pub limit: Option<i32>,
-    pub offset: Option<i32>,
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdatePlaylistRequest {
+    pub user_id: i32,
+    pub playlist_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub podcast_ids: Option<Vec<i32>>,
+    pub include_unplayed: bool,
+    pub include_partially_played: bool,
+    pub include_played: bool,
+    pub play_progress_min: Option<f64>,
+    pub play_progress_max: Option<f64>,
+    pub time_filter_hours: Option<i32>,
+    pub min_duration: Option<i32>,
+    pub max_duration: Option<i32>,
+    pub sort_order: String,
+    pub group_by_podcast: bool,
+    pub max_episodes: Option<i32>,
+    pub icon_name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SearchResult {
-    pub podcasts: Vec<Podcast>,
-    pub episodes: Vec<Episode>,
-    pub total_count: i32,
-}
-
-// Statistics models
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserStats {
-    pub total_podcasts: i32,
-    pub total_episodes: i32,
-    pub total_listen_time: i32,
-    pub completed_episodes: i32,
-    pub saved_episodes: i32,
-    pub downloaded_episodes: i32,
+#[derive(Debug, Serialize, ToSchema)]
+pub struct UpdatePlaylistResponse {
+    pub detail: String,
 }
 
 // Language models
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AvailableLanguage {
     pub code: String,
     pub name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LanguageUpdateRequest {
     pub user_id: i32,
     pub language: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UserLanguageResponse {
     pub language: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AvailableLanguagesResponse {
     pub languages: Vec<AvailableLanguage>,
 }
 
 // API-specific podcast models to match Python responses
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PodcastResponse {
     pub podcastid: i32,
     pub podcastname: String,
@@ -254,9 +119,11 @@ pub struct PodcastResponse {
     pub categories: Option<std::collections::HashMap<String, String>>,
     pub explicit: bool,
     pub podcastindexid: Option<i64>,
+    pub is_favorite: bool,
+    pub is_video: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PodcastExtraResponse {
     pub podcastid: i32,
     pub podcastname: String,
@@ -273,20 +140,22 @@ pub struct PodcastExtraResponse {
     pub episodes_played: i32,
     pub oldest_episode_date: Option<String>,
     pub is_youtube: bool,
+    pub is_video: bool,
+    pub is_favorite: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PodcastListResponse {
     pub pods: Vec<PodcastResponse>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PodcastExtraListResponse {
     pub pods: Vec<PodcastExtraResponse>,
 }
 
 // Remove podcast request model
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct RemovePodcastByNameRequest {
     pub user_id: i32,
     pub podcast_name: String,
@@ -294,7 +163,7 @@ pub struct RemovePodcastByNameRequest {
 }
 
 // Time info response model
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TimeInfoResponse {
     pub timezone: String,
     pub hour_pref: i32,
@@ -302,34 +171,39 @@ pub struct TimeInfoResponse {
 }
 
 // Check podcast response model  
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct CheckPodcastResponse {
     pub exists: bool,
 }
 
 // Check episode in database response model
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct EpisodeInDbResponse {
     pub episode_in_db: bool,
 }
 
 // Queue-related models
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct QueuePodcastRequest {
     pub episode_id: i32,
     pub user_id: i32,
     pub is_youtube: bool,
 }
 
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct ClearQueueRequest {
+    pub user_id: i32,
+}
+
 // Saved episodes models
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct SavePodcastRequest {
     pub episode_id: i32,
     pub user_id: i32,
     pub is_youtube: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SavedEpisode {
     pub episodetitle: String,
     pub podcastname: String,
@@ -350,32 +224,113 @@ pub struct SavedEpisode {
     pub savedate: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SavedEpisodesResponse {
     pub saved_episodes: Vec<SavedEpisode>,
+    pub total: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+// ---- Collections ----------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct Collection {
+    pub collection_id: i32,
+    pub user_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_default: bool,
+    pub icon: String,
+    pub created_at: String,
+    pub last_updated: String,
+    pub episode_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CollectionsResponse {
+    pub collections: Vec<Collection>,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct CreateCollectionRequest {
+    pub user_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct CreateCollectionResponse {
+    pub detail: String,
+    pub collection_id: i32,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct UpdateCollectionRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct CollectionDetailResponse {
+    pub detail: String,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct CollectionEpisodeRequest {
+    pub user_id: i32,
+    pub episode_id: i32,
+    pub is_youtube: bool,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct BulkAddCollectionRequest {
+    pub user_id: i32,
+    pub collection_id: i32,
+    /// Each entry is (episode_id, is_youtube)
+    pub episodes: Vec<(i32, bool)>,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct EpisodeCollectionsResponse {
+    pub collection_ids: Vec<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PlaylistInfo {
     pub name: String,
     pub description: String,
     pub episode_count: i32,
     pub icon_name: String,
+    pub is_system_playlist: bool,
+    pub podcast_ids: Option<Vec<i32>>,
+    pub include_unplayed: bool,
+    pub include_partially_played: bool,
+    pub include_played: bool,
+    pub min_duration: Option<i32>,
+    pub max_duration: Option<i32>,
+    pub sort_order: String,
+    pub group_by_podcast: bool,
+    pub max_episodes: Option<i32>,
+    pub play_progress_min: Option<f64>,
+    pub play_progress_max: Option<f64>,
+    pub time_filter_hours: Option<i32>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PlaylistEpisodesResponse {
     pub episodes: Vec<SavedEpisode>,
     pub playlist_info: PlaylistInfo,
+    pub total: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct SaveEpisodeResponse {
     pub detail: String,
 }
 
 // History models
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct HistoryAddRequest {
     pub episode_id: i32,
     pub episode_pos: f32,
@@ -383,7 +338,7 @@ pub struct HistoryAddRequest {
     pub is_youtube: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct HistoryEpisode {
     pub episodetitle: String,
     pub podcastname: String,
@@ -399,22 +354,17 @@ pub struct HistoryEpisode {
     pub is_youtube: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserHistoryResponse {
-    pub data: Vec<HistoryEpisode>,
-}
-
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct HistoryResponse {
     pub detail: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct QueueResponse {
     pub data: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct QueuedEpisode {
     pub episodetitle: String,
     pub podcastname: String,
@@ -435,96 +385,88 @@ pub struct QueuedEpisode {
     pub is_video: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct QueuedEpisodesResponse {
     pub data: Vec<QueuedEpisode>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ReorderQueueRequest {
     pub episode_ids: Vec<i32>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ReorderQueueResponse {
     pub message: String,
 }
 
 // Bulk episode action models - flexible episode ID lists
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct BulkEpisodeActionRequest {
     pub episode_ids: Vec<i32>,
     pub user_id: i32,
     pub is_youtube: Option<bool>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct BulkEpisodeActionResponse {
     pub message: String,
     pub processed_count: i32,
     pub failed_count: Option<i32>,
 }
 
-// Background task models
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TaskStatus {
-    pub task_id: String,
-    pub status: String,
-    pub progress: Option<f32>,
-    pub message: Option<String>,
-    pub created_at: DateTime<Utc>,
+#[derive(Debug, Serialize, Deserialize, Clone, utoipa::ToSchema)]
+pub struct CustomTheme {
+    pub themeid: i32,
+    pub name: String,
+    pub background_color: String,
+    pub button_color: String,
+    pub container_button_color: String,
+    pub button_text_color: String,
+    pub text_color: String,
+    pub text_secondary_color: String,
+    pub border_color: String,
+    pub accent_color: String,
+    pub prog_bar_color: String,
+    pub error_color: String,
+    pub bonus_color: String,
+    pub secondary_background: String,
+    pub container_background: String,
+    pub standout_color: String,
+    pub hover_color: String,
+    pub link_color: String,
+    pub thumb_color: String,
+    pub unfilled_color: String,
+    pub check_box_color: String,
 }
 
-// Import/Export models
-#[derive(Debug, Serialize, Deserialize)]
-pub struct OpmlImportRequest {
-    pub opml_content: String,
-    pub auto_download: Option<bool>,
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateCustomThemeRequest {
+    pub user_id: i32,
+    pub name: String,
+    pub background_color: String,
+    pub button_color: String,
+    pub container_button_color: String,
+    pub button_text_color: String,
+    pub text_color: String,
+    pub text_secondary_color: String,
+    pub border_color: String,
+    pub accent_color: String,
+    pub prog_bar_color: String,
+    pub error_color: String,
+    pub bonus_color: String,
+    pub secondary_background: String,
+    pub container_background: String,
+    pub standout_color: String,
+    pub hover_color: String,
+    pub link_color: String,
+    pub thumb_color: String,
+    pub unfilled_color: String,
+    pub check_box_color: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ImportProgress {
-    pub total_feeds: i32,
-    pub processed_feeds: i32,
-    pub successful_imports: i32,
-    pub failed_imports: i32,
-    pub current_feed: Option<String>,
-}
-
-// Pagination models
-#[derive(Debug, Deserialize)]
-pub struct PaginationParams {
-    pub page: Option<i32>,
-    pub per_page: Option<i32>,
-}
-
-impl Default for PaginationParams {
-    fn default() -> Self {
-        Self {
-            page: Some(1),
-            per_page: Some(50),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct PaginatedResponse<T> {
-    pub data: Vec<T>,
-    pub total_count: i32,
-    pub page: i32,
-    pub per_page: i32,
-    pub total_pages: i32,
-}
-
-impl<T> PaginatedResponse<T> {
-    pub fn new(data: Vec<T>, total_count: i32, page: i32, per_page: i32) -> Self {
-        let total_pages = (total_count + per_page - 1) / per_page; // Ceiling division
-        Self {
-            data,
-            total_count,
-            page,
-            per_page,
-            total_pages,
-        }
-    }
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DeleteCustomThemeRequest {
+    pub user_id: i32,
+    pub theme_id: i32,
 }

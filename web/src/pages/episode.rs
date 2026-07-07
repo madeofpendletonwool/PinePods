@@ -2,13 +2,12 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PageLoadState, UIState, UserPreferencesState};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
-use crate::components::host_component::HostDropdown;
 use crate::components::loading::Loading;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req;
@@ -32,7 +31,7 @@ use web_sys::UrlSearchParams;
 use web_sys::{window, Headers, Request, RequestInit, Response};
 use yew::prelude::*;
 use yew::{function_component, html, Html};
-use yew_router::history::BrowserHistory;
+use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 
 #[allow(dead_code)]
@@ -45,11 +44,11 @@ async fn fallback_to_podcast_parsing(
     podcast_index_id: i32,
     is_youtube: bool,
     episode_id: i32,
-    dispatch: Dispatch<AppState>,
+    _dispatch: Dispatch<AppState>,
     error_clone: UseStateHandle<Option<String>>,
     aud_dispatch: Dispatch<UIState>,
     ep_2_loading_clone: UseStateHandle<bool>,
-    ui_state: Rc<AppState>,
+    _ui_state: Rc<AppState>,
     window: web_sys::Window,
     user_id: i32,
     loading_clone: UseStateHandle<bool>,
@@ -67,17 +66,20 @@ async fn fallback_to_podcast_parsing(
                     let ep_url = episode_url_clone.clone();
                     let aud_url = audio_url_clone.clone();
                     let podcast_title = podcast_title_clone.clone();
+                    let ep_for_detail = ep.clone();
 
-                    dispatch.reduce_mut(move |state| {
-                        state.fetched_episode = Some(ep.clone());
-                        state.selected_episode_id = Some(episode_id);
-                        state.selected_episode_url = Some(ep_url.clone());
-                        state.selected_episode_audio_url = Some(aud_url.clone());
-                        state.selected_podcast_title = Some(podcast_title.clone());
+                    Dispatch::<EpisodeNavigationState>::global().reduce_mut(move |s| {
+                        s.selected_episode_id = Some(episode_id);
+                        s.selected_episode_url = Some(ep_url.clone());
+                        s.selected_episode_audio_url = Some(aud_url.clone());
+                        s.selected_podcast_title = Some(podcast_title.clone());
+                    });
+                    Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
+                        s.fetched_episode = Some(ep_for_detail);
                     });
 
                     // Handle podcast 2.0 data if needed
-                    if let Some(episode_id) = ui_state.selected_episode_id {
+                    if let Some(episode_id) = Dispatch::<EpisodeNavigationState>::global().get().selected_episode_id {
                         let chap_request = FetchPodcasting2DataRequest {
                             episode_id,
                             user_id: user_id,
@@ -99,6 +101,7 @@ async fn fallback_to_podcast_parsing(
                                             state.episode_page_transcript =
                                                 Some(response.transcripts);
                                             state.episode_page_people = Some(response.people);
+                                            state.episode_page_chapters = Some(response.chapters);
                                         });
                                         ep_2_loading_clone.set(false);
                                     }
@@ -110,6 +113,7 @@ async fn fallback_to_podcast_parsing(
                                         aud_dispatch.reduce_mut(|state| {
                                             state.episode_page_transcript = None;
                                             state.episode_page_people = None;
+                                            state.episode_page_chapters = None;
                                         });
                                     }
                                 }
@@ -184,6 +188,176 @@ pub struct TranscriptModalProps {
     pub onclose: Callback<()>,
     pub server_name: String,
     pub api_key: String,
+}
+
+#[derive(Properties, PartialEq)]
+pub struct TranscriptInlineProps {
+    pub transcripts: Vec<Transcript>,
+    pub server_name: String,
+    pub api_key: String,
+}
+
+/// Fetches and renders a transcript's text directly (no modal chrome), so it
+/// can be shown inline inside the episode page's Transcript tab.
+#[function_component(TranscriptInline)]
+pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
+    let transcript_content = use_state(|| None::<String>);
+    let loading = use_state(|| true);
+    let error = use_state(|| None::<String>);
+
+    {
+        let transcripts = props.transcripts.clone();
+        let transcript_content = transcript_content.clone();
+        let loading = loading.clone();
+        let error = error.clone();
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+
+        use_effect_with(transcripts, move |transcripts| {
+            if !transcripts.is_empty() {
+                let transcript = transcripts
+                    .iter()
+                    .find(|t| t.mime_type == "text/vtt")
+                    .or_else(|| transcripts.iter().find(|t| t.mime_type == "application/srt"))
+                    .unwrap_or(&transcripts[0])
+                    .clone();
+
+                let url = transcript.url.clone();
+                let mime_type = transcript.mime_type.clone();
+
+                spawn_local(async move {
+                    let speaker_regex = Regex::new(r"<v\s+[^>]+>").unwrap();
+                    let simple_speaker_regex = Regex::new(r"<v\s+").unwrap();
+
+                    let api_url = format!("{}/api/data/fetch_transcript", server_name);
+                    let request_body = serde_json::json!({ "url": url });
+
+                    let opts = RequestInit::new();
+                    opts.set_method("POST");
+                    opts.set_body(&JsValue::from_str(&request_body.to_string()));
+                    let headers = Headers::new().unwrap();
+                    headers.set("Content-Type", "application/json").unwrap();
+                    headers.set("Api-Key", &api_key).unwrap();
+                    opts.set_headers(&headers);
+
+                    let request = Request::new_with_str_and_init(&api_url, &opts).unwrap();
+                    let window = web_sys::window().unwrap();
+                    match JsFuture::from(window.fetch_with_request(&request)).await {
+                        Ok(resp_value) => match resp_value.dyn_into::<Response>() {
+                            Ok(resp) => match JsFuture::from(resp.text().unwrap()).await {
+                                Ok(text) => {
+                                    let text_str = text.as_string().unwrap();
+                                    match serde_json::from_str::<serde_json::Value>(&text_str) {
+                                        Ok(json) => {
+                                            if json["success"].as_bool().unwrap_or(false) {
+                                                let content = json["content"].as_str().unwrap_or("");
+                                                let cleaned_text = match mime_type.as_str() {
+                                                    "text/html" => {
+                                                        let div = web_sys::window()
+                                                            .unwrap()
+                                                            .document()
+                                                            .unwrap()
+                                                            .create_element("div")
+                                                            .unwrap();
+                                                        div.set_inner_html(content);
+                                                        div.text_content().unwrap_or_default()
+                                                    }
+                                                    _ => content
+                                                        .lines()
+                                                        .filter(|line| {
+                                                            !line.trim().is_empty()
+                                                                && !line.trim().parse::<i32>().is_ok()
+                                                                && !line.starts_with("WEBVTT")
+                                                                && !line.contains("-->")
+                                                        })
+                                                        .map(|line| {
+                                                            let line =
+                                                                speaker_regex.replace_all(line, "");
+                                                            let line = simple_speaker_regex
+                                                                .replace_all(&line, "");
+                                                            line.trim().to_string()
+                                                        })
+                                                        .filter(|line| !line.is_empty())
+                                                        .collect::<Vec<_>>()
+                                                        .join("\n"),
+                                                };
+                                                transcript_content.set(Some(cleaned_text));
+                                                loading.set(false);
+                                            } else {
+                                                let error_msg =
+                                                    json["error"].as_str().unwrap_or("Unknown error");
+                                                error.set(Some(format!("Backend error: {}", error_msg)));
+                                                loading.set(false);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error.set(Some(format!(
+                                                "Failed to parse JSON response: {:?}",
+                                                e
+                                            )));
+                                            loading.set(false);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    error.set(Some(format!("Failed to read response text: {:?}", e)));
+                                    loading.set(false);
+                                }
+                            },
+                            Err(e) => {
+                                error.set(Some(format!("Failed to parse response: {:?}", e)));
+                                loading.set(false);
+                            }
+                        },
+                        Err(e) => {
+                            error.set(Some(format!("Failed to fetch transcript via backend: {:?}", e)));
+                            loading.set(false);
+                        }
+                    }
+                });
+            }
+            move || ()
+        });
+    }
+
+    let content_ref = use_node_ref();
+    use_effect_with(
+        (content_ref.clone(), transcript_content.clone()),
+        move |(content_ref, content)| {
+            if let Some(content) = content.as_ref() {
+                if content.contains('<') && content.contains('>') {
+                    if let Some(element) = content_ref.cast::<web_sys::HtmlElement>() {
+                        element.set_inner_html(content);
+                    }
+                }
+            }
+            || ()
+        },
+    );
+
+    html! {
+        <div class="ep-transcript-content space-y-4 item_container-text prose dark:prose-invert max-w-none">
+            if *loading {
+                <div class="flex justify-center items-center h-32">
+                    <div class="animate-spin rounded-full h-12 w-12 border-4 border-current border-t-transparent"></div>
+                </div>
+            } else if let Some(err) = &*error {
+                <div class="text-red-500 dark:text-red-400 p-2">{err}</div>
+            } else if let Some(content) = &*transcript_content {
+                {
+                    if content.contains('<') && content.contains('>') {
+                        html! { <div class="transcript-content" ref={content_ref}/> }
+                    } else {
+                        html! {
+                            <div>
+                                { for content.split('\n').map(|line| html! { <p>{line}</p> }) }
+                            </div>
+                        }
+                    }
+                }
+            }
+        </div>
+    }
 }
 
 #[function_component(TranscriptModal)]
@@ -435,10 +609,20 @@ enum PageState {
     Err(String),
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum EpisodeTab {
+    Notes,
+    Chapters,
+    Transcript,
+    People,
+}
+
 #[function_component(Episode)]
 pub fn epsiode() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (episode_detail_state, _) = use_store::<EpisodeDetailState>();
+    let (prefs_state, _) = use_store::<UserPreferencesState>();
 
     // let error = use_state(|| None);
     let shared_url = use_state(|| Option::<String>::None);
@@ -479,6 +663,10 @@ pub fn epsiode() -> Html {
         .t("episode.something_went_wrong_description")
         .to_string();
     let i18n_cover_alt_text = i18n.t("episode.cover_alt_text").to_string();
+    let i18n_failed_to_find_podcast_metadata =
+        i18n.t("failed_to_find_podcast_metadata").to_string();
+    let i18n_no_hosts_found = i18n.t("host_component.no_hosts_found").to_string();
+    let i18n_add_hosts_here = i18n.t("host_component.add_hosts_here").to_string();
 
     let (app_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
@@ -534,6 +722,7 @@ pub fn epsiode() -> Html {
         let user_id = user_id.clone().unwrap();
         let api_key = api_key.clone().unwrap();
         let server_name = server_name.clone().unwrap();
+        let ep_2_loading = ep_2_loading.clone();
 
         move |episode_id: i32| {
             // Use fetched_episode_id directly since we already have it
@@ -541,6 +730,7 @@ pub fn epsiode() -> Html {
                 episode_id: episode_id,
                 user_id: user_id,
             };
+            let ep_2_loading = ep_2_loading.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 match call_fetch_podcasting_2_data(&server_name, &api_key, &chap_request).await {
@@ -548,7 +738,9 @@ pub fn epsiode() -> Html {
                         audio_dispatch.reduce_mut(|state| {
                             state.episode_page_transcript = Some(response.transcripts);
                             state.episode_page_people = Some(response.people);
+                            state.episode_page_chapters = Some(response.chapters);
                         });
+                        ep_2_loading.set(false);
                     }
                     Err(e) => {
                         web_sys::console::log_1(
@@ -557,7 +749,9 @@ pub fn epsiode() -> Html {
                         audio_dispatch.reduce_mut(|state| {
                             state.episode_page_transcript = None;
                             state.episode_page_people = None;
+                            state.episode_page_chapters = None;
                         });
+                        ep_2_loading.set(false);
                     }
                 }
             })
@@ -618,7 +812,11 @@ pub fn epsiode() -> Html {
                         page_state.set(PageState::Ok(ep));
 
                         let mut new_url = window.location().origin().unwrap();
-                        new_url.push_str(&format!("episode?episode_id={}", episode_id));
+                        if youtube {
+                            new_url.push_str(&format!("/episode?episode_id={}&youtube=true", episode_id));
+                        } else {
+                            new_url.push_str(&format!("/episode?episode_id={}", episode_id));
+                        }
 
                         if window.location().to_string() != new_url {
                             window
@@ -645,7 +843,7 @@ pub fn epsiode() -> Html {
         let api_key = api_key.clone().flatten();
         let page_state = page_state.setter();
         let window = web_sys::window().expect("Window should exist");
-        let dispatch = dispatch.clone();
+        let _dispatch = dispatch.clone();
 
         move |title: &str,
               podcast_url: &str,
@@ -670,13 +868,16 @@ pub fn epsiode() -> Html {
                                 let ep_url = episode_url.clone();
                                 let aud_url = audio_url.clone();
                                 let podcast_title = title.clone();
+                                let ep_for_detail = ep.clone();
 
-                                dispatch.reduce_mut(move |state| {
-                                    state.fetched_episode = Some(ep.clone());
-                                    state.selected_episode_id = Some(0);
-                                    state.selected_episode_url = Some(ep_url.to_string());
-                                    state.selected_episode_audio_url = Some(aud_url.to_string());
-                                    state.selected_podcast_title = Some(podcast_title.to_string());
+                                Dispatch::<EpisodeNavigationState>::global().reduce_mut(move |s| {
+                                    s.selected_episode_id = Some(0);
+                                    s.selected_episode_url = Some(ep_url.to_string());
+                                    s.selected_episode_audio_url = Some(aud_url.to_string());
+                                    s.selected_podcast_title = Some(podcast_title.to_string());
+                                });
+                                Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
+                                    s.fetched_episode = Some(ep_for_detail);
                                 });
 
                                 // Update the URL with the parameters
@@ -823,7 +1024,7 @@ pub fn epsiode() -> Html {
                     });
                 } else {
                     page_state.set(PageState::Err(
-                        i18n.t("failed_to_find_podcast_metadata").to_string(),
+                        i18n_failed_to_find_podcast_metadata.clone(),
                     ));
                     return;
                 }
@@ -831,6 +1032,7 @@ pub fn epsiode() -> Html {
         });
     }
 
+    let active_tab = use_state(|| EpisodeTab::Notes);
     let completion_status = use_state(|| false);
     let queue_status = use_state(|| false);
     let save_status = use_state(|| false);
@@ -1085,15 +1287,15 @@ pub fn epsiode() -> Html {
                         )
                     },
                     PageState::Ok(episode) => {
-                        let episode_id = episode.episodeid;
+                        let _episode_id = episode.episodeid;
                         let episode_url_clone = episode.episodeurl.clone();
-                        let episode_title_clone = episode.episodetitle.clone();
-                        let episode_descripton_clone = episode.episodedescription.clone();
-                        let episode_release_clone = episode.episodepubdate.clone();
-                        let episode_artwork_clone = episode.episodeartwork.clone();
-                        let episode_duration_clone = episode.episodeduration.clone();
+                        let _episode_title_clone = episode.episodetitle.clone();
+                        let _episode_descripton_clone = episode.episodedescription.clone();
+                        let _episode_release_clone = episode.episodepubdate.clone();
+                        let _episode_artwork_clone = episode.episodeartwork.clone();
+                        let _episode_duration_clone = episode.episodeduration.clone();
                         let podcast_of_episode = episode.podcastid.clone();
-                        let episode_listened_clone = episode.listenduration.clone();
+                        let _episode_listened_clone = episode.listenduration.clone();
                         let episode_id = episode.episodeid;
                         let episode_is_youtube = episode.is_youtube.clone();
 
@@ -1131,6 +1333,8 @@ pub fn epsiode() -> Html {
                                 audio_dispatch.clone(),
                                 audio_state.clone(),
                                 false,
+                                false,
+                                None,
                             );
 
                             Callback::from(move |e: MouseEvent| {
@@ -1158,7 +1362,7 @@ pub fn epsiode() -> Html {
                         let on_complete_episode = {
                             Callback::from(move |_| {
                                 let completion_status = complete_status_clone.clone();
-                                let post_dispatch = complete_post.clone();
+                                let _post_dispatch = complete_post.clone();
                                 let server_name_copy = complete_server_name.clone();
                                 let api_key_copy = complete_api_key.clone();
                                 let is_youtube = episode_is_youtube;
@@ -1180,25 +1384,17 @@ pub fn epsiode() -> Html {
                                     {
                                         Ok(_success_message) => {
                                             completion_status.set(true);
-                                            post_dispatch.reduce_mut(|state| {
-                                                if let Some(completed_episodes) = state.completed_episodes.as_mut() {
-                                                    if let Some(pos) =
-                                                        completed_episodes.iter().position(|&id| id == episode_id)
-                                                    {
-                                                        completed_episodes.remove(pos);
-                                                    } else {
-                                                        completed_episodes.push(episode_id);
-                                                    }
-                                                } else {
-                                                    state.completed_episodes = Some(vec![episode_id]);
+                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
+                                                if !state.completed_episodes.remove(&episode_id) {
+                                                    state.completed_episodes.insert(episode_id);
                                                 }
                                             });
                                         }
                                         Err(e) => {
                                             let formatted_error = format_error_message(&e.to_string());
-                                            post_dispatch.reduce_mut(|state| {
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message = Option::from(format!("{}", formatted_error))
-                                            });
+});
                                             // Handle error, e.g., display the error message
                                         }
                                     }
@@ -1218,7 +1414,7 @@ pub fn epsiode() -> Html {
                         let on_uncomplete_episode = {
                             Callback::from(move |_| {
                                 let completion_status = uncomplete_status_clone.clone();
-                                let post_dispatch = uncomplete_post.clone();
+                                let _post_dispatch = uncomplete_post.clone();
                                 let server_name_copy = uncomplete_server_name.clone();
                                 let api_key_copy = uncomplete_api_key.clone();
                                 let request = MarkEpisodeCompletedRequest {
@@ -1239,25 +1435,17 @@ pub fn epsiode() -> Html {
                                     {
                                         Ok(_message) => {
                                             completion_status.set(false);
-                                            post_dispatch.reduce_mut(|state| {
-                                                if let Some(completed_episodes) = state.completed_episodes.as_mut() {
-                                                    if let Some(pos) =
-                                                        completed_episodes.iter().position(|&id| id == episode_id)
-                                                    {
-                                                        completed_episodes.remove(pos);
-                                                    } else {
-                                                        completed_episodes.push(episode_id);
-                                                    }
-                                                } else {
-                                                    state.completed_episodes = Some(vec![episode_id]);
+                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(|state| {
+                                                if !state.completed_episodes.remove(&episode_id) {
+                                                    state.completed_episodes.insert(episode_id);
                                                 }
                                             });
                                         }
                                         Err(e) => {
                                             let formatted_error = format_error_message(&e.to_string());
-                                            post_dispatch.reduce_mut(|state| {
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message = Option::from(format!("{}", formatted_error))
-                                            });
+});
                                             // Handle error, e.g., display the error message
                                         }
                                     }
@@ -1296,7 +1484,7 @@ pub fn epsiode() -> Html {
                             Callback::from(move |_: MouseEvent| {
                                 let server_name_copy = server_name_queue.clone();
                                 let api_key_copy = api_key_queue.clone();
-                                let queue_post = dispatch_queue.clone();
+                                let _queue_post = dispatch_queue.clone();
                                 let queue_status = queue_status.clone();
                                 let is_queued = *queue_status;
                                 let request = QueuePodcastRequest {
@@ -1318,7 +1506,7 @@ pub fn epsiode() -> Html {
                                         },
                                         Err(e) => {
                                             let formatted_error = format_error_message(&e.to_string());
-                                            queue_post.reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
                                         }
                                     }
                                 };
@@ -1338,7 +1526,7 @@ pub fn epsiode() -> Html {
                             Callback::from(move |_: MouseEvent| {
                                 let server_name_copy = saved_server_name.clone();
                                 let api_key_copy = saved_api_key.clone();
-                                let post_state = save_post.clone();
+                                let _post_state = save_post.clone();
                                 let is_saved = *save_status;
                                 let save_status = save_status.clone();
                                 let request = SavePodcastRequest {
@@ -1360,7 +1548,7 @@ pub fn epsiode() -> Html {
                                         },
                                         Err(e) => {
                                             let formatted_error = format_error_message(&e.to_string());
-                                            post_state.reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
                                         }
                                     }
                                 };
@@ -1378,7 +1566,7 @@ pub fn epsiode() -> Html {
                             Callback::from(move |_: MouseEvent| {
                                 let server_name_copy = download_server_name.clone();
                                 let api_key_copy = download_api_key.clone();
-                                let post_state = download_post.clone();
+                                let _post_state = download_post.clone();
                                 let is_downloaded = *download_status;
                                 let download_status = download_status.clone();
                                 let request = DownloadEpisodeRequest {
@@ -1388,7 +1576,7 @@ pub fn epsiode() -> Html {
                                 };
 
                                 // Set loading state
-                                post_state.reduce_mut(|state| state.is_loading = Some(true));
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
 
                                 let future = async move {
                                     let result = if is_downloaded {
@@ -1403,21 +1591,21 @@ pub fn epsiode() -> Html {
                                         },
                                         Err(e) => {
                                             let formatted_error = format_error_message(&e.to_string());
-                                            post_state.reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
                                         }
                                     }
 
                                     // Clear loading state
-                                    post_state.reduce_mut(|state| state.is_loading = Some(false));
+                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                                 };
                                 wasm_bindgen_futures::spawn_local(future);
                             })
                         };
 
-                        let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
-                        let date_format = match_date_format(state.date_format.as_deref());
+                        let datetime = parse_date(&episode.episodepubdate, &prefs_state.user_tz);
+                        let date_format = match_date_format(prefs_state.date_format.as_deref());
                         let format_duration = format_time(episode.episodeduration);
-                        let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+                        let format_release = format!("{}", format_datetime(&datetime, &prefs_state.hour_preference, date_format));
 
                         let on_title_click = {
                             let dispatch = dispatch.clone();
@@ -1435,7 +1623,7 @@ pub fn epsiode() -> Html {
                             let podcast_url = url_params.get("episode_url").unwrap_or_default();
 
                             Callback::from(move |event: MouseEvent| {
-                                let dispatch = dispatch.clone();
+                                let _dispatch = dispatch.clone();
                                 let server_name = server_name.clone();
                                 let api_key = api_key.clone();
                                 let podcast_id = podcast_id.clone();
@@ -1480,7 +1668,6 @@ pub fn epsiode() -> Html {
                                     match result {
                                         Ok(details) => {
                                             let final_click_action = create_on_title_click(
-                                                dispatch.clone(),
                                                 server_name.unwrap(),
                                                 api_key,
                                                 &history,
@@ -1504,8 +1691,8 @@ pub fn epsiode() -> Html {
                                             web_sys::console::log_1(&format!(
                                                 "Error fetching podcast details: {}", error
                                             ).into());
-                                            dispatch.reduce_mut(move |state| {
-                                                let formatted_error = format_error_message(&error.to_string());
+                                            let formatted_error = format_error_message(&error.to_string());
+                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                 state.error_message = Some(format!(
                                                     "Failed to load details: {}", formatted_error
                                                 ));
@@ -1549,458 +1736,580 @@ pub fn epsiode() -> Html {
                         };
 
                         let layout = if audio_state.is_mobile.unwrap_or(false) {
+                            let server_for_proxy = server_name.clone().unwrap_or_default();
+                            let history_for_host = history.clone();
                             html! {
-                                <div class="mobile-layout">
-                                <div class="episode-layout-container">
-                                        <div class="item-header-mobile-cover-container">
-                                            <FallbackImage
-                                                src={episode.episodeartwork.clone()}
-                                                // onclick={on_title_click.clone()}
-                                                alt={format!("{}{}", i18n_cover_alt_text, episode.episodeartwork.clone())}
-                                                class="episode-artwork rounded-corners"
-                                            />
-                                        </div>
-                                            <div class="episode-details">
-                                            <p class="item-header-pod mt-2 justify-center items-center" onclick={on_title_click.clone()}>{ &episode.podcastname }</p>
-                                            <div class="items-center space-x-2 cursor-pointer">
-                                                <h2 class="episode-title item-header-title">
-                                                    { &episode.episodetitle }
-                                                    {
-                                                        if *completion_status.clone() {
-                                                            html! {
-                                                                <i class="ph ph-check-circle text-2xl text-green-500 ml-2"></i>
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    {
-                                                        html! {
-                                                            <>
-                                                                <button onclick={ create_share_link.clone()  } class="ml-2">
-                                                                    <i class="ph ph-share-network text-2xl"></i>
-                                                                </button>
-                                                                <button onclick={ move |_| download_episode_file.emit({ episode_id }) } class="ml-2" disabled={*download_in_progress}>
-                                                                    {
-                                                                        if *download_in_progress {
-                                                                            html! { <i class="ph ph-spinner text-2xl animate-spin"></i> }
-                                                                        } else {
-                                                                            html! { <i class="ph ph-download text-2xl"></i> }
-                                                                        }
-                                                                    }
-                                                                </button>
-                                                            </>
-                                                        }
-                                                    }
-                                                </h2>
-                                            </div>
-                                            <div class="flex justify-center items-center item-header-details">
-                                                <p class="episode-duration">{ format_duration }</p>
-                                                <span class="episode-duration">{"\u{00a0}-\u{00a0}"}</span>
-                                                <p class="episode-release-date">{ format_release }</p>
-                                            </div>
-                                            { progress_bar }
+                                <div class="mobile-layout ep-mobile-page">
 
-                                            {
-                                                if let Some(transcript) = &audio_state.episode_page_transcript {
-                                                    if !transcript.is_empty() {
-                                                        let transcript_clone = transcript.clone();
-                                                        let dispatch = dispatch.clone();
-                                                        let dispatch_call = dispatch.clone();
-                                                        html! {
-                                                            <>
-                                                            <div class="header-info pb-2 pt-2">
-                                                                <button
-                                                                    onclick={Callback::from(move |_| {
-                                                                        dispatch_call.reduce_mut(|state| {
-                                                                            state.show_transcript_modal = Some(true);
-                                                                            state.current_transcripts = Some(transcript_clone.clone());
-                                                                        });
-                                                                    })}
-                                                                    title={i18n_transcript.clone()}
-                                                                    class="font-bold item-container-button"
-                                                                >
-                                                                    { &i18n_view_transcript }
-                                                                </button>
-                                                            </div>
-
-                                                            if let Some(show_modal) = state.show_transcript_modal {
-                                                                if show_modal {
-                                                                    <TranscriptModal
-                                                                        transcripts={state.current_transcripts.clone().unwrap_or_default()}
-                                                                        server_name={server_name.unwrap_or_default()}
-                                                                        api_key={api_key.unwrap().unwrap_or_default()}
-                                                                        onclose={Callback::from(move |_| {
-                                                                            dispatch.reduce_mut(|state| {
-                                                                                state.show_transcript_modal = Some(false);
-                                                                            });
-                                                                        })}
-                                                                    />
-                                                                }
-                                                            }
-                                                            </>
-                                                        }
-                                                    } else {
-                                                        html! {}
-                                                    }
-                                                } else {
-                                                    html! {}
-                                                }
-                                            }
-                                            {
-                                                if !*ep_2_loading {
-                                                    if let Some(people) = &audio_state.episode_page_people {
-                                                        if !people.is_empty() {
-                                                            // Add key prop that changes with episode
-                                                            html! {
-                                                                <div class="header-info mb-2 overflow-x-auto whitespace-nowrap scroll-container">
-                                                                    <HostDropdown
-                                                                        key={format!("host-{}", episode.episodeid)} // Add this key prop
-                                                                        title={i18n_in_this_episode.clone()}
-                                                                        hosts={people.clone()}
-                                                                        podcast_feed_url={episode.episodeurl.clone()}
-                                                                        podcast_id={episode.podcastid}
-                                                                        podcast_index_id={episode.podcastid}
-                                                                    />
-                                                                </div>
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    } else {
-                                                        html! {}
-                                                    }
-                                                } else {
-                                                    html! {}
-                                                }
-                                            }
+                                    // ── Compact header: artwork + meta ──
+                                    <div class="ep-mobile-header">
+                                        <FallbackImage
+                                            src={episode.episodeartwork.clone()}
+                                            alt={format!("{}{}", i18n_cover_alt_text, episode.episodeartwork.clone())}
+                                            class="ep-mobile-art rounded-corners"
+                                        />
+                                        <div class="ep-mobile-meta">
+                                            <p class="ep-mobile-podcast-name" onclick={on_title_click.clone()}>
+                                                { &episode.podcastname }
+                                            </p>
+                                            <h2 class="ep-mobile-title">
+                                                { &episode.episodetitle }
+                                                { if *completion_status {
+                                                    html! { <i class="ph ph-check-circle ep-mobile-complete-badge"></i> }
+                                                } else { html! {} }}
+                                            </h2>
+                                            <p class="ep-mobile-subinfo">
+                                                { format!("{} · {}", format_duration, format_release) }
+                                            </p>
                                         </div>
-                                    <div class="episode-action-buttons">
-                                    {
-                                        if should_show_buttons {
-                                            html! {
-                                                <>
-                                                    // Play button always shown if media exists
-                                                    <div class="button-row">
-                                                        <button onclick={handle_play_click} class="play-button flex items-center justify-center gap-2 mt-2">
-                                                            { if is_playing {
-                                                                html! { <i class="ph ph-pause text-2xl"></i> }
-                                                            } else {
-                                                                html! { <i class="ph ph-play text-2xl"></i> }
-                                                            }}
-                                                            { if is_playing { &i18n_pause } else { &i18n_play } }
+                                    </div>
+
+                                    // ── Progress bar ──
+                                    <div class="ep-mobile-progress">
+                                        { progress_bar }
+                                    </div>
+
+                                    // ── Icon action bar ──
+                                    { if should_show_buttons {
+                                        html! {
+                                            <div class="ep-mobile-actions">
+                                                <button
+                                                    onclick={handle_play_click}
+                                                    class="ep-mobile-action-btn ep-mobile-action-play"
+                                                    title={if is_playing { i18n_pause.clone() } else { i18n_play.clone() }}
+                                                >
+                                                    { if is_playing {
+                                                        html! { <i class="ph ph-pause"></i> }
+                                                    } else {
+                                                        html! { <i class="ph ph-play"></i> }
+                                                    }}
+                                                </button>
+                                                { if *ep_in_db {
+                                                    html! {
+                                                        <>
+                                                        <button
+                                                            onclick={toggle_queue}
+                                                            class={classes!("ep-mobile-action-btn", (*queue_status).then_some("ep-mobile-active"))}
+                                                            title={if *queue_status { i18n_remove_from_queue.clone() } else { i18n_add_to_queue.clone() }}
+                                                        >
+                                                            <i class="ph ph-queue"></i>
                                                         </button>
-
-                                                        // Other buttons only if episode is in database
-                                                        {
-                                                            if *ep_in_db {
-                                                                html! {
-                                                                    <>
-                                                                        <button onclick={toggle_queue} class="queue-button flex items-center justify-center gap-2 mt-2">
-                                                                            { if *queue_status {
-                                                                                html! { <i class="ph ph-queue text-2xl"></i> }
-                                                                            } else {
-                                                                                html! { <i class="ph ph-queue text-2xl"></i> }
-                                                                            }}
-                                                                            { if *queue_status { &i18n_remove_from_queue } else { &i18n_add_to_queue } }
-                                                                        </button>
-                                                                        <button onclick={toggle_save} class="save-button flex items-center justify-center gap-2 mt-2">
-                                                                            { if *save_status {
-                                                                                html! { <i class="ph ph-heart-break text-2xl"></i> }
-                                                                            } else {
-                                                                                html! { <i class="ph ph-heart text-2xl"></i> }
-                                                                            }}
-                                                                            { if *save_status { &i18n_unsave } else { &i18n_save } }
-                                                                        </button>
-                                                                    </>
-                                                                }
+                                                        <button
+                                                            onclick={toggle_save}
+                                                            class={classes!("ep-mobile-action-btn", (*save_status).then_some("ep-mobile-active"))}
+                                                            title={if *save_status { i18n_unsave.clone() } else { i18n_save.clone() }}
+                                                        >
+                                                            { if *save_status {
+                                                                html! { <i class="ph ph-heart-break"></i> }
                                                             } else {
-                                                                html! {
-                                                                    <p class="no-media-warning item_container-text">
-                                                                        {&i18n_add_podcast_to_enable_actions}
-                                                                    </p>
-                                                                }
-                                                            }
-                                                        }
-                                                    </div>
+                                                                html! { <i class="ph ph-heart"></i> }
+                                                            }}
+                                                        </button>
+                                                        <button
+                                                            onclick={toggle_download}
+                                                            class={classes!("ep-mobile-action-btn", (*download_status).then_some("ep-mobile-active"))}
+                                                            title={if *download_status { i18n_remove_download.clone() } else { i18n_download.clone() }}
+                                                        >
+                                                            { if *download_in_progress {
+                                                                html! { <i class="ph ph-spinner animate-spin"></i> }
+                                                            } else if *download_status {
+                                                                html! { <i class="ph ph-trash"></i> }
+                                                            } else {
+                                                                html! { <i class="ph ph-download"></i> }
+                                                            }}
+                                                        </button>
+                                                        <button
+                                                            onclick={toggle_completion}
+                                                            class={classes!("ep-mobile-action-btn", (*completion_status).then_some("ep-mobile-active"))}
+                                                            title={if *completion_status { i18n_mark_incomplete.clone() } else { i18n_mark_complete.clone() }}
+                                                        >
+                                                            { if *completion_status {
+                                                                html! { <i class="ph ph-x-circle"></i> }
+                                                            } else {
+                                                                html! { <i class="ph ph-check-fat"></i> }
+                                                            }}
+                                                        </button>
+                                                        </>
+                                                    }
+                                                } else { html! {} }}
+                                                <button
+                                                    onclick={create_share_link.clone()}
+                                                    class="ep-mobile-action-btn"
+                                                    title={i18n_share_episode.clone()}
+                                                >
+                                                    <i class="ph ph-share-network"></i>
+                                                </button>
+                                            </div>
+                                        }
+                                    } else {
+                                        html! {
+                                            <div class="ep-mobile-actions">
+                                                <p class="ep-mobile-no-media item_container-text">
+                                                    { &i18n_this_item_contains_no_media }
+                                                </p>
+                                            </div>
+                                        }
+                                    }}
 
-                                                    // Second row of buttons only if in database
-                                                    {
-                                                        if *ep_in_db {
-                                                            html! {
-                                                                <div class="button-row">
-                                                                    <button onclick={toggle_download} class="download-button-ep flex items-center justify-center gap-2 mt-2">
-                                                                        { if *download_status {
-                                                                            html! { <i class="ph ph-trash text-2xl"></i> }
+                                    // ── Host strip ──
+                                    { if !*ep_2_loading {
+                                        if let Some(people) = &audio_state.episode_page_people {
+                                            if !people.is_empty() {
+                                                let has_unknown_host = people.len() == 1
+                                                    && people[0].name == "Unknown Host"
+                                                    && people[0].role == Some("Host".to_string());
+                                                if has_unknown_host {
+                                                    let people_url = state.server_details.as_ref()
+                                                        .and_then(|sd| sd.people_url.as_ref())
+                                                        .cloned()
+                                                        .unwrap_or_default();
+                                                    let host_url = format!("{}/podcast/{}", people_url, episode.podcastid);
+                                                    html! {
+                                                        <div class="ep-mobile-hosts">
+                                                            <p class="ep-mobile-section-label">{ &i18n_in_this_episode }</p>
+                                                            <p class="ep-mobile-no-hosts-msg">
+                                                                { i18n_no_hosts_found.clone() }
+                                                                <a href={host_url} target="_blank" class="ep-mobile-no-hosts-link">
+                                                                    { i18n_add_hosts_here.clone() }
+                                                                </a>
+                                                            </p>
+                                                        </div>
+                                                    }
+                                                } else {
+                                                    let server = server_for_proxy.clone();
+                                                    html! {
+                                                        <div class="ep-mobile-hosts">
+                                                            <p class="ep-mobile-section-label">{ &i18n_in_this_episode }</p>
+                                                            <div class="ep-mobile-hosts-scroll">
+                                                            { for people.iter().map(|person| {
+                                                                let name = person.name.clone();
+                                                                let role = person.role.clone();
+                                                                let img_url = person.img.as_ref().map(|url| {
+                                                                    format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
+                                                                });
+                                                                let hist = history_for_host.clone();
+                                                                let nav_name = name.clone();
+                                                                let on_chip_click = Callback::from(move |_: MouseEvent| {
+                                                                    hist.push(format!("/person/{}", nav_name));
+                                                                });
+                                                                html! {
+                                                                    <div class="ep-mobile-host-chip" onclick={on_chip_click}>
+                                                                        { if let Some(src) = img_url {
+                                                                            html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
                                                                         } else {
-                                                                            html! { <i class="ph ph-download text-2xl"></i> }
+                                                                            html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
                                                                         }}
-                                                                        { if *download_status { &i18n_remove_download } else { &i18n_download } }
-                                                                    </button>
-                                                                    <button onclick={toggle_completion} class="download-button-ep flex items-center justify-center gap-2 mt-2">
-                                                                        { if *completion_status {
-                                                                            html! { <i class="ph ph-x-circle text-2xl"></i> }
-                                                                        } else {
-                                                                            html! { <i class="ph ph-check-fat text-2xl"></i> }
-                                                                        }}
-                                                                        { if *completion_status { &i18n_mark_incomplete } else { &i18n_mark_complete } }
-                                                                    </button>
-                                                                </div>
-                                                            }
-                                                        } else {
-                                                            html! {} // Empty VNode when not in database
+                                                                        <span class="ep-mobile-host-name">{ &person.name }</span>
+                                                                        { if let Some(r) = &role {
+                                                                            html! { <span class="ep-mobile-host-role">{ r }</span> }
+                                                                        } else { html! {} }}
+                                                                    </div>
+                                                                }
+                                                            })}
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                }
+                                            } else { html! {} }
+                                        } else { html! {} }
+                                    } else { html! {} }}
+
+                                    // ── Transcript ──
+                                    {
+                                        if let Some(transcript) = &audio_state.episode_page_transcript {
+                                            if !transcript.is_empty() {
+                                                let transcript_clone = transcript.clone();
+                                                html! {
+                                                    <>
+                                                    <div class="ep-mobile-transcript">
+                                                        <button
+                                                            onclick={Callback::from(move |_| {
+                                                                let tc = transcript_clone.clone();
+                                                                Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
+                                                                    s.show_transcript_modal = Some(true);
+                                                                    s.current_transcripts = Some(tc);
+                                                                });
+                                                            })}
+                                                            class="ep-mobile-transcript-btn font-bold"
+                                                        >
+                                                            <i class="ph ph-scroll"></i>
+                                                            { &i18n_view_transcript }
+                                                        </button>
+                                                    </div>
+                                                    if let Some(show_modal) = episode_detail_state.show_transcript_modal {
+                                                        if show_modal {
+                                                            <TranscriptModal
+                                                                transcripts={episode_detail_state.current_transcripts.clone().unwrap_or_default()}
+                                                                server_name={server_name.clone().unwrap_or_default()}
+                                                                api_key={api_key.clone().unwrap().unwrap_or_default()}
+                                                                onclose={Callback::from(move |_| {
+                                                                    Dispatch::<EpisodeDetailState>::global().reduce_mut(|s| {
+                                                                        s.show_transcript_modal = Some(false);
+                                                                    });
+                                                                })}
+                                                            />
                                                         }
                                                     }
-                                                </>
-                                            }
-                                        } else {
-                                            html! {
-                                                <p class="no-media-warning item_container-text play-button">
-                                                    {&i18n_this_item_contains_no_media}
-                                                </p>
-                                            }
-                                        }
+                                                    </>
+                                                }
+                                            } else { html! {} }
+                                        } else { html! {} }
                                     }
 
+                                    // ── Description ──
+                                    <div class="ep-mobile-desc episode-single-desc episode-description">
+                                        <div class="item_container-text episode-description-container">
+                                            <SafeHtml
+                                                html={description}
+                                                episode_url={Some(episode.episodeurl.clone())}
+                                                episode_title={Some(episode.episodetitle.clone())}
+                                                episode_description={Some(episode.episodedescription.clone())}
+                                                episode_release_date={Some(episode.episodepubdate.clone())}
+                                                episode_artwork={Some(episode.episodeartwork.clone())}
+                                                episode_duration={episode.episodeduration}
+                                                episode_id={Some(episode.episodeid)}
+                                                is_youtube={episode.is_youtube}
+                                                is_video={Some(episode.is_video)}
+                                            />
+                                        </div>
                                     </div>
-                                    <div class="episode-single-desc episode-description">
-                                    // <p>{ description }</p>
-                                    <div class="item_container-text episode-description-container">
-                                        <SafeHtml
-                                            html={description}
-                                            episode_url={Some(episode.episodeurl.clone())}
-                                            episode_title={Some(episode.episodetitle.clone())}
-                                            episode_description={Some(episode.episodedescription.clone())}
-                                            episode_release_date={Some(episode.episodepubdate.clone())}
-                                            episode_artwork={Some(episode.episodeartwork.clone())}
-                                            episode_duration={episode.episodeduration}
-                                            episode_id={Some(episode.episodeid)}
-                                            is_youtube={episode.is_youtube}
-                                        />
-                                    </div>
-                                    </div>
-                                </div>
                                 </div>
                             }
                         } else {
                             html! {
                                 <div class="episode-layout-container">
-                                    <div class="episode-top-info">
-                                    <FallbackImage
-                                        src={episode.episodeartwork.clone()}
-                                        alt={format!("{}{}", i18n_cover_alt_text, episode.episodeartwork.clone())}
-                                        class="episode-artwork rounded-corners"
-                                        style="max-width: 375px; width: 25%; height: auto;"
-                                    />
-                                        // Add overflow-hidden to episode-details to prevent children from expanding it
-                                        <div class="episode-details overflow-hidden">
-                                            <h1 class="podcast-title hover-pointer-podcast-name" onclick={on_title_click.clone()}>{ &episode.podcastname }</h1>
-                                            // Add max-w-full to ensure title container stays within bounds
-                                            <div class="flex items-center space-x-2 cursor-pointer max-w-full">
-                                                <h2 class="episode-title truncate">{ &episode.episodetitle }</h2>
-                                                {
-                                                    if *completion_status.clone() {
-                                                        html! {
-                                                            <i class="ph ph-check-circle text-2xl text-green-500 ml-2"></i>
-                                                        }
-                                                    } else {
-                                                        html! {}
-                                                    }
-                                                }
+                                    // ===== HERO =====
+                                    <div class="ep-hero">
+                                        <div class="ep-hero-cover" onclick={on_title_click.clone()} title={episode.podcastname.clone()}>
+                                            <FallbackImage
+                                                src={episode.episodeartwork.clone()}
+                                                alt={format!("{}{}", i18n_cover_alt_text, episode.episodeartwork.clone())}
+                                                class="ep-hero-cover-img"
+                                            />
+                                        </div>
+                                        <div class="ep-hero-body">
+                                            <div class="ep-hero-show" onclick={on_title_click.clone()}>
+                                                <i class="ph ph-microphone-stage"></i>
+                                                <span>{ &episode.podcastname }</span>
                                             </div>
-                                            <p class="episode-duration">{ format_duration }</p>
-                                            <p class="episode-release-date">{ format_release }</p>
+                                            <h1 class="ep-hero-title">{ &episode.episodetitle }</h1>
+                                            <div class="ep-hero-meta">
+                                                <span><i class="ph ph-calendar-blank"></i>{ &format_release }</span>
+                                                <span class="ep-meta-dot">{"•"}</span>
+                                                <span><i class="ph ph-clock"></i>{ &format_duration }</span>
+                                                { if *completion_status {
+                                                    html! {
+                                                        <>
+                                                        <span class="ep-meta-dot">{"•"}</span>
+                                                        <span class="ep-meta-played"><i class="ph ph-check-circle"></i>{ i18n.t("episode.played") }</span>
+                                                        </>
+                                                    }
+                                                } else { html! {} } }
+                                            </div>
                                             { progress_bar }
-                                            {
-                                                if let Some(transcript) = &audio_state.episode_page_transcript {
-                                                    if !transcript.is_empty() {
-                                                        let transcript_clone = transcript.clone();
-                                                        let dispatch = dispatch.clone();
-                                                        let dispatch_call = dispatch.clone();
-                                                        html! {
-                                                            <>
-                                                            <div class="header-info pb-2 pt-2">
-                                                                <button
-                                                                    onclick={Callback::from(move |_| {
-                                                                        dispatch_call.reduce_mut(|state| {
-                                                                            state.show_transcript_modal = Some(true);
-                                                                            state.current_transcripts = Some(transcript_clone.clone());
-                                                                        });
-                                                                    })}
-                                                                    title={i18n_transcript.clone()}
-                                                                    class="font-bold item-container-button"
-                                                                >
-                                                                    { &i18n_view_transcript }
-                                                                </button>
-                                                            </div>
-
-                                                            if let Some(show_modal) = state.show_transcript_modal {
-                                                                if show_modal {
-                                                                    <TranscriptModal
-                                                                        transcripts={state.current_transcripts.clone().unwrap_or_default()}
-                                                                        server_name={server_name.unwrap_or_default()}
-                                                                        api_key={api_key.unwrap().unwrap_or_default()}
-                                                                        onclose={Callback::from(move |_| {
-                                                                            dispatch.reduce_mut(|state| {
-                                                                                state.show_transcript_modal = Some(false);
-                                                                            });
-                                                                        })}
-                                                                    />
-                                                                }
-                                                            }
-                                                            </>
-                                                        }
-                                                    } else {
-                                                        html! {}
-                                                    }
-                                                } else {
-                                                    html! {}
-                                                }
-                                            }
-                                            {
-                                                if !*ep_2_loading {
-                                                    if let Some(people) = &audio_state.episode_page_people {
-                                                        if !people.is_empty() {
-                                                            html! {
-                                                                // Modified container classes
-                                                                <div class="header-info mb-2 w-full overflow-hidden">
-                                                                    <div class="overflow-x-auto whitespace-nowrap" style="max-width: calc(100% - 2rem);">
-                                                                        <HostDropdown
-                                                                            title={i18n_in_this_episode.clone()}
-                                                                            hosts={people.clone()}
-                                                                            podcast_feed_url={episode.episodeurl.clone()}
-                                                                            podcast_id={episode.podcastid}
-                                                                            podcast_index_id={episode.podcastid}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    } else {
-                                                        html! {}
-                                                    }
-                                                } else {
-                                                    html! {}
-                                                }
-                                            }
-                                            <div class="flex gap-2">
-                                                <button
-                                                    class="share-button font-bold py-2 px-4 rounded"
-                                                    onclick={ create_share_link.clone() }
-                                                >
-                                                    {&i18n_share_episode}
-                                                </button>
-                                                <button
-                                                    class="download-button font-bold py-2 px-4 rounded"
-                                                    onclick={ move |_| {download_episode_file.emit({ episode_id }) } }
-                                                    disabled={*download_in_progress}
-                                                >
-                                                    {
-                                                        if *download_in_progress {
+                                            <div class="ep-hero-actions">
+                                                { if should_show_buttons {
+                                                    html! {
+                                                        <>
+                                                        <button onclick={handle_play_click} class="ep-hero-play" title={if is_playing { i18n_pause.clone() } else { i18n_play.clone() }}>
+                                                            { if is_playing { html! { <i class="ph ph-pause"></i> } } else { html! { <i class="ph ph-play"></i> } } }
+                                                            <span>{ if is_playing { &i18n_pause } else { &i18n_play } }</span>
+                                                        </button>
+                                                        { if *ep_in_db {
                                                             html! {
                                                                 <>
-                                                                    <div class="animate-spin inline-block w-4 h-4 mr-2 border-2 border-gray-300 border-t-white rounded-full"></div>
-                                                                    {&i18n_downloading}
+                                                                <button onclick={toggle_queue} class={classes!("ep-action", (*queue_status).then_some("is-active"))} title={if *queue_status { i18n_remove_from_queue.clone() } else { i18n_add_to_queue.clone() }}>
+                                                                    <i class="ph ph-queue"></i>
+                                                                    <span>{ if *queue_status { &i18n_remove_from_queue } else { &i18n_add_to_queue } }</span>
+                                                                </button>
+                                                                <button onclick={toggle_save} class={classes!("ep-action", (*save_status).then_some("is-active"))} title={if *save_status { i18n_unsave.clone() } else { i18n_save.clone() }}>
+                                                                    { if *save_status { html! { <i class="ph ph-heart-break"></i> } } else { html! { <i class="ph ph-heart"></i> } } }
+                                                                    <span>{ if *save_status { &i18n_unsave } else { &i18n_save } }</span>
+                                                                </button>
+                                                                <button onclick={toggle_download} class={classes!("ep-action", (*download_status).then_some("is-active"))} title={if *download_status { i18n_remove_download.clone() } else { i18n_download.clone() }}>
+                                                                    { if *download_status { html! { <i class="ph ph-trash"></i> } } else { html! { <i class="ph ph-download"></i> } } }
+                                                                    <span>{ if *download_status { &i18n_remove_download } else { &i18n_download } }</span>
+                                                                </button>
+                                                                <button onclick={toggle_completion} class={classes!("ep-action", (*completion_status).then_some("is-active"))} title={if *completion_status { i18n_mark_episode_incomplete.clone() } else { i18n_mark_episode_complete.clone() }}>
+                                                                    { if *completion_status { html! { <i class="ph ph-x-circle"></i> } } else { html! { <i class="ph ph-check-fat"></i> } } }
+                                                                    <span>{ if *completion_status { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }</span>
+                                                                </button>
                                                                 </>
                                                             }
                                                         } else {
-                                                            html! { {&i18n_download_episode} }
-                                                        }
+                                                            html! { <span class="ep-actions-note item_container-text">{ &i18n_add_podcast_to_enable_actions }</span> }
+                                                        } }
+                                                        </>
                                                     }
+                                                } else {
+                                                    html! { <span class="ep-actions-note item_container-text">{ &i18n_this_item_contains_no_media }</span> }
+                                                } }
+                                                <button class="ep-action" onclick={create_share_link.clone()} title={i18n_share_episode.clone()}>
+                                                    <i class="ph ph-share-network"></i>
+                                                    <span>{ &i18n_share_episode }</span>
+                                                </button>
+                                                <button
+                                                    class="ep-action"
+                                                    onclick={ move |_| { download_episode_file.emit({ episode_id }) } }
+                                                    disabled={*download_in_progress}
+                                                    title={i18n_download_episode.clone()}
+                                                >
+                                                    { if *download_in_progress {
+                                                        html! {
+                                                            <>
+                                                            <i class="ph ph-spinner animate-spin"></i>
+                                                            <span>{ &i18n_downloading }</span>
+                                                            </>
+                                                        }
+                                                    } else {
+                                                        html! {
+                                                            <>
+                                                            <i class="ph ph-download-simple"></i>
+                                                            <span>{ &i18n_download_episode }</span>
+                                                            </>
+                                                        }
+                                                    } }
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="episode-action-buttons">
-                                    {
-                                        if should_show_buttons {
-                                            html! {
-                                                <>
-                                                <button onclick={handle_play_click} class="play-button flex items-center justify-center gap-2">
-                                                    { if is_playing {
-                                                        html! { <i class="ph ph-pause text-2xl"></i> }
-                                                    } else {
-                                                        html! { <i class="ph ph-play text-2xl"></i> }
-                                                    }}
-                                                    { if is_playing { &i18n_pause } else { &i18n_play } }
-                                                </button>
-                                                {
-                                                    if *ep_in_db {
-                                                        html! {
-                                                            <>
-                                                            <button onclick={toggle_queue} class="queue-button flex items-center justify-center gap-2">
-                                                                { if *queue_status {
-                                                                    html! { <i class="ph ph-queue text-2xl"></i> }
-                                                                } else {
-                                                                    html! { <i class="ph ph-queue text-2xl"></i> }
-                                                                }}
-                                                                { if *queue_status { &i18n_remove_from_queue } else { &i18n_add_to_queue } }
-                                                            </button>
-                                                            <button onclick={toggle_save} class="save-button flex items-center justify-center gap-2">
-                                                                { if *save_status {
-                                                                    html! { <i class="ph ph-heart-break text-2xl"></i> }
-                                                                } else {
-                                                                    html! { <i class="ph ph-heart text-2xl"></i> }
-                                                                }}
-                                                                { if *save_status { &i18n_unsave } else { &i18n_save } }
-                                                            </button>
-                                                            <button onclick={toggle_download} class="download-button-ep flex items-center justify-center gap-2">
-                                                                { if *download_status {
-                                                                    html! { <i class="ph ph-trash text-2xl"></i> }
-                                                                } else {
-                                                                    html! { <i class="ph ph-download text-2xl"></i> }
-                                                                }}
-                                                                { if *download_status { &i18n_remove_download } else { &i18n_download } }
-                                                            </button>
-                                                            <button onclick={toggle_completion} class="download-button-ep flex items-center justify-center gap-2">
-                                                                { if *completion_status {
-                                                                    html! { <i class="ph ph-x-circle text-2xl"></i> }
-                                                                } else {
-                                                                    html! { <i class="ph ph-check-fat text-2xl"></i> }
-                                                                }}
-                                                                { if *completion_status { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }
-                                                            </button>
-                                                            </>
-                                                        }
-                                                    } else {
-                                                        html! {
-                                                            <p class="no-media-warning item_container-text play-button">
-                                                                {&i18n_add_podcast_to_enable_actions}
-                                                            </p>
-                                                        }
-                                                    }
-                                                }
-                                                </>
-                                            }
-                                        } else {
-                                            html! {
-                                                <p class="no-media-warning item_container-text play-button">
-                                                    {&i18n_this_item_contains_no_media}
-                                                </p>
-                                            }
-                                        }
-                                    }
 
-                                    </div>
-                                    <hr class="episode-divider" />
-                                    <div class="episode-single-desc episode-description">
-                                    // <p>{ description }</p>
-                                    <div class="item_container-text episode-description-container">
-                                        <SafeHtml
-                                            html={description}
-                                            episode_url={Some(episode.episodeurl.clone())}
-                                            episode_title={Some(episode.episodetitle.clone())}
-                                            episode_description={Some(episode.episodedescription.clone())}
-                                            episode_release_date={Some(episode.episodepubdate.clone())}
-                                            episode_artwork={Some(episode.episodeartwork.clone())}
-                                            episode_duration={episode.episodeduration}
-                                            episode_id={Some(episode.episodeid)}
-                                            is_youtube={episode.is_youtube}
-                                        />
-                                    </div>
-                                    </div>
+                                    // ===== TABBED BODY (notes / chapters / transcript / people) =====
+                                    {{
+                                        let chapter_count = audio_state.episode_page_chapters.as_ref().map_or(0, |c| c.len());
+                                        let has_chapters = chapter_count > 0;
+                                        let has_transcript = audio_state.episode_page_transcript.as_ref().map_or(false, |t| !t.is_empty());
+                                        let has_people = !*ep_2_loading && audio_state.episode_page_people.as_ref().map_or(false, |p| !p.is_empty());
+                                        let effective_tab = match *active_tab {
+                                            EpisodeTab::Chapters if has_chapters => EpisodeTab::Chapters,
+                                            EpisodeTab::Transcript if has_transcript => EpisodeTab::Transcript,
+                                            EpisodeTab::People if has_people => EpisodeTab::People,
+                                            _ => EpisodeTab::Notes,
+                                        };
+                                        let tab_btn = |tab: EpisodeTab, icon: &'static str, label: String, badge: Option<usize>| -> Html {
+                                            let active_tab = active_tab.clone();
+                                            let is_active = effective_tab == tab;
+                                            let onclick = Callback::from(move |_| active_tab.set(tab));
+                                            html! {
+                                                <button class={classes!("ep-tab", is_active.then_some("is-active"))} onclick={onclick}>
+                                                    <i class={classes!("ph", icon)}></i>
+                                                    <span>{ label }</span>
+                                                    { if let Some(b) = badge { html! { <span class="ep-tab-badge">{ b }</span> } } else { html! {} } }
+                                                </button>
+                                            }
+                                        };
+                                        html! {
+                                            <>
+                                            <div class="ep-tabs" role="tablist">
+                                                { tab_btn(EpisodeTab::Notes, "ph-note", i18n.t("episode.episode_notes").to_string(), None) }
+                                                { if has_chapters { tab_btn(EpisodeTab::Chapters, "ph-list-numbers", i18n.t("audio.chapters").to_string(), Some(chapter_count)) } else { html! {} } }
+                                                { if has_transcript { tab_btn(EpisodeTab::Transcript, "ph-scroll", i18n_transcript.clone(), None) } else { html! {} } }
+                                                { if has_people { tab_btn(EpisodeTab::People, "ph-users-three", i18n_in_this_episode.clone(), None) } else { html! {} } }
+                                            </div>
+
+                                            { match effective_tab {
+                                                EpisodeTab::Notes => html! {
+                                                    <div class="ep-pane ep-about">
+                                                        <div class="item_container-text episode-description-container">
+                                                            <SafeHtml
+                                                                html={description}
+                                                                episode_url={Some(episode.episodeurl.clone())}
+                                                                episode_title={Some(episode.episodetitle.clone())}
+                                                                episode_description={Some(episode.episodedescription.clone())}
+                                                                episode_release_date={Some(episode.episodepubdate.clone())}
+                                                                episode_artwork={Some(episode.episodeartwork.clone())}
+                                                                episode_duration={episode.episodeduration}
+                                                                episode_id={Some(episode.episodeid)}
+                                                                is_youtube={episode.is_youtube}
+                                                                is_video={Some(episode.is_video)}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                },
+                                                EpisodeTab::Chapters => {
+                                                    let chapters = audio_state.episode_page_chapters.as_deref().unwrap_or(&[]);
+                                                    let loaded = audio_state.currently_playing.as_ref().map_or(false, |c| c.episode_id == episode_id);
+                                                    let now_playing = audio_state.audio_playing.unwrap_or(false);
+                                                    let cur = audio_state.current_time_seconds;
+                                                    html! {
+                                                        <div class="ep-pane">
+                                                            <ol class="ep-chapters">
+                                                                { for chapters.iter().enumerate().map(|(idx, chapter)| {
+                                                                    let start = chapter.startTime.unwrap_or(0);
+                                                                    let end = chapters.get(idx + 1).and_then(|c| c.startTime).unwrap_or(i32::MAX);
+                                                                    let is_current = loaded && cur >= start as f64 && cur < end as f64;
+                                                                    let is_active_playing = is_current && now_playing;
+                                                                    let server = server_name.clone().unwrap_or_default();
+                                                                    let img_url = chapter.img.as_ref()
+                                                                        .filter(|u| !u.is_empty())
+                                                                        .map(|url| format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url)));
+                                                                    let audio_dispatch = audio_dispatch.clone();
+                                                                    let episode_for_play = episode.clone();
+                                                                    let api_key_c = api_key.clone();
+                                                                    let server_name_c = server_name.clone();
+                                                                    let on_jump = Callback::from(move |e: MouseEvent| {
+                                                                        // If this chapter is the one currently playing, the button pauses.
+                                                                        if is_active_playing {
+                                                                            audio_dispatch.reduce_mut(|state| {
+                                                                                if let Some(media_element) = state.media_element.as_ref() {
+                                                                                    let _ = media_element.pause();
+                                                                                } else if let Some(audio_element) = state.audio_element.as_ref() {
+                                                                                    let _ = audio_element.pause();
+                                                                                }
+                                                                                state.audio_playing = Some(false);
+                                                                            });
+                                                                            return;
+                                                                        }
+                                                                        let loaded = Dispatch::<UIState>::global().get()
+                                                                            .currently_playing.as_ref()
+                                                                            .map_or(false, |c| c.episode_id == episode_id);
+                                                                        if loaded {
+                                                                            let st = start as f64;
+                                                                            audio_dispatch.reduce_mut(|state| {
+                                                                                let hours = (st / 3600.0).floor() as i32;
+                                                                                let minutes = ((st % 3600.0) / 60.0).floor() as i32;
+                                                                                let seconds = (st % 60.0).floor() as i32;
+                                                                                let fmt = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
+                                                                                if let Some(media_element) = state.media_element.as_ref() {
+                                                                                    media_element.set_current_time(st);
+                                                                                    let _ = media_element.play();
+                                                                                    state.current_time_seconds = st;
+                                                                                    state.current_time_formatted = fmt;
+                                                                                } else if let Some(audio_element) = state.audio_element.as_ref() {
+                                                                                    audio_element.set_current_time(st);
+                                                                                    let _ = audio_element.play();
+                                                                                    state.current_time_seconds = st;
+                                                                                    state.current_time_formatted = fmt;
+                                                                                }
+                                                                                state.audio_playing = Some(true);
+                                                                            });
+                                                                        } else {
+                                                                            let mut ep = episode_for_play.clone();
+                                                                            ep.listenduration = start;
+                                                                            let cb = on_play_click(
+                                                                                ep,
+                                                                                api_key_c.clone().unwrap().unwrap(),
+                                                                                user_id.unwrap(),
+                                                                                server_name_c.clone().unwrap(),
+                                                                                audio_dispatch.clone(),
+                                                                                Dispatch::<UIState>::global().get(),
+                                                                                false,
+                                                                                false,
+                                                                                None,
+                                                                            );
+                                                                            cb.emit(e);
+                                                                        }
+                                                                    });
+                                                                    html! {
+                                                                        <li class={classes!("ep-chapter", is_current.then_some("is-current"))} onclick={on_jump} title={chapter.title.clone()}>
+                                                                            <span class="ep-chapter-play"><i class={classes!("ph", if is_active_playing { "ph-pause" } else { "ph-play" })}></i></span>
+                                                                            <span class="ep-chapter-num">{ format!("{:02}", idx + 1) }</span>
+                                                                            { if let Some(src) = img_url {
+                                                                                html! { <img src={src} class="ep-chapter-thumb" alt="" /> }
+                                                                            } else { html! {} } }
+                                                                            <span class="ep-chapter-title">{ &chapter.title }</span>
+                                                                            <span class="ep-chapter-time">{ format_time(start) }</span>
+                                                                        </li>
+                                                                    }
+                                                                }) }
+                                                            </ol>
+                                                        </div>
+                                                    }
+                                                },
+                                                EpisodeTab::Transcript => {
+                                                    if let Some(transcript) = &audio_state.episode_page_transcript {
+                                                        html! {
+                                                            <div class="ep-pane">
+                                                                <TranscriptInline
+                                                                    transcripts={transcript.clone()}
+                                                                    server_name={server_name.clone().unwrap_or_default()}
+                                                                    api_key={api_key.clone().unwrap_or_default().unwrap_or_default()}
+                                                                />
+                                                            </div>
+                                                        }
+                                                    } else { html! {} }
+                                                },
+                                                EpisodeTab::People => {
+                                                    if let Some(people) = &audio_state.episode_page_people {
+                                                        let has_unknown_host = people.len() == 1
+                                                            && people[0].name == "Unknown Host"
+                                                            && people[0].role == Some("Host".to_string());
+                                                        if has_unknown_host {
+                                                            let people_url = state.server_details.as_ref()
+                                                                .and_then(|sd| sd.people_url.as_ref())
+                                                                .cloned()
+                                                                .unwrap_or_default();
+                                                            let host_url = format!("{}/podcast/{}", people_url, episode.podcastid);
+                                                            html! {
+                                                                <div class="ep-pane">
+                                                                    <p class="ep-nohosts-msg">
+                                                                        { i18n_no_hosts_found.clone() }
+                                                                        <a href={host_url} target="_blank" class="ep-nohosts-link">
+                                                                            { i18n_add_hosts_here.clone() }
+                                                                        </a>
+                                                                    </p>
+                                                                </div>
+                                                            }
+                                                        } else {
+                                                            let server = server_name.clone().unwrap_or_default();
+                                                            html! {
+                                                                <div class="ep-pane">
+                                                                    <div class="ep-people">
+                                                                        { for people.iter().map(|person| {
+                                                                            let name = person.name.clone();
+                                                                            let role = person.role.clone();
+                                                                            let img_url = person.img.as_ref().map(|url| {
+                                                                                format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
+                                                                            });
+                                                                            let hist = history.clone();
+                                                                            let nav_name = name.clone();
+                                                                            let on_chip_click = Callback::from(move |_: MouseEvent| {
+                                                                                hist.push(format!("/person/{}", nav_name));
+                                                                            });
+                                                                            html! {
+                                                                                <div class="ep-person" onclick={on_chip_click} title={name.clone()}>
+                                                                                    { if let Some(src) = img_url {
+                                                                                        html! { <img src={src} alt={name.clone()} class="ep-person-avatar" /> }
+                                                                                    } else {
+                                                                                        html! { <div class="ep-person-avatar ep-person-avatar-ph"><i class="ph ph-user"></i></div> }
+                                                                                    } }
+                                                                                    <div class="ep-person-body">
+                                                                                        <div class="ep-person-name">{ &person.name }</div>
+                                                                                        { if let Some(r) = &role {
+                                                                                            html! { <span class="ep-person-role">{ r }</span> }
+                                                                                        } else { html! {} } }
+                                                                                    </div>
+                                                                                </div>
+                                                                            }
+                                                                        }) }
+                                                                    </div>
+                                                                </div>
+                                                            }
+                                                        }
+                                                    } else { html! {} }
+                                                },
+                                            } }
+                                            </>
+                                        }
+                                    }}
+
+                                    // ===== TRANSCRIPT MODAL =====
+                                    { if let Some(show_modal) = episode_detail_state.show_transcript_modal {
+                                        if show_modal {
+                                            html! {
+                                                <TranscriptModal
+                                                    transcripts={episode_detail_state.current_transcripts.clone().unwrap_or_default()}
+                                                    server_name={server_name.clone().unwrap_or_default()}
+                                                    api_key={api_key.clone().unwrap().unwrap_or_default()}
+                                                    onclose={Callback::from(move |_| {
+                                                        Dispatch::<EpisodeDetailState>::global().reduce_mut(|s| {
+                                                            s.show_transcript_modal = Some(false);
+                                                        });
+                                                    })}
+                                                />
+                                            }
+                                        } else { html! {} }
+                                    } else { html! {} } }
                                 </div>
                             }
                         };

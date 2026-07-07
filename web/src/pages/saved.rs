@@ -1,145 +1,132 @@
 use crate::components::app_drawer::App_drawer;
-use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, ExpandedDescriptions, UIState};
+use crate::components::audio_player_bar::AudioPlayerBar;
+use crate::components::context::{AppState, EpisodeStatusState, FilterState, NotificationState, PodcastFeedState};
 use crate::components::context_menu_button::PageType;
-use crate::components::episode_list_item::EpisodeListItem;
+use crate::components::episode_list_view::EpisodeListView;
 use crate::components::gen_components::{
-    empty_message, on_shownotes_click, use_long_press, Search_nav, UseScrollToTop,
+    empty_message, Search_nav, UseScrollToTop,
 };
 use crate::components::gen_funcs::{
-    format_datetime, get_default_sort_direction, get_filter_preference, match_date_format,
-    parse_date, sanitize_html_with_blank_target, set_filter_preference,
+    get_default_sort_direction, get_filter_preference, set_filter_preference,
 };
 use crate::components::loading::Loading;
-use crate::components::virtual_list::VirtualList;
+use crate::pages::playlists::IconSelector;
+use crate::requests::episode::Episode;
 use crate::requests::pod_req;
-use crate::requests::pod_req::SavedEpisodesResponse;
-use gloo::events::EventListener;
+use crate::requests::pod_req::{
+    Collection, CreateCollectionRequest, UpdateCollectionRequest,
+};
+use gloo_timers::future::TimeoutFuture;
 use i18nrs::yew::use_translation;
-use wasm_bindgen::JsCast;
-use web_sys::window;
-use web_sys::{Element, HtmlElement};
+use std::rc::Rc;
+use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
-use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 
-use wasm_bindgen::prelude::wasm_bindgen;
-
-#[derive(Clone, PartialEq)]
-#[allow(dead_code)]
-pub enum SavedSortDirection {
-    NewestFirst,
-    OldestFirst,
-    ShortestFirst,
-    LongestFirst,
-    TitleAZ,
-    TitleZA,
-}
+const PAGE_SIZE: i64 = 50;
 
 #[function_component(Saved)]
 pub fn saved() -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
+    let (filter_state, _filter_dispatch) = use_store::<FilterState>();
+    let favorite_podcast_ids = use_selector(|state: &PodcastFeedState| {
+        state.podcast_feed_return_extra
+            .as_ref()
+            .and_then(|pr| pr.pods.as_ref())
+            .map(|pods| {
+                pods.iter()
+                    .filter(|p| p.is_favorite)
+                    .map(|p| p.podcastid)
+                    .collect::<std::collections::HashSet<i32>>()
+            })
+            .unwrap_or_default()
+    });
 
-    let error = use_state(|| None);
-    let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, _audio_dispatch) = use_store::<UIState>();
-    let dropdown_open = use_state(|| false);
+    let api_key_sel = use_selector(|s: &AppState| {
+        s.auth_details.as_ref().map(|ud| ud.api_key.clone())
+    });
+    let user_id_sel = use_selector(|s: &AppState| {
+        s.user_details.as_ref().map(|ud| ud.UserID.clone())
+    });
+    let server_name_sel = use_selector(|s: &AppState| {
+        s.auth_details.as_ref().map(|ud| ud.server_name.clone())
+    });
+    let api_key = (*api_key_sel).clone();
+    let user_id = (*user_id_sel).clone();
+    let server_name = (*server_name_sel).clone();
+
+    // Collections (Saved is the pinned, undeletable default — always first)
+    let collections = use_state(|| Vec::<Collection>::new());
+    let active_collection = use_state(|| None as Option<Collection>);
+    let collections_loading = use_state(|| true);
+
+    let episodes = use_state(|| Rc::new(Vec::<Episode>::new()));
+    let total = use_state(|| 0i64);
+    let offset = use_state(|| 0i64);
     let loading = use_state(|| true);
+    let loading_more = use_state(|| false);
 
     let episode_search_term = use_state(|| String::new());
 
-    // Initialize sort direction from local storage or default to newest first
-    let episode_sort_direction = use_state(|| {
-        let saved_preference = get_filter_preference("saved");
-        match saved_preference.as_deref() {
-            Some("newest") => Some(SavedSortDirection::NewestFirst),
-            Some("oldest") => Some(SavedSortDirection::OldestFirst),
-            Some("shortest") => Some(SavedSortDirection::ShortestFirst),
-            Some("longest") => Some(SavedSortDirection::LongestFirst),
-            Some("title_az") => Some(SavedSortDirection::TitleAZ),
-            Some("title_za") => Some(SavedSortDirection::TitleZA),
-            _ => Some(SavedSortDirection::NewestFirst), // Default to newest first
-        }
+    // Sort/filter — persisted in localStorage (shared across collection tabs)
+    let sort_pref = get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string());
+    let sort_value = use_state(|| sort_pref.clone());
+    let filter_value = use_state(|| {
+        get_filter_preference("saved_filter").unwrap_or_else(|| "all".to_string())
     });
 
-    let show_completed = use_state(|| false); // Toggle for showing completed episodes only
-    let show_in_progress = use_state(|| false); // Toggle for showing in-progress episodes only
+    // Derive API sort_by / sort_order from the sort_value string
+    fn sort_to_params(sort: &str) -> (&'static str, &'static str) {
+        match sort {
+            "oldest"   => ("date", "asc"),
+            "shortest" => ("duration", "asc"),
+            "longest"  => ("duration", "desc"),
+            "title_az" => ("title", "asc"),
+            "title_za" => ("title", "desc"),
+            _          => ("date", "desc"), // "newest" or default
+        }
+    }
 
-    let _toggle_dropdown = {
-        let dropdown_open = dropdown_open.clone();
-        Callback::from(move |_: MouseEvent| {
-            dropdown_open.set(!*dropdown_open);
-        })
-    };
+    // Trigger for reloading episodes when sort or filter changes
+    let reload_trigger = use_state(|| 0u32);
 
-    // Fetch episodes on component mount
-    let loading_ep = loading.clone();
+    // Collection create/edit modal state
+    let show_new_modal = use_state(|| false);
+    let show_edit_modal = use_state(|| false);
+    let form_name = use_state(|| String::new());
+    let form_desc = use_state(|| String::new());
+    let form_icon = use_state(|| "ph-bookmark-simple".to_string());
+    let form_saving = use_state(|| false);
+
+    // Fetch collections on mount
     {
-        // let episodes = episodes.clone();
-        let error = error.clone();
-        let api_key = post_state
-            .auth_details
-            .as_ref()
-            .map(|ud| ud.api_key.clone());
-        let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-        let server_name = post_state
-            .auth_details
-            .as_ref()
-            .map(|ud| ud.server_name.clone());
-
-        let effect_dispatch = dispatch.clone();
-
+        let collections = collections.clone();
+        let active_collection = active_collection.clone();
+        let collections_loading = collections_loading.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
         use_effect_with(
             (api_key.clone(), user_id.clone(), server_name.clone()),
             move |_| {
-                let error_clone = error.clone();
-                if let (Some(api_key), Some(user_id), Some(server_name)) =
+                if let (Some(Some(api_key)), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
-                    let dispatch = effect_dispatch.clone();
-
-                    wasm_bindgen_futures::spawn_local(async move {
-                        match pod_req::call_get_saved_episodes(&server_name, &api_key, &user_id)
-                            .await
-                        {
-                            Ok(fetched_episodes) => {
-                                let completed_episode_ids: Vec<i32> = fetched_episodes
-                                    .iter()
-                                    .filter(|ep| ep.completed)
-                                    .map(|ep| ep.episodeid)
-                                    .collect();
-
-                                dispatch.reduce_mut(move |state| {
-                                    state.saved_episodes = fetched_episodes;
-                                    state.completed_episodes = Some(completed_episode_ids);
-                                });
-
-                                // Fetch local episode IDs for Tauri mode
-                                #[cfg(not(feature = "server_build"))]
-                                {
-                                    let dispatch_local = dispatch.clone();
-                                    wasm_bindgen_futures::spawn_local(async move {
-                                        if let Ok(mut local_episodes) =
-                                            crate::pages::downloads_tauri::fetch_local_episodes()
-                                                .await
-                                        {
-                                            dispatch_local.reduce_mut(move |state| {
-                                                state.downloaded_episodes.clear_local();
-                                                for ep in local_episodes.drain(..) {
-                                                    state.downloaded_episodes.push_local(ep);
-                                                }
-                                            });
-                                        }
-                                    });
-                                }
-
-                                loading_ep.set(false);
+                    let collections = collections.clone();
+                    let active_collection = active_collection.clone();
+                    let collections_loading = collections_loading.clone();
+                    spawn_local(async move {
+                        match pod_req::call_get_collections(&server_name, &api_key, user_id).await {
+                            Ok(cols) => {
+                                let default = cols.iter().find(|c| c.is_default).cloned()
+                                    .or_else(|| cols.first().cloned());
+                                active_collection.set(default);
+                                collections.set(cols);
+                                collections_loading.set(false);
                             }
-                            Err(e) => {
-                                error_clone.set(Some(e.to_string()));
-                                loading_ep.set(false);
+                            Err(_) => {
+                                collections_loading.set(false);
                             }
                         }
                     });
@@ -149,68 +136,519 @@ pub fn saved() -> Html {
         );
     }
 
-    let filtered_episodes = use_memo(
-        (
-            state.saved_episodes.clone(),
-            episode_search_term.clone(),
-            episode_sort_direction.clone(),
-            show_completed.clone(),
-            show_in_progress.clone(),
-        ),
-        |(saved_eps, search, sort_dir, show_completed, show_in_progress)| {
-            if saved_eps.len() > 0 {
-                let mut filtered = saved_eps
-                    .iter()
-                    .filter(|episode| {
-                        // Search filter
-                        let matches_search = if !search.is_empty() {
-                            episode
-                                .episodetitle
-                                .to_lowercase()
-                                .contains(&search.to_lowercase())
-                                || episode
-                                    .episodedescription
-                                    .to_lowercase()
-                                    .contains(&search.to_lowercase())
+    let active_collection_id = active_collection.as_ref().map(|c| c.collection_id);
+    let active_is_default = active_collection.as_ref().map(|c| c.is_default).unwrap_or(true);
+
+    // Fetch episodes for the active collection (and reload on sort/filter/tab change)
+    {
+        let episodes = episodes.clone();
+        let total = total.clone();
+        let offset = offset.clone();
+        let loading = loading.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+        let sort_value = sort_value.clone();
+        let filter_value = filter_value.clone();
+
+        use_effect_with(
+            (api_key.clone(), user_id.clone(), server_name.clone(), active_collection_id, active_is_default, *reload_trigger),
+            move |(api_key, user_id, server_name, active_collection_id, active_is_default, _)| {
+                if let (Some(Some(api_key)), Some(user_id), Some(server_name), Some(collection_id)) =
+                    (api_key.clone(), user_id.clone(), server_name.clone(), *active_collection_id)
+                {
+                    let episodes = episodes.clone();
+                    let total = total.clone();
+                    let offset = offset.clone();
+                    let loading = loading.clone();
+                    let sort_str = (*sort_value).clone();
+                    let filter_str = (*filter_value).clone();
+                    let is_default = *active_is_default;
+                    let api_key_opt = Some(api_key.clone());
+
+                    episodes.set(Rc::new(Vec::new()));
+                    offset.set(0);
+                    total.set(0);
+                    loading.set(true);
+
+                    spawn_local(async move {
+                        let (sort_by, sort_order) = sort_to_params(&sort_str);
+                        let result = if is_default {
+                            pod_req::call_get_saved_episodes_paged(
+                                &server_name, &api_key_opt, &user_id, PAGE_SIZE, 0,
+                                sort_by, sort_order, &filter_str,
+                            ).await
                         } else {
-                            true
+                            pod_req::call_get_collection_episodes_paged(
+                                &server_name, &api_key_opt, collection_id, PAGE_SIZE, 0,
+                                sort_by, sort_order, &filter_str,
+                            ).await
                         };
+                        match result {
+                            Ok(page) => {
+                                let completed_ids: std::collections::HashSet<i32> = page
+                                    .saved_episodes
+                                    .iter()
+                                    .filter(|ep| ep.completed)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
+                                // Only episodes actually in the Saved bucket should drive
+                                // the saved badge — a collection episode may not be saved.
+                                let saved_eps: Vec<Episode> = page
+                                    .saved_episodes
+                                    .iter()
+                                    .filter(|ep| ep.saved)
+                                    .cloned()
+                                    .collect();
+                                Dispatch::<EpisodeStatusState>::global().reduce_mut(move |s| {
+                                    s.saved_episodes = saved_eps;
+                                    s.completed_episodes = completed_ids;
+                                });
 
-                        // Completion status filter
-                        let matches_status = if **show_completed {
-                            episode.completed
-                        } else if **show_in_progress {
-                            episode.listenduration > 0 && !episode.completed
-                        } else {
-                            true // Show all if no filter is active
-                        };
+                                #[cfg(not(feature = "server_build"))]
+                                {
+                                    spawn_local(async move {
+                                        if let Ok(mut local_episodes) =
+                                            crate::pages::downloads_tauri::fetch_local_episodes().await
+                                        {
+                                            Dispatch::<EpisodeStatusState>::global().reduce_mut(move |s| {
+                                                s.downloaded_episodes.clear_local();
+                                                for ep in local_episodes.drain(..) {
+                                                    s.downloaded_episodes.push_local(ep);
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
 
-                        matches_search && matches_status
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>();
-
-                // Apply sorting
-                if let Some(direction) = (*sort_dir).as_ref() {
-                    filtered.sort_by(|a, b| match direction {
-                        SavedSortDirection::NewestFirst => b.savedate.as_deref().unwrap_or("").cmp(a.savedate.as_deref().unwrap_or("")),
-                        SavedSortDirection::OldestFirst => a.savedate.as_deref().unwrap_or("").cmp(b.savedate.as_deref().unwrap_or("")),
-                        SavedSortDirection::ShortestFirst => {
-                            a.episodeduration.cmp(&b.episodeduration)
+                                let new_offset = page.saved_episodes.len() as i64;
+                                total.set(page.total);
+                                offset.set(new_offset);
+                                episodes.set(Rc::new(page.saved_episodes));
+                                loading.set(false);
+                            }
+                            Err(_) => {
+                                loading.set(false);
+                            }
                         }
-                        SavedSortDirection::LongestFirst => {
-                            b.episodeduration.cmp(&a.episodeduration)
-                        }
-                        SavedSortDirection::TitleAZ => a.episodetitle.cmp(&b.episodetitle),
-                        SavedSortDirection::TitleZA => b.episodetitle.cmp(&a.episodetitle),
                     });
                 }
-                filtered
-            } else {
-                vec![]
+                || ()
+            },
+        );
+    }
+
+    // Load-more handler (branches on whether the active collection is the default Saved one)
+    let on_load_more = {
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+        let episodes = episodes.clone();
+        let total = total.clone();
+        let offset = offset.clone();
+        let loading_more = loading_more.clone();
+        let sort_value = sort_value.clone();
+        let filter_value = filter_value.clone();
+        use_callback((active_collection_id, active_is_default), move |_: (), (active_collection_id, active_is_default)| {
+            if *loading_more {
+                return;
             }
-        },
-    );
+            let current_offset = *offset;
+            let current_total = *total;
+            if current_offset >= current_total {
+                return;
+            }
+            let Some(Some(api_key)) = api_key.clone() else { return; };
+            let Some(user_id) = user_id.clone() else { return; };
+            let Some(server_name) = server_name.clone() else { return; };
+            let Some(collection_id) = *active_collection_id else { return; };
+            let is_default = *active_is_default;
+            let sort_str = (*sort_value).clone();
+            let filter_str = (*filter_value).clone();
+            loading_more.set(true);
+            let episodes = episodes.clone();
+            let total = total.clone();
+            let offset = offset.clone();
+            let loading_more = loading_more.clone();
+            spawn_local(async move {
+                let (sort_by, sort_order) = sort_to_params(&sort_str);
+                let api_key_opt = Some(api_key);
+                let result = if is_default {
+                    pod_req::call_get_saved_episodes_paged(
+                        &server_name, &api_key_opt, &user_id, PAGE_SIZE, current_offset,
+                        sort_by, sort_order, &filter_str,
+                    ).await
+                } else {
+                    pod_req::call_get_collection_episodes_paged(
+                        &server_name, &api_key_opt, collection_id, PAGE_SIZE, current_offset,
+                        sort_by, sort_order, &filter_str,
+                    ).await
+                };
+                if let Ok(page) = result {
+                    TimeoutFuture::new(0).await;
+                    let new_offset = current_offset + page.saved_episodes.len() as i64;
+                    let mut all = (**episodes).clone();
+                    all.extend(page.saved_episodes);
+                    total.set(page.total);
+                    offset.set(new_offset);
+                    episodes.set(Rc::new(all));
+                    TimeoutFuture::new(0).await;
+                }
+                loading_more.set(false);
+            });
+        })
+    };
+
+    // ---- Collection create / edit / delete handlers ----
+
+    let open_new_modal = {
+        let show_new_modal = show_new_modal.clone();
+        let form_name = form_name.clone();
+        let form_desc = form_desc.clone();
+        let form_icon = form_icon.clone();
+        Callback::from(move |_| {
+            form_name.set(String::new());
+            form_desc.set(String::new());
+            form_icon.set("ph-bookmark-simple".to_string());
+            show_new_modal.set(true);
+        })
+    };
+
+    let open_edit_modal = {
+        let show_edit_modal = show_edit_modal.clone();
+        let form_name = form_name.clone();
+        let form_desc = form_desc.clone();
+        let form_icon = form_icon.clone();
+        let active_collection = active_collection.clone();
+        Callback::from(move |_| {
+            if let Some(c) = active_collection.as_ref() {
+                form_name.set(c.name.clone());
+                form_desc.set(c.description.clone().unwrap_or_default());
+                form_icon.set(c.icon.clone());
+                show_edit_modal.set(true);
+            }
+        })
+    };
+
+    let on_create_submit = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let form_name = form_name.clone();
+        let form_desc = form_desc.clone();
+        let form_icon = form_icon.clone();
+        let form_saving = form_saving.clone();
+        let show_new_modal = show_new_modal.clone();
+        let collections = collections.clone();
+        let active_collection = active_collection.clone();
+        Callback::from(move |_| {
+            let name = (*form_name).trim().to_string();
+            if name.is_empty() {
+                Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                    s.error_message = Some("Collection name is required".to_string());
+                });
+                return;
+            }
+            let (Some(Some(api_key)), Some(user_id), Some(server_name)) =
+                (api_key.clone(), user_id.clone(), server_name.clone()) else { return; };
+            let desc = (*form_desc).trim().to_string();
+            let req = CreateCollectionRequest {
+                user_id,
+                name,
+                description: if desc.is_empty() { None } else { Some(desc) },
+                icon: Some((*form_icon).clone()),
+            };
+            let form_saving = form_saving.clone();
+            let show_new_modal = show_new_modal.clone();
+            let collections = collections.clone();
+            let active_collection = active_collection.clone();
+            form_saving.set(true);
+            spawn_local(async move {
+                match pod_req::call_create_collection(&server_name, &api_key, req).await {
+                    Ok(resp) => {
+                        if let Ok(cols) = pod_req::call_get_collections(&server_name, &api_key, user_id).await {
+                            let new_active = cols.iter().find(|c| c.collection_id == resp.collection_id).cloned();
+                            collections.set(cols);
+                            if new_active.is_some() {
+                                active_collection.set(new_active);
+                            }
+                        }
+                        show_new_modal.set(false);
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                            s.info_message = Some("Collection created".to_string());
+                        });
+                    }
+                    Err(e) => {
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                            s.error_message = Some(format!("{}", e));
+                        });
+                    }
+                }
+                form_saving.set(false);
+            });
+        })
+    };
+
+    let on_edit_submit = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let form_name = form_name.clone();
+        let form_desc = form_desc.clone();
+        let form_icon = form_icon.clone();
+        let form_saving = form_saving.clone();
+        let show_edit_modal = show_edit_modal.clone();
+        let collections = collections.clone();
+        let active_collection = active_collection.clone();
+        Callback::from(move |_| {
+            let Some(current) = active_collection.as_ref().cloned() else { return; };
+            let name = (*form_name).trim().to_string();
+            if name.is_empty() {
+                Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                    s.error_message = Some("Collection name is required".to_string());
+                });
+                return;
+            }
+            let (Some(Some(api_key)), Some(user_id), Some(server_name)) =
+                (api_key.clone(), user_id.clone(), server_name.clone()) else { return; };
+            let desc = (*form_desc).trim().to_string();
+            let req = UpdateCollectionRequest {
+                name: Some(name),
+                description: Some(desc),
+                icon: Some((*form_icon).clone()),
+            };
+            let form_saving = form_saving.clone();
+            let show_edit_modal = show_edit_modal.clone();
+            let collections = collections.clone();
+            let active_collection = active_collection.clone();
+            form_saving.set(true);
+            spawn_local(async move {
+                match pod_req::call_update_collection(&server_name, &api_key, current.collection_id, req).await {
+                    Ok(_) => {
+                        if let Ok(cols) = pod_req::call_get_collections(&server_name, &api_key, user_id).await {
+                            let new_active = cols.iter().find(|c| c.collection_id == current.collection_id).cloned();
+                            collections.set(cols);
+                            if new_active.is_some() {
+                                active_collection.set(new_active);
+                            }
+                        }
+                        show_edit_modal.set(false);
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                            s.info_message = Some("Collection updated".to_string());
+                        });
+                    }
+                    Err(e) => {
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                            s.error_message = Some(format!("{}", e));
+                        });
+                    }
+                }
+                form_saving.set(false);
+            });
+        })
+    };
+
+    let on_delete_collection = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let show_edit_modal = show_edit_modal.clone();
+        let collections = collections.clone();
+        let active_collection = active_collection.clone();
+        Callback::from(move |_| {
+            let Some(current) = active_collection.as_ref().cloned() else { return; };
+            let (Some(Some(api_key)), Some(user_id), Some(server_name)) =
+                (api_key.clone(), user_id.clone(), server_name.clone()) else { return; };
+            let show_edit_modal = show_edit_modal.clone();
+            let collections = collections.clone();
+            let active_collection = active_collection.clone();
+            spawn_local(async move {
+                match pod_req::call_delete_collection(&server_name, &api_key, current.collection_id).await {
+                    Ok(_) => {
+                        if let Ok(cols) = pod_req::call_get_collections(&server_name, &api_key, user_id).await {
+                            let default = cols.iter().find(|c| c.is_default).cloned()
+                                .or_else(|| cols.first().cloned());
+                            collections.set(cols);
+                            active_collection.set(default);
+                        }
+                        show_edit_modal.set(false);
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                            s.info_message = Some("Collection deleted".to_string());
+                        });
+                    }
+                    Err(e) => {
+                        Dispatch::<NotificationState>::global().reduce_mut(|s| {
+                            s.error_message = Some(format!("{}", e));
+                        });
+                    }
+                }
+            });
+        })
+    };
+
+    // Client-side filter (search + favorites)
+    let search_term = (*episode_search_term).clone();
+    let has_client_filter = !search_term.is_empty()
+        || (filter_state.favorites_only && !favorite_podcast_ids.is_empty());
+    let display_episodes_rc: Rc<Vec<Episode>> = if has_client_filter {
+        let term = search_term.to_lowercase();
+        Rc::new(
+            (*episodes)
+                .iter()
+                .filter(|ep| {
+                    if filter_state.favorites_only && !favorite_podcast_ids.contains(&ep.podcastid)
+                    {
+                        return false;
+                    }
+                    if term.is_empty() {
+                        return true;
+                    }
+                    ep.episodetitle.to_lowercase().contains(&term)
+                        || ep.episodedescription.to_lowercase().contains(&term)
+                })
+                .cloned()
+                .collect(),
+        )
+    } else {
+        (*episodes).clone()
+    };
+    let display_empty = display_episodes_rc.is_empty();
+    let backend_can_load_more = *offset < *total;
+
+    // ---- Tab bar ----
+    let tab_bar = {
+        let collections = collections.clone();
+        let active_collection = active_collection.clone();
+        let active_id = active_collection_id;
+        let open_new_modal = open_new_modal.clone();
+        html! {
+            <div class="sp-chips pfb-chips collections-tabs">
+                {
+                    collections.iter().map(|c| {
+                        let is_active = Some(c.collection_id) == active_id;
+                        let onclick = {
+                            let active_collection = active_collection.clone();
+                            let c = c.clone();
+                            Callback::from(move |_| active_collection.set(Some(c.clone())))
+                        };
+                        html! {
+                            <button
+                                class={classes!("sp-chip", if is_active { "is-active" } else { "" })}
+                                {onclick}
+                            >
+                                <i class={classes!("ph", c.icon.clone())}></i>
+                                <span>{ c.name.clone() }</span>
+                            </button>
+                        }
+                    }).collect::<Html>()
+                }
+                <button class="sp-chip" onclick={open_new_modal} title={i18n.t("collections.new_collection")}>
+                    <i class="ph ph-plus"></i>
+                </button>
+            </div>
+        }
+    };
+
+    // ---- New / Edit modal ----
+    let modal_form = |title: &str,
+                      is_edit: bool,
+                      form_name: UseStateHandle<String>,
+                      form_desc: UseStateHandle<String>,
+                      form_icon: UseStateHandle<String>,
+                      on_submit: Callback<MouseEvent>,
+                      on_close: Callback<MouseEvent>,
+                      on_delete: Option<Callback<MouseEvent>>,
+                      saving: bool| -> Html {
+        let stop = Callback::from(|e: MouseEvent| e.stop_propagation());
+        html! {
+            <div
+                class="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-25"
+                onclick={on_close.clone()}
+            >
+                <div class="flex min-h-full items-center justify-center p-4">
+                    <div class="modal-container relative w-full max-w-md rounded-lg shadow" onclick={stop}>
+                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                            <h3 class="text-xl font-semibold">{ title.to_string() }</h3>
+                            <button onclick={on_close.clone()} class="text-gray-400 bg-transparent rounded-lg text-sm w-8 h-8 inline-flex justify-center items-center">
+                                <i class="ph ph-x text-xl"></i>
+                            </button>
+                        </div>
+                        <div class="p-4 md:p-5">
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block mb-2 text-sm font-medium">{ i18n.t("collections.collection_name") }</label>
+                                    <input
+                                        type="text"
+                                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
+                                        value={(*form_name).clone()}
+                                        placeholder={i18n.t("collections.collection_name")}
+                                        oninput={let form_name = form_name.clone(); Callback::from(move |e: InputEvent| {
+                                            if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                form_name.set(input.value());
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label class="block mb-2 text-sm font-medium">{ i18n.t("collections.icon") }</label>
+                                    <IconSelector
+                                        selected_icon={(*form_icon).clone()}
+                                        on_select={let form_icon = form_icon.clone(); Callback::from(move |icon: String| form_icon.set(icon))}
+                                    />
+                                </div>
+                                <div>
+                                    <label class="block mb-2 text-sm font-medium">{ i18n.t("collections.description") }</label>
+                                    <textarea
+                                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
+                                        value={(*form_desc).clone()}
+                                        oninput={let form_desc = form_desc.clone(); Callback::from(move |e: InputEvent| {
+                                            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+                                            form_desc.set(input.value());
+                                        })}
+                                    />
+                                </div>
+                                <div class="flex items-center justify-between gap-2 pt-2">
+                                    {
+                                        if let Some(on_delete) = on_delete.clone() {
+                                            html! {
+                                                <button onclick={on_delete} class="text-sm font-medium text-red-500 hover:underline">
+                                                    { i18n.t("collections.delete_collection") }
+                                                </button>
+                                            }
+                                        } else {
+                                            html! { <span></span> }
+                                        }
+                                    }
+                                    <button onclick={on_submit} disabled={saving} class="download-button">
+                                        {
+                                            if saving {
+                                                i18n.t("collections.saving")
+                                            } else if is_edit {
+                                                i18n.t("collections.save")
+                                            } else {
+                                                i18n.t("collections.create")
+                                            }
+                                        }
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    };
+
+    let edit_button = if !active_is_default && active_collection.is_some() {
+        html! {
+            <button class="sp-chip" onclick={open_edit_modal} title={i18n.t("collections.edit_collection")}>
+                <i class="ph ph-pencil-simple"></i>
+                <span>{ i18n.t("collections.edit_collection") }</span>
+            </button>
+        }
+    } else {
+        html! {}
+    };
 
     html! {
         <>
@@ -218,25 +656,18 @@ pub fn saved() -> Html {
             <Search_nav />
             <UseScrollToTop />
             {
-                if *loading { // If loading is true, display the loading animation
+                if *collections_loading {
                     html! { <Loading/> }
                 } else {
                     html! {
                         <>
-                            // Modern mobile-friendly filter bar with tab-style page title
-                            <div class="mb-6 space-y-4 mt-4">
-                                // Combined search and sort bar with tab-style title (seamless design)
-                                <div class="flex gap-0 h-12 relative">
-                                    // Tab-style page indicator
-                                    <div class="page-tab-indicator">
-                                        <i class="ph ph-bookmark tab-icon"></i>
-                                        {&i18n.t("saved.saved")}
-                                    </div>
-                                    // Search input (left half)
-                                    <div class="flex-1 relative">
+                            <div class="pfb-section">
+                                { tab_bar }
+                                <div class="pfb-bar">
+                                    <div class="sp-input">
+                                        <i class="ph ph-bookmark sp-search-ico"></i>
                                         <input
                                             type="text"
-                                            class="search-input"
                                             placeholder={i18n.t("saved.search_placeholder")}
                                             value={(*episode_search_term).clone()}
                                             oninput={let episode_search_term = episode_search_term.clone();
@@ -247,158 +678,145 @@ pub fn saved() -> Html {
                                                 })
                                             }
                                         />
-                                        <i class="ph ph-magnifying-glass search-icon"></i>
                                     </div>
-
-                                    // Sort dropdown (right half)
-                                    <div class="flex-shrink-0 relative min-w-[160px]">
+                                    <div class="pfb-sort">
                                         <select
-                                            class="sort-dropdown"
+                                            class="pfb-sort-select"
                                             onchange={
-                                                let episode_sort_direction = episode_sort_direction.clone();
+                                                let sort_value = sort_value.clone();
+                                                let reload_trigger = reload_trigger.clone();
                                                 Callback::from(move |e: Event| {
                                                     let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
                                                     let value = target.value();
-
-                                                    // Save preference to local storage
                                                     set_filter_preference("saved", &value);
-
-                                                    match value.as_str() {
-                                                        "newest" => episode_sort_direction.set(Some(SavedSortDirection::NewestFirst)),
-                                                        "oldest" => episode_sort_direction.set(Some(SavedSortDirection::OldestFirst)),
-                                                        "shortest" => episode_sort_direction.set(Some(SavedSortDirection::ShortestFirst)),
-                                                        "longest" => episode_sort_direction.set(Some(SavedSortDirection::LongestFirst)),
-                                                        "title_az" => episode_sort_direction.set(Some(SavedSortDirection::TitleAZ)),
-                                                        "title_za" => episode_sort_direction.set(Some(SavedSortDirection::TitleZA)),
-                                                        _ => episode_sort_direction.set(None),
-                                                    }
+                                                    sort_value.set(value);
+                                                    reload_trigger.set(*reload_trigger + 1);
                                                 })
                                             }
                                         >
-                                            <option value="newest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{&i18n.t("saved.newest_first")}</option>
-                                            <option value="oldest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{&i18n.t("saved.oldest_first")}</option>
-                                            <option value="shortest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{&i18n.t("saved.shortest_first")}</option>
-                                            <option value="longest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{&i18n.t("saved.longest_first")}</option>
-                                            <option value="title_az" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{&i18n.t("saved.title_az")}</option>
-                                            <option value="title_za" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{&i18n.t("saved.title_za")}</option>
+                                            <option value="newest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{i18n.t("saved.newest_first")}</option>
+                                            <option value="oldest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{i18n.t("saved.oldest_first")}</option>
+                                            <option value="shortest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{i18n.t("saved.shortest_first")}</option>
+                                            <option value="longest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{i18n.t("saved.longest_first")}</option>
+                                            <option value="title_az" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{i18n.t("saved.title_az")}</option>
+                                            <option value="title_za" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{i18n.t("saved.title_za")}</option>
                                         </select>
-                                        <i class="ph ph-caret-down dropdown-arrow"></i>
+                                        <i class="ph ph-caret-down pfb-sort-arrow"></i>
                                     </div>
                                 </div>
-
-                                // Filter chips (horizontal scroll on mobile)
-                                <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-                                    // Clear all filters
+                                <div class="sp-chips pfb-chips">
+                                    { edit_button }
                                     <button
                                         onclick={
-                                            let show_completed = show_completed.clone();
-                                            let show_in_progress = show_in_progress.clone();
-                                            let episode_search_term = episode_search_term.clone();
+                                            let filter_value = filter_value.clone();
+                                            let reload_trigger = reload_trigger.clone();
                                             Callback::from(move |_| {
-                                                show_completed.set(false);
-                                                show_in_progress.set(false);
-                                                episode_search_term.set(String::new());
+                                                set_filter_preference("saved_filter", "all");
+                                                filter_value.set("all".to_string());
+                                                reload_trigger.set(*reload_trigger + 1);
                                             })
                                         }
-                                        class="filter-chip"
+                                        class="sp-chip"
                                     >
-                                        <i class="ph ph-broom text-lg"></i>
-                                        <span class="text-sm font-medium">{&i18n.t("saved.clear_all")}</span>
+                                        <i class="ph ph-broom"></i>
+                                        <span>{i18n.t("saved.clear_all")}</span>
                                     </button>
-
-                                    // Completed filter chip
                                     <button
-                                        onclick={let show_completed = show_completed.clone();
-                                            let show_in_progress = show_in_progress.clone();
+                                        onclick={
+                                            let filter_value = filter_value.clone();
+                                            let reload_trigger = reload_trigger.clone();
                                             Callback::from(move |_| {
-                                                show_completed.set(!*show_completed);
-                                                if *show_completed {
-                                                    show_in_progress.set(false);
-                                                }
+                                                let next = if *filter_value == "completed" { "all" } else { "completed" };
+                                                set_filter_preference("saved_filter", next);
+                                                filter_value.set(next.to_string());
+                                                reload_trigger.set(*reload_trigger + 1);
                                             })
                                         }
-                                        class={classes!(
-                                            "filter-chip",
-                                            if *show_completed { "filter-chip-active" } else { "" }
-                                        )}
+                                        class={classes!("sp-chip", if *filter_value == "completed" { "is-active" } else { "" })}
                                     >
-                                        <i class="ph ph-check-circle text-lg"></i>
-                                        <span class="text-sm font-medium">{&i18n.t("saved.completed")}</span>
+                                        <i class="ph ph-check-circle"></i>
+                                        <span>{i18n.t("saved.completed")}</span>
                                     </button>
-
-                                    // In progress filter chip
                                     <button
-                                        onclick={let show_in_progress = show_in_progress.clone();
-                                            let show_completed = show_completed.clone();
+                                        onclick={
+                                            let filter_value = filter_value.clone();
+                                            let reload_trigger = reload_trigger.clone();
                                             Callback::from(move |_| {
-                                                show_in_progress.set(!*show_in_progress);
-                                                if *show_in_progress {
-                                                    show_completed.set(false);
-                                                }
+                                                let next = if *filter_value == "in_progress" { "all" } else { "in_progress" };
+                                                set_filter_preference("saved_filter", next);
+                                                filter_value.set(next.to_string());
+                                                reload_trigger.set(*reload_trigger + 1);
                                             })
                                         }
-                                        class={classes!(
-                                            "filter-chip",
-                                            if *show_in_progress { "filter-chip-active" } else { "" }
-                                        )}
+                                        class={classes!("sp-chip", if *filter_value == "in_progress" { "is-active" } else { "" })}
                                     >
-                                        <i class="ph ph-hourglass-medium text-lg"></i>
-                                        <span class="text-sm font-medium">{&i18n.t("saved.in_progress")}</span>
+                                        <i class="ph ph-hourglass-medium"></i>
+                                        <span>{i18n.t("saved.in_progress")}</span>
                                     </button>
                                 </div>
                             </div>
 
                             {
-                                if state.saved_episodes.len() > 0 {
-                                    if (*filtered_episodes).is_empty() {
+                                if *loading {
+                                    html! { <Loading/> }
+                                } else if display_empty {
+                                    if active_is_default {
                                         empty_message(
                                             &i18n.t("saved.no_saved_episodes"),
                                             &i18n.t("saved.save_episodes_instructions")
                                         )
                                     } else {
-                                        html! {
-                                            <VirtualList
-                                                episodes={(*filtered_episodes).clone()}
-                                                page_type= { PageType::Saved }
-                                            />
-                                        }
+                                        empty_message(
+                                            &i18n.t("collections.empty_title"),
+                                            &i18n.t("collections.empty_instructions")
+                                        )
                                     }
                                 } else {
-                                    empty_message(
-                                        &i18n.t("saved.no_saved_episodes"),
-                                        &i18n.t("saved.save_episodes_instructions")
-                                    )
+                                    html! {
+                                        <div class="flex-grow overflow-y-auto">
+                                            <EpisodeListView
+                                                episodes={display_episodes_rc}
+                                                backend_can_load_more={backend_can_load_more}
+                                                loading_more={*loading_more}
+                                                on_load_more={on_load_more.clone()}
+                                                page_type={PageType::Saved}
+                                            />
+                                        </div>
+                                    }
                                 }
                             }
                         </>
                     }
                 }
             }
-            {
-                if let Some(audio_props) = &audio_state.currently_playing {
-                    html! {
-                        <AudioPlayer
-                            episode={audio_props.episode.clone()}
-                            src={audio_props.src.clone()}
-                            title={audio_props.title.clone()}
-                            description={audio_props.description.clone()}
-                            release_date={audio_props.release_date.clone()}
-                            artwork_url={audio_props.artwork_url.clone()}
-                            duration={audio_props.duration.clone()}
-                            episode_id={audio_props.episode_id.clone()}
-                            duration_sec={audio_props.duration_sec.clone()}
-                            start_pos_sec={audio_props.start_pos_sec.clone()}
-                            end_pos_sec={audio_props.end_pos_sec.clone()}
-                            offline={audio_props.offline.clone()}
-                            is_youtube={audio_props.is_youtube.clone()}
-                        is_video={audio_props.is_video.clone()}
-                        />
-                    }
-                } else {
-                    html! {}
-                }
-            }
+            <AudioPlayerBar />
         </div>
+        {
+            if *show_new_modal {
+                modal_form(
+                    &i18n.t("collections.new_collection"),
+                    false,
+                    form_name.clone(), form_desc.clone(), form_icon.clone(),
+                    on_create_submit.clone(),
+                    { let show_new_modal = show_new_modal.clone(); Callback::from(move |_| show_new_modal.set(false)) },
+                    None,
+                    *form_saving,
+                )
+            } else { html! {} }
+        }
+        {
+            if *show_edit_modal {
+                modal_form(
+                    &i18n.t("collections.edit_collection"),
+                    true,
+                    form_name.clone(), form_desc.clone(), form_icon.clone(),
+                    on_edit_submit.clone(),
+                    { let show_edit_modal = show_edit_modal.clone(); Callback::from(move |_| show_edit_modal.set(false)) },
+                    Some(on_delete_collection.clone()),
+                    *form_saving,
+                )
+            } else { html! {} }
+        }
         <App_drawer />
         </>
     }

@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
+import java.io.File
 import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
@@ -134,6 +135,9 @@ class PinepodsMediaService : MediaLibraryService() {
             .setLoadControl(loadControl)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)  // Auto-pause when headphones disconnect
+            // Default wake mode; overridden per-episode in playEpisode() so that
+            // downloaded/local playback uses WAKE_MODE_LOCAL (CPU only) instead of
+            // holding a WifiLock for the whole episode. Streams need the network lock.
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .setSeekBackIncrementMs(10000)  // 10 seconds rewind
             .setSeekForwardIncrementMs(30000)  // 30 seconds forward
@@ -333,7 +337,7 @@ class PinepodsMediaService : MediaLibraryService() {
         positionUpdateRunnable = object : Runnable {
             override fun run() {
                 sendPlaybackStateEvent()
-                handler.postDelayed(this, 500)  // Update every 500ms
+                handler.postDelayed(this, 1000)  // Update every 1s (battery: halves channel/UI work)
             }
         }
         handler.post(positionUpdateRunnable!!)
@@ -353,7 +357,17 @@ class PinepodsMediaService : MediaLibraryService() {
 
         player?.let { p ->
             try {
-                val uri = Uri.parse(url)
+                // For local downloads `url` is a raw filesystem path (which may
+                // contain spaces and has no scheme). Uri.parse() leaves it
+                // scheme-less and unencoded, so ExoPlayer fails to load it and
+                // never reports a duration (player shows 00:00 and won't scrub).
+                // Uri.fromFile() builds a properly-encoded file:// URI.
+                val uri = if (isLocal) Uri.fromFile(File(url)) else Uri.parse(url)
+
+                // Use a CPU-only wakelock for local files; only streamed episodes
+                // need the WifiLock that WAKE_MODE_NETWORK adds. Holding the WiFi
+                // radio awake for downloaded playback is a major battery drain.
+                p.setWakeMode(if (isLocal) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
 
                 // Build media metadata
                 val mediaMetadataBuilder = MediaMetadata.Builder()

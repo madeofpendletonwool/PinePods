@@ -10,23 +10,35 @@ use crate::{
     models::{AvailableLanguage, LanguageUpdateRequest, UserLanguageResponse, AvailableLanguagesResponse},
     AppState,
 };
-use sqlx::{Row, ValueRef};
+use tracing::{debug, error, info, warn};
 
 // Request struct for set_theme
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SetThemeRequest {
     pub user_id: i32,
     pub new_theme: String,
 }
 
 // Request struct for set_playback_speed - matches Python SetPlaybackSpeedUser model exactly
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SetPlaybackSpeedUser {
     pub user_id: i32,
     pub playback_speed: f64,
 }
 
 // Set user theme - matches Python api_set_theme function exactly
+#[utoipa::path(
+    put,
+    path = "/user/set_theme",
+    tag = "settings",
+    summary = "Set theme",
+    request_body = SetThemeRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn set_theme(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -49,6 +61,18 @@ pub async fn set_theme(
 }
 
 // Set user playback speed - matches Python api_set_playback_speed_user function exactly
+#[utoipa::path(
+    post,
+    path = "/user/set_playback_speed",
+    tag = "settings",
+    summary = "Set playback speed user",
+    request_body = SetPlaybackSpeedUser,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn set_playback_speed_user(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -71,7 +95,7 @@ pub async fn set_playback_speed_user(
 }
 
 // User info response struct
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct UserInfo {
     pub userid: i32,
     pub fullname: String,
@@ -90,6 +114,17 @@ where
 }
 
 // Get all users info - matches Python api_get_user_info function exactly (admin only)
+#[utoipa::path(
+    get,
+    path = "/get_user_info",
+    tag = "settings",
+    summary = "Get user info",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = Vec<UserInfo>),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_user_info(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -110,6 +145,18 @@ pub async fn get_user_info(
 }
 
 // Get specific user info - matches Python api_get_my_user_info function exactly
+#[utoipa::path(
+    get,
+    path = "/my_user_info/{user_id}",
+    tag = "settings",
+    summary = "Get my user info",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_my_user_info(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -134,7 +181,7 @@ pub async fn get_my_user_info(
 }
 
 // Request struct for add_user
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct AddUserRequest {
     pub fullname: String,
     pub username: String,
@@ -143,6 +190,18 @@ pub struct AddUserRequest {
 }
 
 // Add user - matches Python api_add_user function exactly (admin only)
+#[utoipa::path(
+    post,
+    path = "/add_user",
+    tag = "settings",
+    summary = "Add user",
+    request_body = AddUserRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn add_user(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -175,6 +234,18 @@ pub async fn add_user(
 }
 
 // Add login user - matches Python api_add_user (add_login_user endpoint) function exactly (self-service)
+#[utoipa::path(
+    post,
+    path = "/add_login_user",
+    tag = "settings",
+    summary = "Add login user",
+    request_body = AddUserRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn add_login_user(
     State(state): State<AppState>,
     Json(user_values): Json<AddUserRequest>,
@@ -202,6 +273,18 @@ pub async fn add_login_user(
 }
 
 // Set fullname - matches Python api_set_fullname function exactly
+#[utoipa::path(
+    put,
+    path = "/set_fullname/{user_id}",
+    tag = "settings",
+    summary = "Set fullname",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn set_fullname(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -227,12 +310,25 @@ pub async fn set_fullname(
 }
 
 // Request struct for set_password
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct PasswordUpdateRequest {
     pub hash_pw: String,
 }
 
 // Set password - matches Python api_set_password function exactly
+#[utoipa::path(
+    put,
+    path = "/set_password/{user_id}",
+    tag = "settings",
+    summary = "Set password",
+    params(("user_id" = i32, Path)),
+    request_body = PasswordUpdateRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn set_password(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -255,6 +351,18 @@ pub async fn set_password(
 }
 
 // Delete user - matches Python api_delete_user function exactly (admin only)
+#[utoipa::path(
+    delete,
+    path = "/user/delete/{user_id}",
+    tag = "settings",
+    summary = "Delete user",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn delete_user(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -276,13 +384,25 @@ pub async fn delete_user(
 }
 
 // Request struct for set_email
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SetEmailRequest {
     pub user_id: i32,
     pub new_email: String,
 }
 
 // Set email - matches Python api_set_email function exactly
+#[utoipa::path(
+    put,
+    path = "/user/set_email",
+    tag = "settings",
+    summary = "Set email",
+    request_body = SetEmailRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn set_email(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -304,13 +424,25 @@ pub async fn set_email(
 }
 
 // Request struct for set_username  
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SetUsernameRequest {
     pub user_id: i32,
     pub new_username: String,
 }
 
 // Set username - matches Python api_set_username function exactly
+#[utoipa::path(
+    put,
+    path = "/user/set_username",
+    tag = "settings",
+    summary = "Set username",
+    request_body = SetUsernameRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn set_username(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -332,13 +464,25 @@ pub async fn set_username(
 }
 
 // Request struct for set_isadmin
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SetIsAdminRequest {
     pub user_id: i32,
     pub isadmin: bool,
 }
 
 // Set isadmin - matches Python api_set_isadmin function exactly (admin only)
+#[utoipa::path(
+    put,
+    path = "/user/set_isadmin",
+    tag = "settings",
+    summary = "Set isadmin",
+    request_body = SetIsAdminRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn set_isadmin(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -360,6 +504,18 @@ pub async fn set_isadmin(
 }
 
 // Final admin check - matches Python api_final_admin function exactly (admin only)
+#[utoipa::path(
+    get,
+    path = "/user/final_admin/{user_id}",
+    tag = "settings",
+    summary = "Final admin",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn final_admin(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -381,6 +537,17 @@ pub async fn final_admin(
 }
 
 // Enable/disable guest - matches Python api_enable_disable_guest function exactly (admin only)
+#[utoipa::path(
+    post,
+    path = "/enable_disable_guest",
+    tag = "settings",
+    summary = "Enable disable guest",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn enable_disable_guest(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -401,6 +568,17 @@ pub async fn enable_disable_guest(
 }
 
 // Enable/disable downloads - matches Python api_enable_disable_downloads function exactly (admin only)
+#[utoipa::path(
+    post,
+    path = "/enable_disable_downloads",
+    tag = "settings",
+    summary = "Enable disable downloads",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn enable_disable_downloads(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -421,6 +599,17 @@ pub async fn enable_disable_downloads(
 }
 
 // Enable/disable self service - matches Python api_enable_disable_self_service function exactly (admin only)
+#[utoipa::path(
+    post,
+    path = "/enable_disable_self_service",
+    tag = "settings",
+    summary = "Enable disable self service",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn enable_disable_self_service(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -441,6 +630,17 @@ pub async fn enable_disable_self_service(
 }
 
 // Get guest status - matches Python api_guest_status function exactly
+#[utoipa::path(
+    get,
+    path = "/guest_status",
+    tag = "settings",
+    summary = "Guest status",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = bool),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn guest_status(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -453,6 +653,17 @@ pub async fn guest_status(
 }
 
 // Get RSS feed status - matches Python get_rss_feed_status function exactly
+#[utoipa::path(
+    get,
+    path = "/rss_feed_status",
+    tag = "settings",
+    summary = "Rss feed status",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = bool),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn rss_feed_status(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -466,6 +677,17 @@ pub async fn rss_feed_status(
 }
 
 // Toggle RSS feeds - matches Python toggle_rss_feeds function exactly
+#[utoipa::path(
+    post,
+    path = "/toggle_rss_feeds",
+    tag = "settings",
+    summary = "Toggle rss feeds",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn toggle_rss_feeds(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -479,6 +701,17 @@ pub async fn toggle_rss_feeds(
 }
 
 // Get download status - matches Python api_download_status function exactly
+#[utoipa::path(
+    get,
+    path = "/download_status",
+    tag = "settings",
+    summary = "Download status",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = bool),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn download_status(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -491,6 +724,17 @@ pub async fn download_status(
 }
 
 // Get self service status - matches Python api_self_service_status function exactly  
+#[utoipa::path(
+    get,
+    path = "/admin_self_service_status",
+    tag = "settings",
+    summary = "Self service status",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn self_service_status(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -506,12 +750,12 @@ pub async fn self_service_status(
 }
 
 // Request struct for save_email_settings
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SaveEmailSettingsRequest {
     pub email_settings: EmailSettings,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct EmailSettings {
     pub server_name: String,
     #[serde(deserialize_with = "deserialize_string_to_i32")]
@@ -546,6 +790,18 @@ where
 }
 
 // Save email settings - matches Python api_save_email_settings function exactly (admin only)
+#[utoipa::path(
+    post,
+    path = "/save_email_settings",
+    tag = "settings",
+    summary = "Save email settings",
+    request_body = SaveEmailSettingsRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn save_email_settings(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -567,7 +823,7 @@ pub async fn save_email_settings(
 }
 
 // Email settings response struct
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct EmailSettingsResponse {
     #[serde(rename = "Emailsettingsid")]
     pub emailsettingsid: i32,
@@ -590,6 +846,17 @@ pub struct EmailSettingsResponse {
 }
 
 // Get email settings - matches Python api_get_email_settings function exactly (admin only)
+#[utoipa::path(
+    get,
+    path = "/get_email_settings",
+    tag = "settings",
+    summary = "Get email settings",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = EmailSettingsResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_email_settings(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -613,12 +880,11 @@ pub async fn get_email_settings(
 }
 
 // Request struct for send_test_email
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SendTestEmailRequest {
     pub server_name: String,
     pub server_port: String,
     pub from_email: String,
-    pub send_mode: String,
     pub encryption: String,
     pub auth_required: bool,
     pub email_username: String,
@@ -628,6 +894,18 @@ pub struct SendTestEmailRequest {
 }
 
 // Send test email - matches Python api_send_email function exactly (admin only)
+#[utoipa::path(
+    post,
+    path = "/send_test_email",
+    tag = "settings",
+    summary = "Send test email",
+    request_body = SendTestEmailRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn send_test_email(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -662,7 +940,8 @@ async fn read_logo_as_base64() -> Result<String, AppError> {
     let logo_bytes = fs::read(logo_path).await
         .map_err(|e| AppError::internal(&format!("Failed to read logo file: {}", e)))?;
     
-    let base64_logo = base64::encode(&logo_bytes);
+    use base64::Engine;
+    let base64_logo = base64::engine::general_purpose::STANDARD.encode(&logo_bytes);
     Ok(base64_logo)
 }
 
@@ -900,7 +1179,7 @@ async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, A
 }
 
 // Request struct for send_email (using database settings)
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SendEmailRequest {
     pub to_email: String,
     pub subject: String,
@@ -908,6 +1187,18 @@ pub struct SendEmailRequest {
 }
 
 // Send email using database settings - matches Python api_send_email function exactly
+#[utoipa::path(
+    post,
+    path = "/send_email",
+    tag = "settings",
+    summary = "Send email",
+    request_body = SendEmailRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn send_email(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1075,7 +1366,7 @@ pub async fn send_email_with_settings(
 
 
 // API info response struct - matches Python get_api_info response exactly  
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ApiInfo {
     pub apikeyid: i32,
     pub userid: i32,
@@ -1086,6 +1377,18 @@ pub struct ApiInfo {
 }
 
 // Get API info - matches Python api_get_api_info function exactly
+#[utoipa::path(
+    get,
+    path = "/get_api_info/{user_id}",
+    tag = "settings",
+    summary = "Get api info",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_api_info(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -1110,7 +1413,7 @@ pub async fn get_api_info(
 }
 
 // Request struct for create_api_key
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct CreateApiKeyRequest {
     pub user_id: i32,
     pub rssonly: bool,
@@ -1118,6 +1421,18 @@ pub struct CreateApiKeyRequest {
 }
 
 // Create API key - matches Python api_create_api_key function exactly
+#[utoipa::path(
+    post,
+    path = "/create_api_key",
+    tag = "settings",
+    summary = "Create api key",
+    request_body = CreateApiKeyRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn create_api_key(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1144,13 +1459,24 @@ pub async fn create_api_key(
 }
 
 // Request struct for delete_api_key
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct DeleteApiKeyRequest {
     pub api_id: String,
-    pub user_id: String,
 }
 
 // Delete API key - matches Python api_delete_api_key function exactly
+#[utoipa::path(
+    delete,
+    path = "/delete_api_key",
+    tag = "settings",
+    summary = "Delete api key",
+    request_body = DeleteApiKeyRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn delete_api_key(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1177,7 +1503,7 @@ pub async fn delete_api_key(
     let api_key_owner = api_key_owner.unwrap();
 
     // For debugging - log the values
-    println!("🔐 delete_api_key: requesting_user={}, api_key_owner={}, is_admin={}, api_id={}", 
+    info!("🔐 delete_api_key: requesting_user={}, api_key_owner={}, is_admin={}, api_id={}", 
         requesting_user_id, api_key_owner, is_requesting_user_admin, api_id);
 
     // Authorization logic:
@@ -1213,12 +1539,24 @@ pub async fn delete_api_key(
 }
 
 // Request struct for backup_user
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct BackupUserRequest {
     pub user_id: i32,
 }
 
 // Backup user data - matches Python backup_user function exactly
+#[utoipa::path(
+    post,
+    path = "/backup_user",
+    tag = "settings",
+    summary = "Backup user",
+    request_body = BackupUserRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = String),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn backup_user(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1240,12 +1578,24 @@ pub async fn backup_user(
 }
 
 // Request struct for backup_server
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct BackupServerRequest {
     pub database_pass: String,
 }
 
 // Backup server data - improved streaming approach for large databases
+#[utoipa::path(
+    post,
+    path = "/backup_server",
+    tag = "settings",
+    summary = "Backup server",
+    request_body = BackupServerRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Backup file download", content_type = "application/octet-stream"),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn backup_server(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1298,6 +1648,10 @@ async fn backup_server_streaming(
                .arg("--verbose")
                .arg("--data-only")
                .arg("--disable-triggers")
+               // Transient login-token tables: never worth backing up (security) and a
+               // frequent source of cross-version schema drift on restore.
+               .arg("--exclude-table-data=public.\"Sessions\"")
+               .arg("--exclude-table-data=public.\"GpodderSessions\"")
                .arg("--format=plain")
                .arg(&database);
             
@@ -1323,6 +1677,10 @@ async fn backup_server_streaming(
                .arg("--routines")
                .arg("--triggers")
                .arg("--complete-insert")
+               // Transient login-token tables: never worth backing up (security) and a
+               // frequent source of cross-version schema drift on restore.
+               .arg(format!("--ignore-table={}.Sessions", database))
+               .arg(format!("--ignore-table={}.GpodderSessions", database))
                .arg(&database);
             
             cmd
@@ -1346,7 +1704,7 @@ async fn backup_server_streaming(
     // Spawn a task to wait for the process and handle errors
     tokio::spawn(async move {
         // Read stderr to capture error messages
-        let mut stderr_reader = tokio::io::BufReader::new(stderr);
+        let stderr_reader = tokio::io::BufReader::new(stderr);
         let mut stderr_output = String::new();
         use tokio::io::AsyncBufReadExt;
         
@@ -1359,16 +1717,16 @@ async fn backup_server_streaming(
         
         match child.wait().await {
             Ok(status) if status.success() => {
-                println!("Backup process completed successfully");
+                info!("Backup process completed successfully");
             }
             Ok(status) => {
-                println!("Backup process failed with status: {}", status);
+                warn!("Backup process failed with status: {}", status);
                 if !stderr_output.is_empty() {
-                    println!("Mysqldump stderr output: {}", stderr_output);
+                    info!("Mysqldump stderr output: {}", stderr_output);
                 }
             }
             Err(e) => {
-                println!("Failed to wait for backup process: {}", e);
+                warn!("Failed to wait for backup process: {}", e);
             }
         }
     });
@@ -1381,342 +1739,39 @@ async fn backup_server_streaming(
         .map_err(|e| format!("Failed to build response: {}", e))?)
 }
 
-// Generate backup chunks to handle large databases efficiently
-async fn generate_backup_chunk(state: &AppState, chunk_id: usize) -> Result<Option<String>, String> {
-    // Define tables in order of dependencies (foreign keys) - complete list from migrations
-    let tables = match &state.db_pool {
-        crate::database::DatabasePool::Postgres(_) => vec![
-            "Users", "OIDCProviders", "APIKeys", "RssKeys", "RssKeyMap", 
-            "AppSettings", "EmailSettings", "UserStats", "UserSettings",
-            "Podcasts", "Episodes", "YouTubeVideos", "UserEpisodeHistory", "UserVideoHistory",
-            "EpisodeQueue", "SavedEpisodes", "SavedVideos", "DownloadedEpisodes", "DownloadedVideos",
-            "GpodderDevices", "GpodderSyncState", "People", "PeopleEpisodes", "SharedEpisodes",
-            "Playlists", "PlaylistContents", "Sessions", "UserNotificationSettings"
-        ],
-        crate::database::DatabasePool::MySQL(_) => vec![
-            "Users", "OIDCProviders", "APIKeys", "RssKeys", "RssKeyMap",
-            "AppSettings", "EmailSettings", "UserStats", "UserSettings", 
-            "Podcasts", "Episodes", "YouTubeVideos", "UserEpisodeHistory", "UserVideoHistory",
-            "EpisodeQueue", "SavedEpisodes", "SavedVideos", "DownloadedEpisodes", "DownloadedVideos",
-            "GpodderDevices", "GpodderSyncState", "People", "PeopleEpisodes", "SharedEpisodes",
-            "Playlists", "PlaylistContents", "Sessions", "UserNotificationSettings"
-        ],
-    };
+/// RAII guard for the global "restore in progress" flag. Resets the flag on drop so a
+/// panic or early return in the restore task can't leave restores permanently blocked.
+pub struct RestoreGuard(std::sync::Arc<std::sync::atomic::AtomicBool>);
 
-    // Header chunk
-    if chunk_id == 0 {
-        return Ok(Some(generate_backup_header()));
-    }
-
-    // Table chunks (one table per chunk to keep memory usage low)
-    let table_index = chunk_id - 1;
-    if table_index < tables.len() {
-        let table_name = tables[table_index];
-        match export_table_data(state, table_name).await {
-            Ok(data) => Ok(Some(data)),
-            Err(e) => Err(format!("Failed to export table {}: {}", table_name, e)),
+impl RestoreGuard {
+    /// Acquire the guard, or return None if a restore is already running.
+    pub fn try_acquire(flag: &std::sync::Arc<std::sync::atomic::AtomicBool>) -> Option<Self> {
+        use std::sync::atomic::Ordering;
+        match flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => Some(RestoreGuard(flag.clone())),
+            Err(_) => None,
         }
-    } else {
-        // End of stream
-        Ok(None)
     }
 }
 
-// Generate SQL backup header
-fn generate_backup_header() -> String {
-    format!(
-        "-- PinePods Database Backup\n-- Generated: {}\n-- Rust API Backup System\n\n",
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
-    )
-}
-
-// Export individual table data efficiently
-async fn export_table_data(state: &AppState, table_name: &str) -> Result<String, String> {
-    const BATCH_SIZE: i64 = 1000; // Process 1000 rows at a time
-    let mut sql_output = format!("\n-- Exporting table: {}\n", table_name);
-    
-    // First, export the CREATE TABLE statement
-    let create_statement = match &state.db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            export_postgres_table_schema(pool, table_name).await?
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
-            export_mysql_table_schema(pool, table_name).await?
-        }
-    };
-    
-    sql_output.push_str(&create_statement);
-    sql_output.push('\n');
-    
-    // Then export the data
-    let mut offset = 0;
-    loop {
-        let batch_data = match &state.db_pool {
-            crate::database::DatabasePool::Postgres(pool) => {
-                export_postgres_table_batch(pool, table_name, offset, BATCH_SIZE).await?
-            }
-            crate::database::DatabasePool::MySQL(pool) => {
-                export_mysql_table_batch(pool, table_name, offset, BATCH_SIZE).await?
-            }
-        };
-
-        if batch_data.is_empty() {
-            break; // No more data
-        }
-
-        sql_output.push_str(&batch_data);
-        offset += BATCH_SIZE;
-
-        // Don't artificially limit chunk size - complete the entire table
-        // Each table is processed as one complete chunk to ensure valid SQL
-    }
-
-    Ok(sql_output)
-}
-
-// Export PostgreSQL table schema using pg_dump-like approach
-async fn export_postgres_table_schema(
-    pool: &sqlx::PgPool,
-    table_name: &str,
-) -> Result<String, String> {
-    // Get table definition from PostgreSQL system catalogs with proper ARRAY handling
-    let query = r#"
-        SELECT 
-            'CREATE TABLE "' || schemaname || '"."' || tablename || '" (' AS create_start,
-            string_agg(
-                '"' || column_name || '" ' || 
-                CASE 
-                    WHEN data_type = 'ARRAY' THEN 
-                        CASE 
-                            WHEN udt_name = '_int4' THEN 'INTEGER[]'
-                            WHEN udt_name = '_text' THEN 'TEXT[]'
-                            WHEN udt_name = '_varchar' THEN 'VARCHAR[]'
-                            WHEN udt_name = '_int8' THEN 'BIGINT[]'
-                            WHEN udt_name = '_bool' THEN 'BOOLEAN[]'
-                            ELSE udt_name || '[]'
-                        END
-                    WHEN data_type = 'character varying' THEN 'VARCHAR(' || COALESCE(character_maximum_length::text, '255') || ')'
-                    WHEN data_type = 'character' THEN 'CHAR(' || character_maximum_length || ')'
-                    WHEN data_type = 'numeric' THEN 'NUMERIC(' || numeric_precision || ',' || numeric_scale || ')'
-                    WHEN data_type = 'integer' THEN 'INTEGER'
-                    WHEN data_type = 'bigint' THEN 'BIGINT'
-                    WHEN data_type = 'boolean' THEN 'BOOLEAN'
-                    WHEN data_type = 'timestamp without time zone' THEN 'TIMESTAMP'
-                    WHEN data_type = 'timestamp with time zone' THEN 'TIMESTAMPTZ'
-                    WHEN data_type = 'date' THEN 'DATE'
-                    WHEN data_type = 'text' THEN 'TEXT'
-                    WHEN data_type = 'double precision' THEN 'DOUBLE PRECISION'
-                    WHEN data_type = 'real' THEN 'REAL'
-                    WHEN data_type = 'smallint' THEN 'SMALLINT'
-                    WHEN data_type = 'uuid' THEN 'UUID'
-                    WHEN data_type = 'json' THEN 'JSON'
-                    WHEN data_type = 'jsonb' THEN 'JSONB'
-                    ELSE UPPER(data_type)
-                END ||
-                CASE WHEN is_nullable = 'NO' THEN ' NOT NULL' ELSE '' END,
-                ', '
-                ORDER BY ordinal_position
-            ) AS columns,
-            ');' AS create_end
-        FROM information_schema.columns c
-        JOIN pg_tables t ON t.tablename = c.table_name
-        WHERE c.table_name = $1 AND c.table_schema = 'public'
-        GROUP BY schemaname, tablename
-    "#;
-
-    let row = sqlx::query(query)
-        .bind(table_name)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| format!("Schema query failed: {}", e))?;
-
-    if let Some(row) = row {
-        let create_start: String = row.try_get("create_start").map_err(|e| format!("Column error: {}", e))?;
-        let columns: String = row.try_get("columns").map_err(|e| format!("Column error: {}", e))?;
-        let create_end: String = row.try_get("create_end").map_err(|e| format!("Column error: {}", e))?;
-        
-        Ok(format!("{}\n    {}\n{}\n", create_start, columns, create_end))
-    } else {
-        Err(format!("Table {} not found", table_name))
+impl Drop for RestoreGuard {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
-// Export MySQL table schema
-async fn export_mysql_table_schema(
-    pool: &sqlx::MySqlPool,
-    table_name: &str,
-) -> Result<String, String> {
-    // Use SHOW CREATE TABLE for MySQL
-    let query = format!("SHOW CREATE TABLE {}", table_name);
-    
-    let row = sqlx::query(&query)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| format!("Schema query failed: {}", e))?;
-
-    if let Some(row) = row {
-        let create_table: String = row.try_get(1).map_err(|e| format!("Column error: {}", e))?;
-        Ok(format!("{};\n", create_table))
-    } else {
-        Err(format!("Table {} not found", table_name))
-    }
-}
-
-// Export PostgreSQL table batch
-async fn export_postgres_table_batch(
-    pool: &sqlx::PgPool,
-    table_name: &str,
-    offset: i64,
-    limit: i64,
-) -> Result<String, String> {
-    // Use quoted table names for PostgreSQL
-    let query = format!(
-        r#"SELECT * FROM "{}" ORDER BY 1 LIMIT {} OFFSET {}"#,
-        table_name, limit, offset
-    );
-    
-    let rows = sqlx::query(&query)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Query failed: {}", e))?;
-
-    if rows.is_empty() {
-        return Ok(String::new());
-    }
-
-    let mut output = format!("INSERT INTO \"{}\" VALUES\n", table_name);
-    let mut first_row = true;
-
-    for row in rows {
-        if !first_row {
-            output.push_str(",\n");
-        }
-        first_row = false;
-
-        output.push('(');
-        let column_count = row.columns().len();
-        for i in 0..column_count {
-            if i > 0 {
-                output.push_str(", ");
-            }
-            
-            // Handle different PostgreSQL data types safely
-            match row.try_get_raw(i) {
-                Ok(value) if value.is_null() => output.push_str("NULL"),
-                Ok(_) => {
-                    // Try different data types in order of likelihood
-                    if let Ok(val) = row.try_get::<String, _>(i) {
-                        // Properly escape strings for PostgreSQL
-                        let escaped = val.replace('\'', "''").replace('\\', "\\\\");
-                        output.push_str(&format!("'{}'", escaped));
-                    } else if let Ok(val) = row.try_get::<i32, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<i64, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<bool, _>(i) {
-                        output.push_str(if val { "true" } else { "false" });
-                    } else if let Ok(val) = row.try_get::<f64, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(i) {
-                        output.push_str(&format!("'{}'", val.format("%Y-%m-%d %H:%M:%S%.6f%z")));
-                    } else {
-                        // Fallback: try to get as text
-                        match row.try_get::<String, _>(i) {
-                            Ok(val) => {
-                                let escaped = val.replace('\'', "''").replace('\\', "\\\\");
-                                output.push_str(&format!("'{}'", escaped));
-                            },
-                            Err(_) => output.push_str("NULL"),
-                        }
-                    }
-                }
-                Err(_) => output.push_str("NULL"),
-            }
-        }
-        output.push(')');
-    }
-    output.push_str(";\n");
-
-    Ok(output)
-}
-
-// Export MySQL table batch  
-async fn export_mysql_table_batch(
-    pool: &sqlx::MySqlPool,
-    table_name: &str,
-    offset: i64,
-    limit: i64,
-) -> Result<String, String> {
-    let query = format!(
-        "SELECT * FROM {} ORDER BY 1 LIMIT {} OFFSET {}",
-        table_name, limit, offset
-    );
-    
-    let rows = sqlx::query(&query)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Query failed: {}", e))?;
-
-    if rows.is_empty() {
-        return Ok(String::new());
-    }
-
-    let mut output = format!("INSERT INTO {} VALUES\n", table_name);
-    let mut first_row = true;
-
-    for row in rows {
-        if !first_row {
-            output.push_str(",\n");
-        }
-        first_row = false;
-
-        output.push('(');
-        let column_count = row.columns().len();
-        for i in 0..column_count {
-            if i > 0 {
-                output.push_str(", ");
-            }
-            
-            // Handle different MySQL data types safely
-            match row.try_get_raw(i) {
-                Ok(value) if value.is_null() => output.push_str("NULL"),
-                Ok(_) => {
-                    // Try different data types in order of likelihood
-                    if let Ok(val) = row.try_get::<String, _>(i) {
-                        // Properly escape strings for MySQL
-                        let escaped = val.replace('\'', "''").replace('\\', "\\\\");
-                        output.push_str(&format!("'{}'", escaped));
-                    } else if let Ok(val) = row.try_get::<i32, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<i64, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<bool, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<f64, _>(i) {
-                        output.push_str(&val.to_string());
-                    } else if let Ok(val) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(i) {
-                        output.push_str(&format!("'{}'", val.format("%Y-%m-%d %H:%M:%S")));
-                    } else {
-                        // Fallback: try to get as text
-                        match row.try_get::<String, _>(i) {
-                            Ok(val) => {
-                                let escaped = val.replace('\'', "''").replace('\\', "\\\\");
-                                output.push_str(&format!("'{}'", escaped));
-                            },
-                            Err(_) => output.push_str("NULL"),
-                        }
-                    }
-                }
-                Err(_) => output.push_str("NULL"),
-            }
-        }
-        output.push(')');
-    }
-    output.push_str(";\n");
-
-    Ok(output)
-}
-
+#[utoipa::path(
+    post,
+    path = "/restore_server",
+    tag = "settings",
+    summary = "Restore server",
+    request_body(content = String, content_type = "multipart/form-data", description = "Uploaded file"),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn restore_server(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1733,11 +1788,23 @@ pub async fn restore_server(
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    // Process the multipart form to get the uploaded file and database password
-    let mut sql_content = None;
-    let mut _database_password = None;
+    // Refuse to start a second restore while one is already running.
+    let restore_guard = RestoreGuard::try_acquire(&state.restore_in_progress)
+        .ok_or_else(|| AppError::conflict("A restore is already in progress"))?;
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| AppError::bad_request(&format!("Multipart error: {}", e)))? {
+    // Stream the uploaded file to a temp file on the backups volume so memory usage
+    // stays bounded for large dumps (a real instance backup can be hundreds of MB).
+    // A ".tmp" extension keeps it out of list_backup_files (which only lists ".sql").
+    let backup_dir = std::path::Path::new("/opt/pinepods/backups");
+    tokio::fs::create_dir_all(backup_dir).await
+        .map_err(|e| AppError::internal(&format!("Failed to create backup directory: {}", e)))?;
+    let tmp_path = backup_dir.join(format!(".restore_upload_{}.tmp", uuid::Uuid::new_v4()));
+
+    // Process the multipart form to get the uploaded file and (unused) database password.
+    let mut have_file = false;
+    let mut _have_password = false;
+
+    while let Some(mut field) = multipart.next_field().await.map_err(|e| AppError::bad_request(&format!("Multipart error: {}", e)))? {
         let name = field.name().unwrap_or("").to_string();
 
         if name == "backup_file" {
@@ -1748,37 +1815,100 @@ pub async fn restore_server(
                 return Err(AppError::bad_request("Only SQL files are allowed"));
             }
 
-            let data = field.bytes().await.map_err(|e| AppError::bad_request(&format!("Failed to read file: {}", e)))?;
+            let mut file = tokio::fs::File::create(&tmp_path).await
+                .map_err(|e| AppError::internal(&format!("Failed to create temp restore file: {}", e)))?;
 
-            // Check file size (limit to 100MB)
-            if data.len() > 100 * 1024 * 1024 {
-                return Err(AppError::bad_request("File too large (max 100MB)"));
+            use tokio::io::AsyncWriteExt;
+            while let Some(chunk) = field.chunk().await
+                .map_err(|e| AppError::bad_request(&format!("Failed to read upload: {}", e)))? {
+                if let Err(e) = file.write_all(&chunk).await {
+                    let _ = tokio::fs::remove_file(&tmp_path).await;
+                    return Err(AppError::internal(&format!("Failed to write upload: {}", e)));
+                }
             }
-
-            sql_content = Some(String::from_utf8(data.to_vec()).map_err(|_| AppError::bad_request("Invalid UTF-8 content"))?);
+            file.flush().await
+                .map_err(|e| AppError::internal(&format!("Failed to flush temp restore file: {}", e)))?;
+            have_file = true;
         } else if name == "database_pass" {
-            let password_data = field.bytes().await.map_err(|e| AppError::bad_request(&format!("Failed to read password: {}", e)))?;
-            _database_password = Some(String::from_utf8(password_data.to_vec()).map_err(|_| AppError::bad_request("Invalid UTF-8 password"))?);
+            // The uploaded password is ignored; restore uses the DB_PASSWORD env var.
+            let _ = field.bytes().await;
+            _have_password = true;
         }
     }
 
-    let sql_content = sql_content.ok_or_else(|| AppError::bad_request("No SQL file uploaded"))?;
-    let _database_password = _database_password.ok_or_else(|| AppError::bad_request("Database password is required"))?;
+    if !have_file {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err(AppError::bad_request("No SQL file uploaded"));
+    }
 
-    // Process the restore in the background to prevent timeouts
+    // Run the restore as a tracked progress task so the UI sees real completion (the
+    // upload itself can take a while; the restore then runs against the streamed file).
+    // The guard is moved into the task and released (via Drop) when it finishes.
     let db_pool = state.db_pool.clone();
-    tokio::spawn(async move {
-        if let Err(e) = db_pool.restore_server_data(&sql_content).await {
-            tracing::error!("Restore failed: {}", e);
+    let task_id = state.task_spawner.spawn_progress_task(
+        "restore_server".to_string(),
+        user_id,
+        move |reporter| {
+            let db_pool = db_pool.clone();
+            let tmp_path = tmp_path.clone();
+            let _restore_guard = restore_guard;
+            async move {
+                reporter.update_progress(10.0, Some("Starting restore...".to_string())).await?;
+                reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
+
+                let result = db_pool.restore_server_data_from_path(&tmp_path).await;
+
+                // Always clean up the temp upload, success or failure.
+                if let Err(e) = tokio::fs::remove_file(&tmp_path).await {
+                    tracing::warn!("Failed to remove temp restore file {}: {}", tmp_path.display(), e);
+                }
+                result?;
+
+                reporter.update_progress(100.0, Some("Restore completed successfully".to_string())).await?;
+                Ok(serde_json::json!({ "status": "Restore completed successfully" }))
+            }
         }
-    });
+    ).await?;
 
     Ok(Json(serde_json::json!({
-        "message": "Server restore started successfully"
+        "message": "Server restore started successfully",
+        "task_id": task_id
     })))
 }
 
+/// Lightweight restore-status probe. Deliberately reads ONLY the in-memory flag and does
+/// no database work and no auth, so it stays responsive even while a restore holds table
+/// locks (which blocks every DB-backed request). The frontend polls this to show a
+/// full-page "restore in progress" overlay and to auto-reload when it finishes.
+#[utoipa::path(
+    get,
+    path = "/restore_status",
+    tag = "settings",
+    summary = "Restore status",
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+    ),
+)]
+pub async fn restore_status(
+    State(state): State<AppState>,
+) -> Json<serde_json::Value> {
+    let in_progress = state.restore_in_progress.load(std::sync::atomic::Ordering::SeqCst);
+    Json(serde_json::json!({ "restore_in_progress": in_progress }))
+}
+
 // Generate MFA secret - matches Python generate_mfa_secret function exactly
+#[utoipa::path(
+    get,
+    path = "/generate_mfa_secret/{user_id}",
+    tag = "settings",
+    summary = "Generate mfa secret",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn generate_mfa_secret(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -1803,13 +1933,25 @@ pub async fn generate_mfa_secret(
 }
 
 // Request struct for verify_temp_mfa
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct VerifyTempMfaRequest {
     pub user_id: i32,
     pub mfa_code: String,
 }
 
 // Verify temporary MFA code - matches Python verify_temp_mfa function exactly
+#[utoipa::path(
+    post,
+    path = "/verify_temp_mfa",
+    tag = "settings",
+    summary = "Verify temp mfa",
+    request_body = VerifyTempMfaRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn verify_temp_mfa(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1831,6 +1973,18 @@ pub async fn verify_temp_mfa(
 }
 
 // Check MFA enabled - matches Python check_mfa_enabled function exactly  
+#[utoipa::path(
+    get,
+    path = "/check_mfa_enabled/{user_id}",
+    tag = "settings",
+    summary = "Check mfa enabled",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn check_mfa_enabled(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -1853,13 +2007,25 @@ pub async fn check_mfa_enabled(
 }
 
 // Request struct for save_mfa_secret
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SaveMfaSecretRequest {
     pub user_id: i32,
     pub mfa_secret: String,
 }
 
 // Save MFA secret - matches Python save_mfa_secret function exactly
+#[utoipa::path(
+    post,
+    path = "/save_mfa_secret",
+    tag = "settings",
+    summary = "Save mfa secret",
+    request_body = SaveMfaSecretRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn save_mfa_secret(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1881,6 +2047,17 @@ pub async fn save_mfa_secret(
 }
 
 // Delete MFA - matches Python delete_mfa function exactly
+#[utoipa::path(
+    delete,
+    path = "/delete_mfa",
+    tag = "settings",
+    summary = "Delete mfa",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn delete_mfa(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1894,13 +2071,25 @@ pub async fn delete_mfa(
 }
 
 // Request struct for initiate_nextcloud_login
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct InitiateNextcloudLoginRequest {
     pub user_id: i32,
     pub nextcloud_url: String,
 }
 
 // Initiate Nextcloud login - matches Python initiate_nextcloud_login function exactly
+#[utoipa::path(
+    post,
+    path = "/initiate_nextcloud_login",
+    tag = "settings",
+    summary = "Initiate nextcloud login",
+    request_body = InitiateNextcloudLoginRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn initiate_nextcloud_login(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1922,7 +2111,7 @@ pub async fn initiate_nextcloud_login(
 }
 
 // Request struct for add_nextcloud_server
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, utoipa::ToSchema)]
 pub struct AddNextcloudServerRequest {
     pub user_id: i32,
     pub token: String,
@@ -1931,6 +2120,18 @@ pub struct AddNextcloudServerRequest {
 }
 
 // Add Nextcloud server - matches Python add_nextcloud_server function exactly
+#[utoipa::path(
+    post,
+    path = "/add_nextcloud_server",
+    tag = "settings",
+    summary = "Add nextcloud server",
+    request_body = AddNextcloudServerRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn add_nextcloud_server(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1968,16 +2169,16 @@ pub async fn add_nextcloud_server(
 async fn poll_for_auth_completion_background(state: AppState, request: AddNextcloudServerRequest, task_id: String) {
     // Update task to indicate polling has started
     if let Err(e) = state.task_manager.update_task_progress(&task_id, 10.0, Some("Starting Nextcloud authentication polling...".to_string())).await {
-        eprintln!("Failed to update task progress: {}", e);
+        error!("Failed to update task progress: {}", e);
     }
 
     match poll_for_auth_completion(&request.poll_endpoint, &request.token, &state.task_manager, &task_id).await {
         Ok(credentials) => {
-            println!("Nextcloud authentication successful: {:?}", credentials);
+            info!("Nextcloud authentication successful: {:?}", credentials);
             
             // Update task progress
             if let Err(e) = state.task_manager.update_task_progress(&task_id, 90.0, Some("Authentication successful, saving credentials...".to_string())).await {
-                eprintln!("Failed to update task progress: {}", e);
+                error!("Failed to update task progress: {}", e);
             }
             
             // Extract credentials from the response
@@ -1988,31 +2189,31 @@ async fn poll_for_auth_completion_background(state: AppState, request: AddNextcl
                 // Save the real credentials using the database method
                 match state.db_pool.save_nextcloud_credentials(request.user_id, &request.nextcloud_url, app_password, login_name).await {
                     Ok(_) => {
-                        println!("Successfully added Nextcloud settings for user {}", request.user_id);
+                        debug!("Successfully added Nextcloud settings for user {}", request.user_id);
                         if let Err(e) = state.task_manager.complete_task(&task_id, 
                             Some(serde_json::json!({"status": "success", "message": "Nextcloud authentication completed"})), 
                             Some("Nextcloud authentication completed successfully".to_string())).await {
-                            eprintln!("Failed to complete task: {}", e);
+                            error!("Failed to complete task: {}", e);
                         }
                     }
                     Err(e) => {
-                        eprintln!("Failed to add Nextcloud settings: {}", e);
+                        error!("Failed to add Nextcloud settings: {}", e);
                         if let Err(e) = state.task_manager.fail_task(&task_id, format!("Failed to save Nextcloud settings: {}", e)).await {
-                            eprintln!("Failed to fail task: {}", e);
+                            error!("Failed to fail task: {}", e);
                         }
                     }
                 }
             } else {
-                eprintln!("Missing appPassword or loginName in credentials");
+                error!("Missing appPassword or loginName in credentials");
                 if let Err(e) = state.task_manager.fail_task(&task_id, "Missing credentials in Nextcloud response".to_string()).await {
-                    eprintln!("Failed to fail task: {}", e);
+                    error!("Failed to fail task: {}", e);
                 }
             }
         }
         Err(e) => {
-            eprintln!("Nextcloud authentication failed: {}", e);
+            error!("Nextcloud authentication failed: {}", e);
             if let Err(e) = state.task_manager.fail_task(&task_id, format!("Authentication failed: {}", e)).await {
-                eprintln!("Failed to fail task: {}", e);
+                error!("Failed to fail task: {}", e);
             }
         }
     }
@@ -2040,7 +2241,7 @@ async fn poll_for_auth_completion(
         let message = format!("Waiting for user to complete authentication... (attempt {})", poll_count);
         
         if let Err(e) = task_manager.update_task_progress(task_id, progress, Some(message)).await {
-            eprintln!("Failed to update task progress during polling: {}", e);
+            error!("Failed to update task progress during polling: {}", e);
         }
         
         match client
@@ -2054,7 +2255,7 @@ async fn poll_for_auth_completion(
                 match response.status().as_u16() {
                     200 => {
                         let credentials = response.json::<serde_json::Value>().await?;
-                        println!("Authentication successful: {:?}", credentials);
+                        info!("Authentication successful: {:?}", credentials);
                         return Ok(credentials);
                     }
                     404 => {
@@ -2062,13 +2263,13 @@ async fn poll_for_auth_completion(
                         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     }
                     status => {
-                        println!("Polling failed with status code {}", status);
+                        warn!("Polling failed with status code {}", status);
                         return Err(format!("Polling for Nextcloud authentication failed with status {}", status).into());
                     }
                 }
             }
             Err(e) => {
-                println!("Connection error, retrying: {}", e);
+                warn!("Connection error, retrying: {}", e);
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             }
         }
@@ -2077,44 +2278,8 @@ async fn poll_for_auth_completion(
     Err("Polling timeout reached".into())
 }
 
-// Helper function to save Nextcloud credentials directly to database
-async fn save_nextcloud_credentials(
-    db_pool: &crate::database::DatabasePool,
-    user_id: i32,
-    nextcloud_url: &str,
-    app_password: &str,
-    login_name: &str
-) -> crate::error::AppResult<()> {
-    // Encrypt the app password
-    let encrypted_password = db_pool.encrypt_password(app_password).await?;
-    
-    // Store Nextcloud credentials
-    match db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'nextcloud' WHERE userid = $4"#)
-                .bind(nextcloud_url)
-                .bind(login_name)
-                .bind(&encrypted_password)
-                .bind(user_id)
-                .execute(pool)
-                .await?;
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
-            sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'nextcloud' WHERE UserID = ?")
-                .bind(nextcloud_url)
-                .bind(login_name)
-                .bind(&encrypted_password)
-                .bind(user_id)
-                .execute(pool)
-                .await?;
-        }
-    }
-    
-    Ok(())
-}
-
 // Request struct for verify_gpodder_auth
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct VerifyGpodderAuthRequest {
     pub gpodder_url: String,
     pub gpodder_username: String,
@@ -2122,6 +2287,18 @@ pub struct VerifyGpodderAuthRequest {
 }
 
 // Verify gPodder authentication - matches Python verify_gpodder_auth function exactly
+#[utoipa::path(
+    post,
+    path = "/verify_gpodder_auth",
+    tag = "settings",
+    summary = "Verify gpodder auth",
+    request_body = VerifyGpodderAuthRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn verify_gpodder_auth(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2156,7 +2333,7 @@ pub async fn verify_gpodder_auth(
 }
 
 // Request struct for add_gpodder_server
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct AddGpodderServerRequest {
     pub gpodder_url: String,
     pub gpodder_username: String,
@@ -2164,6 +2341,18 @@ pub struct AddGpodderServerRequest {
 }
 
 // Add gPodder server - matches Python add_gpodder_server function exactly
+#[utoipa::path(
+    post,
+    path = "/add_gpodder_server",
+    tag = "settings",
+    summary = "Add gpodder server",
+    request_body = AddGpodderServerRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn add_gpodder_server(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2183,6 +2372,18 @@ pub async fn add_gpodder_server(
 }
 
 // Get gPodder settings - matches Python get_gpodder_settings function exactly
+#[utoipa::path(
+    get,
+    path = "/get_gpodder_settings/{user_id}",
+    tag = "settings",
+    summary = "Get gpodder settings",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_gpodder_settings(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -2207,6 +2408,18 @@ pub async fn get_gpodder_settings(
 }
 
 // Check gPodder settings - matches Python check_gpodder_settings function exactly
+#[utoipa::path(
+    get,
+    path = "/check_gpodder_settings/{user_id}",
+    tag = "settings",
+    summary = "Check gpodder settings",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn check_gpodder_settings(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -2229,11 +2442,23 @@ pub async fn check_gpodder_settings(
 
 
 // Remove podcast sync - matches Python remove_podcast_sync function exactly
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
 pub struct RemoveSyncRequest {
     pub user_id: i32,
 }
 
+#[utoipa::path(
+    delete,
+    path = "/remove_podcast_sync",
+    tag = "settings",
+    summary = "Remove podcast sync",
+    request_body = RemoveSyncRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn remove_podcast_sync(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2266,7 +2491,7 @@ pub async fn remove_podcast_sync(
 // === NEW ENDPOINTS - REMAINING SETTINGS ===
 
 // Request struct for add_custom_podcast
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct CustomPodcastRequest {
     pub feed_url: String,
     pub user_id: i32,
@@ -2276,23 +2501,8 @@ pub struct CustomPodcastRequest {
     pub feed_cutoff: Option<i32>,
 }
 
-// Request struct for import_opml
-#[derive(Deserialize)]
-pub struct OpmlImportRequest {
-    pub podcasts: Vec<String>,
-    pub user_id: i32,
-}
-
-// Response struct for import_progress
-#[derive(Serialize)]
-pub struct ImportProgressResponse {
-    pub current: i32,
-    pub total: i32,
-    pub current_podcast: String,
-}
-
 // Request struct for notification_settings
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct NotificationSettingsRequest {
     pub user_id: i32,
     pub platform: String,
@@ -2310,14 +2520,14 @@ pub struct NotificationSettingsRequest {
 }
 
 // Request struct for test_notification
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct NotificationTestRequest {
     pub user_id: i32,
     pub platform: String,
 }
 
 // Request struct for add_oidc_provider
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct OidcProviderRequest {
     pub provider_name: String,
     pub client_id: String,
@@ -2339,18 +2549,30 @@ pub struct OidcProviderRequest {
 }
 
 // Query structs for user_id parameters
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct UserIdQuery {
     pub user_id: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct StartpageQuery {
     pub user_id: i32,
     pub startpage: Option<String>,
 }
 
 // Add custom podcast - matches Python add_custom_podcast function exactly
+#[utoipa::path(
+    post,
+    path = "/add_custom_podcast",
+    tag = "settings",
+    summary = "Add custom podcast",
+    request_body = CustomPodcastRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn add_custom_podcast(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2406,7 +2628,7 @@ pub async fn add_custom_podcast(
                 feed_cutoff,
                 &state_clone
             ).await {
-                println!("Error processing YouTube channel {}: {}", channel_id_clone, e);
+                warn!("Error processing YouTube channel {}: {}", channel_id_clone, e);
             }
         });
 
@@ -2478,100 +2700,19 @@ fn extract_youtube_channel_id(url: &str) -> Result<String, AppError> {
     )))
 }
 
-// Import OPML - matches Python import_opml function exactly with background processing
-pub async fn import_opml(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(request): Json<OpmlImportRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check authorization
-    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only import OPML for yourself!"));
-    }
-
-    let total_podcasts = request.podcasts.len();
-
-    // Initialize progress tracking in Redis/Valkey
-    state.import_progress_manager.start_import(request.user_id, total_podcasts as i32).await?;
-
-    // Spawn background task for OPML processing
-    let state_clone = state.clone();
-    let podcasts = request.podcasts.clone();
-    let user_id = request.user_id;
-
-    tokio::spawn(async move {
-        for (index, feed_url) in podcasts.iter().enumerate() {
-            // Update progress
-            let _ = state_clone.import_progress_manager.update_progress(
-                user_id,
-                index as i32,
-                feed_url
-            ).await;
-
-            // Process podcast (with error handling to continue on failures)
-            match state_clone.db_pool.get_podcast_values(feed_url, user_id, None, None).await {
-                Ok(podcast_values) => {
-                    let _ = state_clone.db_pool.add_podcast_from_values(
-                        &podcast_values,
-                        user_id,
-                        30,  // feed_cutoff
-                        None, // username
-                        None  // password
-                    ).await;
-                }
-                Err(e) => {
-                    tracing::error!("Failed to import podcast {}: {}", feed_url, e);
-                    // Continue with next podcast
-                }
-            }
-
-            // Small delay between imports (matches Python 0.1s delay)
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        }
-
-        // Clear progress when complete
-        let _ = state_clone.import_progress_manager.clear_progress(user_id).await;
-    });
-
-    Ok(Json(serde_json::json!({
-        "message": "OPML import started",
-        "total": total_podcasts
-    })))
-}
-
-// Import progress webhook - matches Python import_progress function exactly
-pub async fn import_progress(
-    State(state): State<AppState>,
-    Path(user_id): Path<i32>,
-    headers: HeaderMap,
-) -> Result<Json<ImportProgressResponse>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check authorization - user can only check their own progress
-    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only check your own import progress!"));
-    }
-
-    let (current, total, current_podcast) = state.import_progress_manager.get_progress(user_id).await?;
-    let progress = ImportProgressResponse {
-        current,
-        total,
-        current_podcast,
-    };
-    Ok(Json(progress))
-}
-
 // Get notification settings - matches Python notification_settings GET function exactly
+#[utoipa::path(
+    get,
+    path = "/user/notification_settings",
+    tag = "settings",
+    summary = "Get notification settings",
+    params(UserIdQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_notification_settings(
     State(state): State<AppState>,
     Query(query): Query<UserIdQuery>,
@@ -2593,6 +2734,18 @@ pub async fn get_notification_settings(
 }
 
 // Update notification settings - matches Python notification_settings PUT function exactly
+#[utoipa::path(
+    put,
+    path = "/user/notification_settings",
+    tag = "settings",
+    summary = "Update notification settings",
+    request_body = NotificationSettingsRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_notification_settings(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2628,6 +2781,18 @@ pub async fn update_notification_settings(
 }
 
 // Test notification - matches Python test_notification function exactly
+#[utoipa::path(
+    post,
+    path = "/user/test_notification",
+    tag = "settings",
+    summary = "Test notification",
+    request_body = NotificationTestRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn test_notification(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2662,6 +2827,18 @@ pub async fn test_notification(
 }
 
 // Add OIDC provider - matches Python add_oidc_provider function exactly  
+#[utoipa::path(
+    post,
+    path = "/add_oidc_provider",
+    tag = "settings",
+    summary = "Add oidc provider",
+    request_body = OidcProviderRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn add_oidc_provider(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2702,6 +2879,19 @@ pub async fn add_oidc_provider(
 }
 
 // Update OIDC provider - updates an existing provider
+#[utoipa::path(
+    put,
+    path = "/update_oidc_provider/{provider_id}",
+    tag = "settings",
+    summary = "Update oidc provider",
+    params(("provider_id" = i32, Path)),
+    request_body = OidcProviderRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_oidc_provider(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2755,6 +2945,17 @@ pub async fn update_oidc_provider(
 }
 
 // List OIDC providers - matches Python list_oidc_providers function exactly
+#[utoipa::path(
+    get,
+    path = "/list_oidc_providers",
+    tag = "settings",
+    summary = "List oidc providers",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn list_oidc_providers(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2767,6 +2968,18 @@ pub async fn list_oidc_providers(
 }
 
 // Remove OIDC provider - matches Python remove_oidc_provider function exactly
+#[utoipa::path(
+    post,
+    path = "/remove_oidc_provider",
+    tag = "settings",
+    summary = "Remove oidc provider",
+    request_body = i32,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn remove_oidc_provider(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2799,6 +3012,18 @@ pub async fn remove_oidc_provider(
 }
 
 // Get startpage - matches Python startpage GET function exactly
+#[utoipa::path(
+    get,
+    path = "/startpage",
+    tag = "settings",
+    summary = "Get startpage",
+    params(UserIdQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_startpage(
     State(state): State<AppState>,
     Query(query): Query<UserIdQuery>,
@@ -2820,6 +3045,18 @@ pub async fn get_startpage(
 }
 
 // Update startpage - matches Python startpage POST function exactly
+#[utoipa::path(
+    post,
+    path = "/startpage",
+    tag = "settings",
+    summary = "Update startpage",
+    params(StartpageQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_startpage(
     State(state): State<AppState>,
     Query(query): Query<StartpageQuery>,
@@ -2846,7 +3083,7 @@ pub async fn update_startpage(
 }
 
 // Request struct for person subscribe
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct PersonSubscribeRequest {
     pub person_name: String,
     pub person_img: String,
@@ -2854,12 +3091,25 @@ pub struct PersonSubscribeRequest {
 }
 
 // Request struct for person unsubscribe
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct PersonUnsubscribeRequest {
     pub person_name: String,
 }
 
 // Subscribe to person - matches Python api_subscribe_to_person function exactly
+#[utoipa::path(
+    post,
+    path = "/person/subscribe/{user_id}/{person_id}",
+    tag = "settings",
+    summary = "Subscribe to person",
+    params(("user_id" = i32, Path), ("person_id" = i32, Path)),
+    request_body = PersonSubscribeRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn subscribe_to_person(
     State(state): State<AppState>,
     Path((user_id, person_id)): Path<(i32, i32)>,
@@ -2907,6 +3157,19 @@ pub async fn subscribe_to_person(
 }
 
 // Unsubscribe from person - matches Python api_unsubscribe_from_person function exactly
+#[utoipa::path(
+    delete,
+    path = "/person/unsubscribe/{user_id}/{person_id}",
+    tag = "settings",
+    summary = "Unsubscribe from person",
+    params(("user_id" = i32, Path), ("person_id" = i32, Path)),
+    request_body = PersonUnsubscribeRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn unsubscribe_from_person(
     State(state): State<AppState>,
     Path((user_id, person_id)): Path<(i32, i32)>,
@@ -2944,6 +3207,18 @@ pub async fn unsubscribe_from_person(
 }
 
 // Get person subscriptions - matches Python api_get_person_subscriptions function exactly
+#[utoipa::path(
+    get,
+    path = "/person/subscriptions/{user_id}",
+    tag = "settings",
+    summary = "Get person subscriptions",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_person_subscriptions(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -2966,10 +3241,29 @@ pub async fn get_person_subscriptions(
     })))
 }
 
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct PersonEpisodesQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
 // Get person episodes - matches Python api_return_person_episodes function exactly
+#[utoipa::path(
+    get,
+    path = "/person/episodes/{user_id}/{person_id}",
+    tag = "settings",
+    summary = "Get person episodes",
+    params(PersonEpisodesQuery, ("user_id" = i32, Path), ("person_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_person_episodes(
     State(state): State<AppState>,
     Path((user_id, person_id)): Path<(i32, i32)>,
+    Query(params): Query<PersonEpisodesQuery>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
@@ -2983,14 +3277,111 @@ pub async fn get_person_episodes(
         return Err(AppError::forbidden("You can only retrieve your own person episodes!"));
     }
 
-    let episodes = state.db_pool.get_person_episodes(user_id, person_id).await?;
+    let limit = params.limit.unwrap_or(50);
+    let offset = params.offset.unwrap_or(0);
+    let episodes = state.db_pool.get_person_episodes(user_id, person_id, limit, offset).await?;
     Ok(Json(serde_json::json!({
         "episodes": episodes
     })))
 }
 
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct HostFeedQuery {
+    pub name: String,
+    pub person_id: Option<i32>,
+    pub include_podcasts: Option<bool>,
+}
+
+fn empty_host_feed(name: &str) -> serde_json::Value {
+    serde_json::json!({ "person": { "name": name, "image": null }, "podcasts": [], "episodes": [] })
+}
+
+// Unified host feed — the single source of a host's episodes (and the shows they appear in),
+// drawn from BOTH the Podcast Index person index and PodPeopleDB, viewable whether or not the
+// user is subscribed. Returns { person, podcasts, episodes }.
+//
+// - Subscribed, episodes-only callers (the subscribed-people list) take a fast path served from
+//   the cached PeopleEpisodes table.
+// - The host profile page takes the live path: a short-lived Redis cache holds the shared
+//   (non-user) feed by host name, and per-user interaction state is overlaid per request so the
+//   cache can be shared across users.
+#[utoipa::path(
+    get,
+    path = "/person/feed/{user_id}",
+    tag = "settings",
+    summary = "Get host feed",
+    params(HostFeedQuery, ("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_host_feed(
+    State(state): State<AppState>,
+    Path(user_id): Path<i32>,
+    Query(params): Query<HostFeedQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only retrieve your own host feed!"));
+    }
+
+    let include_podcasts = params.include_podcasts.unwrap_or(true);
+
+    // Fast path: subscribed host, episodes only — serve from the prebuilt PeopleEpisodes table.
+    if !include_podcasts {
+        if let Some(person_id) = params.person_id {
+            if person_id > 0 {
+                let episodes = state.db_pool.get_person_episodes(user_id, person_id, 300, 0).await?;
+                return Ok(Json(serde_json::json!({
+                    "person": { "name": params.name, "image": null },
+                    "podcasts": [],
+                    "episodes": episodes
+                })));
+            }
+        }
+    }
+
+    // Live path: serve the shared (non-user-specific) feed from a two-layer cache, then overlay
+    // this user's interaction state. Layers, fastest first:
+    //   1. Redis hot cache (5 min) — absorbs repeat visits.
+    //   2. HostFeedCache DB warm cache (24h) — survives Redis expiry/restart so a cold entry
+    //      doesn't force a full N-feed rebuild.
+    //   3. Live build (fetch + parse every feed the host appears in), then write both caches.
+    let cache_key = format!("host_feed:{}:{}", include_podcasts, params.name.to_lowercase());
+    const REDIS_TTL_SECS: u64 = 300;
+    const DB_CACHE_MAX_AGE_SECS: i64 = 86_400;
+
+    let mut feed: serde_json::Value = if let Ok(Some(cached)) = state.redis_client.get::<String>(&cache_key).await {
+        serde_json::from_str(&cached).unwrap_or_else(|_| empty_host_feed(&params.name))
+    } else if let Ok(Some(warm)) = state.db_pool.get_cached_host_feed(&cache_key, DB_CACHE_MAX_AGE_SECS).await {
+        // Warm DB hit — repopulate Redis so subsequent hits stay hot.
+        if let Ok(serialized) = serde_json::to_string(&warm) {
+            let _ = state.redis_client.set_ex(&cache_key, serialized, REDIS_TTL_SECS).await;
+        }
+        warm
+    } else {
+        let built = state.db_pool.build_host_feed_shared(&params.name, include_podcasts).await?;
+        if let Ok(serialized) = serde_json::to_string(&built) {
+            let _ = state.redis_client.set_ex(&cache_key, serialized.clone(), REDIS_TTL_SECS).await;
+            let _ = state.db_pool.set_cached_host_feed(&cache_key, &serialized).await;
+        }
+        built
+    };
+
+    state.db_pool.overlay_host_feed_user_state(user_id, &mut feed).await?;
+
+    Ok(Json(feed))
+}
+
 // Request struct for set_podcast_playback_speed - matches Python SetPlaybackSpeedPodcast model
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SetPlaybackSpeedPodcast {
     pub user_id: i32,
     pub podcast_id: i32,
@@ -2998,6 +3389,18 @@ pub struct SetPlaybackSpeedPodcast {
 }
 
 // Set podcast playback speed - matches Python api_set_podcast_playback_speed endpoint
+#[utoipa::path(
+    post,
+    path = "/podcast/set_playback_speed",
+    tag = "settings",
+    summary = "Set podcast playback speed",
+    request_body = SetPlaybackSpeedPodcast,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn set_podcast_playback_speed(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3019,8 +3422,49 @@ pub async fn set_podcast_playback_speed(
     Ok(Json(serde_json::json!({ "detail": "Default podcast playback speed updated." })))
 }
 
+// Request struct for clear_podcast_playback_speed
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct ClearPlaybackSpeedPodcast {
+    pub user_id: i32,
+    pub podcast_id: i32,
+}
+
+// Clear podcast playback speed - resets the podcast back to the global default
+#[utoipa::path(
+    post,
+    path = "/clear_podcast_playback_speed",
+    tag = "settings",
+    summary = "Clear podcast playback speed",
+    request_body = ClearPlaybackSpeedPodcast,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn clear_podcast_playback_speed(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ClearPlaybackSpeedPodcast>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.clear_podcast_playback_speed(request.user_id, request.podcast_id).await?;
+
+    Ok(Json(serde_json::json!({ "message": "Podcast playback speed reset to global default." })))
+}
+
 // Request struct for enable_auto_download - matches Python AutoDownloadRequest model
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct AutoDownloadRequest {
     pub podcast_id: i32,
     pub auto_download: bool,
@@ -3028,6 +3472,18 @@ pub struct AutoDownloadRequest {
 }
 
 // Enable/disable auto download for podcast - matches Python api_enable_auto_download endpoint
+#[utoipa::path(
+    post,
+    path = "/enable_auto_download",
+    tag = "settings",
+    summary = "Enable auto download",
+    request_body = AutoDownloadRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn enable_auto_download(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3048,8 +3504,47 @@ pub async fn enable_auto_download(
     Ok(Json(serde_json::json!({ "detail": "Auto-download status updated." })))
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct AutoPlayNextRequest {
+    pub podcast_id: i32,
+    pub auto_play_next: bool,
+    pub user_id: i32,
+}
+
+// Enable/disable auto play next for podcast
+#[utoipa::path(
+    post,
+    path = "/enable_auto_play_next",
+    tag = "settings",
+    summary = "Enable auto play next",
+    request_body = AutoPlayNextRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn enable_auto_play_next(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AutoPlayNextRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.enable_auto_play_next(request.podcast_id, request.auto_play_next, request.user_id).await?;
+
+    Ok(Json(serde_json::json!({ "detail": "Auto-play-next status updated." })))
+}
+
 // Request struct for toggle_podcast_notifications - matches Python TogglePodcastNotificationData model
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct TogglePodcastNotificationData {
     pub user_id: i32,
     pub podcast_id: i32,
@@ -3057,6 +3552,18 @@ pub struct TogglePodcastNotificationData {
 }
 
 // Toggle podcast notifications - matches Python api_toggle_podcast_notifications endpoint
+#[utoipa::path(
+    put,
+    path = "/podcast/toggle_notifications",
+    tag = "settings",
+    summary = "Toggle podcast notifications",
+    request_body = TogglePodcastNotificationData,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn toggle_podcast_notifications(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3082,8 +3589,53 @@ pub async fn toggle_podcast_notifications(
     }
 }
 
+// Request struct for toggle_podcast_favorite
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct TogglePodcastFavoriteData {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub is_favorite: bool,
+}
+
+// Toggle podcast favorite status
+#[utoipa::path(
+    put,
+    path = "/podcast/toggle_favorite",
+    tag = "settings",
+    summary = "Toggle podcast favorite",
+    request_body = TogglePodcastFavoriteData,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn toggle_podcast_favorite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<TogglePodcastFavoriteData>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("Invalid API key"));
+    }
+
+    let success = state.db_pool.toggle_podcast_favorite(request.user_id, request.podcast_id, request.is_favorite).await?;
+
+    if success {
+        Ok(Json(serde_json::json!({ "detail": "Favorite status updated successfully" })))
+    } else {
+        Ok(Json(serde_json::json!({ "detail": "Failed to update favorite status" })))
+    }
+}
+
 // Request struct for adjust_skip_times - matches Python SkipTimesRequest model
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SkipTimesRequest {
     pub podcast_id: i32,
     #[serde(default)]
@@ -3094,6 +3646,18 @@ pub struct SkipTimesRequest {
 }
 
 // Adjust skip times for podcast - matches Python api_adjust_skip_times endpoint
+#[utoipa::path(
+    post,
+    path = "/adjust_skip_times",
+    tag = "settings",
+    summary = "Adjust skip times",
+    request_body = SkipTimesRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn adjust_skip_times(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3115,8 +3679,182 @@ pub async fn adjust_skip_times(
     Ok(Json(serde_json::json!({ "detail": "Skip times updated." })))
 }
 
+// ---- Silence-trim / skip-segment endpoints (#727) ----
+
+fn default_silence_threshold() -> i32 { 2 }
+
+// Per-podcast silence-trim settings
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct SilenceTrimRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_silence_threshold")]
+    pub threshold: i32,
+}
+
+#[utoipa::path(
+    post,
+    path = "/adjust_silence_trim",
+    tag = "settings",
+    summary = "Set per-podcast silence-trim (enable + threshold)",
+    request_body = SilenceTrimRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn adjust_silence_trim(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SilenceTrimRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    crate::services::audio_processing::set_trim_silence(
+        &state.db_pool, request.podcast_id, request.user_id, request.enabled, request.threshold,
+    )
+    .await
+    .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "detail": "Silence trim settings updated." })))
+}
+
+// Read per-podcast silence-trim settings
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct SilenceTrimQuery {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+#[utoipa::path(
+    get,
+    path = "/get_silence_trim",
+    tag = "settings",
+    summary = "Get per-podcast silence-trim settings",
+    params(SilenceTrimQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_silence_trim(
+    State(state): State<AppState>,
+    Query(query): Query<SilenceTrimQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own podcasts."));
+    }
+
+    let (enabled, threshold) =
+        crate::services::audio_processing::get_trim_silence(&state.db_pool, query.podcast_id)
+            .await
+            .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "enabled": enabled, "threshold": threshold })))
+}
+
+// Read all skip segments (silence, and later ads) the player should auto-skip for an episode
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct SkipSegmentsQuery {
+    pub episode_id: i32,
+    pub user_id: i32,
+}
+
+#[utoipa::path(
+    get,
+    path = "/episode_skip_segments",
+    tag = "settings",
+    summary = "Get auto-skip segments for an episode",
+    params(SkipSegmentsQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_episode_skip_segments(
+    State(state): State<AppState>,
+    Query(query): Query<SkipSegmentsQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own episodes."));
+    }
+
+    let segments = crate::services::audio_processing::get_episode_skip_segments(&state.db_pool, query.episode_id)
+        .await
+        .map_err(|e| AppError::internal(&e))?;
+
+    Ok(Json(serde_json::json!({ "segments": segments })))
+}
+
+// Manually (re-)run silence detection for one episode as a tracked background task
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct DetectSilenceRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    #[serde(default)]
+    pub force: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/detect_silence",
+    tag = "settings",
+    summary = "Run silence detection for an episode",
+    request_body = DetectSilenceRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn detect_silence(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<DetectSilenceRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only process your own episodes."));
+    }
+
+    let task_id = state
+        .task_spawner
+        .spawn_detect_silence(request.episode_id, request.user_id, request.force)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "task_id": task_id, "detail": "Silence detection started." })))
+}
+
 // Request struct for remove_category - matches Python RemoveCategoryData model
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct RemoveCategoryData {
     pub podcast_id: i32,
     pub user_id: i32,
@@ -3124,6 +3862,18 @@ pub struct RemoveCategoryData {
 }
 
 // Remove category from podcast - matches Python api_remove_category endpoint
+#[utoipa::path(
+    post,
+    path = "/remove_category",
+    tag = "settings",
+    summary = "Remove category",
+    request_body = RemoveCategoryData,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn remove_category(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3145,7 +3895,7 @@ pub async fn remove_category(
 }
 
 // Request struct for add_category - matches Python AddCategoryData model
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct AddCategoryData {
     pub podcast_id: i32,
     pub user_id: i32,
@@ -3153,6 +3903,18 @@ pub struct AddCategoryData {
 }
 
 // Add category to podcast - matches Python api_add_category endpoint
+#[utoipa::path(
+    post,
+    path = "/add_category",
+    tag = "settings",
+    summary = "Add category",
+    request_body = AddCategoryData,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn add_category(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3175,6 +3937,17 @@ pub async fn add_category(
 }
 
 // Get user RSS key - matches Python get_user_rss_key endpoint
+#[utoipa::path(
+    get,
+    path = "/rss_key",
+    tag = "settings",
+    summary = "Get user rss key",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_user_rss_key(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3195,13 +3968,25 @@ pub async fn get_user_rss_key(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct VerifyMfaRequest {
     pub user_id: i32,
     pub mfa_code: String,
 }
 
 // Verify MFA code - matches Python verify_mfa endpoint
+#[utoipa::path(
+    post,
+    path = "/verify_mfa",
+    tag = "settings",
+    summary = "Verify mfa",
+    request_body = VerifyMfaRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn verify_mfa(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3242,30 +4027,47 @@ pub async fn verify_mfa(
 }
 
 // Scheduled backup management
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct ScheduleBackupRequest {
     pub user_id: i32,
     pub cron_schedule: String, // e.g., "0 2 * * *" for daily at 2 AM
     pub enabled: bool,
+    // Number of scheduled backups to keep; None/0 = keep all
+    #[serde(default)]
+    pub retention_count: Option<i32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct DeleteBackupFileRequest {
+    pub backup_filename: String,
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct GetScheduledBackupRequest {
     pub user_id: i32,
 }
 
-#[derive(Deserialize)]
-pub struct ListBackupFilesRequest {
-    pub user_id: i32,
-}
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct ListBackupFilesRequest {}
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct RestoreBackupFileRequest {
-    pub user_id: i32,
     pub backup_filename: String,
 }
 
 // Schedule automatic backup - admin only
+#[utoipa::path(
+    post,
+    path = "/schedule_backup",
+    tag = "settings",
+    summary = "Schedule backup",
+    request_body = ScheduleBackupRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn schedule_backup(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3289,16 +4091,29 @@ pub async fn schedule_backup(
     }
 
     // Store the schedule in database
-    state.db_pool.set_scheduled_backup(request.user_id, &request.cron_schedule, request.enabled).await?;
+    state.db_pool.set_scheduled_backup(request.user_id, &request.cron_schedule, request.enabled, request.retention_count).await?;
 
-    Ok(Json(serde_json::json!({ 
+    Ok(Json(serde_json::json!({
         "detail": "Backup schedule updated successfully",
         "schedule": request.cron_schedule,
-        "enabled": request.enabled
+        "enabled": request.enabled,
+        "retention_count": request.retention_count
     })))
 }
 
 // Get scheduled backup settings - admin only
+#[utoipa::path(
+    post,
+    path = "/get_scheduled_backup",
+    tag = "settings",
+    summary = "Get scheduled backup",
+    request_body = GetScheduledBackupRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_scheduled_backup(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3321,10 +4136,22 @@ pub async fn get_scheduled_backup(
 }
 
 // List backup files in mounted backup directory - admin only
+#[utoipa::path(
+    post,
+    path = "/list_backup_files",
+    tag = "settings",
+    summary = "List backup files",
+    request_body = ListBackupFilesRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn list_backup_files(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<ListBackupFilesRequest>,
+    Json(_request): Json<ListBackupFilesRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
@@ -3383,6 +4210,18 @@ pub async fn list_backup_files(
 }
 
 // Restore from backup file in mounted directory - admin only
+#[utoipa::path(
+    post,
+    path = "/restore_backup_file",
+    tag = "settings",
+    summary = "Restore from backup file",
+    request_body = RestoreBackupFileRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn restore_from_backup_file(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3406,14 +4245,19 @@ pub async fn restore_from_backup_file(
     }
 
     let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
-    
+
     // Check if file exists
     if !std::path::Path::new(&backup_path).exists() {
         return Err(AppError::not_found("Backup file not found"));
     }
 
+    // Refuse to start a second restore while one is already running.
+    let restore_guard = RestoreGuard::try_acquire(&state.restore_in_progress)
+        .ok_or_else(|| AppError::conflict("A restore is already in progress"))?;
+
     // Clone for the async closure
     let backup_filename_for_closure = backup_filename.clone();
+    let db_pool = state.db_pool.clone();
 
     // Spawn restoration task
     let task_id = state.task_spawner.spawn_progress_task(
@@ -3422,74 +4266,18 @@ pub async fn restore_from_backup_file(
         move |reporter| {
             let backup_path = backup_path.clone();
             let backup_filename = backup_filename_for_closure;
+            let db_pool = db_pool.clone();
+            // Released (via Drop) when the restore task finishes.
+            let _restore_guard = restore_guard;
             async move {
                 reporter.update_progress(10.0, Some("Starting restoration from backup file...".to_string())).await?;
-                
-                // Get database password from environment
-                let db_password = std::env::var("DB_PASSWORD")
-                    .map_err(|_| AppError::internal("Database password not found in environment"))?;
-                
                 reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
 
-                // Execute restoration based on database type
-                use tokio::process::Command;
-                let db_type = std::env::var("DB_TYPE").unwrap_or_else(|_| "postgresql".to_string());
-                let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
-                let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_database".to_string());
-                
-                let output = if db_type.to_lowercase().contains("mysql") || db_type.to_lowercase().contains("mariadb") {
-                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
-                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
-                    
-                    let mut cmd = Command::new("mysql");
-                    cmd.arg("-h").arg(&db_host)
-                       .arg("-P").arg(&db_port)
-                       .arg("-u").arg(&db_user)
-                       .arg(&format!("-p{}", db_password))
-                       .arg("--ssl-verify-server-cert=0")
-                       .arg(&db_name);
-                    
-                    // For MySQL, we need to pipe the file content to stdin
-                    cmd.stdin(std::process::Stdio::piped());
-                    let mut child = cmd.spawn()
-                        .map_err(|e| AppError::internal(&format!("Failed to execute mysql: {}", e)))?;
-                    
-                    // Read the backup file and send to mysql stdin
-                    let backup_content = tokio::fs::read_to_string(&backup_path).await
-                        .map_err(|e| AppError::internal(&format!("Failed to read backup file: {}", e)))?;
-                    
-                    if let Some(stdin) = child.stdin.as_mut() {
-                        use tokio::io::AsyncWriteExt;
-                        stdin.write_all(backup_content.as_bytes()).await
-                            .map_err(|e| AppError::internal(&format!("Failed to write to mysql stdin: {}", e)))?;
-                    }
-                    
-                    child.wait_with_output().await
-                        .map_err(|e| AppError::internal(&format!("Failed to wait for mysql: {}", e)))?
-                } else {
-                    // PostgreSQL
-                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
-                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
-                    
-                    let mut cmd = Command::new("psql");
-                    cmd.arg("-h").arg(&db_host)
-                       .arg("-p").arg(&db_port)
-                       .arg("-U").arg(&db_user)
-                       .arg("-d").arg(&db_name)
-                       .arg("-f").arg(&backup_path)
-                       .env("PGPASSWORD", &db_password);
-                    
-                    cmd.output().await
-                        .map_err(|e| AppError::internal(&format!("Failed to execute psql: {}", e)))?
-                };
-
-                if !output.status.success() {
-                    let error_msg = String::from_utf8_lossy(&output.stderr);
-                    return Err(AppError::internal(&format!("Restore failed: {}", error_msg)));
-                }
+                // Clears existing data, then streams the dump into psql/mysql.
+                db_pool.restore_server_data_from_path(std::path::Path::new(&backup_path)).await?;
 
                 reporter.update_progress(100.0, Some("Restoration completed successfully".to_string())).await?;
-                
+
                 Ok(serde_json::json!({
                     "status": "Restoration completed successfully",
                     "backup_file": backup_filename
@@ -3504,17 +4292,77 @@ pub async fn restore_from_backup_file(
     })))
 }
 
-// Request struct for manual backup to directory
-#[derive(Deserialize)]
-pub struct ManualBackupRequest {
-    pub user_id: i32,
+// Delete a backup file from the mounted backup directory - admin only
+#[utoipa::path(
+    post,
+    path = "/delete_backup_file",
+    tag = "settings",
+    summary = "Delete backup file",
+    request_body = DeleteBackupFileRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn delete_backup_file(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<DeleteBackupFileRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
+
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+
+    // Validate filename to prevent path traversal
+    let backup_filename = request.backup_filename.clone();
+    if backup_filename.contains("..") || backup_filename.contains('/') || !backup_filename.ends_with(".sql") {
+        return Err(AppError::bad_request("Invalid backup filename"));
+    }
+
+    let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
+
+    if !std::path::Path::new(&backup_path).exists() {
+        return Err(AppError::not_found("Backup file not found"));
+    }
+
+    std::fs::remove_file(&backup_path)
+        .map_err(|e| AppError::internal(&format!("Failed to delete backup file: {}", e)))?;
+
+    Ok(Json(serde_json::json!({
+        "detail": "Backup file deleted",
+        "filename": backup_filename
+    })))
 }
 
+// Request struct for manual backup to directory
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct ManualBackupRequest {}
+
 // Manual backup to directory - admin only
+#[utoipa::path(
+    post,
+    path = "/manual_backup_to_directory",
+    tag = "settings",
+    summary = "Manual backup to directory",
+    request_body = ManualBackupRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn manual_backup_to_directory(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<ManualBackupRequest>,
+    Json(_request): Json<ManualBackupRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
@@ -3536,15 +4384,7 @@ pub async fn manual_backup_to_directory(
     if let Err(e) = std::fs::create_dir_all("/opt/pinepods/backups") {
         return Err(AppError::internal(&format!("Failed to create backup directory: {}", e)));
     }
-    
-    // Set ownership using PUID/PGID environment variables
-    let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-    let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-    
-    // Set directory ownership (ignore errors for NFS mounts)
-    let _ = std::process::Command::new("chown")
-        .args(&[format!("{}:{}", puid, pgid), "/opt/pinepods/backups".to_string()])
-        .output();
+    // Ownership is handled by running the process as PUID:PGID (see startup.sh); no chown needed.
 
     // Clone for the async closure
     let backup_filename_for_closure = backup_filename.clone();
@@ -3583,6 +4423,10 @@ pub async fn manual_backup_to_directory(
                             "--routines",
                             "--triggers",
                             "--ssl-verify-server-cert=0",
+                            // Transient login-token tables: excluded for security and to avoid
+                            // cross-version schema drift on restore.
+                            &format!("--ignore-table={}.Sessions", db_name),
+                            &format!("--ignore-table={}.GpodderSessions", db_name),
                             "--result-file", &backup_path,
                             &db_name
                         ])
@@ -3605,6 +4449,10 @@ pub async fn manual_backup_to_directory(
                             "--if-exists",
                             "--no-owner",
                             "--no-privileges",
+                            // Transient login-token tables: excluded for security and to avoid
+                            // cross-version schema drift on restore.
+                            "--exclude-table-data=public.\"Sessions\"",
+                            "--exclude-table-data=public.\"GpodderSessions\"",
                             "-f", &backup_path
                         ])
                         .output()
@@ -3618,15 +4466,7 @@ pub async fn manual_backup_to_directory(
                 }
 
                 reporter.update_progress(90.0, Some("Finalizing backup...".to_string())).await?;
-
-                // Set file ownership using PUID/PGID environment variables
-                let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-                let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-                
-                // Set backup file ownership (ignore errors for NFS mounts)
-                let _ = std::process::Command::new("chown")
-                    .args(&[format!("{}:{}", puid, pgid), backup_path.clone()])
-                    .output();
+                // Ownership is handled by running the process as PUID:PGID (see startup.sh); no chown needed.
 
                 // Check if backup file was created and get its size
                 let backup_info = match std::fs::metadata(&backup_path) {
@@ -3658,12 +4498,24 @@ pub async fn manual_backup_to_directory(
 }
 
 // Request for getting podcasts with podcast_index_id = 0
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct GetUnmatchedPodcastsRequest {
     pub user_id: i32,
 }
 
 // Get podcasts that have podcast_index_id = 0 (imported via OPML without podcast index match)
+#[utoipa::path(
+    post,
+    path = "/get_unmatched_podcasts",
+    tag = "settings",
+    summary = "Get unmatched podcasts",
+    request_body = GetUnmatchedPodcastsRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_unmatched_podcasts(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -3690,7 +4542,7 @@ pub async fn get_unmatched_podcasts(
 }
 
 // Request for updating podcast index ID
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct UpdatePodcastIndexIdRequest {
     pub user_id: i32,
     pub podcast_id: i32,
@@ -3698,6 +4550,18 @@ pub struct UpdatePodcastIndexIdRequest {
 }
 
 // Update a podcast's podcast_index_id
+#[utoipa::path(
+    post,
+    path = "/update_podcast_index_id",
+    tag = "settings",
+    summary = "Update podcast index id",
+    request_body = UpdatePodcastIndexIdRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_podcast_index_id(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -3731,19 +4595,31 @@ pub async fn update_podcast_index_id(
 }
 
 // Request for ignoring a podcast index ID
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct IgnorePodcastIndexIdRequest {
     pub user_id: i32,
     pub podcast_id: i32,
     pub ignore: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct GetIgnoredPodcastsRequest {
     pub user_id: i32,
 }
 
 // Ignore/unignore a podcast's index ID requirement
+#[utoipa::path(
+    post,
+    path = "/ignore_podcast_index_id",
+    tag = "settings",
+    summary = "Ignore podcast index id",
+    request_body = IgnorePodcastIndexIdRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn ignore_podcast_index_id(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -3778,6 +4654,18 @@ pub async fn ignore_podcast_index_id(
 }
 
 // Get podcasts that are ignored from podcast index matching
+#[utoipa::path(
+    post,
+    path = "/get_ignored_podcasts",
+    tag = "settings",
+    summary = "Get ignored podcasts",
+    request_body = GetIgnoredPodcastsRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_ignored_podcasts(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -3807,6 +4695,17 @@ pub async fn get_ignored_podcasts(
 }
 
 // Get user's language preference
+#[utoipa::path(
+    get,
+    path = "/get_user_language",
+    tag = "settings",
+    summary = "Get user language",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = UserLanguageResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_user_language(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3829,6 +4728,18 @@ pub async fn get_user_language(
 }
 
 // Update user's language preference
+#[utoipa::path(
+    put,
+    path = "/update_user_language",
+    tag = "settings",
+    summary = "Update user language",
+    request_body = crate::models::LanguageUpdateRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_user_language(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3852,6 +4763,17 @@ pub async fn update_user_language(
 }
 
 // Get available languages by scanning translation files
+#[utoipa::path(
+    get,
+    path = "/get_available_languages",
+    tag = "settings",
+    summary = "Get available languages",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = AvailableLanguagesResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_available_languages() -> Result<Json<AvailableLanguagesResponse>, AppError> {
     let translations_dir = std::path::Path::new("/var/www/html/static/translations");
     
@@ -3938,6 +4860,17 @@ pub async fn get_available_languages() -> Result<Json<AvailableLanguagesResponse
 }
 
 // Get server default language (no authentication required)
+#[utoipa::path(
+    get,
+    path = "/get_server_default_language",
+    tag = "settings",
+    summary = "Get server default language",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_server_default_language() -> Result<Json<serde_json::Value>, AppError> {
     // Get default language from environment variable, fallback to 'en'
     let default_language = std::env::var("DEFAULT_LANGUAGE").unwrap_or_else(|_| "en".to_string());
@@ -3955,7 +4888,7 @@ pub async fn get_server_default_language() -> Result<Json<serde_json::Value>, Ap
 }
 
 // Request struct for set_global_podcast_cover_preference - matches playback speed pattern
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SetGlobalPodcastCoverPreference {
     pub user_id: i32,
     pub use_podcast_covers: bool,
@@ -3963,6 +4896,18 @@ pub struct SetGlobalPodcastCoverPreference {
 }
 
 // Set global podcast cover preference - matches Python api_set_global_podcast_cover_preference function
+#[utoipa::path(
+    post,
+    path = "/user/set_global_podcast_cover_preference",
+    tag = "settings",
+    summary = "Set global podcast cover preference",
+    request_body = SetGlobalPodcastCoverPreference,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn set_global_podcast_cover_preference(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3990,7 +4935,7 @@ pub async fn set_global_podcast_cover_preference(
 }
 
 // Request struct for set_podcast_cover_preference - matches podcast playback speed pattern
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SetPodcastCoverPreference {
     pub user_id: i32,
     pub podcast_id: i32,
@@ -3998,6 +4943,18 @@ pub struct SetPodcastCoverPreference {
 }
 
 // Set podcast cover preference - matches Python api_set_podcast_cover_preference function
+#[utoipa::path(
+    post,
+    path = "/podcast/set_cover_preference",
+    tag = "settings",
+    summary = "Set podcast cover preference",
+    request_body = SetPodcastCoverPreference,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn set_podcast_cover_preference(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -4020,13 +4977,25 @@ pub async fn set_podcast_cover_preference(
 }
 
 // Request struct for clear_podcast_cover_preference - matches clear playback speed pattern
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct ClearPodcastCoverPreference {
     pub user_id: i32,
     pub podcast_id: i32,
 }
 
 // Clear podcast cover preference - matches Python api_clear_podcast_cover_preference function
+#[utoipa::path(
+    post,
+    path = "/podcast/clear_cover_preference",
+    tag = "settings",
+    summary = "Clear podcast cover preference",
+    request_body = ClearPodcastCoverPreference,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn clear_podcast_cover_preference(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -4049,6 +5018,17 @@ pub async fn clear_podcast_cover_preference(
 }
 
 // Get global podcast cover preference
+#[utoipa::path(
+    get,
+    path = "/user/get_podcast_cover_preference",
+    tag = "settings",
+    summary = "Get global podcast cover preference",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_global_podcast_cover_preference(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -4092,6 +5072,18 @@ pub async fn get_global_podcast_cover_preference(
 }
 
 // Get all shared links for the authenticated user
+#[utoipa::path(
+    get,
+    path = "/get_user_shared_links/{user_id}",
+    tag = "settings",
+    summary = "Get user shared links",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_user_shared_links(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -4109,12 +5101,24 @@ pub async fn get_user_shared_links(
     Ok(Json(serde_json::json!({ "shared_links": links })))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct DeleteSharedLinkRequest {
     pub share_code: String,
 }
 
 // Delete a shared link owned by the authenticated user
+#[utoipa::path(
+    delete,
+    path = "/delete_shared_link",
+    tag = "settings",
+    summary = "Delete shared link",
+    request_body = DeleteSharedLinkRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn delete_shared_link(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -4133,13 +5137,25 @@ pub async fn delete_shared_link(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct ExtendSharedLinkRequest {
     pub share_code: String,
     pub days: i64,
 }
 
 // Extend the expiry of a shared link owned by the authenticated user
+#[utoipa::path(
+    put,
+    path = "/extend_shared_link",
+    tag = "settings",
+    summary = "Extend shared link",
+    request_body = ExtendSharedLinkRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn extend_shared_link(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -4160,5 +5176,98 @@ pub async fn extend_shared_link(
     } else {
         Err(AppError::not_found("Shared link not found or not owned by you."))
     }
+}
+
+#[utoipa::path(
+    get,
+    path = "/user/custom_themes/{user_id}",
+    tag = "settings",
+    summary = "Get custom themes",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_custom_themes(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<i32>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own custom themes!"));
+    }
+
+    let themes = state.db_pool.get_custom_themes(user_id).await?;
+    Ok(Json(serde_json::json!({ "themes": themes })))
+}
+
+#[utoipa::path(
+    post,
+    path = "/user/custom_themes",
+    tag = "settings",
+    summary = "Create custom theme",
+    request_body = crate::models::CreateCustomThemeRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn create_custom_theme(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<crate::models::CreateCustomThemeRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only create themes for yourself!"));
+    }
+
+    let theme = state.db_pool.create_custom_theme(request.user_id, &request).await?;
+    Ok(Json(serde_json::json!({ "theme": theme })))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/user/custom_themes",
+    tag = "settings",
+    summary = "Delete custom theme",
+    request_body = crate::models::DeleteCustomThemeRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn delete_custom_theme(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<crate::models::DeleteCustomThemeRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only delete your own custom themes!"));
+    }
+
+    state.db_pool.delete_custom_theme(request.theme_id, request.user_id).await?;
+    Ok(Json(serde_json::json!({ "message": "Custom theme deleted successfully" })))
 }
 

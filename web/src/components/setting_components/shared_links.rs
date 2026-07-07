@@ -1,4 +1,4 @@
-use crate::components::context::AppState;
+use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_delete_shared_link, call_extend_shared_link, call_get_user_shared_links, SharedLink,
@@ -43,7 +43,7 @@ pub fn shared_links() -> Html {
             let api_key = api_key.clone();
             let server_name = server_name.clone();
             let user_id = user_id.clone();
-            let dispatch_err = dispatch_err.clone();
+            let _dispatch_err = dispatch_err.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(api_key), Some(server_name), Some(user_id)) =
@@ -54,7 +54,7 @@ pub fn shared_links() -> Html {
                             Ok(resp) => links.set(resp.shared_links),
                             Err(e) => {
                                 let msg = format_error_message(&e.to_string());
-                                dispatch_err.reduce_mut(|s| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
                                     s.error_message = Some(format!("Error loading shared links: {}", msg))
                                 });
                             }
@@ -98,7 +98,7 @@ pub fn shared_links() -> Html {
             let server_name = server_name.clone();
             let modal_state = modal_state.clone();
             let refresh_trigger = refresh_trigger.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(code), Some(api_key), Some(server_name)) =
                     (code, api_key, server_name)
@@ -106,14 +106,14 @@ pub fn shared_links() -> Html {
                     if let Some(api_key) = api_key {
                         match call_delete_shared_link(&server_name, &code, &api_key).await {
                             Ok(_) => {
-                                dispatch.reduce_mut(|s| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
                                     s.info_message = Some("Shared link deleted.".to_string())
                                 });
                                 refresh_trigger.set(*refresh_trigger + 1);
                             }
                             Err(e) => {
                                 let msg = format_error_message(&e.to_string());
-                                dispatch.reduce_mut(|s| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
                                     s.error_message =
                                         Some(format!("Error deleting link: {}", msg))
                                 });
@@ -142,7 +142,7 @@ pub fn shared_links() -> Html {
             let server_name = server_name.clone();
             let modal_state = modal_state.clone();
             let refresh_trigger = refresh_trigger.clone();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(code), Some(api_key), Some(server_name)) =
                     (code, api_key, server_name)
@@ -150,7 +150,7 @@ pub fn shared_links() -> Html {
                     if let Some(api_key) = api_key {
                         match call_extend_shared_link(&server_name, &code, days, &api_key).await {
                             Ok(_) => {
-                                dispatch.reduce_mut(|s| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
                                     s.info_message = Some(format!(
                                         "Shared link extended by {} days.",
                                         days
@@ -160,7 +160,7 @@ pub fn shared_links() -> Html {
                             }
                             Err(e) => {
                                 let msg = format_error_message(&e.to_string());
-                                dispatch.reduce_mut(|s| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|s| {
                                     s.error_message =
                                         Some(format!("Error extending link: {}", msg))
                                 });
@@ -229,7 +229,7 @@ pub fn shared_links() -> Html {
                                 max="365"
                                 value={extend_days.to_string()}
                                 oninput={on_days_change}
-                                class="border text-sm rounded-lg block w-full p-2.5 item_container-input"
+                                class="form-input w-full"
                             />
                         </div>
                         <div class="flex justify-between space-x-4">
@@ -255,10 +255,6 @@ pub fn shared_links() -> Html {
                 ModalState::Hidden => html! {},
             }
         }
-        <div class="p-4">
-            <p class="item_container-text text-lg font-bold mb-4">{i18n.t("shared_links.title")}</p>
-            <p class="item_container-text text-md mb-4">{i18n.t("shared_links.description")}</p>
-        </div>
         <div class="relative overflow-x-auto">
             <table class="w-full text-sm text-left rtl:text-right">
                 <thead class="text-xs uppercase table-header">
@@ -302,11 +298,11 @@ pub fn shared_links() -> Html {
                                         <td class="px-6 py-4">{ &link.podcast_name }</td>
                                         <td class="px-6 py-4">{ &link.expiration_date }</td>
                                         <td class="px-6 py-4">
-                                            <div class="flex gap-2">
-                                                <button onclick={on_extend} class="settings-button text-xs font-bold py-1 px-3 rounded">
+                                            <div class="flex items-center gap-2">
+                                                <button onclick={on_extend} class="settings-button text-xs font-bold h-8 px-3 rounded" style="margin-top:0;margin-bottom:0;">
                                                     {i18n.t("shared_links.extend")}
                                                 </button>
-                                                <button onclick={on_delete} class="download-button text-xs font-bold py-1 px-3 rounded">
+                                                <button onclick={on_delete} class="download-button text-xs font-bold h-8 px-3 rounded" style="margin-bottom:0;">
                                                     {i18n.t("shared_links.delete")}
                                                 </button>
                                             </div>

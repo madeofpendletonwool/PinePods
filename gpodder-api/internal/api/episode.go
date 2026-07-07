@@ -32,6 +32,9 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 		podcastURL := c.Query("podcast")
 		deviceName := c.Query("device")
 		aggregated := c.Query("aggregated") == "true"
+		// order: default "asc" so sync clients can paginate forward via the returned timestamp.
+		// "desc" (newest first) is used by the statistics view to show the most recent actions.
+		orderDesc := c.Query("order") == "desc"
 
 		// Get device ID if provided
 		var deviceID *int
@@ -104,8 +107,17 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 		// Performance optimization: Add limits and optimize query structure
 		const MAX_EPISODE_ACTIONS = 25000 // Limit raised to 25k to handle power users while preventing DoS
 
+		// Optional caller-supplied row limit (e.g. the statistics view only wants the latest few).
+		// Defaults to and is clamped at MAX_EPISODE_ACTIONS.
+		rowLimit := MAX_EPISODE_ACTIONS
+		if limitStr := c.Query("limit"); limitStr != "" {
+			if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 && parsed < MAX_EPISODE_ACTIONS {
+				rowLimit = parsed
+			}
+		}
+
 		// Log query performance info
-		log.Printf("[DEBUG] getEpisodeActions: Query for user %v with since=%d, device=%s, aggregated=%v",
+		debugf("getEpisodeActions: Query for user %v with since=%d, device=%s, aggregated=%v",
 			userID, since, deviceName, aggregated)
 		
 		// Build query based on parameters with performance optimizations
@@ -280,18 +292,20 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				}
 			}
 
-			// ORDER BY DESC (newest first) to prioritize recent actions
-			// This ensures recent play state is synced first, even if total actions > limit
-			queryParts = append(queryParts, "ORDER BY e.Timestamp DESC")
+			// Default ORDER BY ASC (oldest first) so sync clients can paginate forward through ALL
+			// actions using the returned timestamp as the next 'since'. With DESC + a row limit,
+			// anything beyond the limit (>25k actions) would be silently dropped on the next page.
+			// Callers that want the most recent actions (e.g. the statistics view) pass order=desc.
+			if orderDesc {
+				queryParts = append(queryParts, "ORDER BY e.Timestamp DESC")
+			} else {
+				queryParts = append(queryParts, "ORDER BY e.Timestamp ASC")
+			}
 
 			// Add LIMIT for performance - prevents returning massive datasets
 			// Clients should use the 'since' parameter to paginate through results
-			if database.IsPostgreSQLDB() {
-				queryParts = append(queryParts, fmt.Sprintf("LIMIT %d", MAX_EPISODE_ACTIONS))
-			} else {
-				queryParts = append(queryParts, fmt.Sprintf("LIMIT %d", MAX_EPISODE_ACTIONS))
-			}
-			
+			queryParts = append(queryParts, fmt.Sprintf("LIMIT %d", rowLimit))
+
 			query = strings.Join(queryParts, " ")
 		}
 
@@ -307,10 +321,11 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 		}
 		defer rows.Close()
 		
-		log.Printf("[DEBUG] getEpisodeActions: Query executed in %v", queryDuration)
+		debugf("getEpisodeActions: Query executed in %v", queryDuration)
 
 		// Build response
 		actions := make([]models.EpisodeAction, 0)
+		var maxBatchTimestamp int64
 		for rows.Next() {
 			var action models.EpisodeAction
 			var deviceIDInt sql.NullInt64
@@ -318,6 +333,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			var started sql.NullInt64
 			var position sql.NullInt64
 			var total sql.NullInt64
+			var actionTimestamp int64
 
 			if err := rows.Scan(
 				&action.ActionID,
@@ -326,7 +342,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				&action.Podcast,
 				&action.Episode,
 				&action.Action,
-				&action.Timestamp,
+				&actionTimestamp,
 				&started,
 				&position,
 				&total,
@@ -334,6 +350,11 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			); err != nil {
 				log.Printf("[ERROR] getEpisodeActions: Error scanning action row: %v", err)
 				continue
+			}
+
+			action.Timestamp = actionTimestamp
+			if actionTimestamp > maxBatchTimestamp {
+				maxBatchTimestamp = actionTimestamp
 			}
 
 			// Set optional fields if present
@@ -366,12 +387,21 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 
 		// Log performance results
 		totalDuration := time.Since(startTime)
-		log.Printf("[DEBUG] getEpisodeActions: Returning %d actions, total time: %v", len(actions), totalDuration)
+		debugf("getEpisodeActions: Returning %d actions, total time: %v", len(actions), totalDuration)
+
+		// Determine the timestamp the client should use as 'since' on its next request.
+		// If we hit the row limit there are more actions to fetch, so return the max timestamp
+		// in THIS batch (results are ordered ascending) - that lets the client page forward
+		// through everything. Otherwise return the global latest so the next sync is incremental.
+		responseTimestamp := latestTimestamp
+		if len(actions) >= MAX_EPISODE_ACTIONS && maxBatchTimestamp > 0 {
+			responseTimestamp = maxBatchTimestamp
+		}
 
 		// Return response in gpodder format
 		c.JSON(http.StatusOK, models.EpisodeActionsResponse{
 			Actions:   actions,
-			Timestamp: latestTimestamp,
+			Timestamp: responseTimestamp,
 		})
 	}
 }
@@ -530,7 +560,7 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 						// Try parsing as ISO date (2025-04-23T12:18:51)
 						if parsedTime, err := time.Parse(time.RFC3339, t); err == nil {
 							actionTimestamp = parsedTime.Unix()
-							log.Printf("[DEBUG] uploadEpisodeActions: Parsed ISO timestamp '%s' to Unix timestamp %d", t, actionTimestamp)
+							debugf("uploadEpisodeActions: Parsed ISO timestamp '%s' to Unix timestamp %d", t, actionTimestamp)
 						} else {
 							// Try some other common formats
 							formats := []string{

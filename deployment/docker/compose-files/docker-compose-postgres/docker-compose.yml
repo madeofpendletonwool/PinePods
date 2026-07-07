@@ -1,14 +1,14 @@
 services:
   db:
     container_name: db
-    image: postgres:17
+    image: postgres:18
     environment:
       POSTGRES_DB: pinepods_database
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: myS3curepass
-      PGDATA: /var/lib/postgresql/data/pgdata
+      PGDATA: /var/lib/pgdata/pgdata
     volumes:
-      - /home/user/pinepods/pgdata:/var/lib/postgresql/data
+      - /home/user/pinepods/pgdata:/var/lib/pgdata
     restart: always
 
   valkey:
@@ -46,6 +46,8 @@ services:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
+      # Mount local media files to use the Add Local Podcast feature (optional)
+      - /home/user/pinepods/local-media:/opt/pinepods/local-media
       # Timezone volumes, HIGHLY optional. Read the timezone notes below
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro

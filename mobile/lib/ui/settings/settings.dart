@@ -15,7 +15,6 @@ import 'package:pinepods_mobile/ui/widgets/action_text.dart';
 import 'package:pinepods_mobile/ui/settings/pinepods_login.dart';
 import 'package:pinepods_mobile/ui/debug/debug_logs_page.dart';
 import 'package:pinepods_mobile/ui/themes.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';

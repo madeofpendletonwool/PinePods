@@ -45,12 +45,14 @@ class NativeAudioPlayerService extends AudioPlayerService {
   DateTime? _episodeStartTime;
   Timer? _localPositionTimer;
 
-  StreamSubscription<int>? _positionSubscription;
+  /// Whether we've already reported the decoded duration for the current
+  /// episode to the server (see PinepodsAudioService.updateEpisodeDurationIfNeeded).
+  bool _actualDurationReported = false;
+
   StreamSubscription<int>? _sleepSubscription;
   StreamSubscription? _nativeEventSubscription;
 
   final BehaviorSubject<AudioState> _playingState = BehaviorSubject<AudioState>.seeded(AudioState.none);
-  final _durationTicker = Stream<int>.periodic(const Duration(milliseconds: 500), (count) => count).asBroadcastStream();
   final _sleepTicker = Stream<int>.periodic(const Duration(milliseconds: 500), (count) => count).asBroadcastStream();
   final _playPosition = BehaviorSubject<PositionState>();
   final _episodeEvent = BehaviorSubject<Episode?>(sync: true);
@@ -76,24 +78,36 @@ class NativeAudioPlayerService extends AudioPlayerService {
     const nativeLogChannel = MethodChannel('com.pinepods/native_logs');
     nativeLogChannel.setMethodCallHandler(_handleNativeLog);
 
-    // Defer event channel subscription to avoid blocking iOS during app startup.
-    // On iOS, the event channel may not be fully ready during widget construction,
-    // which can cause the app to hang on a black screen.
-    Future.delayed(Duration.zero, () {
-      log.info('Subscribing to native event channel');
+    // Defer subscription — on Android, configureFlutterEngine (which registers the
+    // plugin) runs on the native thread and may not finish before Dart starts.
+    // Retry with increasing delays until the plugin is ready (max ~5s total).
+    _subscribeToEventChannelWithRetry();
+
+    _loadQueue();
+  }
+
+  void _subscribeToEventChannelWithRetry([int attempt = 0]) {
+    // Delays: 0, 200, 400, 600, 800, 1000ms... capped at 1000ms per attempt (max 10 tries ~6s)
+    final delay = attempt == 0
+        ? Duration.zero
+        : Duration(milliseconds: (200 * attempt).clamp(200, 1000));
+
+    Future.delayed(delay, () {
       try {
         _nativeEventSubscription = eventChannel.receiveBroadcastStream().listen(
           _handleNativeEvent,
-          onError: (error) {
-            log.severe('Native event stream error: $error');
-          },
+          onError: (error) => log.severe('Native event stream error: $error'),
         );
+        log.info('Subscribed to native event channel (attempt ${attempt + 1})');
       } catch (e) {
-        log.severe('Failed to subscribe to native event channel: $e');
+        if (attempt < 10) {
+          log.fine('Event channel not ready yet (attempt $attempt), retrying...');
+          _subscribeToEventChannelWithRetry(attempt + 1);
+        } else {
+          log.severe('Failed to subscribe to native event channel after ${attempt + 1} attempts: $e');
+        }
       }
     });
-
-    _loadQueue();
   }
 
   /// Handle native logs from Android/iOS and forward to Flutter logger
@@ -215,6 +229,14 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
       // Update chapter if needed
       _updateChapter(position ~/ 1000, duration ~/ 1000);
+
+      // Once the decoder reports a real length, correct the server's stored
+      // duration if it's wrong (e.g. feeds shipping a missing/zero duration).
+      // Mirrors the web player; only fires once per episode.
+      if (!_actualDurationReported && duration > 0) {
+        _actualDurationReported = true;
+        _pinepodsAudioService?.updateEpisodeDurationIfNeeded(duration / 1000.0);
+      }
     }
   }
 
@@ -279,11 +301,32 @@ class NativeAudioPlayerService extends AudioPlayerService {
   }
 
   @override
+  Future<Episode?> findDownloadedEpisode(int episodeId) async {
+    final guid = 'pinepods_$episodeId';
+
+    final direct = await repository.findEpisodeByGuid(guid);
+    if (direct != null && direct.downloadState == DownloadState.downloaded) {
+      return direct;
+    }
+
+    // Legacy 'pinepods_<id>_<timestamp>' guids: fall back to a scan.
+    final all = await repository.findAllEpisodes();
+    for (final e in all) {
+      if ((e.guid == guid || e.guid.startsWith('${guid}_')) &&
+          e.downloadState == DownloadState.downloaded) {
+        return e;
+      }
+    }
+    return null;
+  }
+
+  @override
   Future<void> playEpisode({required Episode episode, bool resume = true}) async {
     log.info('playEpisode: ${episode.title}, resume: $resume');
 
     _currentEpisode = episode;
     _currentEpisode!.played = false;
+    _actualDurationReported = false;
 
     // Get URI (local file or stream)
     final uri = await _generateEpisodeUri(episode);
@@ -439,6 +482,9 @@ class NativeAudioPlayerService extends AudioPlayerService {
       // Convert seconds to milliseconds for native player
       final positionMs = position * 1000;
       await platform.invokeMethod('seek', {'position': positionMs});
+      // Persist the new position immediately so a crash/quick-close right after
+      // a scrub doesn't lose it (steady-state saver only runs every 15s).
+      await _saveLocalPosition();
     } catch (e) {
       log.severe('Error seeking: $e');
     }
@@ -468,6 +514,38 @@ class NativeAudioPlayerService extends AudioPlayerService {
         await platform.invokeMethod('setTrimSilence', {'enabled': trim});
       } catch (e) {
         log.severe('Error setting trim silence: $e');
+      }
+    }
+  }
+
+  @override
+  Future<void> applyEpisodeSilenceTrim(
+    bool enabled,
+    List<Map<String, double>> segments,
+  ) async {
+    log.info('applyEpisodeSilenceTrim: enabled=$enabled, segments=${segments.length}');
+    // Session-only: unlike trimSilence(), this does NOT persist to the global
+    // settingsService, so a per-podcast value never overwrites the user default.
+    if (Platform.isAndroid) {
+      // Android uses ExoPlayer's native real-time skip-silence DSP. Effective
+      // enablement is the per-podcast flag OR the user's global preference.
+      final effective = enabled || settingsService.trimSilence;
+      try {
+        await platform.invokeMethod('setTrimSilence', {'enabled': effective});
+      } catch (e) {
+        log.severe('Error applying episode trim silence (Android): $e');
+      }
+    } else if (Platform.isIOS) {
+      // iOS (AVPlayer has no DSP skip-silence): apply pre-computed silence ranges.
+      try {
+        await platform.invokeMethod('setSkipSegments', {
+          'enabled': enabled,
+          'segments': segments
+              .map((s) => {'start': s['start'], 'end': s['end']})
+              .toList(),
+        });
+      } catch (e) {
+        log.severe('Error applying episode skip segments (iOS): $e');
       }
     }
   }
@@ -588,6 +666,9 @@ class NativeAudioPlayerService extends AudioPlayerService {
     _transcriptEvent.add(TranscriptUnavailableState());
   }
 
+  @override
+  void setPlaylistContext(int? playlistId) {}
+
   void setPinepodsAudioService(PinepodsAudioService? service) {
     _pinepodsAudioService = service;
   }
@@ -637,7 +718,10 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
   void _startLocalPositionSaver() {
     _localPositionTimer?.cancel();
-    _localPositionTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+    // Steady-state local resume-position save. Kept infrequent for battery; the
+    // important moments (pause/seek/stop/complete) save immediately via
+    // _saveLocalPosition() so crash-resume stays accurate.
+    _localPositionTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
       try {
         await _saveLocalPosition();
       } catch (e) {
@@ -931,11 +1015,10 @@ class NativeAudioPlayerService extends AudioPlayerService {
       pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
       log.info('Calling PinePods API: getRecentEpisodes for Feed tab');
 
-      final episodes = await pinepodsService.getRecentEpisodes(settingsService.pinepodsUserId!);
+      final page = await pinepodsService.getRecentEpisodes(settingsService.pinepodsUserId!);
 
-      log.info('PinePods API returned ${episodes.length} recent episodes for Feed');
-      // Return first 50 episodes
-      return episodes.take(50).map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
+      log.info('PinePods API returned ${page.episodes.length} recent episodes for Feed (total: ${page.total})');
+      return page.episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
     } catch (e) {
       log.severe('Error getting feed for car: $e');
       return [];

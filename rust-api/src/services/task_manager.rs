@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub enum TaskStatus {
     #[serde(rename = "PENDING")]
     Pending,
@@ -16,7 +16,7 @@ pub enum TaskStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TaskInfo {
     pub id: String,
     pub task_type: String,
@@ -27,6 +27,10 @@ pub struct TaskInfo {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub result: Option<serde_json::Value>,
+    #[serde(default)]
+    pub episode_title: Option<String>,
+    #[serde(default)]
+    pub podcast_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -100,10 +104,12 @@ impl TaskManager {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             result: None,
+            episode_title: None,
+            podcast_name: None,
         };
 
         self.save_task(&task).await?;
-        
+
         // Send initial task update with item_id for frontend compatibility
         let update = TaskUpdate {
             task_id: task_id.clone(),
@@ -117,8 +123,62 @@ impl TaskManager {
             completed_at: None,
         };
         let _ = self.progress_sender.send(update);
-        
+
         Ok(task_id)
+    }
+
+    pub async fn create_download_task(
+        &self,
+        task_type: String,
+        user_id: i32,
+        item_id: Option<i32>,
+        episode_title: Option<String>,
+        podcast_name: Option<String>,
+    ) -> AppResult<String> {
+        let task_id = Uuid::new_v4().to_string();
+        let task = TaskInfo {
+            id: task_id.clone(),
+            task_type: task_type.clone(),
+            user_id,
+            status: TaskStatus::Pending,
+            progress: 0.0,
+            message: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            result: None,
+            episode_title,
+            podcast_name,
+        };
+
+        self.save_task(&task).await?;
+
+        let update = TaskUpdate {
+            task_id: task_id.clone(),
+            user_id,
+            task_type,
+            item_id,
+            progress: 0.0,
+            status: TaskStatus::Pending,
+            details: serde_json::json!({}),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            completed_at: None,
+        };
+        let _ = self.progress_sender.send(update);
+
+        Ok(task_id)
+    }
+
+    pub async fn set_task_metadata(
+        &self,
+        task_id: &str,
+        episode_title: Option<String>,
+        podcast_name: Option<String>,
+    ) -> AppResult<()> {
+        let mut task = self.get_task(task_id).await?;
+        task.episode_title = episode_title;
+        task.podcast_name = podcast_name;
+        task.updated_at = chrono::Utc::now();
+        self.save_task(&task).await
     }
 
     pub async fn update_task_progress(

@@ -27,6 +27,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash curl openssl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
+# Install yt-dlp — pick the arch-specific PyInstaller binary (no Python needed)
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+        x86_64)  YTDLP="yt-dlp_linux" ;; \
+        aarch64) YTDLP="yt-dlp_linux_aarch64" ;; \
+        armv7l)  YTDLP="yt-dlp_linux_armv7l" ;; \
+        *)       YTDLP="yt-dlp_linux" ;; \
+    esac && \
+    curl -L "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YTDLP}" \
+        -o /usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp
+
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/target/release/pinepods_backend /usr/local/bin/pinepods_backend
 

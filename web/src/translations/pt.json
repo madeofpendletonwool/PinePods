@@ -1,23 +1,23 @@
 {
   "api_keys": {
-    "api_id": "",
-    "api_key_deleted_successfully": "",
+    "api_id": "ID da API",
+    "api_key_deleted_successfully": "Chave de API excluída com sucesso",
     "api_key_save_instructions": "",
     "api_keys_description": "",
     "api_keys_title": "",
-    "cancel": "",
-    "close_modal": "",
+    "cancel": "Cancelar",
+    "close_modal": "Fechar modal",
     "date_created": "",
     "delete": "",
     "delete_api_key": "",
-    "delete_api_key_confirmation": "",
+    "delete_api_key_confirmation": "Tem certeza de que deseja excluir esta chave API? Esta ação não pode ser desfeita.",
     "error_deleting_api_key": "",
     "error_getting_api_info": "",
-    "last_4_digits": "",
+    "last_4_digits": "Últimos 4 Dígitos",
     "new_api_key_created": "",
     "ok": "",
     "request_api_key": "",
-    "user": ""
+    "user": "Usuário"
   },
   "app_drawer": {
     "downloads": "",
@@ -132,7 +132,8 @@
     "title_za": "",
     "update": "",
     "username": "",
-    "yes": ""
+    "yes": "",
+    "close": "Close"
   },
   "custom_feed": {
     "add_feed": "",
@@ -166,7 +167,8 @@
     "no_downloaded_episodes_found": "",
     "no_episode_downloads_found": "",
     "search_downloaded_episodes": "",
-    "select": ""
+    "select": "",
+    "load_more": "Load More"
   },
   "downloads_tauri": {
     "downloaded_episodes_count": "",
@@ -368,7 +370,11 @@
     "youtube_channel_successfully_removed": "",
     "youtube_download_limit": "",
     "youtube_episode_limit_updated": "",
-    "youtube_limit_description": ""
+    "youtube_limit_description": "",
+    "video": "Video",
+    "trim_silence": "Trim silence",
+    "trim_silence_description": "Auto-detect and skip silence on new downloads",
+    "aggressiveness": "Aggressiveness"
   },
   "export_settings": {
     "download_export_opml": "",
@@ -591,7 +597,19 @@
     "task_download": "",
     "task_feed_refresh": "",
     "task_playlist": "",
-    "task_youtube_download": ""
+    "task_youtube_download": "",
+    "task_bulk_download": "",
+    "task_youtube_bulk_download": "",
+    "task_opml_import": "",
+    "task_add_podcast": "",
+    "task_backup": "",
+    "task_restore": "",
+    "task_gpodder_sync": "",
+    "task_nextcloud_sync": "",
+    "task_nextcloud_auth": "",
+    "task_playlist_update": "",
+    "task_cleanup": "",
+    "task_refresh_hosts": ""
   },
   "notifications": {
     "access_token": "",
@@ -687,7 +705,9 @@
     "no_subscribed_people_found": "",
     "shows": "",
     "subscribe_to_hosts_message": "",
-    "subscribed_people": ""
+    "subscribed_people": "",
+    "loading_episodes": "Loading episodes...",
+    "no_recent_episodes_found": "No recent episodes found."
   },
   "person": {
     "add_podcasts_message": "",
@@ -708,7 +728,8 @@
     "profile_alt": "",
     "subscribe": "",
     "unknown_author": "",
-    "unsubscribe": ""
+    "unsubscribe": "",
+    "loading_podcasts": "Loading podcasts..."
   },
   "playback_settings": {
     "auto_complete_description": "",
@@ -731,8 +752,21 @@
     "fresh_releases_empty": "",
     "no_episodes_found": "",
     "no_episodes_match_criteria": "",
+    "play_from_top": "Play from Top",
     "refresh": "",
-    "refreshing": ""
+    "refreshing": "",
+    "edit_filter_by_podcasts": "Filter by Podcasts",
+    "edit_episode_status": "Episode Status",
+    "edit_include_unplayed": "Include Unplayed",
+    "edit_include_partially_played": "Include Partially Played",
+    "edit_include_played": "Include Played",
+    "edit_min_duration": "Min Duration (min)",
+    "edit_max_duration": "Max Duration (min)",
+    "edit_min_progress": "Min Progress (%)",
+    "edit_max_progress": "Max Progress (%)",
+    "edit_time_filter_hours": "Time Filter (hours)",
+    "edit_max_episodes": "Max Episodes",
+    "edit_group_by_podcast": "Group by Podcast"
   },
   "playlists": {
     "are_you_sure_delete": "",
@@ -894,7 +928,8 @@
   },
   "safehtml": {
     "start_episode_first": "",
-    "start_episode_first_audio": ""
+    "start_episode_first_audio": "",
+    "starting_episode_for_timecode": ""
   },
   "saved": {
     "clear_all": "",

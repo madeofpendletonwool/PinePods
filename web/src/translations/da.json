@@ -1,68 +1,68 @@
 {
   "api_keys": {
-    "api_id": "",
-    "api_key_deleted_successfully": "",
-    "api_key_save_instructions": "",
-    "api_keys_description": "",
-    "api_keys_title": "",
-    "cancel": "",
-    "close_modal": "",
-    "date_created": "",
-    "delete": "",
-    "delete_api_key": "",
-    "delete_api_key_confirmation": "",
-    "error_deleting_api_key": "",
-    "error_getting_api_info": "",
-    "last_4_digits": "",
-    "new_api_key_created": "",
-    "ok": "",
-    "request_api_key": "",
-    "user": ""
+    "api_id": "API ID",
+    "api_key_deleted_successfully": "API-nøgle blev slettet",
+    "api_key_save_instructions": "Kopier API-nøglen nedenunder og gem den et sikkert sted. Du kan kun se den én gang, men kan altid lave en ny, hvis du mister den.",
+    "api_keys_description": "Du kan anmode om en Pinepods API-nøgle her. Disse nøgler kan i forbindelse med andre Pinepods apps (fx Pinepods Firewood) til at forbinde dem til Pinepodsserveren. Derudover kan du bruge en API-nøgle til at forbinde til denne server fra en anden Pinepods server, lignende at bruge en anden server som klient for denne.",
+    "api_keys_title": "API-nøgler:",
+    "cancel": "Annuller",
+    "close_modal": "Luk modal",
+    "date_created": "Dato oprettet",
+    "delete": "Slet",
+    "delete_api_key": "Slet API-nøgle",
+    "delete_api_key_confirmation": "Er du sikker på, du vil slette denne API-nøgle? Denne handling kan ikke fortrydes.",
+    "error_deleting_api_key": "Fejl ved sletning af API-nøgle ",
+    "error_getting_api_info": "Fejl ved indhentning af API-info: ",
+    "last_4_digits": "De sidste 4 cifre",
+    "new_api_key_created": "Ny API-nøgle blev oprettet",
+    "ok": "OK",
+    "request_api_key": "Anmod om API-nøgle",
+    "user": "Bruger"
   },
   "app_drawer": {
-    "downloads": "",
-    "feed": "",
-    "history": "",
-    "local_downloads": "",
-    "pinepods": "",
-    "podcasts": "",
-    "queue": "",
-    "saved": "",
-    "search_podcasts": "",
-    "server_downloads": "",
-    "settings": "",
-    "sign_out": "",
-    "subscribed_people": ""
+    "downloads": "Downloads",
+    "feed": "Feed",
+    "history": "Historik",
+    "local_downloads": "Lokale downloads",
+    "pinepods": "Pinepods",
+    "podcasts": "Podcasts",
+    "queue": "Kø",
+    "saved": "Gemte",
+    "search_podcasts": "Søg på podcasts",
+    "server_downloads": "Serverdownloads",
+    "settings": "Indstillinger",
+    "sign_out": "Log ud",
+    "subscribed_people": "Abonnerede personer"
   },
   "audio": {
-    "chapters": "",
-    "no_audio_playing": "",
-    "no_chapters_available": "",
-    "shownotes": "",
-    "shownotes_unavailable": ""
+    "chapters": "Kapitler",
+    "no_audio_playing": "Inden lyd afspilles",
+    "no_chapters_available": "Ingen kapitler er tilgængelige",
+    "shownotes": "Shownoter",
+    "shownotes_unavailable": "Shownoter (utilgængelig)"
   },
   "auth": {
-    "account_created_success": "",
-    "close_modal": "",
-    "confirm_new_password": "",
-    "connect_different_server": "",
-    "create_new_user": "",
-    "email": "",
-    "enter_mfa_code": "",
-    "enter_new_password": "",
-    "enter_password_reset_code": "",
-    "forgot_password": "",
-    "full_name": "",
-    "incorrect_credentials": "",
-    "invalid_email": "",
-    "login": "",
-    "logout": "",
-    "password": "",
-    "reset_password": "",
-    "reset_password_instructions": "",
-    "server_name": "",
-    "submit": "",
-    "username": ""
+    "account_created_success": "Bruger blev oprettet succesfuldt! Du kan nu logge ind.",
+    "close_modal": "Luk modal",
+    "confirm_new_password": "Bekræft dit nye kodeord",
+    "connect_different_server": "Forbind til en anden server",
+    "create_new_user": "Opret ny bruger",
+    "email": "Email",
+    "enter_mfa_code": "Indtast MFA-kode",
+    "enter_new_password": "Indtast dit nye kodeord",
+    "enter_password_reset_code": "Indtast gendannelseskode til kodeordet",
+    "forgot_password": "Glemt kodeord",
+    "full_name": "Fuldt navn",
+    "incorrect_credentials": "Indtastede oplysninger er ikke korrekte",
+    "invalid_email": "Forkert emailadresse",
+    "login": "Login",
+    "logout": "Log ud",
+    "password": "Kodeord",
+    "reset_password": "Gendan kodeord",
+    "reset_password_instructions": "Indtast brugernavn og email for at gendanne dit kodeord.",
+    "server_name": "Servernavn",
+    "submit": "Indsend",
+    "username": "Brugernavn"
   },
   "backup_server": {
     "authenticate": "",
@@ -132,7 +132,8 @@
     "title_za": "",
     "update": "",
     "username": "",
-    "yes": ""
+    "yes": "",
+    "close": "Close"
   },
   "custom_feed": {
     "add_feed": "",
@@ -166,7 +167,8 @@
     "no_downloaded_episodes_found": "",
     "no_episode_downloads_found": "",
     "search_downloaded_episodes": "",
-    "select": ""
+    "select": "",
+    "load_more": "Load More"
   },
   "downloads_tauri": {
     "downloaded_episodes_count": "",
@@ -368,7 +370,11 @@
     "youtube_channel_successfully_removed": "",
     "youtube_download_limit": "",
     "youtube_episode_limit_updated": "",
-    "youtube_limit_description": ""
+    "youtube_limit_description": "",
+    "video": "Video",
+    "trim_silence": "Trim silence",
+    "trim_silence_description": "Auto-detect and skip silence on new downloads",
+    "aggressiveness": "Aggressiveness"
   },
   "export_settings": {
     "download_export_opml": "",
@@ -591,7 +597,19 @@
     "task_download": "",
     "task_feed_refresh": "",
     "task_playlist": "",
-    "task_youtube_download": ""
+    "task_youtube_download": "",
+    "task_bulk_download": "",
+    "task_youtube_bulk_download": "",
+    "task_opml_import": "",
+    "task_add_podcast": "",
+    "task_backup": "",
+    "task_restore": "",
+    "task_gpodder_sync": "",
+    "task_nextcloud_sync": "",
+    "task_nextcloud_auth": "",
+    "task_playlist_update": "",
+    "task_cleanup": "",
+    "task_refresh_hosts": ""
   },
   "notifications": {
     "access_token": "",
@@ -687,7 +705,9 @@
     "no_subscribed_people_found": "",
     "shows": "",
     "subscribe_to_hosts_message": "",
-    "subscribed_people": ""
+    "subscribed_people": "",
+    "loading_episodes": "Loading episodes...",
+    "no_recent_episodes_found": "No recent episodes found."
   },
   "person": {
     "add_podcasts_message": "",
@@ -708,7 +728,8 @@
     "profile_alt": "",
     "subscribe": "",
     "unknown_author": "",
-    "unsubscribe": ""
+    "unsubscribe": "",
+    "loading_podcasts": "Loading podcasts..."
   },
   "playback_settings": {
     "auto_complete_description": "",
@@ -731,8 +752,21 @@
     "fresh_releases_empty": "",
     "no_episodes_found": "",
     "no_episodes_match_criteria": "",
+    "play_from_top": "Play from Top",
     "refresh": "",
-    "refreshing": ""
+    "refreshing": "",
+    "edit_filter_by_podcasts": "Filter by Podcasts",
+    "edit_episode_status": "Episode Status",
+    "edit_include_unplayed": "Include Unplayed",
+    "edit_include_partially_played": "Include Partially Played",
+    "edit_include_played": "Include Played",
+    "edit_min_duration": "Min Duration (min)",
+    "edit_max_duration": "Max Duration (min)",
+    "edit_min_progress": "Min Progress (%)",
+    "edit_max_progress": "Max Progress (%)",
+    "edit_time_filter_hours": "Time Filter (hours)",
+    "edit_max_episodes": "Max Episodes",
+    "edit_group_by_podcast": "Group by Podcast"
   },
   "playlists": {
     "are_you_sure_delete": "",
@@ -894,7 +928,8 @@
   },
   "safehtml": {
     "start_episode_first": "",
-    "start_episode_first_audio": ""
+    "start_episode_first_audio": "",
+    "starting_episode_for_timecode": ""
   },
   "saved": {
     "clear_all": "",

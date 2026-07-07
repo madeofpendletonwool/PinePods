@@ -2,7 +2,7 @@ use crate::components::loading::Loading;
 use crate::components::app_drawer::App_drawer;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, NotificationState, PlaylistDataState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{self, CreatePlaylistRequest, Playlist, Podcast};
 use gloo_events::EventListener;
@@ -586,6 +586,7 @@ pub fn podcast_selector(props: &PodcastSelectorProps) -> Html {
 pub fn playlists() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (playlist_state, _) = use_store::<PlaylistDataState>();
     let (audio_state, _) = use_store::<UIState>();
     let modal_state = use_state(|| ModalState::Hidden);
     let selected_playlist_id = use_state(|| None::<i32>);
@@ -626,7 +627,6 @@ pub fn playlists() -> Html {
 
     // Effect to load playlists
     {
-        let dispatch = dispatch.clone();
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -642,7 +642,7 @@ pub fn playlists() -> Html {
                             .await
                         {
                             Ok(playlist_response) => {
-                                dispatch.reduce_mut(move |state| {
+                                Dispatch::<PlaylistDataState>::global().reduce_mut(move |state| {
                                     state.playlists = Some(playlist_response.playlists);
                                 });
                             }
@@ -718,7 +718,7 @@ pub fn playlists() -> Html {
 
     let on_toggle_select_playlist = {
         let selected_playlists = selected_playlists.clone();
-        let playlists = state.playlists.clone();
+        let playlists = playlist_state.playlists.clone();
 
         Callback::from(move |playlist_id: i32| {
             // Only toggle selection for non-system playlists
@@ -798,7 +798,7 @@ pub fn playlists() -> Html {
                 user_id.clone(),
                 server_name.clone(),
             ) {
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
                 let modal_state = modal_state.clone();
                 let delete_success_msg = delete_success_msg.clone();
                 let delete_failed_msg = delete_failed_msg.clone();
@@ -821,18 +821,18 @@ pub fn playlists() -> Html {
                             )
                             .await
                             {
-                                dispatch.reduce_mut(move |state| {
+                                Dispatch::<PlaylistDataState>::global().reduce_mut(move |state| {
                                     state.playlists = Some(playlists.playlists);
                                 });
                             }
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(delete_success_msg);
                             });
                             modal_state.set(ModalState::Hidden);
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("{}: {}", delete_failed_msg, formatted_error));
                             });
@@ -871,7 +871,7 @@ pub fn playlists() -> Html {
                     return;
                 }
 
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
                 let modal_state = modal_state.clone();
                 let is_loading_delete = is_loading_delete.clone();
                 let is_selection_mode = is_selection_mode.clone();
@@ -909,14 +909,14 @@ pub fn playlists() -> Html {
                     if let Ok(playlists) =
                         pod_req::call_get_playlists(&server_name, &api_key.unwrap(), user_id).await
                     {
-                        dispatch.reduce_mut(move |state| {
+                        Dispatch::<PlaylistDataState>::global().reduce_mut(move |state| {
                             state.playlists = Some(playlists.playlists);
                         });
                     }
 
                     // Show result message
                     if error_count == 0 {
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(format!(
                                 "{} {} {}",
                                 success_count,
@@ -929,11 +929,11 @@ pub fn playlists() -> Html {
                             ));
                         });
                     } else if success_count == 0 {
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(bulk_delete_failed_msg);
                         });
                     } else {
-                        dispatch.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(format!(
                                 "{} {} {}, {} {}",
                                 success_count,
@@ -947,6 +947,7 @@ pub fn playlists() -> Html {
                                 failed_msg
                             ));
                         });
+
                     }
 
                     modal_state.set(ModalState::Hidden);
@@ -1020,7 +1021,7 @@ pub fn playlists() -> Html {
                     time_filter_hours: time_filter_call.parse().ok(),
                 };
 
-                let dispatch = dispatch.clone();
+                let _dispatch = dispatch.clone();
                 let modal_state = modal_state.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
@@ -1040,18 +1041,18 @@ pub fn playlists() -> Html {
                             )
                             .await
                             {
-                                dispatch.reduce_mut(move |state| {
+                                Dispatch::<PlaylistDataState>::global().reduce_mut(move |state| {
                                     state.playlists = Some(playlists.playlists);
                                 });
                             }
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(create_success_msg);
                             });
                             modal_state.set(ModalState::Hidden);
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("{}: {}", create_failed_msg, formatted_error));
                             });
@@ -1445,7 +1446,6 @@ pub fn playlists() -> Html {
 
     let history = BrowserHistory::new();
 
-    let tog_state = state.clone();
     html! {
         <>
             <div class="main-container">
@@ -1503,7 +1503,7 @@ pub fn playlists() -> Html {
 
                 // Playlists grid
                 {
-                    if let Some(playlists) = &tog_state.playlists {
+                    if let Some(playlists) = &playlist_state.playlists {
                         if playlists.is_empty() {
                             empty_message(
                                 &i18n.t("playlists.no_playlists"),
@@ -1521,7 +1521,7 @@ pub fn playlists() -> Html {
                                             let modal_state = modal_state.clone();
                                             let is_selected = selected_playlists.contains(&playlist_id);
                                             let on_toggle_select = on_toggle_select_playlist.clone();
-                                            let playlist_clone = playlist.clone();
+                                            let _playlist_clone = playlist.clone();
 
                                             let on_delete = Callback::from(move |e: MouseEvent| {
                                                 e.stop_propagation();

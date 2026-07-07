@@ -106,16 +106,27 @@ FROM alpine
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 # Install runtime dependencies
-RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg wget jq mariadb-connector-c-dev
+# su-exec: drop privileges to PUID:PGID at startup. shadow: usermod/groupmod to remap the runtime user's IDs.
+RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg wget jq mariadb-connector-c-dev su-exec shadow
+
+# Create a fixed runtime user/group (default 911); startup.sh remaps these to PUID/PGID at runtime
+RUN addgroup -g 911 pinepods && \
+    adduser -D -H -u 911 -G pinepods -h /pinepods pinepods
 
 
-# Download and install latest yt-dlp binary (musllinux for Alpine)
-RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name) && \
-    wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${LATEST_VERSION}/yt-dlp_musllinux" && \
+# Download and install latest yt-dlp — pick the arch-specific musl binary (no Python needed)
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+        x86_64)  YTDLP="yt-dlp_musllinux" ;; \
+        aarch64) YTDLP="yt-dlp_musllinux_aarch64" ;; \
+        armv7l)  YTDLP="yt-dlp_linux_armv7l" ;; \
+        *)       YTDLP="yt-dlp_musllinux" ;; \
+    esac && \
+    wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YTDLP}" && \
     chmod +x /usr/local/bin/yt-dlp
 
 # Download and install Horust (x86_64)
-RUN wget -O /tmp/horust.tar.gz "https://github.com/FedericoPonzi/Horust/releases/download/v0.1.11/horust-x86_64-unknown-linux-musl.tar.gz" && \
+RUN wget -O /tmp/horust.tar.gz "https://github.com/FedericoPonzi/Horust/releases/download/v0.1.13/horust-x86_64-unknown-linux-musl.tar.gz" && \
     cd /tmp && tar -xzf horust.tar.gz && \
     mv horust /usr/local/bin/ && \
     chmod +x /usr/local/bin/horust && \
@@ -150,6 +161,15 @@ ENV APP_ROOT=/pinepods
 ARG PINEPODS_VERSION
 # Write the Pinepods version to the current_version file
 RUN echo "${PINEPODS_VERSION}" > /pinepods/current_version
+# OCI image metadata (shown by registries and `docker inspect`)
+LABEL org.opencontainers.image.title="PinePods" \
+      org.opencontainers.image.description="Self-hosted podcast management server and player" \
+      org.opencontainers.image.version="${PINEPODS_VERSION}" \
+      org.opencontainers.image.url="https://pinepods.online" \
+      org.opencontainers.image.documentation="https://www.pinepods.online/docs/Introduction" \
+      org.opencontainers.image.source="https://github.com/madeofpendletonwool/PinePods" \
+      org.opencontainers.image.vendor="Gooseberry Development" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later"
 # Configure Nginx
 COPY startup/nginx.conf /etc/nginx/nginx.conf
 
@@ -160,8 +180,12 @@ RUN chmod +x /usr/local/bin/start-gpodder.sh
 RUN cp /usr/share/zoneinfo/UTC /etc/localtime && \
     echo "UTC" > /etc/timezone
 
-# Expose ports
-EXPOSE 8080 8000
+# Expose ports (nginx web UI + gpodder API)
+EXPOSE 8040 8042
+
+# Container health: nginx proxies /api -> Rust API, which verifies DB connectivity.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fsS http://localhost:8040/api/health || exit 1
 
 # Start everything using the startup script
 ENTRYPOINT ["bash", "/startup.sh"]

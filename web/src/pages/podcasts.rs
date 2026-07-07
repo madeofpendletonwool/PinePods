@@ -1,13 +1,15 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, ExpandedDescriptions, FilterState, UIState};
+use crate::components::context::{AppState, ExpandedDescriptions, FilterState, NotificationState, PodcastFeedState, UIState, UserPreferencesState};
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req;
 use crate::requests::pod_req::PodcastExtra;
-use crate::requests::pod_req::{call_remove_podcasts, PodcastResponseExtra, RemovePodcastValues};
+use crate::requests::pod_req::{
+    call_remove_podcasts, call_toggle_podcast_favorite, PodcastResponseExtra, RemovePodcastValues,
+};
 use crate::requests::setting_reqs::call_add_custom_feed;
 use i18nrs::yew::use_translation;
 use serde::Deserialize;
@@ -34,8 +36,8 @@ enum AppStateMsg {
     RemovePodcast(i32), // Add this line
 }
 
-impl Reducer<AppState> for AppStateMsg {
-    fn apply(self, mut state: Rc<AppState>) -> Rc<AppState> {
+impl Reducer<PodcastFeedState> for AppStateMsg {
+    fn apply(self, mut state: Rc<PodcastFeedState>) -> Rc<PodcastFeedState> {
         let state_mut = Rc::make_mut(&mut state);
 
         match self {
@@ -62,7 +64,7 @@ impl Reducer<AppState> for AppStateMsg {
 
 #[allow(dead_code)]
 fn render_layout_toggle(
-    dispatch: Dispatch<AppState>,
+    dispatch: Dispatch<UserPreferencesState>,
     current_layout: Option<PodcastLayout>,
     i18n: &i18nrs::I18n,
 ) -> Html {
@@ -81,9 +83,9 @@ fn render_layout_toggle(
     };
 
     html! {
-        <button class="filter-chip" {onclick}>
-            <i class={classes!(icon, "text-lg")}></i>
-            <span class="text-sm font-medium">{text}</span>
+        <button class="sp-chip" {onclick}>
+            <i class={icon}></i>
+            <span class="pfb-chip-text">{text}</span>
         </button>
     }
 }
@@ -101,6 +103,7 @@ fn render_podcasts(
     desc_dispatch: Dispatch<ExpandedDescriptions>,
     toggle_delete: Callback<(i32, std::string::String)>,
     i18n: &i18nrs::I18n,
+    on_toggle_favorite: Callback<(i32, bool)>,
 ) -> Html {
     // Add a debug log at the start of render function
     web_sys::console::log_1(&format!("Rendering {} podcasts", podcasts.len()).into());
@@ -120,7 +123,7 @@ fn render_podcasts(
                         let server_name_iter = server_name.clone().unwrap();
                         let history_clone = history.clone();
 
-                        let dispatch_clone = dispatch.clone();
+                        let _dispatch_clone = dispatch.clone();
                         let podcast_id_loop = podcast.podcastid.clone();
                         let podcast_feed_loop = podcast.feedurl.clone();
                         let podcast_description_clone = podcast.description.clone();
@@ -134,7 +137,6 @@ fn render_podcasts(
                         let podcast_key = format!("podcast-{}-{}", podcast.podcastid, podcast.podcastname);
 
                         let on_title_click = create_on_title_click(
-                            dispatch_clone.clone(),
                             server_name_iter,
                             api_key_iter,
                             &history_clone,
@@ -186,38 +188,39 @@ fn render_podcasts(
                         };
 
                         html! {
-                            <div key={podcast_key} class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
-                                <div class="flex flex-col w-auto object-cover pl-4">
+                            <div key={podcast_key} class="ep-row">
+                                <div class="ep-art-wrap" onclick={on_title_click.clone()}>
                                     <FallbackImage
-                                        src={podcast_artwork} // Direct use of saved artwork URL
-                                        onclick={on_title_click.clone()}
+                                        src={podcast_artwork}
                                         alt={format!("{}{}", i18n.t("podcasts.cover_alt_text"), podcast.podcastname.clone())}
-                                        class={"episode-image"}
+                                        class={"ep-art-img"}
                                     />
                                 </div>
-                                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                                    <p class="item_container-text episode-title font-semibold cursor-pointer" onclick={on_title_click}>
+                                <div class="ep-body">
+                                    <div class="ep-title cursor-pointer" onclick={on_title_click}>
                                         { &podcast.podcastname }
-                                    </p>
-                                    <hr class="my-2 border-t hidden md:block"/>
-                                    <div class="item-description-text hidden md:block">
-                                        <div
-                                            class={format!("item_container-text episode-description-container {}", description_class)}
-                                            onclick={toggle_expanded}
-                                            id={format!("desc-{}", podcast.podcastid)}
-                                        >
-                                            <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
-                                        </div>
                                     </div>
-                                    <p class="item_container-text">{ format!("{}{}", &i18n.t("podcasts.episode_count"), &podcast.episodecount.clone().unwrap_or_else(|| 0)) }</p>
+                                    <hr class="ep-divider" />
+                                    <div
+                                        class={format!("ep-desc {}", description_class)}
+                                        onclick={toggle_expanded}
+                                        id={format!("desc-{}", podcast.podcastid)}
+                                    >
+                                        <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
+                                    </div>
+                                    <div class="ep-meta">
+                                        <i class={if podcast.is_video { "ph ph-television" } else { "ph ph-broadcast" }}></i>
+                                        <span>{ format!("{}{}", &i18n.t("podcasts.episode_count"), &podcast.episodecount.clone().unwrap_or_else(|| 0)) }</span>
+                                    </div>
                                 </div>
-                                <button
-                                    class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"}
-                                    style="width: 60px; height: 60px;"
-                                    onclick={toggle_delete.reform(move |_| (podcast_id_loop, podcast_feed_call.clone()))}  // Pass both as a tuple
-                                >
-                                    <i class="ph ph-trash text-3xl"></i>
-                                </button>
+                                <div class="ep-actions">
+                                    <button
+                                        class="ico"
+                                        onclick={toggle_delete.reform(move |_| (podcast_id_loop, podcast_feed_call.clone()))}
+                                    >
+                                        <i class="ph ph-trash"></i>
+                                    </button>
+                                </div>
                             </div>
                         }
                     }).collect::<Html>()}
@@ -238,7 +241,6 @@ fn render_podcasts(
                             .unwrap_or_else(|| String::from("/static/assets/favicon.png"));
 
                         let on_click = create_on_title_click(
-                            dispatch.clone(),
                             server_name.clone().unwrap(),
                             api_key.clone(),
                             history,
@@ -260,16 +262,36 @@ fn render_podcasts(
                         // Get episode count
                         let episode_count = podcast.episodecount.unwrap_or(0);
 
-                        html! {
+                        {
+                            let is_fav = podcast.is_favorite;
+                            let podcast_id_fav = podcast.podcastid;
+                            let toggle_fav = on_toggle_favorite.clone();
+                            html! {
                             <div
                                 key={podcast_key}
                                 class="podcast-grid-item relative"
                                 onclick={on_click}
                             >
-                                // Episode count badge
+                                // Episode count badge (top-right); icon switches to TV for video podcasts
                                 <div class="absolute top-1 right-1 z-10 bg-opacity-80 bg-gray-800 text-white rounded-full px-2 py-1 text-xs font-bold">
-                                    <i class="ph ph-broadcast inline-block mr-1"></i>
+                                    <i class={format!("ph {} inline-block mr-1", if podcast.is_video { "ph-television" } else { "ph-broadcast" })}></i>
                                     {episode_count}
+                                </div>
+
+                                // Favorite star badge (top-left)
+                                <div
+                                    class="absolute top-1 left-1 z-10 cursor-pointer bg-opacity-80 bg-gray-800 text-white rounded-full px-2 py-1 text-xs font-bold"
+                                    onclick={Callback::from(move |e: MouseEvent| {
+                                        e.stop_propagation();
+                                        toggle_fav.emit((podcast_id_fav, !is_fav));
+                                    })}
+                                >
+                                    <i class={classes!(
+                                        "ph",
+                                        "ph-star",
+                                        "text-xl",
+                                        if is_fav { "text-yellow-400" } else { "text-white" }
+                                    )}></i>
                                 </div>
 
                                 <div class="podcast-image-container">
@@ -283,7 +305,7 @@ fn render_podcasts(
                                     <h3 class="podcast-title-grid">{&podcast.podcastname}</h3>
                                 </div>
                             </div>
-                        }
+                        }}
                     }).collect::<Html>()}
                 </div>
             }
@@ -295,6 +317,8 @@ fn render_podcasts(
 pub fn podcasts() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
+    let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
+    let (prefs_state, prefs_dispatch) = use_store::<UserPreferencesState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let (filter_state, filter_dispatch) = use_store::<FilterState>();
@@ -341,7 +365,7 @@ pub fn podcasts() -> Html {
     // filter selections
     let selected_category = use_state(|| None as Option<String>);
 
-    let dispatch_layout = dispatch.clone();
+    let dispatch_layout = prefs_dispatch.clone();
     use_effect_with((), move |_| {
         dispatch_layout.reduce_mut(|state| {
             if state.podcast_layout.is_none() {
@@ -376,7 +400,7 @@ pub fn podcasts() -> Html {
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
-                    let dispatch = effect_dispatch.clone();
+                    let _dispatch = effect_dispatch.clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
                         match pod_req::call_get_podcasts_extra(&server_name, &api_key, &user_id)
@@ -384,7 +408,7 @@ pub fn podcasts() -> Html {
                         {
                             Ok(fetched_podcasts) => {
                                 let fetch_casts = fetched_podcasts.clone();
-                                dispatch.reduce_mut(move |state| {
+                                Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                                     state.podcast_feed_return_extra = Some(PodcastResponseExtra {
                                         pods: Some(fetch_casts),
                                     });
@@ -467,7 +491,7 @@ pub fn podcasts() -> Html {
             let feed_url = (*podcast_to_delete_feed).clone();
 
             if let (Some(pid), Some(url)) = (podcast_id, feed_url) {
-                let dispatch_call = dispatch_remove.clone();
+                let _dispatch_call = dispatch_remove.clone();
                 let api_key_call = api_key_rm.clone();
                 let server_name_call = server_name.clone();
                 let user_id_call = user_id.unwrap();
@@ -505,8 +529,8 @@ pub fn podcasts() -> Html {
                     match result {
                         Ok(success) => {
                             if success {
-                                dispatch_call.apply(AppStateMsg::RemovePodcast(pid));
-                                dispatch_call.reduce_mut(|state| {
+                                Dispatch::<PodcastFeedState>::global().apply(AppStateMsg::RemovePodcast(pid));
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Some(if url.starts_with("https://www.youtube.com") {
                                             youtube_success_msg.clone()
@@ -515,7 +539,7 @@ pub fn podcasts() -> Html {
                                         })
                                 });
                             } else {
-                                dispatch_call.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Some(if url.starts_with("https://www.youtube.com") {
                                             youtube_error_msg.clone()
@@ -527,7 +551,7 @@ pub fn podcasts() -> Html {
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch_call.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("{}{:?}", error_prefix, formatted_error))
                             });
@@ -586,6 +610,53 @@ pub fn podcasts() -> Html {
         })
     };
 
+    let on_toggle_favorite = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id;
+        let dispatch = dispatch.clone();
+        Callback::from(move |(podcast_id, is_favorite): (i32, bool)| {
+            let server_name = server_name.clone();
+            let api_key = api_key.clone();
+            let user_id = user_id;
+            let _dispatch = dispatch.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(server_name), Some(Some(api_key)), Some(user_id)) =
+                    (server_name, api_key, user_id)
+                {
+                    match call_toggle_podcast_favorite(
+                        server_name,
+                        api_key,
+                        user_id,
+                        podcast_id,
+                        is_favorite,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
+                                if let Some(ref mut extra) = state.podcast_feed_return_extra {
+                                    if let Some(ref mut pods) = extra.pods {
+                                        for pod in pods.iter_mut() {
+                                            if pod.podcastid == podcast_id {
+                                                pod.is_favorite = is_favorite;
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error toggling favorite: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
     // Correct setup for `on_password_change`
     let update_feed = {
         let feed_url = feed_url.clone();
@@ -631,7 +702,7 @@ pub fn podcasts() -> Html {
         let error_prefix = i18n_failed_to_add_podcast.clone();
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
-            let dispatch_call = dispatch_remove.clone();
+            let _dispatch_call = dispatch_remove.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let feed_url = feed_url.clone();
@@ -657,10 +728,10 @@ pub fn podcasts() -> Html {
                 .await
                 {
                     Ok(new_podcast) => {
-                        dispatch_call.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg);
                         });
-                        dispatch_call.reduce_mut(move |state| {
+                        Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                             if let Some(ref mut podcast_response) = state.podcast_feed_return_extra
                             {
                                 if let Some(ref mut pods) = podcast_response.pods {
@@ -677,7 +748,7 @@ pub fn podcasts() -> Html {
                         });
                     }
                     Err(e) => {
-                        dispatch_call.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!("{}{}", error_prefix, e));
                         });
                     }
@@ -701,7 +772,7 @@ pub fn podcasts() -> Html {
         let error_prefix = i18n_failed_to_add_podcast.clone();
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
-            let dispatch_call = dispatch_remove.clone();
+            let _dispatch_call = dispatch_remove.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let youtube_url = youtube_url.clone();
@@ -725,10 +796,10 @@ pub fn podcasts() -> Html {
                 .await
                 {
                     Ok(new_podcast) => {
-                        dispatch_call.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.info_message = Some(success_msg);
                         });
-                        dispatch_call.reduce_mut(move |state| {
+                        Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
                             if let Some(ref mut podcast_response) = state.podcast_feed_return_extra
                             {
                                 if let Some(ref mut pods) = podcast_response.pods {
@@ -745,7 +816,7 @@ pub fn podcasts() -> Html {
                         });
                     }
                     Err(e) => {
-                        dispatch_call.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Some(format!("{}{}", error_prefix, e));
                         });
                     }
@@ -836,12 +907,13 @@ pub fn podcasts() -> Html {
 
     let filtered_pods = use_memo(
         (
-            state.podcast_feed_return_extra.clone(),
+            podcast_state.podcast_feed_return_extra.clone(),
             selected_category.clone(),
             search_term.clone(),
             sort_direction.clone(),
+            filter_state.favorites_only,
         ),
-        |(podcasts, selected_cat, search, sort_dir)| {
+        |(podcasts, selected_cat, search, sort_dir, fav_only)| {
             // Log for debugging
             web_sys::console::log_1(&"Filtering podcasts...".into());
 
@@ -877,8 +949,10 @@ pub fn podcasts() -> Html {
                             true
                         };
 
-                        // Both conditions must be true
-                        matches_search && matches_category
+                        // Favorites filter
+                        let matches_favorites = !*fav_only || podcast.is_favorite;
+
+                        matches_search && matches_category && matches_favorites
                     })
                     .collect::<Vec<_>>();
 
@@ -984,30 +1058,12 @@ pub fn podcasts() -> Html {
             {
                 html! {
                     <div>
-                        // Modern mobile-friendly filter bar with tab-style page title
-                        <div class="mb-6 space-y-4">
-                            // Tab-style page indicator
-                            <div class="flex gap-0 h-12 relative">
-                                // <div class="page-tab-indicator">
-                                //     <i class="ph ph-microphone tab-icon"></i>
-                                //     {"Podcasts"}
-                                // </div>
-                                <div class="flex gap-2 ml-auto items-center">
-                                    <button class="filter-chip" onclick={toggle_custom_modal}>
-                                        <i class="ph ph-plus-circle text-lg"></i>
-                                        <span class="text-sm font-medium">{&i18n_custom_feed}</span>
-                                    </button>
-                                    {render_layout_toggle(dispatch.clone(), state.podcast_layout.clone(), &i18n)}
-                                </div>
-                            </div>
-
-                            // Combined search and sort bar
-                            <div class="flex gap-0 h-12 relative">
-                                // Search input (left half)
-                                <div class="flex-1 relative">
+                        <div class="pfb-section">
+                            <div class="pfb-bar">
+                                <div class="sp-input">
+                                    <i class="ph ph-microphone sp-search-ico"></i>
                                     <input
                                         type="text"
-                                        class="search-input"
                                         placeholder={i18n_search_podcasts_placeholder.clone()}
                                         value={(*search_term).clone()}
                                         oninput={let search_term = search_term.clone();
@@ -1018,14 +1074,11 @@ pub fn podcasts() -> Html {
                                             })
                                         }
                                     />
-                                    <i class="ph ph-magnifying-glass search-icon"></i>
                                 </div>
-
-                                // Sort dropdown (right half)
-                                <div class="flex-shrink-0 relative min-w-[160px]">
+                                <div class="pfb-sort">
+                                    <i class="ph ph-funnel pfb-sort-icon-mobile"></i>
                                     <select
-                                        class="sort-dropdown"
-                                        value="alpha_asc"
+                                        class="pfb-sort-select"
                                         onchange={
                                             let sort_direction = sort_direction.clone();
                                             Callback::from(move |e: Event| {
@@ -1054,40 +1107,35 @@ pub fn podcasts() -> Html {
                                         <option value="most_played">{&i18n.t("podcasts.sort_most_played")}</option>
                                         <option value="least_played">{&i18n.t("podcasts.sort_least_played")}</option>
                                     </select>
-                                    <i class="ph ph-caret-down dropdown-arrow"></i>
+                                    <i class="ph ph-caret-down pfb-sort-arrow"></i>
+                                </div>
+                                <div class="flex gap-2 items-center flex-shrink-0">
+                                    <button class="sp-chip" onclick={toggle_custom_modal}>
+                                        <i class="ph ph-plus-circle"></i>
+                                        <span class="pfb-chip-text">{&i18n_custom_feed}</span>
+                                    </button>
+                                    {render_layout_toggle(prefs_dispatch.clone(), prefs_state.podcast_layout.clone(), &i18n)}
                                 </div>
                             </div>
-
-                            // Filter chips (horizontal scroll on mobile)
-                            <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-                                // Clear all filters
-                                <button
-                                    onclick={reset_filter}
-                                    class="filter-chip"
-                                >
-                                    <i class="ph ph-broom text-lg"></i>
-                                    <span class="text-sm font-medium">{&i18n.t("podcasts.clear_all")}</span>
+                            <div class="sp-chips pfb-chips">
+                                <button onclick={reset_filter} class="sp-chip">
+                                    <i class="ph ph-broom"></i>
+                                    <span>{&i18n.t("podcasts.clear_all")}</span>
                                 </button>
-
-                                // Category filter chips (limited to prevent multiple lines)
                                 {
                                     if let Some(categories) = &filter_state.category_filter_list {
                                         categories.iter().map(|category| {
                                             let category_clone = category.clone();
                                             let is_selected = selected_category.as_ref().map_or(false, |selected| selected == category);
                                             let on_filter_click_clone = on_filter_click.clone();
-
                                             html! {
                                                 <button
                                                     onclick={Callback::from(move |_| {
                                                         on_filter_click_clone.emit(category_clone.clone());
                                                     })}
-                                                    class={classes!(
-                                                        "filter-chip",
-                                                        if is_selected { "filter-chip-active" } else { "" }
-                                                    )}
+                                                    class={classes!("sp-chip", if is_selected { "is-active" } else { "" })}
                                                 >
-                                                    <span class="text-sm font-medium">{category}</span>
+                                                    <span>{category}</span>
                                                 </button>
                                             }
                                         }).collect::<Html>()
@@ -1104,7 +1152,7 @@ pub fn podcasts() -> Html {
 
 
             {
-                if let Some(podcasts) = state.podcast_feed_return_extra.clone() {
+                if let Some(podcasts) = podcast_state.podcast_feed_return_extra.clone() {
                     let int_podcasts = podcasts.clone();
                     if let Some(_pods) = int_podcasts.pods.clone() {
                         if filtered_pods.is_empty() {
@@ -1113,10 +1161,10 @@ pub fn podcasts() -> Html {
                                 &i18n.t("podcasts.no_podcasts_found_description")
                             )
                         } else {
-                            // render_podcasts(&filtered_pods, state.podcast_layout.clone(), dispatch.clone(), &history)
+                            // render_podcasts(&filtered_pods, prefs_state.podcast_layout.clone(), dispatch.clone(), &history)
                             render_podcasts(
                                 &filtered_pods,
-                                state.podcast_layout.clone(),
+                                prefs_state.podcast_layout.clone(),
                                 dispatch.clone(),
                                 &history,
                                 api_key.clone(),
@@ -1126,6 +1174,7 @@ pub fn podcasts() -> Html {
                                 desc_dispatch.clone(),
                                 toggle_delete.clone(),
                                 &i18n,
+                                on_toggle_favorite.clone(),
                             )
                         }
 

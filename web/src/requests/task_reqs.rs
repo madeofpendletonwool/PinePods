@@ -12,7 +12,7 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::console;
 use yewdux::prelude::*;
 
-use crate::components::context::AppState;
+use crate::components::context::{AppState, EpisodeStatusState, NotificationState};
 use crate::components::notification_center::TaskProgress;
 
 // Response structs
@@ -121,7 +121,7 @@ pub async fn connect_to_task_websocket(
     server_name: String,
     user_id: i32,
     api_key: String,
-    dispatch: Dispatch<AppState>,
+    dispatch: Dispatch<NotificationState>,
 ) -> Result<(), Error> {
     // Normalize server name for WebSocket connection
     let clean_server_name = server_name
@@ -357,6 +357,44 @@ pub async fn connect_to_task_websocket(
                                             },
                                         };
 
+                                        // If a podcast download failed, revert the optimistic
+                                        // "downloaded" marker the UI set when the task was queued.
+                                        // The failure payload omits item_id and uses the stored
+                                        // task type ("download_episode"), so recover the episode
+                                        // id from the task entry recorded during earlier progress
+                                        // updates (which carried item_id + "podcast_download").
+                                        if task.status == "FAILED"
+                                            && (task.r#type == "download_episode"
+                                                || task.r#type == "podcast_download")
+                                        {
+                                            let episode_id = task
+                                                .item_id
+                                                .as_deref()
+                                                .and_then(|id| id.parse::<i32>().ok())
+                                                .or_else(|| {
+                                                    dispatch_clone
+                                                        .get()
+                                                        .active_tasks
+                                                        .as_ref()
+                                                        .and_then(|tasks| {
+                                                            tasks
+                                                                .iter()
+                                                                .find(|t| t.task_id == task.task_id)
+                                                                .and_then(|t| t.item_id.as_deref())
+                                                                .and_then(|id| {
+                                                                    id.parse::<i32>().ok()
+                                                                })
+                                                        })
+                                                });
+                                            if let Some(episode_id) = episode_id {
+                                                Dispatch::<EpisodeStatusState>::global()
+                                                    .reduce_mut(|s| {
+                                                        s.downloaded_episodes
+                                                            .remove_server(episode_id);
+                                                    });
+                                            }
+                                        }
+
                                         dispatch_clone.reduce_mut(|state| {
                                             let mut tasks =
                                                 state.active_tasks.clone().unwrap_or_default();
@@ -407,7 +445,7 @@ pub async fn connect_to_task_websocket(
                                 ),
                             }
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             // console::error_1(
                             //     &format!(
                             //         "Failed to parse WebSocket message: {}. Text: {}",
@@ -457,7 +495,7 @@ pub async fn fetch_active_tasks(
     server_name: String,
     user_id: i32,
     api_key: String,
-    dispatch: Dispatch<AppState>,
+    dispatch: Dispatch<NotificationState>,
 ) -> Result<(), Error> {
     console::log_1(&"Fetching active tasks via REST API".into());
 
@@ -506,7 +544,7 @@ pub async fn fetch_active_tasks(
 }
 
 // Initialize WebSocket connection or fall back to REST API
-pub fn init_task_monitoring(state: &AppState, dispatch: Dispatch<AppState>) {
+pub fn init_task_monitoring(state: &AppState, dispatch: Dispatch<NotificationState>) {
     if let (Some(user_id), Some(Some(api_key)), Some(server_name)) = (
         state.user_details.as_ref().map(|ud| ud.UserID.clone()),
         state.auth_details.as_ref().map(|ud| ud.api_key.clone()),

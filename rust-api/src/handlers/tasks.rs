@@ -12,12 +12,22 @@ use crate::{
     AppState,
 };
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct InitRequest {
     pub api_key: String,
 }
 
 // Startup tasks endpoint - matches Python startup_tasks function exactly
+#[utoipa::path(
+    post,
+    path = "/startup_tasks",
+    tag = "tasks",
+    summary = "Startup tasks",
+    request_body = InitRequest,
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+    ),
+)]
 pub async fn startup_tasks(
     State(state): State<AppState>,
     Json(request): Json<InitRequest>,
@@ -44,6 +54,17 @@ pub async fn startup_tasks(
 }
 
 // Cleanup tasks endpoint - matches Python cleanup_tasks function exactly
+#[utoipa::path(
+    get,
+    path = "/cleanup_tasks",
+    tag = "tasks",
+    summary = "Cleanup tasks",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn cleanup_tasks(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -85,6 +106,17 @@ pub async fn cleanup_tasks(
 }
 
 // Update playlists endpoint - matches Python update_playlists function exactly
+#[utoipa::path(
+    get,
+    path = "/update_playlists",
+    tag = "tasks",
+    summary = "Update playlists",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_playlists(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -126,6 +158,17 @@ pub async fn update_playlists(
 }
 
 // Refresh hosts endpoint - matches Python refresh_all_hosts function exactly
+#[utoipa::path(
+    get,
+    path = "/refresh_hosts",
+    tag = "tasks",
+    summary = "Refresh hosts",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn refresh_hosts(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -276,6 +319,17 @@ async fn refresh_user_podcasts(db_pool: &crate::database::DatabasePool, user_id:
 }
 
 // Auto-complete episodes based on user settings - nightly task
+#[utoipa::path(
+    get,
+    path = "/auto_complete_episodes",
+    tag = "tasks",
+    summary = "Auto complete episodes",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn auto_complete_episodes(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -326,15 +380,6 @@ pub async fn cleanup_tasks_internal(state: &AppState) -> AppResult<()> {
     
     state.db_pool.cleanup_old_episodes().await?;
     tracing::info!("Cleanup tasks completed successfully");
-    
-    Ok(())
-}
-
-pub async fn update_playlists_internal(state: &AppState) -> AppResult<()> {
-    tracing::info!("Starting internal playlist update (scheduler)");
-    
-    state.db_pool.update_all_playlists().await?;
-    tracing::info!("Playlist update completed successfully");
     
     Ok(())
 }

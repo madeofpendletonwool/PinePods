@@ -29,7 +29,11 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
   PlaylistEpisodesResponse? _playlistResponse;
   bool _isLoading = true;
   String? _errorMessage;
-  
+
+  // Pagination state
+  int _offset = 0;
+  bool _isLoadingMore = false;
+
   // Use global audio service instead of creating local instance
   int? _contextMenuEpisodeIndex;
 
@@ -43,8 +47,8 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
 
-    if (settings.pinepodsServer == null || 
-        settings.pinepodsApiKey == null || 
+    if (settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null ||
         settings.pinepodsUserId == null) {
       setState(() {
         _errorMessage = 'Not connected to PinePods server. Please connect in Settings.';
@@ -56,6 +60,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _offset = 0;
     });
 
     try {
@@ -64,14 +69,17 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
         settings.pinepodsApiKey!,
       );
       GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
-      
+
       final response = await _pinepodsService.getPlaylistEpisodes(
-        settings.pinepodsUserId!, 
+        settings.pinepodsUserId!,
         widget.playlist.playlistId,
+        limit: 50,
+        offset: 0,
       );
-      
+
       setState(() {
         _playlistResponse = response;
+        _offset = response.episodes.length;
         _isLoading = false;
       });
     } catch (e) {
@@ -79,6 +87,44 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
         _errorMessage = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _loadMorePlaylistEpisodes() async {
+    if (_isLoadingMore || _playlistResponse == null) return;
+    if (_offset >= _playlistResponse!.total) return;
+
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+
+    if (settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null ||
+        settings.pinepodsUserId == null) {
+      return;
+    }
+
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final response = await _pinepodsService.getPlaylistEpisodes(
+        settings.pinepodsUserId!,
+        widget.playlist.playlistId,
+        limit: 50,
+        offset: _offset,
+      );
+
+      setState(() {
+        final merged = PlaylistEpisodesResponse(
+          episodes: [..._playlistResponse!.episodes, ...response.episodes],
+          playlistInfo: _playlistResponse!.playlistInfo,
+          total: response.total,
+        );
+        _playlistResponse = merged;
+        _offset += response.episodes.length;
+        _isLoadingMore = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingMore = false);
     }
   }
 
@@ -142,10 +188,29 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     }
 
     try {
-      await _audioService!.playPinepodsEpisode(pinepodsEpisode: episode);
+      await _audioService!.playPinepodsEpisode(
+        pinepodsEpisode: episode,
+        playlistId: widget.playlist.playlistId,
+      );
     } catch (e) {
       if (mounted) {
         _showSnackBar('Failed to play episode: $e', Colors.red);
+      }
+    }
+  }
+
+  Future<void> _playFromTop() async {
+    if (_audioService == null || _playlistResponse == null) return;
+    if (_playlistResponse!.episodes.isEmpty) return;
+
+    try {
+      await _audioService!.playPinepodsEpisode(
+        pinepodsEpisode: _playlistResponse!.episodes.first,
+        playlistId: widget.playlist.playlistId,
+      );
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Failed to start playlist: $e', Colors.red);
       }
     }
   }
@@ -389,6 +454,14 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
         title: Text(widget.playlist.name),
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
+        actions: [
+          if (_playlistResponse != null && _playlistResponse!.episodes.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.playlist_play),
+              tooltip: 'Play from top',
+              onPressed: _playFromTop,
+            ),
+        ],
       ),
       body: _buildBody(),
     );
@@ -543,7 +616,24 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) {
-                final episode = _playlistResponse!.episodes[index];
+                final episodes = _playlistResponse!.episodes;
+                final hasMore = _offset < _playlistResponse!.total;
+                final showFooter = hasMore || _isLoadingMore;
+
+                // Footer item
+                if (showFooter && index == episodes.length) {
+                  if (!_isLoadingMore) {
+                    WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => _loadMorePlaylistEpisodes(),
+                    );
+                  }
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16.0),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                final episode = episodes[index];
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
                   child: PinepodsEpisodeCard(
@@ -563,7 +653,8 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
                   ),
                 );
               },
-              childCount: _playlistResponse!.episodes.length,
+              childCount: _playlistResponse!.episodes.length +
+                  ((_offset < _playlistResponse!.total || _isLoadingMore) ? 1 : 0),
             ),
           ),
       ],

@@ -138,6 +138,18 @@ public class AudioPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                 result(FlutterError(code: "INVALID_ARGS", message: "Speed required", details: nil))
             }
 
+        case "setSkipSegments":
+            let args = call.arguments as? [String: Any]
+            let enabled = (args?["enabled"] as? Bool) ?? false
+            let rawSegments = (args?["segments"] as? [[String: Any]]) ?? []
+            let segments: [(start: Double, end: Double)] = rawSegments.compactMap { seg in
+                guard let start = (seg["start"] as? NSNumber)?.doubleValue,
+                      let end = (seg["end"] as? NSNumber)?.doubleValue else { return nil }
+                return (start: start, end: end)
+            }
+            player.setSkipSegments(enabled: enabled, segments: segments)
+            result(nil)
+
         case "getPosition":
             result(player.getCurrentPosition())
 

@@ -52,6 +52,8 @@ services:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
+      # Mount local media files to use the Add Local Podcast feature (optional)
+      - /home/user/pinepods/local-media:/opt/pinepods/local-media
       # Timezone volumes, HIGHLY optional. Read the timezone notes below
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro

@@ -1,0 +1,86 @@
+name: i18n String Coverage
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "web/src/**/*.rs"
+      - "web/src/translations/en.json"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Scan mode"
+        type: choice
+        options: [full, diff]
+        default: full
+
+jobs:
+  check-hardcoded-strings:
+    name: Check for hardcoded UI strings
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── PR mode: only flag strings added in this PR ──────────────────────
+      - name: Check new hardcoded strings (PR diff)
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }}...HEAD -- 'web/src/**/*.rs' \
+            | python3 .github/scripts/check_i18n.py --diff
+
+      # ── Manual full scan ─────────────────────────────────────────────────
+      - name: Full scan for hardcoded strings
+        if: >
+          github.event_name == 'workflow_dispatch' &&
+          inputs.mode == 'full'
+        run: python3 .github/scripts/check_i18n.py web/src/
+
+      # ── Manual diff scan (workflow_dispatch targeting a branch) ──────────
+      - name: Diff scan for hardcoded strings
+        if: >
+          github.event_name == 'workflow_dispatch' &&
+          inputs.mode == 'diff'
+        run: |
+          git fetch origin main
+          git diff origin/main...HEAD -- 'web/src/**/*.rs' \
+            | python3 .github/scripts/check_i18n.py --diff
+
+  check-i18n-coverage:
+    name: Check i18n key coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── PR mode: only fail on keys introduced by this PR ─────────────────
+      - name: Check new key references have en.json entries (PR diff)
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }}...HEAD -- 'web/src/**/*.rs' \
+            | python3 .github/scripts/check_i18n_coverage.py --diff
+
+      # ── Manual full scan ─────────────────────────────────────────────────
+      - name: Full coverage scan (missing + orphaned keys)
+        if: >
+          github.event_name == 'workflow_dispatch' &&
+          inputs.mode == 'full'
+        run: python3 .github/scripts/check_i18n_coverage.py web/src/
+
+      # ── Manual diff scan ─────────────────────────────────────────────────
+      - name: Diff coverage scan
+        if: >
+          github.event_name == 'workflow_dispatch' &&
+          inputs.mode == 'diff'
+        run: |
+          git fetch origin main
+          git diff origin/main...HEAD -- 'web/src/**/*.rs' \
+            | python3 .github/scripts/check_i18n_coverage.py --diff

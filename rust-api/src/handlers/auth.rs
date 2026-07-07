@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::HeaderMap,
     response::{Json, Html, IntoResponse},
 };
 use serde::{Deserialize, Serialize};
@@ -15,16 +15,41 @@ use crate::{
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{debug, error};
 
 
 // Global storage for password-verified sessions pending MFA
 // Key: session_token, Value: (user_id, timestamp)
 lazy_static::lazy_static! {
-    static ref PENDING_MFA_SESSIONS: Arc<Mutex<HashMap<String, (i32, u64)>>> = 
+    static ref PENDING_MFA_SESSIONS: Arc<Mutex<HashMap<String, (i32, u64)>>> =
         Arc::new(Mutex::new(HashMap::new()));
 }
 
-#[derive(Serialize)]
+/// Enforce a Redis-backed rate limit; returns 429 when the bucket is exceeded.
+/// Fails open if the cache is unavailable (availability over strictness for self-hosting).
+async fn enforce_rate_limit(
+    state: &AppState,
+    bucket: &str,
+    limit: u32,
+    window_seconds: u64,
+) -> AppResult<()> {
+    match state
+        .redis_client
+        .check_rate_limit(bucket, limit, window_seconds)
+        .await
+    {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(AppError::too_many_requests(
+            "Too many attempts. Please wait a moment and try again.",
+        )),
+        Err(e) => {
+            tracing::warn!("Rate limit check failed (allowing request): {}", e);
+            Ok(())
+        }
+    }
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct LoginResponse {
     status: String,
     retrieved_key: Option<String>,
@@ -33,25 +58,18 @@ pub struct LoginResponse {
     mfa_session_token: Option<String>,
 }
 
-#[derive(Serialize)]
-pub struct MfaRequiredResponse {
-    status: String,
-    mfa_required: bool,
-    user_id: i32,
-}
-
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct VerifyKeyResponse {
     status: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct GetUserResponse {
     status: String,
     retrieved_id: i32,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 #[allow(non_snake_case)]
 pub struct UserDetails {
     pub UserID: i32,
@@ -62,18 +80,19 @@ pub struct UserDetails {
     pub Salt: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct SelfServiceStatusResponse {
     pub status: bool,
     pub first_admin_created: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct PublicOidcProvidersResponse {
     pub providers: Vec<PublicOidcProviderResponse>,
+    pub disable_standard_login: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct PublicOidcProviderResponse {
     pub provider_id: i32,
     pub provider_name: String,
@@ -86,7 +105,7 @@ pub struct PublicOidcProviderResponse {
     pub icon_svg: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct CreateFirstAdminRequest {
     pub username: String,
     pub password: String,
@@ -94,7 +113,7 @@ pub struct CreateFirstAdminRequest {
     pub fullname: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct TimeZoneInfo {
     pub user_id: i32,
     pub timezone: String,
@@ -102,65 +121,65 @@ pub struct TimeZoneInfo {
     pub date_format: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct UpdateTimezoneRequest {
     pub user_id: i32,
     pub timezone: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct UpdateDateFormatRequest {
     pub user_id: i32,
     pub date_format: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct UpdateTimeFormatRequest {
     pub user_id: i32,
     pub hour_pref: i32,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct UpdateAutoCompleteSecondsRequest {
     pub user_id: i32,
     pub seconds: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct OPMLImportRequest {
     pub podcasts: Vec<String>,
     pub user_id: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct ResetCodeRequest {
     pub email: String,
     pub username: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ResetCodeResponse {
     pub code_created: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct VerifyAndResetPasswordRequest {
     pub reset_code: String,
     pub email: String,
     pub new_password: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct VerifyAndResetPasswordResponse {
     pub message: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct CreateFirstAdminResponse {
     pub message: String,
     pub user_id: i32,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ConfigResponse {
     pub api_url: String,
     pub proxy_url: String,
@@ -201,6 +220,15 @@ fn extract_basic_auth(headers: &HeaderMap) -> AppResult<(String, String)> {
 
 // Get API key with basic authentication (username/password)
 // Now includes MFA security check - API key only returned after MFA verification if enabled
+#[utoipa::path(
+    get,
+    path = "/get_key",
+    tag = "auth",
+    summary = "Get key",
+    responses(
+        (status = 200, description = "Success", body = LoginResponse),
+    ),
+)]
 pub async fn get_key(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -211,7 +239,10 @@ pub async fn get_key(
     }
 
     let (username, password) = extract_basic_auth(&headers)?;
-    
+
+    // Throttle login attempts per account to blunt brute-force / credential stuffing.
+    enforce_rate_limit(&state, &format!("login:{}", username.to_lowercase()), 10, 60).await?;
+
     // Verify password
     let is_valid = state.db_pool.verify_password(&username, &password).await?;
     if !is_valid {
@@ -272,6 +303,17 @@ pub async fn get_key(
 }
 
 // Verify API key validity
+#[utoipa::path(
+    get,
+    path = "/verify_key",
+    tag = "auth",
+    summary = "Verify api key endpoint",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = VerifyKeyResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn verify_api_key_endpoint(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -289,6 +331,17 @@ pub async fn verify_api_key_endpoint(
 }
 
 // Get user ID from API key
+#[utoipa::path(
+    get,
+    path = "/get_user",
+    tag = "auth",
+    summary = "Get user",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = GetUserResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_user(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -304,6 +357,18 @@ pub async fn get_user(
 }
 
 // Get user details by user ID
+#[utoipa::path(
+    get,
+    path = "/user_details_id/{user_id}",
+    tag = "auth",
+    summary = "Get user details by id",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = UserDetails),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_user_details_by_id(
     Path(user_id): Path<i32>,
     headers: HeaderMap,
@@ -329,6 +394,15 @@ pub async fn get_user_details_by_id(
 }
 
 // Get self-service status - matches Python api_self_service_status
+#[utoipa::path(
+    get,
+    path = "/self_service_status",
+    tag = "auth",
+    summary = "Get self service status",
+    responses(
+        (status = 200, description = "Success", body = SelfServiceStatusResponse),
+    ),
+)]
 pub async fn get_self_service_status(
     State(state): State<AppState>,
 ) -> Result<Json<SelfServiceStatusResponse>, AppError> {
@@ -341,6 +415,15 @@ pub async fn get_self_service_status(
 }
 
 // Get public OIDC providers - matches Python api_public_oidc_providers
+#[utoipa::path(
+    get,
+    path = "/public_oidc_providers",
+    tag = "auth",
+    summary = "Get public oidc providers",
+    responses(
+        (status = 200, description = "Success", body = PublicOidcProvidersResponse),
+    ),
+)]
 pub async fn get_public_oidc_providers(
     State(state): State<AppState>,
 ) -> Result<Json<PublicOidcProvidersResponse>, AppError> {
@@ -363,19 +446,37 @@ pub async fn get_public_oidc_providers(
     
     Ok(Json(PublicOidcProvidersResponse {
         providers: response_providers,
+        disable_standard_login: state.config.oidc.disable_standard_login,
     }))
 }
 
 // Create first admin - matches Python create_first_admin
+#[utoipa::path(
+    post,
+    path = "/create_first",
+    tag = "auth",
+    summary = "Create first admin",
+    request_body = CreateFirstAdminRequest,
+    responses(
+        (status = 200, description = "Success", body = CreateFirstAdminResponse),
+    ),
+)]
 pub async fn create_first_admin(
     State(state): State<AppState>,
     Json(request): Json<CreateFirstAdminRequest>,
 ) -> Result<Json<CreateFirstAdminResponse>, AppError> {
+    // Block first-admin creation while a restore is running. Otherwise the setup UI (which
+    // can appear if the DB looks empty mid-restore on a fresh install) could insert a Users
+    // row that collides with the restore's data load and rolls the whole restore back.
+    if state.restore_in_progress.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(AppError::service_unavailable("A restore is in progress — please wait for it to finish"));
+    }
+
     // Check if admin already exists
     if state.db_pool.check_admin_exists().await? {
         return Err(AppError::forbidden("An admin user already exists"));
     }
-    
+
     // Add the admin user
     let user_id = state.db_pool.add_admin_user(
         &request.fullname,
@@ -386,13 +487,13 @@ pub async fn create_first_admin(
     
     // Add PinePods news feed to admin users (matches Python startup tasks)
     if let Err(e) = state.db_pool.add_news_feed_if_not_added().await {
-        eprintln!("Failed to add PinePods news feed during first admin creation: {}", e);
+        error!("Failed to add PinePods news feed during first admin creation: {}", e);
         // Don't fail the admin creation if news feed addition fails
     }
     
     // Create default playlists for the new admin user
     if let Err(e) = state.db_pool.create_missing_default_playlists().await {
-        eprintln!("Failed to create default playlists during first admin creation: {}", e);
+        error!("Failed to create default playlists during first admin creation: {}", e);
         // Don't fail the admin creation if playlist creation fails
     }
     
@@ -403,6 +504,17 @@ pub async fn create_first_admin(
 }
 
 // Get configuration - matches Python api_config
+#[utoipa::path(
+    get,
+    path = "/config",
+    tag = "auth",
+    summary = "Get config",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = ConfigResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_config(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -441,6 +553,18 @@ pub async fn get_config(
 }
 
 // First login done - matches Python first_login_done
+#[utoipa::path(
+    get,
+    path = "/first_login_done/{user_id}",
+    tag = "auth",
+    summary = "First login done",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn first_login_done(
     Path(user_id): Path<i32>,
     headers: HeaderMap,
@@ -468,44 +592,16 @@ pub async fn first_login_done(
     })))
 }
 
-// Check MFA enabled - matches Python check_mfa_enabled
-pub async fn check_mfa_enabled(
-    Path(user_id): Path<i32>,
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    
-    // Verify API key
-    if !state.db_pool.verify_api_key(&api_key).await? {
-        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
-    }
-    
-    // Get user ID from API key for authorization check
-    let key_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // Allow the action if the API key belongs to the user (Python checks this)
-    if key_user_id != user_id {
-        return Err(AppError::forbidden("You are not authorized to check mfa status for other users."));
-    }
-    
-    let is_enabled = state.db_pool.check_mfa_enabled(user_id).await?;
-    
-    Ok(Json(json!({
-        "mfa_enabled": is_enabled
-    })))
-}
-
 // NEW SECURE MFA ENDPOINT: Verify MFA code and return API key during login
 // CRITICAL SECURITY: This is the second phase of secure MFA authentication flow
 // It REQUIRES a valid session token from successful password authentication
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct VerifyMfaLoginRequest {
     pub mfa_session_token: String,
     pub mfa_code: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct VerifyMfaLoginResponse {
     pub status: String,
     pub retrieved_key: Option<String>,
@@ -531,13 +627,26 @@ fn cleanup_expired_mfa_sessions() -> Result<(), AppError> {
 
 // Verify MFA code during login and return API key - SECURE TWO-FACTOR AUTHENTICATION
 // CRITICAL: This endpoint REQUIRES a valid session token proving password was verified first
+#[utoipa::path(
+    post,
+    path = "/verify_mfa_and_get_key",
+    tag = "auth",
+    summary = "Verify mfa and get key",
+    request_body = VerifyMfaLoginRequest,
+    responses(
+        (status = 200, description = "Success", body = VerifyMfaLoginResponse),
+    ),
+)]
 pub async fn verify_mfa_and_get_key(
     State(state): State<AppState>,
     Json(request): Json<VerifyMfaLoginRequest>,
 ) -> Result<Json<VerifyMfaLoginResponse>, AppError> {
     // Clean up expired sessions first
     cleanup_expired_mfa_sessions()?;
-    
+
+    // Throttle MFA code attempts per pending-login session to prevent TOTP brute force.
+    enforce_rate_limit(&state, &format!("mfa:{}", request.mfa_session_token), 5, 60).await?;
+
     // CRITICAL SECURITY CHECK: Validate session token from password authentication
     let user_id = {
         let mut sessions = PENDING_MFA_SESSIONS.lock()
@@ -621,6 +730,18 @@ pub async fn verify_mfa_and_get_key(
 }
 
 // Get theme - matches Python get_theme
+#[utoipa::path(
+    get,
+    path = "/get_theme/{user_id}",
+    tag = "auth",
+    summary = "Get theme",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_theme(
     Path(user_id): Path<i32>,
     headers: HeaderMap,
@@ -648,41 +769,19 @@ pub async fn get_theme(
     })))
 }
 
-// Get user startpage - matches Python get_user_startpage
-pub async fn get_user_startpage(
-    Query(params): Query<std::collections::HashMap<String, String>>,
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    
-    // Verify API key
-    if !state.db_pool.verify_api_key(&api_key).await? {
-        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
-    }
-    
-    // Get user_id from query parameter
-    let user_id: i32 = params.get("user_id")
-        .ok_or_else(|| AppError::bad_request("Missing user_id parameter"))?
-        .parse()
-        .map_err(|_| AppError::bad_request("Invalid user_id parameter"))?;
-    
-    // Get user ID from API key for authorization check
-    let key_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // Allow the action if the API key belongs to the user (Python checks this)
-    if key_user_id != user_id {
-        return Err(AppError::forbidden("You can only view your own StartPage setting!"));
-    }
-    
-    let startpage = state.db_pool.get_user_startpage(user_id).await?;
-    
-    Ok(Json(json!({
-        "StartPage": startpage
-    })))
-}
-
 // Setup time info - matches Python setup_timezone_info
+#[utoipa::path(
+    post,
+    path = "/setup_time_info",
+    tag = "auth",
+    summary = "Setup time info",
+    request_body = TimeZoneInfo,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn setup_time_info(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -720,6 +819,18 @@ pub async fn setup_time_info(
 }
 
 // User admin check - matches Python api_user_admin_check_route
+#[utoipa::path(
+    get,
+    path = "/user_admin_check/{user_id}",
+    tag = "auth",
+    summary = "User admin check",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn user_admin_check(
     Path(user_id): Path<i32>,
     headers: HeaderMap,
@@ -748,6 +859,18 @@ pub async fn user_admin_check(
 }
 
 // Import progress - matches Python api_import_progress
+#[utoipa::path(
+    get,
+    path = "/import_progress/{user_id}",
+    tag = "auth",
+    summary = "Import progress",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn import_progress(
     Path(user_id): Path<i32>,
     headers: HeaderMap,
@@ -786,6 +909,18 @@ pub async fn import_progress(
 }
 
 // Import OPML - matches Python api_import_opml
+#[utoipa::path(
+    post,
+    path = "/import_opml",
+    tag = "auth",
+    summary = "Import opml",
+    request_body = OPMLImportRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn import_opml(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -814,7 +949,7 @@ pub async fn import_opml(
     ).await?;
     
     // Spawn the import task
-    let task_spawner = state.task_spawner.clone();
+    let _task_spawner = state.task_spawner.clone();
     let db_pool = state.db_pool.clone();
     let task_manager = state.task_manager.clone();
     let redis_client = state.redis_client.clone();
@@ -900,13 +1035,15 @@ async fn process_opml_import(
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
     
-    // Mark task as completed
-    let _ = task_manager.update_task_progress(
+    // Mark task as completed (sets status to SUCCESS so the notification clears;
+    // update_task_progress only ever sets the status to DOWNLOADING, which would
+    // leave the notification stuck as an active task forever)
+    let _ = task_manager.complete_task(
         &task_id,
-        100.0,
+        None,
         Some("OPML import completed".to_string()),
     ).await;
-    
+
     // Clear progress from Redis
     let _ = redis_client.delete(&progress_key).await;
 }
@@ -920,7 +1057,7 @@ async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::Datab
     let podcast_values_map = db_pool.get_podcast_values(url, 0, None, None).await
         .map_err(|e| AppError::internal(&format!("Failed to parse podcast feed: {}", e)))?;
     
-    println!("🎙️  Parsed podcast: title='{}', author='{}', description_len={}", 
+    debug!("🎙️  Parsed podcast: title='{}', author='{}', description_len={}", 
         podcast_values_map.get("podcastname").unwrap_or(&"Unknown".to_string()),
         podcast_values_map.get("author").unwrap_or(&"Unknown".to_string()),
         podcast_values_map.get("description").unwrap_or(&"".to_string()).len());
@@ -947,7 +1084,7 @@ async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::Datab
 // OIDC Authentication Flow Endpoints
 
 // Store OIDC state - enhanced to capture user's current URL
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct StoreStateRequest {
     pub state: String,
     pub client_id: String,
@@ -962,6 +1099,16 @@ struct StoredOidcState {
     code_verifier: Option<String>, // PKCE code verifier
 }
 
+#[utoipa::path(
+    post,
+    path = "/store_state",
+    tag = "auth",
+    summary = "Store oidc state",
+    request_body = StoreStateRequest,
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+    ),
+)]
 pub async fn store_oidc_state(
     State(state): State<crate::AppState>,
     Json(request): Json<StoreStateRequest>,
@@ -1076,7 +1223,7 @@ fn create_oidc_response(frontend_base: &str, params: &str) -> axum::response::Re
 }
 
 // OIDC callback handler - matches Python /api/auth/callback endpoint
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct OIDCCallbackQuery {
     pub code: Option<String>,
     pub state: Option<String>,
@@ -1084,6 +1231,16 @@ pub struct OIDCCallbackQuery {
     pub error_description: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/callback",
+    tag = "auth",
+    summary = "Oidc callback",
+    params(OIDCCallbackQuery),
+    responses(
+        (status = 302, description = "Redirect back to the application after OIDC login"),
+    ),
+)]
 pub async fn oidc_callback(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -1162,7 +1319,7 @@ pub async fn oidc_callback(
     };
 
     // Unpack provider details - EXACT match to Python unpacking
-    let (provider_id, _client_id, client_secret, token_url, userinfo_url, name_claim, email_claim, username_claim, roles_claim, user_role, admin_role) = provider_tuple;
+    let (_provider_id, _client_id, client_secret, token_url, userinfo_url, name_claim, email_claim, username_claim, roles_claim, user_role, admin_role) = provider_tuple;
 
     // Exchange authorization code for access token - EXACT match to Python
     let client = reqwest::Client::new();
@@ -1240,7 +1397,8 @@ pub async fn oidc_callback(
         .filter(|s| !s.is_empty())
         .unwrap_or("email");
     
-    tracing::info!("OIDC Debug - email_claim: {:?}, email_field: {}, userinfo_response: {:?}", email_claim, email_field, userinfo_response);
+    // Avoid logging the full userinfo payload (PII) at info level; gate the detail behind debug.
+    tracing::debug!("OIDC Debug - email_claim: {:?}, email_field: {}, userinfo_response: {:?}", email_claim, email_field, userinfo_response);
     
     let mut email = userinfo_response.get(email_field).and_then(|v| v.as_str()).map(|s| s.to_string());
     
@@ -1336,7 +1494,7 @@ pub async fn oidc_callback(
         state.db_pool.set_fullname(user_id, &fullname).await?;
 
         // Update username if changed - EXACT match to Python
-        if let (Some(username_claim), Some(new_username)) = (username_claim.as_ref().filter(|s| !s.is_empty()), username.as_ref()) {
+        if let (Some(_username_claim), Some(new_username)) = (username_claim.as_ref().filter(|s| !s.is_empty()), username.as_ref()) {
             if Some(new_username) != current_username.as_ref() {
                 if !state.db_pool.check_usernames(new_username).await? {
                     state.db_pool.set_username(user_id, new_username).await?;
@@ -1379,7 +1537,7 @@ pub async fn oidc_callback(
         // Create user - EXACT match to Python
         match state.db_pool.create_oidc_user(&email, &fullname, &final_username).await {
             Ok(user_id) => {
-                let api_key = state.db_pool.create_api_key(user_id).await?;
+                let _api_key = state.db_pool.create_api_key(user_id).await?;
                 
                 // Set admin role for new user - EXACT match to Python
                 if let (Some(roles_claim), Some(admin_role)) = (roles_claim.as_ref().filter(|s| !s.is_empty()), admin_role.as_ref().filter(|s| !s.is_empty())) {
@@ -1406,6 +1564,18 @@ pub async fn oidc_callback(
 }
 
 // Update user timezone
+#[utoipa::path(
+    put,
+    path = "/update_timezone",
+    tag = "auth",
+    summary = "Update timezone",
+    request_body = UpdateTimezoneRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_timezone(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1439,6 +1609,18 @@ pub async fn update_timezone(
 }
 
 // Update user date format
+#[utoipa::path(
+    put,
+    path = "/update_date_format",
+    tag = "auth",
+    summary = "Update date format",
+    request_body = UpdateDateFormatRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_date_format(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1472,6 +1654,18 @@ pub async fn update_date_format(
 }
 
 // Update user time format
+#[utoipa::path(
+    put,
+    path = "/update_time_format",
+    tag = "auth",
+    summary = "Update time format",
+    request_body = UpdateTimeFormatRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_time_format(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1505,6 +1699,18 @@ pub async fn update_time_format(
 }
 
 // Get user auto complete seconds
+#[utoipa::path(
+    get,
+    path = "/get_auto_complete_seconds/{user_id}",
+    tag = "auth",
+    summary = "Get auto complete seconds",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn get_auto_complete_seconds(
     headers: HeaderMap,
     Path(user_id): Path<i32>,
@@ -1533,6 +1739,18 @@ pub async fn get_auto_complete_seconds(
 }
 
 // Update user auto complete seconds
+#[utoipa::path(
+    put,
+    path = "/update_auto_complete_seconds",
+    tag = "auth",
+    summary = "Update auto complete seconds",
+    request_body = UpdateAutoCompleteSecondsRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
 pub async fn update_auto_complete_seconds(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -1566,6 +1784,16 @@ pub async fn update_auto_complete_seconds(
 }
 
 // Password reset endpoint - Always returns success for security (prevents username enumeration)
+#[utoipa::path(
+    post,
+    path = "/reset_password_create_code",
+    tag = "auth",
+    summary = "Reset password create code",
+    request_body = ResetCodeRequest,
+    responses(
+        (status = 200, description = "Success", body = ResetCodeResponse),
+    ),
+)]
 pub async fn reset_password_create_code(
     State(state): State<AppState>,
     Json(request): Json<ResetCodeRequest>,
@@ -1574,6 +1802,8 @@ pub async fn reset_password_create_code(
     if state.config.oidc.disable_standard_login {
         return Err(AppError::forbidden("Password reset is disabled when using OIDC-only authentication. Please use your OIDC provider for password management."));
     }
+    // Throttle reset-code emails per address to prevent spamming a user's inbox.
+    enforce_rate_limit(&state, &format!("reset_create:{}", request.email.to_lowercase()), 3, 600).await?;
     // Get email settings to check if they're configured
     let email_settings = state.db_pool.get_email_settings().await?;
     if let Some(settings) = email_settings {
@@ -1611,6 +1841,16 @@ pub async fn reset_password_create_code(
 }
 
 // Verify reset code and reset password endpoint - matches Python api_verify_and_reset_password_route exactly  
+#[utoipa::path(
+    post,
+    path = "/verify_and_reset_password",
+    tag = "auth",
+    summary = "Verify and reset password",
+    request_body = VerifyAndResetPasswordRequest,
+    responses(
+        (status = 200, description = "Success", body = VerifyAndResetPasswordResponse),
+    ),
+)]
 pub async fn verify_and_reset_password(
     State(state): State<AppState>,
     Json(request): Json<VerifyAndResetPasswordRequest>,
@@ -1619,6 +1859,8 @@ pub async fn verify_and_reset_password(
     if state.config.oidc.disable_standard_login {
         return Err(AppError::forbidden("Password reset is disabled when using OIDC-only authentication. Please use your OIDC provider for password management."));
     }
+    // Throttle reset-code verification per address to prevent brute-forcing the code.
+    enforce_rate_limit(&state, &format!("reset_verify:{}", request.email.to_lowercase()), 5, 300).await?;
     // Verify the reset code
     let code_valid = state.db_pool.verify_reset_code(&request.email, &request.reset_code).await?;
     

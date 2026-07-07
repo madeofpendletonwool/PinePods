@@ -67,6 +67,10 @@
 	</dict>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>File access is required to facilitate locating and importing OPML files</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera access is not used by Pinepods; this entry is required because a bundled library references the camera API.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location access is not used by Pinepods; this entry is required because a bundled library references the location API.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

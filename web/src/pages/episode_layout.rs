@@ -1,28 +1,34 @@
 use crate::components::app_drawer::App_drawer;
-use crate::components::audio::AudioPlayer;
+use crate::components::audio_player_bar::AudioPlayerBar;
 use crate::components::click_events::create_on_title_click;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, EpisodeNavigationState, EpisodeStatusState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
+use crate::requests::episode::Episode;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::{
     format_error_message, get_default_sort_direction, get_filter_preference, set_filter_preference,
 };
-use crate::components::host_component::HostDropdown;
 use crate::components::loading::Loading;
-use crate::components::virtual_list::VirtualList;
+use crate::components::episode_list_view::EpisodeListView;
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{
-    call_add_category, call_add_podcast, call_adjust_skip_times, call_bulk_download_episodes,
+    call_add_category, call_add_podcast, call_adjust_silence_trim, call_adjust_skip_times,
+    call_get_silence_trim, SilenceTrimRequest,
+    call_bulk_download_episodes,
     call_bulk_mark_episodes_completed, call_bulk_queue_episodes, call_bulk_save_episodes,
     call_check_podcast, call_clear_playback_speed, call_download_all_podcast,
-    call_enable_auto_download, call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
+    call_enable_auto_download, call_enable_auto_play_next,
+    call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
+    call_get_auto_play_next_status,
     call_get_feed_cutoff_days, call_get_merged_podcasts, call_get_play_episode_details,
     call_get_podcast_details, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
-    call_get_podcast_notifications_status, call_get_podcasts, call_get_rss_key,
-    call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
-    call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_notifications,
+    call_get_podcast_favorite_status, call_get_podcast_notifications_status, call_get_podcasts,
+    call_get_rss_key, call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
+    call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_favorite,
+    call_toggle_podcast_notifications,
     call_unmerge_podcast, call_update_feed_cutoff_days, call_update_podcast_info,
     AddCategoryRequest, AutoDownloadRequest, BulkEpisodeActionRequest, ClearPlaybackSpeedRequest,
-    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, PlaybackSpeedRequest,
+    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, AutoPlayNextRequest,
+    PlaybackSpeedRequest,
     PodcastDetails, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
     RemoveYouTubeChannelValues, SkipTimesRequest, UpdateFeedCutoffDaysRequest,
 };
@@ -40,6 +46,7 @@ use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use gloo_timers::future::TimeoutFuture;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::Element;
 use web_sys::{console, window, Event, HtmlInputElement, MouseEvent, UrlSearchParams};
@@ -161,30 +168,6 @@ fn get_rss_base_url() -> String {
     )
 }
 
-#[allow(dead_code)]
-pub enum AppStateMsg {
-    ExpandEpisode(String),
-    CollapseEpisode(String),
-}
-
-impl Reducer<AppState> for AppStateMsg {
-    fn apply(self, mut state: Rc<AppState>) -> Rc<AppState> {
-        let state_mut = Rc::make_mut(&mut state);
-
-        match self {
-            AppStateMsg::ExpandEpisode(guid) => {
-                state_mut.expanded_descriptions.insert(guid);
-            }
-            AppStateMsg::CollapseEpisode(guid) => {
-                state_mut.expanded_descriptions.remove(&guid);
-            }
-        }
-
-        // Return the Rc itself, not a reference to it
-        state
-    }
-}
-
 #[derive(Clone, PartialEq)]
 #[allow(dead_code)]
 pub enum EpisodeSortDirection {
@@ -206,7 +189,9 @@ pub struct PodcastMergeSelectorProps {
 
 #[function_component(PodcastMergeSelector)]
 pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
-    let (_i18n, _) = use_translation();
+    let (i18n, _) = use_translation();
+    let i18n_loading_podcasts = i18n.t("episodes_layout.loading_podcasts").to_string();
+    let i18n_select_podcasts_to_merge_hint = i18n.t("episodes_layout.select_podcasts_to_merge").to_string();
     let is_open = use_state(|| false);
     let dropdown_ref = use_node_ref();
 
@@ -281,9 +266,9 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
             >
                 <div class="flex items-center flex-grow">
                     if props.loading {
-                        <span class="flex-grow text-left">{"Loading podcasts..."}</span>
+                        <span class="flex-grow text-left">{ &i18n_loading_podcasts }</span>
                     } else if props.selected_podcasts.is_empty() {
-                        <span class="flex-grow text-left">{"Select podcasts to merge"}</span>
+                        <span class="flex-grow text-left">{ &i18n_select_podcasts_to_merge_hint }</span>
                     } else {
                         <span class="flex-grow text-left">
                             {format!("{} {} selected",
@@ -358,10 +343,12 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
 pub fn episode_layout() -> Html {
     let (i18n, _) = use_translation();
     let is_added = use_state(|| false);
-    let (state, _dispatch) = use_store::<UIState>();
     let (search_state, _search_dispatch) = use_store::<AppState>();
-    let podcast_feed_results = search_state.podcast_feed_results.clone();
-    let clicked_podcast_info = search_state.clicked_podcast_info.clone();
+    let (search_data, _) = use_store::<SearchState>();
+    let (state, _dispatch) = use_store::<UIState>();
+    let (podcast_state, _podcast_dispatch) = use_store::<PodcastFeedState>();
+    let podcast_feed_results = search_data.podcast_feed_results.clone();
+    let clicked_podcast_info = podcast_state.clicked_podcast_info.clone();
 
     // Capture i18n strings before they get moved - this is a large component with many strings
     let i18n_youtube_channel_successfully_removed = i18n
@@ -407,12 +394,23 @@ pub fn episode_layout() -> Html {
     let i18n_playback_speed_description = i18n
         .t("episodes_layout.playback_speed_description")
         .to_string();
+    let i18n_playback_speed_custom_badge = i18n
+        .t("episodes_layout.playback_speed_custom_badge")
+        .to_string();
+    let i18n_playback_speed_global_badge = i18n
+        .t("episodes_layout.playback_speed_global_badge")
+        .to_string();
     let i18n_auto_skip_intros_outros = i18n
         .t("episodes_layout.auto_skip_intros_outros")
         .to_string();
     let i18n_start_skip_seconds = i18n.t("episodes_layout.start_skip_seconds").to_string();
     let i18n_end_skip_seconds = i18n.t("episodes_layout.end_skip_seconds").to_string();
     let i18n_youtube_download_limit = i18n.t("episodes_layout.youtube_download_limit").to_string();
+    let i18n_trim_silence = i18n.t("episodes_layout.trim_silence").to_string();
+    let i18n_trim_silence_description = i18n
+        .t("episodes_layout.trim_silence_description")
+        .to_string();
+    let i18n_aggressiveness = i18n.t("episodes_layout.aggressiveness").to_string();
     let i18n_youtube_limit_description = i18n
         .t("episodes_layout.youtube_limit_description")
         .to_string();
@@ -459,6 +457,7 @@ pub fn episode_layout() -> Html {
     let i18n_deselect_all = i18n.t("episodes_layout.deselect_all").to_string();
     let i18n_select_all = i18n.t("episodes_layout.select_all").to_string();
     let i18n_select_unplayed = i18n.t("episodes_layout.select_unplayed").to_string();
+    let i18n_select_in_progress = i18n.t("episodes_layout.select_in_progress").to_string();
     let i18n_mark_complete = i18n.t("episodes_layout.mark_complete").to_string();
     let i18n_queue_episodes = i18n.t("episodes_layout.queue_episodes").to_string();
     let i18n_download_episodes = i18n.t("episodes_layout.download_episodes").to_string();
@@ -479,22 +478,47 @@ pub fn episode_layout() -> Html {
     let i18n_error_resetting_playback_speed = i18n
         .t("episodes_layout.error_resetting_playback_speed")
         .to_string();
+    let i18n_auto_play_next_episode = i18n.t("episodes_layout.auto_play_next_episode").to_string();
+    let i18n_favorite_podcast = i18n.t("episodes_layout.favorite_podcast").to_string();
+    let i18n_use_podcast_covers = i18n.t("episodes_layout.use_podcast_covers").to_string();
+    let i18n_podcast_cover_hint = i18n.t("episodes_layout.podcast_cover_hint").to_string();
+    let i18n_merge_podcasts = i18n.t("episodes_layout.merge_podcasts").to_string();
+    let i18n_merge_description = i18n.t("episodes_layout.merge_description").to_string();
+    let i18n_currently_merged_podcasts = i18n.t("episodes_layout.currently_merged_podcasts").to_string();
+    let i18n_unmerge = i18n.t("episodes_layout.unmerge").to_string();
+    let i18n_select_podcasts_to_merge = i18n.t("episodes_layout.select_podcasts_to_merge").to_string();
+    let i18n_hosts = i18n.t("episodes_layout.hosts").to_string();
+    let i18n_video = i18n.t("episodes_layout.video").to_string();
     let loading = use_state(|| true);
+    let is_subscribing = use_state(|| false);
     let page_state = use_state(|| PageState::Hidden);
     let episode_search_term = use_state(|| String::new());
+    // Debounced view of episode_search_term. Search keystrokes update `episode_search_term`
+    // for input responsiveness; a 300 ms timer copies it into `debounced_search_term`, which
+    // the backend-reload effect actually watches. Avoids one HTTP request per keystroke.
+    let debounced_search_term = use_state(|| String::new());
 
     // Initialize sort direction - will be updated when podcast_id changes
     let episode_sort_direction = use_state(|| Some(EpisodeSortDirection::NewestFirst));
 
     let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
+    // Set to Some(podcast_id) by the localStorage-load effect after it applies the per-podcast
+    // sort/filter prefs. The reload effect gates on this matching the current podcast_id, so we
+    // don't fire a backend fetch with stale sort/filter from the previous podcast.
+    let prefs_loaded_for_podcast = use_state(|| None::<i32>);
+    let _reload_offset = use_state(|| 0i64);
+    let loading_more = use_state(|| false);
     let notification_status = use_state(|| false);
+    let favorite_status = use_state(|| false);
     let feed_cutoff_days = use_state(|| 0);
     let feed_cutoff_days_input = use_state(|| "0".to_string());
     let playback_speed = use_state(|| 1.0);
+    let playback_speed_customized = use_state(|| false);
     let use_podcast_covers = use_state(|| false);
     let playback_speed_input = playback_speed.clone();
     let playback_speed_clone = playback_speed.clone();
+    let playback_speed_customized_render = playback_speed_customized.clone();
     let rss_key_state = use_state(|| None::<String>);
 
     // Bulk selection state
@@ -515,7 +539,7 @@ pub fn episode_layout() -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
-    let podcast_added = search_state.podcast_added.unwrap_or_default();
+    let _podcast_added = podcast_state.podcast_added.unwrap_or_default();
     let pod_url = use_state(|| String::new());
     let new_category = use_state(|| String::new());
 
@@ -636,7 +660,6 @@ pub fn episode_layout() -> Html {
         let user_id = effect_user_id.clone();
         let api_key = effect_api_key.clone();
         let server_name = server_name.clone();
-        let click_dispatch = _search_dispatch.clone();
         let click_history = history.clone();
         let pod_load_url = pod_url.clone();
         let pod_loading_ep = loading.clone();
@@ -718,7 +741,6 @@ pub fn episode_layout() -> Html {
 
                                 // Execute the same process as when a podcast is clicked
                                 let on_title_click = create_on_title_click(
-                                    click_dispatch,
                                     server_name,
                                     Some(Some(api_key.clone().unwrap())),
                                     &click_history,
@@ -798,7 +820,7 @@ pub fn episode_layout() -> Html {
         );
     }
 
-    let podcast_info = search_state.clicked_podcast_info.clone();
+    let podcast_info = podcast_state.clicked_podcast_info.clone();
     let load_link = loading.clone();
 
     use_effect_with(podcast_info.clone(), {
@@ -827,9 +849,13 @@ pub fn episode_layout() -> Html {
     });
 
     let download_status = use_state(|| false);
+    let auto_play_next_status = use_state(|| false);
     let podcast_id = use_state(|| 0);
     let start_skip = use_state(|| 0);
     let end_skip = use_state(|| 0);
+    // Silence-trim (#727) per-podcast settings
+    let trim_silence = use_state(|| false);
+    let silence_threshold = use_state(|| 2i32);
 
     // Load merge-related data when edit modal opens
     {
@@ -933,9 +959,16 @@ pub fn episode_layout() -> Html {
         );
     }
 
+    // Tracks how many episodes have been synced into EpisodeStatusState so appends only
+    // process new episodes instead of rebuilding the entire completed/saved/queued sets.
+    let synced_episode_count = use_state(|| 0usize);
+
     // Update sort direction when podcast_id changes to load per-podcast preferences
     {
         let episode_sort_direction = episode_sort_direction.clone();
+        let completed_filter_state = completed_filter_state.clone();
+        let synced_episode_count = synced_episode_count.clone();
+        let prefs_loaded_for_podcast = prefs_loaded_for_podcast.clone();
         let podcast_id_clone = podcast_id.clone();
         use_effect_with(podcast_id_clone, move |podcast_id| {
             if **podcast_id > 0 {
@@ -951,6 +984,21 @@ pub fn episode_layout() -> Html {
                     _ => Some(EpisodeSortDirection::NewestFirst), // Default to newest first
                 };
                 episode_sort_direction.set(new_direction);
+
+                let completed_key = format!("podcast_{}_completed_filter", **podcast_id);
+                let saved_completed = get_filter_preference(&completed_key);
+                let new_completed_filter = match saved_completed.as_deref() {
+                    Some("show_only") => CompletedFilter::ShowOnly,
+                    Some("hide") => CompletedFilter::Hide,
+                    _ => CompletedFilter::ShowAll,
+                };
+                completed_filter_state.set(new_completed_filter);
+                synced_episode_count.set(0);
+                // Signal the backend-reload effect that prefs for this podcast are loaded so
+                // it can fetch with the right sort/filter. Without this gate, the reload effect
+                // would fire once with the previous podcast's sort and then again after the
+                // pref load — two requests, one with stale params.
+                prefs_loaded_for_podcast.set(Some(**podcast_id));
             }
             || ()
         });
@@ -961,34 +1009,33 @@ pub fn episode_layout() -> Html {
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
         let download_status = download_status.clone();
+        let auto_play_next_status = auto_play_next_status.clone();
         let notification_effect = notification_status.clone();
+        let favorite_effect = favorite_status.clone();
         // let episode_name = episode_name_pre.clone();
         // let episode_url = episode_url_pre.clone();
         let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID);
         let effect_start_skip = start_skip.clone();
         let effect_end_skip = end_skip.clone();
         let effect_playback_speed = playback_speed.clone();
+        let effect_playback_speed_customized = playback_speed_customized.clone();
         let effect_added = is_added.clone();
         let feed_cutoff_days = feed_cutoff_days.clone();
         let feed_cutoff_days_input = feed_cutoff_days_input.clone();
         let audio_dispatch = _dispatch.clone();
-        let click_state = search_state.clone();
+        let click_feed_results = search_data.podcast_feed_results.clone();
+        let clicked_podcast_info_effect = podcast_state.clicked_podcast_info.clone();
 
         use_effect_with(
-            (
-                click_state.podcast_feed_results.clone(),
-                effect_added.clone(),
-            ),
+            (*podcast_id, *effect_added),
             move |_| {
-                let episode_name = click_state
-                    .podcast_feed_results
+                let episode_name = click_feed_results
                     .as_ref()
                     .and_then(|r| r.episodes.get(0))
                     .and_then(|ep| Some(ep.episodetitle.clone()))
                     .unwrap_or_default();
 
-                let episode_url = click_state
-                    .podcast_feed_results
+                let episode_url = click_feed_results
                     .as_ref()
                     .and_then(|results| results.episodes.get(0))
                     .and_then(|episode| Some(episode.episodeurl.clone()))
@@ -1002,117 +1049,134 @@ pub fn episode_layout() -> Html {
                     let server_name = server_name.clone();
                     let podcast_id = podcast_id.clone();
                     let download_status = download_status.clone();
+                    let auto_play_next_status = auto_play_next_status.clone();
                     let episode_name = episode_name;
                     let episode_url = episode_url;
                     let user_id = user_id.unwrap();
 
-                    if !episode_name.is_empty() && !episode_url.is_empty() {
+                    // Use podcast_id from clicked_podcast_info when available so we can skip
+                    // the call_get_podcast_id_from_ep_name round-trip for subscribed podcasts.
+                    let known_podcast_id = clicked_podcast_info_effect
+                        .as_ref()
+                        .map(|info| info.podcastid)
+                        .filter(|&id| id > 0);
+
+                    // Proceed if we have a known podcast id OR a valid first-episode URL to look it up
+                    if known_podcast_id.is_some()
+                        || (!episode_name.is_empty() && !episode_url.is_empty())
+                    {
                         wasm_bindgen_futures::spawn_local(async move {
                             if let (Some(api_key), Some(server_name)) =
                                 (api_key.as_ref(), server_name.as_ref())
                             {
-                                match call_get_podcast_id_from_ep_name(
-                                    &server_name,
-                                    &api_key,
-                                    episode_name,
-                                    episode_url,
-                                    user_id,
-                                )
-                                .await
-                                {
-                                    Ok(id) => {
-                                        podcast_id.set(id);
-
-                                        match call_get_auto_download_status(
-                                            &server_name,
-                                            user_id,
-                                            &Some(api_key.clone().unwrap()),
-                                            id,
-                                        )
-                                        .await
-                                        {
-                                            Ok(status) => {
-                                                download_status.set(status);
-                                            }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!(
-                                                        "Error getting auto-download status: {}",
-                                                        e
-                                                    )
-                                                    .into(),
-                                                );
-                                            }
+                                // Resolve the podcast_id: either already known or look it up.
+                                let id = if let Some(id) = known_podcast_id {
+                                    podcast_id.set(id);
+                                    id
+                                } else {
+                                    match call_get_podcast_id_from_ep_name(
+                                        &server_name,
+                                        &api_key,
+                                        episode_name,
+                                        episode_url,
+                                        user_id,
+                                    )
+                                    .await
+                                    {
+                                        Ok(id) => {
+                                            podcast_id.set(id);
+                                            id
                                         }
-                                        match call_get_feed_cutoff_days(
-                                            &server_name,
-                                            &Some(api_key.clone().unwrap()),
-                                            id,
-                                            user_id,
-                                        )
-                                        .await
-                                        {
+                                        Err(e) => {
+                                            web_sys::console::log_1(
+                                                &format!(
+                                                    "Error getting podcast id from ep name: {}",
+                                                    e
+                                                )
+                                                .into(),
+                                            );
+                                            return;
+                                        }
+                                    }
+                                };
+                                {
+                                        // Unlock page immediately — episodes already in SearchState.
+                                        loading_ep.set(false);
+                                        // Fetch all podcast settings in parallel.
+                                        let key_opt = Some(api_key.clone().unwrap());
+                                        let key_str = api_key.clone().unwrap();
+                                        let server = server_name.clone();
+                                        let (auto_dl_result, auto_play_result, cutoff_result, notif_result, fav_result, play_details_result) = futures::join!(
+                                            call_get_auto_download_status(
+                                                &server,
+                                                user_id,
+                                                &key_opt,
+                                                id,
+                                            ),
+                                            call_get_auto_play_next_status(
+                                                &server,
+                                                user_id,
+                                                &key_opt,
+                                                id,
+                                            ),
+                                            call_get_feed_cutoff_days(
+                                                &server,
+                                                &key_opt,
+                                                id,
+                                                user_id,
+                                            ),
+                                            call_get_podcast_notifications_status(
+                                                server.clone(),
+                                                key_str.clone(),
+                                                user_id,
+                                                id,
+                                            ),
+                                            call_get_podcast_favorite_status(
+                                                server.clone(),
+                                                key_str.clone(),
+                                                user_id,
+                                                id,
+                                            ),
+                                            call_get_play_episode_details(
+                                                &server,
+                                                &key_opt,
+                                                user_id,
+                                                id,
+                                                false,
+                                            ),
+                                        );
+                                        match auto_dl_result {
+                                            Ok(status) => { download_status.set(status); }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting auto-download status: {}", e).into()); }
+                                        }
+                                        match auto_play_result {
+                                            Ok(status) => { auto_play_next_status.set(status); }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting auto-play-next status: {}", e).into()); }
+                                        }
+                                        match cutoff_result {
                                             Ok(days) => {
                                                 feed_cutoff_days.set(days);
                                                 feed_cutoff_days_input.set(days.to_string());
                                             }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!(
-                                                        "Error getting feed cutoff days: {}",
-                                                        e
-                                                    )
-                                                    .into(),
-                                                );
-                                            }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting feed cutoff days: {}", e).into()); }
                                         }
-                                        // Add notification status check here
-                                        match call_get_podcast_notifications_status(
-                                            server_name.clone(),
-                                            api_key.clone().unwrap(),
-                                            user_id,
-                                            id,
-                                        )
-                                        .await
-                                        {
-                                            Ok(status) => {
-                                                notification_effect.set(status);
-                                            }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!(
-                                                        "Error getting notification status: {}",
-                                                        e
-                                                    )
-                                                    .into(),
-                                                );
-                                            }
+                                        match notif_result {
+                                            Ok(status) => { notification_effect.set(status); }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting notification status: {}", e).into()); }
                                         }
-                                        match call_get_play_episode_details(
-                                            &server_name,
-                                            &Some(api_key.clone().unwrap()),
-                                            user_id,
-                                            id,    // podcast_id
-                                            false, // is_youtube (probably false for most podcasts, adjust if needed)
-                                        )
-                                        .await
-                                        {
-                                            Ok((speed, start, end)) => {
+                                        match fav_result {
+                                            Ok(status) => { favorite_effect.set(status); }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting favorite status: {}", e).into()); }
+                                        }
+                                        match play_details_result {
+                                            Ok((speed, start, end, customized)) => {
                                                 effect_start_skip.set(start);
                                                 effect_end_skip.set(end);
                                                 effect_playback_speed.set(speed as f64);
+                                                effect_playback_speed_customized.set(customized);
                                             }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!(
-                                                        "Error getting auto-skip times: {}",
-                                                        e
-                                                    )
-                                                    .into(),
-                                                );
-                                            }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting auto-skip times: {}", e).into()); }
                                         }
-                                        loading_ep.set(false);
                                         let chap_request = FetchPodcasting2PodDataRequest {
                                             podcast_id: id,
                                             user_id,
@@ -1145,12 +1209,6 @@ pub fn episode_layout() -> Html {
                                             }
                                         }
                                     }
-                                    Err(e) => {
-                                        web_sys::console::log_1(
-                                            &format!("Error getting podcast ID: {}", e).into(),
-                                        );
-                                    }
-                                }
                             }
                         });
                     }
@@ -1281,7 +1339,7 @@ pub fn episode_layout() -> Html {
             let pod_title_og = pod_values.clone().unwrap().podcastname.clone();
             let pod_feed_url_og = pod_values.clone().unwrap().feedurl.clone();
             let is_youtube = pod_values.clone().unwrap().is_youtube.unwrap_or(false);
-            app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
+            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
             let is_added_inner = call_is_added.clone();
             let call_dispatch = add_dispatch.clone();
             let pod_title = pod_title_og.clone();
@@ -1302,9 +1360,9 @@ pub fn episode_layout() -> Html {
             };
             let api_key_call = api_key_clone.clone();
             let server_name_call = server_name_clone.clone();
-            let app_dispatch = app_dispatch.clone();
+            let _app_dispatch = app_dispatch.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                let dispatch_wasm = call_dispatch.clone();
+                let _dispatch_wasm = call_dispatch.clone();
                 let api_key_wasm = api_key_call.clone().unwrap();
                 let server_name_wasm = server_name_call.clone();
 
@@ -1327,7 +1385,7 @@ pub fn episode_layout() -> Html {
                 match result {
                     Ok(success) => {
                         if success {
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(
                                     if pod_feed_url_check.starts_with("https://www.youtube.com") {
                                         i18n_youtube_channel_successfully_removed
@@ -1336,34 +1394,36 @@ pub fn episode_layout() -> Html {
                                     },
                                 )
                             });
-                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
-                            is_added_inner.set(false);
-                            app_dispatch.reduce_mut(|state| {
-                                state.podcast_added = Some(podcast_added);
+                            Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
+                                state.podcast_added = Some(false);
                             });
+                            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
+                                state.is_loading = Some(false);
+                            });
+                            is_added_inner.set(false);
 
                             if pod_feed_url_check.starts_with("https://www.youtube.com") {
                                 hist.push("/podcasts");
                             }
                         } else {
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Some(if is_youtube {
                                     i18n_failed_to_remove_youtube_channel
                                 } else {
                                     i18n_failed_to_remove_podcast
                                 })
                             });
-                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                         }
                         page_state.set(PageState::Hidden);
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
-                        dispatch_wasm.reduce_mut(|state| {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message =
                                 Some(format!("Error removing content: {:?}", formatted_error))
                         });
-                        app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                        Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
                     }
                 }
             });
@@ -1373,24 +1433,25 @@ pub fn episode_layout() -> Html {
     let download_server_name = server_name.clone();
     let download_api_key = api_key.clone();
     let download_dispatch = _search_dispatch.clone();
-    let app_state = search_state.clone();
+    let download_feed_results = search_data.podcast_feed_results.clone();
 
     let download_all_click = {
         let call_dispatch = download_dispatch.clone();
         let server_name_copy = download_server_name.clone();
         let api_key_copy = download_api_key.clone();
         let user_id_copy = user_id.clone();
-        let search_call_state = app_state.clone();
+        let feed_results_copy = download_feed_results.clone();
+        let page_state_copy = page_state.clone();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             let server_name = server_name_copy.clone();
             let api_key = api_key_copy.clone();
-            let search_state = search_call_state.clone();
-            let call_down_dispatch = call_dispatch.clone();
+            let feed_results = feed_results_copy.clone();
+            let _call_down_dispatch = call_dispatch.clone();
+            let page_state = page_state_copy.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                let episode_id = match search_state
-                    .podcast_feed_results
+                let episode_id = match feed_results
                     .as_ref()
                     .and_then(|results| results.episodes.get(0))
                     .and_then(|episode| Some(episode.episodeid))
@@ -1401,8 +1462,7 @@ pub fn episode_layout() -> Html {
                         return;
                     }
                 };
-                let is_youtube = match search_state
-                    .podcast_feed_results
+                let is_youtube = match feed_results
                     .as_ref()
                     .and_then(|results| results.episodes.get(0))
                     .and_then(|episode| Some(episode.is_youtube))
@@ -1439,28 +1499,31 @@ pub fn episode_layout() -> Html {
                         .await
                         {
                             Ok(success_message) => {
-                                call_down_dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Option::from(format!("{}", success_message))
                                 });
+                                page_state.set(PageState::Hidden);
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
-                                call_down_dispatch.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message =
                                         Option::from(format!("{}", formatted_error))
                                 });
+                                page_state.set(PageState::Hidden);
                             }
                         }
                     }
                     Err(e) => {
-                        call_down_dispatch.reduce_mut(|state| {
-                            let formatted_error = format_error_message(&e.to_string());
+                        let formatted_error = format_error_message(&e.to_string());
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                             state.error_message = Option::from(format!(
                                 "Failed to get podcast ID: {}",
                                 formatted_error
                             ))
                         });
+                        page_state.set(PageState::Hidden);
                     }
                 }
             });
@@ -1478,7 +1541,13 @@ pub fn episode_layout() -> Html {
         EditPodcast,
     }
 
-    let button_content = if *is_added { trash_icon() } else { add_icon() };
+    let button_content = if *is_subscribing {
+        html! { <i class="ph ph-spinner animate-spin text-2xl"></i> }
+    } else if *is_added {
+        trash_icon()
+    } else {
+        add_icon()
+    };
 
     let setting_content = if *is_added {
         settings_icon()
@@ -1570,6 +1639,51 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let toggle_auto_play_next = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let auto_play_next_status = auto_play_next_status.clone();
+        let podcast_id = podcast_id.clone();
+        let user_id = user_id.clone();
+
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let auto_play_next_status = auto_play_next_status.clone();
+            let auto_play_next = !*auto_play_next_status;
+            let pod_id_deref = *podcast_id.clone();
+            let user_id = user_id.clone().unwrap();
+
+            let request_data = AutoPlayNextRequest {
+                podcast_id: pod_id_deref,
+                user_id,
+                auto_play_next,
+            };
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_enable_auto_play_next(
+                        &server_name,
+                        &api_key.clone().unwrap(),
+                        &request_data,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            auto_play_next_status.set(auto_play_next);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error enabling/disabling auto-play-next: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
     let playback_speed_input_handler = Callback::from(move |e: InputEvent| {
         if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
             let value = input.value().parse::<f64>().unwrap_or(1.0);
@@ -1582,6 +1696,7 @@ pub fn episode_layout() -> Html {
     // Create the save playback speed function
     let save_playback_speed = {
         let playback_speed = playback_speed.clone();
+        let playback_speed_customized = playback_speed_customized.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
@@ -1594,8 +1709,9 @@ pub fn episode_layout() -> Html {
             e.prevent_default();
             let i18n_playback_speed_updated = i18n_playback_speed_updated.clone();
             let i18n_error_updating_playback_speed = i18n_error_updating_playback_speed.clone();
-            let call_dispatch = dispatch.clone();
+            let _call_dispatch = dispatch.clone();
             let speed = *playback_speed;
+            let playback_speed_customized = playback_speed_customized.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone().unwrap();
             let server_name = server_name.clone();
@@ -1612,7 +1728,8 @@ pub fn episode_layout() -> Html {
 
                     match call_set_playback_speed(&server_name, &api_key, &request).await {
                         Ok(_) => {
-                            call_dispatch.reduce_mut(|state| {
+                            playback_speed_customized.set(true);
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Option::from(i18n_playback_speed_updated)
                             });
                         }
@@ -1620,7 +1737,7 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error updating playback speed: {}", e).into(),
                             );
-                            call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_updating_playback_speed)
                             });
@@ -1638,15 +1755,19 @@ pub fn episode_layout() -> Html {
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
         let dispatch = _search_dispatch.clone();
+        let playback_speed = playback_speed.clone();
+        let playback_speed_customized = playback_speed_customized.clone();
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             let i18n_playback_speed_reset_default = i18n_playback_speed_reset_default.clone();
             let i18n_error_resetting_playback_speed = i18n_error_resetting_playback_speed.clone();
-            let call_dispatch = dispatch.clone();
+            let _call_dispatch = dispatch.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone().unwrap();
             let server_name = server_name.clone();
             let podcast_id = *podcast_id;
+            let playback_speed = playback_speed.clone();
+            let playback_speed_customized = playback_speed_customized.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
                 {
@@ -1656,7 +1777,21 @@ pub fn episode_layout() -> Html {
                     };
                     match call_clear_playback_speed(&server_name, &api_key, &request).await {
                         Ok(_) => {
-                            call_dispatch.reduce_mut(|state| {
+                            playback_speed_customized.set(false);
+                            // Re-fetch so the displayed value reflects the global default now in effect
+                            if let Ok((speed, _start, _end, customized)) = call_get_play_episode_details(
+                                &server_name,
+                                api_key,
+                                user_id,
+                                podcast_id,
+                                false,
+                            )
+                            .await
+                            {
+                                playback_speed.set(speed as f64);
+                                playback_speed_customized.set(customized);
+                            }
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Option::from(i18n_playback_speed_reset_default)
                             });
                         }
@@ -1664,7 +1799,7 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error resetting playback speed: {}", e).into(),
                             );
-                            call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Option::from(i18n_error_resetting_playback_speed)
                             });
@@ -1699,7 +1834,7 @@ pub fn episode_layout() -> Html {
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             let i18n_youtube_episode_limit_updated = i18n_youtube_episode_limit_updated.clone();
-            let dispatch_wasm = dispatch_vid.clone();
+            let _dispatch_wasm = dispatch_vid.clone();
 
             // Extract the values directly without creating intermediate variables
             if let (Some(server_val), Some(key_val), Some(user_val)) = (
@@ -1727,7 +1862,7 @@ pub fn episode_layout() -> Html {
                     {
                         Ok(_) => {
                             feed_cutoff_days.set(days);
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message =
                                     Option::from(i18n_youtube_episode_limit_updated)
                             });
@@ -1738,7 +1873,7 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error updating feed cutoff days: {}", err).into(),
                             );
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(format!(
                                     "Error updating feed cutoff days: {:?}",
                                     err
@@ -1791,6 +1926,46 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let toggle_favorite = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let favorite_status = favorite_status.clone();
+        let podcast_id = podcast_id.clone();
+        let user_id = user_id.clone();
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let favorite_status = favorite_status.clone();
+            let is_favorite = !*favorite_status;
+            let pod_id_deref = *podcast_id.clone();
+            let user_id = user_id.clone().unwrap();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_toggle_podcast_favorite(
+                        server_name.clone(),
+                        api_key.clone().unwrap(),
+                        user_id,
+                        pod_id_deref,
+                        is_favorite,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            favorite_status.set(is_favorite);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error toggling favorite: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
     let toggle_podcast_covers = {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
@@ -1805,7 +1980,7 @@ pub fn episode_layout() -> Html {
             let new_setting = !*use_podcast_covers;
             let pod_id_deref = *podcast_id.clone();
             let user_id = user_id.clone().unwrap();
-            let dispatch = dispatch.clone();
+            let _dispatch = dispatch.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
@@ -1821,7 +1996,7 @@ pub fn episode_layout() -> Html {
                     {
                         Ok(_) => {
                             use_podcast_covers.set(new_setting);
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Some(format!(
                                     "Podcast cover preference {} for this podcast",
                                     if new_setting { "enabled" } else { "disabled" }
@@ -1829,7 +2004,7 @@ pub fn episode_layout() -> Html {
                             });
                         }
                         Err(e) => {
-                            dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("Error updating podcast cover preference: {}", e));
                             });
@@ -1860,7 +2035,7 @@ pub fn episode_layout() -> Html {
             e.prevent_default();
             let i18n_skip_times_adjusted = i18n_skip_times_adjusted.clone();
             let i18n_error_adjusting_skip_times = i18n_error_adjusting_skip_times.clone();
-            let skip_call_dispatch = skip_dispatch.clone();
+            let _skip_call_dispatch = skip_dispatch.clone();
             let start_skip = *start_skip;
             let end_skip = *end_skip;
             let api_key = api_key.clone();
@@ -1880,7 +2055,7 @@ pub fn episode_layout() -> Html {
 
                     match call_adjust_skip_times(&server_name, &api_key, &request).await {
                         Ok(_) => {
-                            skip_call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.info_message = Option::from(i18n_skip_times_adjusted)
                             });
                         }
@@ -1888,13 +2063,117 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error updating skip times: {}", e).into(),
                             );
-                            skip_call_dispatch.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(i18n_error_adjusting_skip_times)
                             });
                         }
                     }
                 }
             });
+        })
+    };
+
+    // Load per-podcast silence-trim settings when the podcast id becomes known.
+    {
+        let trim_silence = trim_silence.clone();
+        let silence_threshold = silence_threshold.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        let podcast_id = podcast_id.clone();
+        use_effect_with(*podcast_id, move |pid| {
+            let pid = *pid;
+            if pid != 0 {
+                if let (Some(api_key), Some(server_name), Some(user_id)) =
+                    (api_key.clone(), server_name.clone(), user_id.clone())
+                {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(settings) = call_get_silence_trim(
+                            &server_name,
+                            &api_key,
+                            user_id,
+                            pid,
+                        )
+                        .await
+                        {
+                            trim_silence.set(settings.enabled);
+                            silence_threshold.set(settings.threshold);
+                        }
+                    });
+                }
+            }
+            || ()
+        });
+    }
+
+    // Save the silence-trim settings to the server
+    let save_silence_trim = {
+        let trim_silence = trim_silence.clone();
+        let silence_threshold = silence_threshold.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+        let podcast_id = podcast_id.clone();
+
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let enabled = *trim_silence;
+            let threshold = *silence_threshold;
+            let api_key = api_key.clone();
+            let user_id = user_id.clone().unwrap();
+            let server_name = server_name.clone();
+            let podcast_id = *podcast_id;
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    let request = SilenceTrimRequest {
+                        podcast_id,
+                        user_id,
+                        enabled,
+                        threshold,
+                    };
+                    match call_adjust_silence_trim(server_name, api_key, &request)
+                        .await
+                    {
+                        Ok(_) => {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                state.info_message =
+                                    Option::from("Silence trim settings updated.".to_string())
+                            });
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error updating silence trim: {}", e).into(),
+                            );
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                state.error_message =
+                                    Option::from("Error updating silence trim.".to_string())
+                            });
+                        }
+                    }
+                }
+            });
+        })
+    };
+
+    // UI bindings for the silence-trim controls
+    let trim_checked = *trim_silence;
+    let threshold_val = *silence_threshold;
+    let trim_toggle = {
+        let trim_silence = trim_silence.clone();
+        Callback::from(move |e: Event| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                trim_silence.set(input.checked());
+            }
+        })
+    };
+    let threshold_change = {
+        let silence_threshold = silence_threshold.clone();
+        Callback::from(move |e: Event| {
+            if let Some(sel) = e.target_dyn_into::<web_sys::HtmlSelectElement>() {
+                silence_threshold.set(sel.value().parse::<i32>().unwrap_or(2));
+            }
         })
     };
 
@@ -1910,7 +2189,7 @@ pub fn episode_layout() -> Html {
 
         Callback::from(move |event: web_sys::MouseEvent| {
             event.prevent_default(); // Prevent the default form submit or page reload behavior
-            let app_dispatch = app_dispatch_add.clone();
+            let _app_dispatch = app_dispatch_add.clone();
             if new_category.is_empty() {
                 web_sys::console::log_1(&i18n_category_name_cannot_be_empty.clone().into());
                 return;
@@ -1937,7 +2216,7 @@ pub fn episode_layout() -> Html {
                 // Match on the awaited response
                 match response {
                     Ok(_) => {
-                        app_dispatch.reduce_mut(|state| {
+                        Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
                             if let Some(ref mut podcast_info) = state.clicked_podcast_info {
                                 if let Some(ref mut categories) = podcast_info.categories {
                                     // Add the new category to the HashMap
@@ -1974,7 +2253,7 @@ pub fn episode_layout() -> Html {
         })
     };
 
-    let app_dispatch = _search_dispatch.clone();
+    let _app_dispatch = _search_dispatch.clone();
 
     {
         let category_to_remove = category_to_remove.clone();
@@ -2000,7 +2279,7 @@ pub fn episode_layout() -> Html {
                         call_remove_category(&server_name, &api_key, &request_data).await;
                     match response {
                         Ok(_) => {
-                            app_dispatch.reduce_mut(|state| {
+                            Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
                                 if let Some(ref mut podcast_info) = state.clicked_podcast_info {
                                     if let Some(ref mut categories) = podcast_info.categories {
                                         // Filter the HashMap and collect back into HashMap
@@ -2155,6 +2434,13 @@ pub fn episode_layout() -> Html {
                                 </label>
                             </div>
                             <div>
+                                <label for="auto_play_next" class="block mb-2 text-sm font-medium">{ &i18n_auto_play_next_episode }</label>
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input type="checkbox" checked={*auto_play_next_status} class="sr-only peer" onclick={toggle_auto_play_next} />
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div>
                                 <label for="notification_settings" class="block mb-2 text-sm font-medium">{&i18n_get_notifications_new_episodes}</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input
@@ -2162,6 +2448,18 @@ pub fn episode_layout() -> Html {
                                         checked={*notification_status}
                                         class="sr-only peer"
                                         onclick={toggle_notifications}
+                                    />
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div>
+                                <label for="favorite_settings" class="block mb-2 text-sm font-medium">{ &i18n_favorite_podcast }</label>
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={*favorite_status}
+                                        class="sr-only peer"
+                                        onclick={toggle_favorite}
                                     />
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                 </label>
@@ -2194,11 +2492,24 @@ pub fn episode_layout() -> Html {
                                         {&i18n.t("episodes_layout.reset")}
                                     </button>
                                 </div>
+                                <div class="mt-2">
+                                    if *playback_speed_customized_render {
+                                        <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                            <i class="ph ph-pencil-simple"></i>
+                                            {&i18n_playback_speed_custom_badge}
+                                        </span>
+                                    } else {
+                                        <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                            <i class="ph ph-globe"></i>
+                                            {&i18n_playback_speed_global_badge}
+                                        </span>
+                                    }
+                                </div>
                                 <p class="text-xs text-gray-500 mt-1">{&i18n_playback_speed_description}</p>
                             </div>
 
                             <div class="mt-4">
-                                <label class="block mb-2 text-sm font-medium">{"Use Podcast Covers"}</label>
+                                <label class="block mb-2 text-sm font-medium">{ &i18n_use_podcast_covers }</label>
                                 <div class="flex items-center space-x-2">
                                     <label class="relative inline-flex items-center cursor-pointer">
                                         <input
@@ -2210,7 +2521,7 @@ pub fn episode_layout() -> Html {
                                         <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                     </label>
                                 </div>
-                                <p class="text-xs text-gray-500 mt-1">{"Show podcast cover instead of episode artwork for this podcast's episodes"}</p>
+                                <p class="text-xs text-gray-500 mt-1">{ &i18n_podcast_cover_hint }</p>
                             </div>
 
                             <div class="mt-4">
@@ -2249,6 +2560,36 @@ pub fn episode_layout() -> Html {
                                     <button
                                         class="download-button font-bold py-2 px-4 rounded"
                                         onclick={save_skip_times}
+                                    >
+                                        {&i18n.t("episodes_layout.confirm")}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="mt-4">
+                                <label for="trim-silence" class="block mb-2 text-sm font-medium">{&i18n_trim_silence}</label>
+                                <div class="flex items-center space-x-2">
+                                    <input
+                                        type="checkbox"
+                                        id="trim-silence"
+                                        class="w-4 h-4"
+                                        checked={trim_checked}
+                                        onchange={trim_toggle}
+                                    />
+                                    <span class="text-sm">{&i18n_trim_silence_description}</span>
+                                    <label for="silence-threshold" class="block text-sm font-medium">{&i18n_aggressiveness}</label>
+                                    <select
+                                        id="silence-threshold"
+                                        class="email-input border text-sm rounded-lg p-2.5"
+                                        onchange={threshold_change}
+                                    >
+                                        <option value="1" selected={threshold_val == 1}>{"Low"}</option>
+                                        <option value="2" selected={threshold_val == 2}>{"Medium"}</option>
+                                        <option value="3" selected={threshold_val == 3}>{"High"}</option>
+                                    </select>
+                                    <button
+                                        class="download-button font-bold py-2 px-4 rounded"
+                                        onclick={save_silence_trim}
                                     >
                                         {&i18n.t("episodes_layout.confirm")}
                                     </button>
@@ -2649,16 +2990,16 @@ pub fn episode_layout() -> Html {
 
                                 // Merge Podcasts Section
                                 <div class="mb-4 p-4 border rounded-lg">
-                                    <h4 class="text-lg font-semibold mb-3">{"Merge Podcasts"}</h4>
+                                    <h4 class="text-lg font-semibold mb-3">{ &i18n_merge_podcasts }</h4>
                                     <p class="text-sm text-gray-600 mb-3">
-                                        {"Merge other podcasts into this one. Episodes from merged podcasts will appear under this podcast."}
+                                        { &i18n_merge_description }
                                     </p>
 
                                     // Show currently merged podcasts
                                     if !(*current_merged_podcasts).is_empty() {
                                         <div class="mb-4">
                                             <label class="block mb-2 text-sm font-medium">
-                                                {"Currently Merged Podcasts"}
+                                                { &i18n_currently_merged_podcasts }
                                             </label>
                                             <div>
                                                 {
@@ -2690,13 +3031,13 @@ pub fn episode_layout() -> Html {
                                                                         let primary_id = *podcast_id;
                                                                         let current_merged_podcasts = current_merged_podcasts.clone();
                                                                         let merged_podcast_details = merged_podcast_details.clone();
-                                                                        let dispatch = dispatch.clone();
+                                                                        let _dispatch = dispatch.clone();
 
                                                                         spawn_local(async move {
                                                                             if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key.as_ref(), server_name.as_ref(), user_id.as_ref()) {
                                                                                 match call_unmerge_podcast(server_name, &api_key, primary_id, merged_id).await {
                                                                                     Ok(_) => {
-                                                                                        dispatch.reduce_mut(|state| {
+                                                                                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                             state.info_message = Some("Podcast unmerged successfully".to_string())
                                                                                         });
 
@@ -2725,7 +3066,7 @@ pub fn episode_layout() -> Html {
                                                                                         }
                                                                                     },
                                                                                     Err(e) => {
-                                                                                        dispatch.reduce_mut(|state| {
+                                                                                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                             state.error_message = Some(format!("Failed to unmerge podcast: {}", e))
                                                                                         });
                                                                                     }
@@ -2734,7 +3075,7 @@ pub fn episode_layout() -> Html {
                                                                         });
                                                                     })}
                                                                 >
-                                                                    {"Unmerge"}
+                                                                    { &i18n_unmerge }
                                                                 </button>
                                                             </div>
                                                         }
@@ -2747,7 +3088,7 @@ pub fn episode_layout() -> Html {
                                     // Podcast selector for merging
                                     <div class="mb-3">
                                         <label class="block mb-2 text-sm font-medium">
-                                            {"Select Podcasts to Merge"}
+                                            { &i18n_select_podcasts_to_merge }
                                         </label>
                                         <PodcastMergeSelector
                                             selected_podcasts={(*selected_podcasts_to_merge).clone()}
@@ -2790,16 +3131,16 @@ pub fn episode_layout() -> Html {
                                                         let user_id = *user_id;
                                                         let current_merged_podcasts = current_merged_podcasts.clone();
                                                         let merged_podcast_details = merged_podcast_details.clone();
-                                                        let dispatch = dispatch.clone();
+                                                        let _dispatch = dispatch.clone();
 
                                                         spawn_local(async move {
                                                             match call_merge_podcasts(&server_name, &api_key, primary_id, &podcast_ids).await {
-                                                                Ok(response) => {
+                                                                Ok(_response) => {
                                                                     // Clear selection after successful merge
                                                                     selected_podcasts_to_merge.set(Vec::new());
 
                                                                     // Show success message
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.info_message = Some(format!("Successfully merged {} podcast(s)", podcast_ids.len()))
                                                                     });
 
@@ -2828,7 +3169,7 @@ pub fn episode_layout() -> Html {
                                                                     }
                                                                 },
                                                                 Err(e) => {
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.error_message = Some(format!("Failed to merge podcasts: {}", e))
                                                                     });
                                                                 }
@@ -2880,7 +3221,7 @@ pub fn episode_layout() -> Html {
                                                 let server_name = server_name.clone();
                                                 let user_id = user_id.clone();
                                                 let page_state = page_state.clone();
-                                                let dispatch = dispatch.clone();
+                                                let _dispatch = dispatch.clone();
 
                                                 if let Some(podcast_info) = clicked_podcast_info.as_ref() {
                                                     let current_feed_url = podcast_info.feedurl.clone();
@@ -2895,7 +3236,7 @@ pub fn episode_layout() -> Html {
                                                     spawn_local(async move {
                                                         // Check if podcast is loaded
                                                         if current_podcast_id == 0 {
-                                                            dispatch.reduce_mut(|state| {
+                                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                 state.error_message = Some("Please wait for podcast to load before editing".to_string())
                                                             });
                                                             return;
@@ -2960,7 +3301,7 @@ pub fn episode_layout() -> Html {
                                                         if feed_url.is_none() && username.is_none() && password.is_none() &&
                                                            podcast_name.is_none() && description.is_none() && author.is_none() &&
                                                            artwork_url.is_none() && website_url.is_none() && podcast_index_id.is_none() {
-                                                            dispatch.reduce_mut(|state| {
+                                                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                 state.info_message = Some("No changes to save".to_string())
                                                             });
                                                             return;
@@ -2983,18 +3324,18 @@ pub fn episode_layout() -> Html {
                                                         ).await {
                                                             Ok(response) => {
                                                                 if response.success {
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.info_message = Some("Podcast updated successfully".to_string())
                                                                     });
                                                                     page_state.set(PageState::Hidden);
                                                                 } else {
-                                                                    dispatch.reduce_mut(|state| {
+                                                                    Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                         state.error_message = Some(format!("Update failed: {}", response.message))
                                                                     });
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                dispatch.reduce_mut(|state| {
+                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                     state.error_message = Some(format!("Error updating podcast: {}", e))
                                                                 });
                                                             }
@@ -3056,12 +3397,12 @@ pub fn episode_layout() -> Html {
 
         let is_added = is_added.clone();
         let added_id = podcast_id.clone();
+        let is_subscribing_toggle = is_subscribing.clone();
 
         if *is_added == true {
             toggle_delete
         } else {
             Callback::from(move |_: MouseEvent| {
-                // Ensure this is triggered only by a MouseEvent
                 let i18n_podcast_successfully_added = i18n_podcast_successfully_added.clone();
                 let i18n_failed_to_add_podcast = i18n_failed_to_add_podcast.clone();
                 let callback_podcast_id = added_id.clone();
@@ -3075,9 +3416,11 @@ pub fn episode_layout() -> Html {
                 let pod_feed_url_og = pod_values.clone().unwrap().feedurl.clone();
                 let pod_website_og = pod_values.clone().unwrap().websiteurl.clone();
                 let pod_explicit_og = pod_values.clone().unwrap().explicit.clone();
-                let app_dispatch = app_dispatch.clone();
-                app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
+                let _app_dispatch = app_dispatch.clone();
+                Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
                 let is_added_inner = is_added.clone();
+                let is_subscribing_inner = is_subscribing_toggle.clone();
+                is_subscribing_inner.set(true);
                 let call_dispatch = add_dispatch.clone();
                 let pod_title = pod_title_og.clone();
                 let pod_artwork = pod_artwork_og.clone();
@@ -3104,13 +3447,13 @@ pub fn episode_layout() -> Html {
                 let api_key_call = api_key_clone.clone();
                 let server_name_call = server_name_clone.clone();
                 let user_id_call = user_id_clone.clone();
+                let _ = call_dispatch; // will be dropped; dispatch happens via app_dispatch
 
                 wasm_bindgen_futures::spawn_local(async move {
-                    let dispatch_wasm = call_dispatch.clone();
                     let api_key_wasm = api_key_call.clone().unwrap();
                     let user_id_wasm = user_id_call.clone().unwrap();
                     let server_name_wasm = server_name_call.clone();
-                    let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
+                    let pod_values_clone = podcast_values.clone();
 
                     match call_add_podcast(
                         &server_name_wasm.clone().unwrap(),
@@ -3122,71 +3465,99 @@ pub fn episode_layout() -> Html {
                     .await
                     {
                         Ok(response_body) => {
-                            // Replace the problematic sections in episodes_layout.rs with this code:
-
-                            // First issue: response_body.podcast_id is now i32, not Option<i32>
                             if response_body.success {
-                                dispatch_wasm.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.info_message =
                                         Option::from(i18n_podcast_successfully_added)
                                 });
-                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 is_added_inner.set(true);
 
-                                // podcast_id is now directly an i32, not an Option
                                 let call_podcast_id = response_body.podcast_id;
                                 callback_podcast_id.set(call_podcast_id);
 
-                                // Since first_episode_id is now an i32, use it directly
                                 let episode_id = Some(response_body.first_episode_id);
-                                // Use the episode_id for further processing
-                                app_dispatch.reduce_mut(|state| {
-                                    state.selected_episode_id = episode_id;
-                                    // Now this matches Option<i32>
+                                Dispatch::<EpisodeNavigationState>::global().reduce_mut(move |s| {
+                                    s.selected_episode_id = episode_id;
                                 });
 
-                                // Fetch episodes - podcast_id is now direct i32
-                                match call_get_podcast_episodes(
-                                    &server_name_wasm.unwrap(),
-                                    &api_key_wasm,
-                                    &user_id_wasm,
-                                    &call_podcast_id,
-                                )
-                                .await
-                                {
-                                    Ok(podcast_feed_results) => {
-                                        app_dispatch.reduce_mut(move |state| {
-                                            state.podcast_feed_results = Some(podcast_feed_results);
-                                        });
-                                        app_dispatch
-                                            .reduce_mut(|state| state.is_loading = Some(false));
-                                    }
-                                    Err(e) => {
-                                        web_sys::console::log_1(
-                                            &format!("Error fetching episodes: {:?}", e).into(),
-                                        );
+                                // The backend ingests episodes asynchronously after returning success,
+                                // so poll until the DB has episodes (up to ~30 seconds).
+                                let server_for_poll = server_name_wasm.clone().unwrap_or_default();
+                                const MAX_POLL_ATTEMPTS: u32 = 15;
+                                const POLL_INTERVAL_MS: u32 = 2_000;
+                                let mut episodes_loaded = false;
+
+                                for attempt in 0..MAX_POLL_ATTEMPTS {
+                                    match call_get_podcast_episodes(
+                                        &server_for_poll,
+                                        &api_key_wasm,
+                                        &user_id_wasm,
+                                        &call_podcast_id,
+                                        Some(50),
+                                        Some(0),
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) if !result.episodes.is_empty() => {
+                                            Dispatch::<SearchState>::global().reduce_mut(move |state| {
+                                                state.podcast_feed_results = Some(result);
+                                            });
+                                            Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
+                                                state.podcast_added = Some(true);
+                                            });
+                                            Dispatch::<PageLoadState>::global().reduce_mut(|state| {
+                                                state.is_loading = Some(false);
+                                            });
+                                            episodes_loaded = true;
+                                            break;
+                                        }
+                                        Ok(_) => {
+                                            // Episodes not ready yet — wait and retry
+                                            if attempt + 1 < MAX_POLL_ATTEMPTS {
+                                                TimeoutFuture::new(POLL_INTERVAL_MS).await;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            web_sys::console::log_1(
+                                                &format!("Error fetching episodes on attempt {}: {:?}", attempt, e).into(),
+                                            );
+                                            break;
+                                        }
                                     }
                                 }
 
-                                app_dispatch.reduce_mut(|state| {
-                                    state.podcast_added = Some(podcast_added);
-                                });
+                                if !episodes_loaded {
+                                    // Polling exhausted or errored — mark as subscribed anyway
+                                    Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
+                                        state.podcast_added = Some(true);
+                                    });
+                                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
+                                        state.is_loading = Some(false);
+                                    });
+                                }
+                                is_subscribing_inner.set(false);
                             } else {
-                                dispatch_wasm.reduce_mut(|state| {
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                     state.error_message = Option::from(i18n_failed_to_add_podcast)
                                 });
-                                app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                                Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
+                                is_subscribing_inner.set(false);
                             }
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
-                            dispatch_wasm.reduce_mut(|state| {
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                 state.error_message = Option::from(format!(
                                     "Error adding podcast: {:?}",
                                     formatted_error
                                 ))
                             });
-                            app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(false));
+                            is_subscribing_inner.set(false);
                         }
                     }
                 });
@@ -3201,75 +3572,355 @@ pub fn episode_layout() -> Html {
         Hide,
     }
 
-    let filtered_episodes = use_memo(
-        (
-            podcast_feed_results.clone(),
-            episode_search_term.clone(),
-            episode_sort_direction.clone(),
-            completed_filter_state.clone(), // Changed from show_completed
-            show_in_progress.clone(),
-        ),
-        |(episodes, search, sort_dir, _show_completed, show_in_progress)| {
-            if let Some(results) = episodes {
-                let mut filtered = results
-                    .episodes
-                    .iter()
-                    .filter(|episode| {
-                        // Search filter
-                        let matches_search = if !search.is_empty() {
-                            episode
-                                .episodetitle
-                                .to_lowercase()
-                                .contains(&search.to_lowercase())
-                                || episode
-                                    .episodedescription
-                                    .to_lowercase()
-                                    .contains(&search.to_lowercase())
-                        } else {
-                            true
-                        };
+    // Sort/search/filter run on the backend now — the effect below just keeps `filtered_episodes`
+    // in sync with `podcast_feed_results.episodes`. Pre-existing consumers (select_older,
+    // select_newer, EpisodeListView, etc.) read from `filtered_episodes`, so we maintain it
+    // as a thin pass-through Rc instead of restructuring every call site.
+    let filtered_episodes = use_state(|| Rc::new(Vec::<Episode>::new()));
+    let processed_episode_count = use_state(|| 0usize);
 
-                        // Status filter
-                        let matches_status = if **show_in_progress {
-                            !episode.completed && episode.listenduration > 0
-                        } else {
-                            match *completed_filter_state {
-                                CompletedFilter::ShowOnly => episode.completed,
-                                CompletedFilter::Hide => !episode.completed,
-                                CompletedFilter::ShowAll => true,
-                            }
-                        };
-
-                        matches_search && matches_status
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>();
-
-                // Sort logic
-                if let Some(direction) = (*sort_dir).as_ref() {
-                    filtered.sort_by(|a, b| match direction {
-                        EpisodeSortDirection::NewestFirst => {
-                            b.episodepubdate.cmp(&a.episodepubdate)
-                        }
-                        EpisodeSortDirection::OldestFirst => {
-                            a.episodepubdate.cmp(&b.episodepubdate)
-                        }
-                        EpisodeSortDirection::ShortestFirst => {
-                            a.episodepubdate.cmp(&b.episodepubdate)
-                        }
-                        EpisodeSortDirection::LongestFirst => {
-                            b.episodepubdate.cmp(&a.episodepubdate)
-                        }
-                        EpisodeSortDirection::TitleAZ => a.episodetitle.cmp(&b.episodetitle),
-                        EpisodeSortDirection::TitleZA => b.episodetitle.cmp(&a.episodetitle),
-                    });
-                }
-                filtered
+    {
+        let filtered_episodes = filtered_episodes.clone();
+        let processed_episode_count = processed_episode_count.clone();
+        use_effect_with(podcast_feed_results.clone(), move |pfr| {
+            if let Some(results) = pfr.as_ref() {
+                // Always replace — backend already filtered/sorted, so the order is canonical.
+                filtered_episodes.set(Rc::new(results.episodes.clone()));
+                processed_episode_count.set(results.episodes.len());
             } else {
-                vec![]
+                if !filtered_episodes.is_empty() {
+                    filtered_episodes.set(Rc::new(Vec::new()));
+                }
+                if *processed_episode_count != 0 {
+                    processed_episode_count.set(0);
+                }
             }
-        },
-    );
+            || ()
+        });
+    }
+
+    // Map the frontend's EpisodeSortDirection enum to the backend's (sort_by, sort_order) pair.
+    fn sort_to_params(dir: &Option<EpisodeSortDirection>) -> (&'static str, &'static str) {
+        match dir {
+            Some(EpisodeSortDirection::OldestFirst)   => ("date", "asc"),
+            Some(EpisodeSortDirection::ShortestFirst) => ("duration", "asc"),
+            Some(EpisodeSortDirection::LongestFirst)  => ("duration", "desc"),
+            Some(EpisodeSortDirection::TitleAZ)       => ("title", "asc"),
+            Some(EpisodeSortDirection::TitleZA)       => ("title", "desc"),
+            _                                         => ("date", "desc"),
+        }
+    }
+    // The frontend has 4 filter states (3-way completed × show_in_progress toggle); collapse
+    // to the backend's "all" | "completed" | "incomplete" | "in_progress" vocabulary.
+    fn completed_to_filter(c: &CompletedFilter, show_in_progress: bool) -> &'static str {
+        if show_in_progress { return "in_progress"; }
+        match c {
+            CompletedFilter::ShowOnly => "completed",
+            CompletedFilter::Hide     => "incomplete",
+            CompletedFilter::ShowAll  => "all",
+        }
+    }
+
+    // Debounce the raw search input: a 300 ms timer copies `episode_search_term` into
+    // `debounced_search_term`, and only the latter feeds the backend-reload effect. Otherwise
+    // every keystroke would fire its own HTTP request.
+    {
+        let debounced_search_term = debounced_search_term.clone();
+        let term = (*episode_search_term).clone();
+        use_effect_with(term.clone(), move |t| {
+            let t = t.clone();
+            let debounced = debounced_search_term.clone();
+            let timeout = gloo_timers::callback::Timeout::new(300, move || {
+                debounced.set(t);
+            });
+            // Cancel the pending timer if the user types again before it fires.
+            move || drop(timeout)
+        });
+    }
+
+    // Backend reload: fetch from offset 0 with current sort/search/filter whenever any of those
+    // (or podcast_id / auth) changes. Gated on `prefs_loaded_for_podcast == Some(podcast_id)`
+    // so we don't fire mid-mount with stale per-podcast prefs from the previous page.
+    {
+        let api_key_dep = api_key.clone();
+        let user_id_dep = user_id;
+        let server_name_dep = server_name.clone();
+        let podcast_id_dep = *podcast_id;
+        let sort_dep = (*episode_sort_direction).clone();
+        let completed_dep = (*completed_filter_state).clone();
+        let show_in_progress_dep = *show_in_progress;
+        let search_dep = (*debounced_search_term).clone();
+        let prefs_loaded_dep = *prefs_loaded_for_podcast;
+        let synced_episode_count_eff = synced_episode_count.clone();
+
+        use_effect_with(
+            (
+                api_key_dep,
+                user_id_dep,
+                server_name_dep,
+                podcast_id_dep,
+                sort_dep,
+                completed_dep,
+                show_in_progress_dep,
+                search_dep,
+                prefs_loaded_dep,
+            ),
+            move |(api_key, user_id, server_name, pid, sort, completed, show_ip, search, prefs_loaded)| {
+                if *pid <= 0 || Some(*pid) != *prefs_loaded {
+                    return Box::new(|| ()) as Box<dyn FnOnce()>;
+                }
+                let (Some(api_key_outer), Some(uid), Some(server_inner)) =
+                    (api_key.clone(), *user_id, server_name.clone())
+                else {
+                    return Box::new(|| ()) as Box<dyn FnOnce()>;
+                };
+                let Some(api_key_str) = api_key_outer.as_deref().map(|s| s.to_string()) else {
+                    return Box::new(|| ()) as Box<dyn FnOnce()>;
+                };
+                let (sort_by, sort_order) = sort_to_params(sort);
+                let filter_str = completed_to_filter(completed, *show_ip);
+                let search_str = search.clone();
+                let pid_inner = *pid;
+                let synced_episode_count_eff = synced_episode_count_eff.clone();
+                spawn_local(async move {
+                    match call_get_podcast_episodes(
+                        &server_inner,
+                        &Some(api_key_str),
+                        &uid,
+                        &pid_inner,
+                        Some(50),
+                        Some(0),
+                        Some(sort_by),
+                        Some(sort_order),
+                        Some(&search_str),
+                        Some(filter_str),
+                    )
+                    .await
+                    {
+                        Ok(result) => {
+                            Dispatch::<SearchState>::global().reduce_mut(|state| {
+                                state.podcast_feed_results = Some(result);
+                            });
+                            // Reset the status-sync counter so the saved/completed/queued sync
+                            // effect rebuilds against the new result set rather than treating
+                            // it as an append.
+                            synced_episode_count_eff.set(0);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error reloading podcast episodes: {}", e).into(),
+                            );
+                        }
+                    }
+                });
+                Box::new(|| ()) as Box<dyn FnOnce()>
+            },
+        );
+    }
+
+    // Sync completed/saved/queued status into EpisodeStatusState whenever episodes load.
+    // On initial load (already_synced == 0) or podcast change (total < already_synced): full
+    // replace. On append: only extend with new episodes so existing cards skip re-evaluation.
+    {
+        let podcast_feed_results = podcast_feed_results.clone();
+        let synced_episode_count = synced_episode_count.clone();
+        use_effect_with(podcast_feed_results, move |results| {
+            if let Some(results) = results.as_ref() {
+                let all_episodes = &results.episodes;
+                let already_synced = *synced_episode_count;
+                let total_now = all_episodes.len();
+
+                // If total_now < already_synced the podcast changed — treat as initial.
+                let is_initial = already_synced == 0 || total_now < already_synced;
+
+                if total_now != already_synced {
+                    let new_episodes: &[Episode] = if is_initial {
+                        &all_episodes[..]
+                    } else {
+                        &all_episodes[already_synced..]
+                    };
+
+                    let new_completed: std::collections::HashSet<i32> = new_episodes
+                        .iter()
+                        .filter(|ep| ep.completed)
+                        .map(|ep| ep.episodeid)
+                        .collect();
+                    let new_saved: Vec<Episode> = new_episodes
+                        .iter()
+                        .filter(|ep| ep.saved)
+                        .cloned()
+                        .collect();
+                    let new_queued: Vec<i32> = new_episodes
+                        .iter()
+                        .filter(|ep| ep.queued)
+                        .map(|ep| ep.episodeid)
+                        .collect();
+
+                    Dispatch::<EpisodeStatusState>::global().reduce_mut(move |state| {
+                        if is_initial {
+                            state.completed_episodes = new_completed;
+                            state.saved_episodes = new_saved;
+                            state.queued_episode_ids = Some(new_queued);
+                        } else {
+                            state.completed_episodes.extend(new_completed);
+                            state.saved_episodes.extend(new_saved);
+                            if let Some(ref mut q) = state.queued_episode_ids {
+                                q.extend(new_queued);
+                            } else {
+                                state.queued_episode_ids = Some(new_queued);
+                            }
+                        }
+                    });
+                    synced_episode_count.set(total_now);
+                }
+            }
+            || ()
+        });
+    }
+
+    // Load-more handler: EpisodeListView owns the sentinel, observer, display_count, and
+    // initial ramp. This callback only fires when the view has run out of locally-buffered
+    // episodes AND backend_can_load_more is true. The two `TimeoutFuture::new(0).await` yields
+    // let the spinner paint before the work and let new cards paint after, keeping the page
+    // responsive during the fetch.
+    //
+    // SearchState and PodcastFeedState are read via `Dispatch::get()` inside the body so the
+    // offset reflects the latest already-loaded count. The Rc<State> snapshots captured by the
+    // outer closure would be stale on every fire after the first append — that was the
+    // offset=0 bug in the first pass of this migration.
+    let on_load_more = {
+        let loading_more = loading_more.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let episode_sort_direction = episode_sort_direction.clone();
+        let completed_filter_state = completed_filter_state.clone();
+        let show_in_progress = show_in_progress.clone();
+        let debounced_search_term = debounced_search_term.clone();
+        use_callback((), move |_: (), _| {
+            if *loading_more {
+                return;
+            }
+            let search_state = Dispatch::<SearchState>::global().get();
+            let podcast_state = Dispatch::<PodcastFeedState>::global().get();
+            let loaded = search_state
+                .podcast_feed_results
+                .as_ref()
+                .map(|r| r.episodes.len() as i64)
+                .unwrap_or(0);
+            let podcast_id_val = podcast_state
+                .clicked_podcast_info
+                .as_ref()
+                .map(|i| i.podcastid)
+                .unwrap_or(0);
+            let Some(api_key_inner) = api_key.as_ref() else { return; };
+            let Some(server_inner) = server_name.as_ref() else { return; };
+            let Some(uid) = user_id else { return; };
+            let Some(key_str) = api_key_inner.as_deref() else { return; };
+            let key = key_str.to_string();
+            let server = server_inner.clone();
+            // Read sort/filter/search at fire time so a sort/filter change between renders
+            // doesn't get clobbered by a stale snapshot from when the callback was created.
+            let (sort_by, sort_order) = sort_to_params(&*episode_sort_direction);
+            let filter_str = completed_to_filter(&*completed_filter_state, *show_in_progress);
+            let search_str = (*debounced_search_term).clone();
+            loading_more.set(true);
+            let loading_more = loading_more.clone();
+            spawn_local(async move {
+                match call_get_podcast_episodes(
+                    &server,
+                    &Some(key),
+                    &uid,
+                    &podcast_id_val,
+                    Some(50),
+                    Some(loaded),
+                    Some(sort_by),
+                    Some(sort_order),
+                    Some(&search_str),
+                    Some(filter_str),
+                )
+                .await
+                {
+                    Ok(result) => {
+                        TimeoutFuture::new(0).await;
+                        Dispatch::<SearchState>::global().reduce_mut(|state| {
+                            if let Some(ref mut existing) = state.podcast_feed_results {
+                                existing.episodes.extend(result.episodes);
+                                existing.total = result.total;
+                            }
+                        });
+                        TimeoutFuture::new(0).await;
+                    }
+                    Err(e) => {
+                        web_sys::console::log_1(
+                            &format!("Error loading more episodes: {}", e).into(),
+                        );
+                    }
+                }
+                loading_more.set(false);
+            });
+        })
+    };
+
+    // Stable callbacks via use_callback with `()` deps: the Callback object is reused across
+    // every parent render. Critical because EpisodeListItem props include these callbacks —
+    // if they were fresh `Callback::from(...)` per render, every already-mounted card would
+    // fail PartialEq and re-run its function body on every parent re-render (display_count
+    // bump, backend append, anything). With use_callback the captured UseStateHandle deref
+    // still gives the *current* state value when the callback fires, so behaviour is
+    // unchanged — only the identity is stabilised.
+    let on_episode_checkbox_change = {
+        let selected_episodes = selected_episodes.clone();
+        use_callback((), move |episode_id: i32, _| {
+            let mut current = (*selected_episodes).clone();
+            if current.contains(&episode_id) {
+                current.remove(&episode_id);
+            } else {
+                current.insert(episode_id);
+            }
+            selected_episodes.set(current);
+        })
+    };
+
+    let on_select_older = {
+        let filtered_episodes = filtered_episodes.clone();
+        let selected_episodes = selected_episodes.clone();
+        use_callback((), move |cutoff_episode_id: i32, _| {
+            let episodes = &*filtered_episodes;
+            let cutoff_index = episodes
+                .iter()
+                .position(|ep| ep.episodeid == cutoff_episode_id)
+                .unwrap_or(0);
+            let older_ids: HashSet<i32> = episodes
+                .iter()
+                .skip(cutoff_index)
+                .map(|ep| ep.episodeid)
+                .collect();
+            let mut current = (*selected_episodes).clone();
+            current.extend(older_ids);
+            selected_episodes.set(current);
+        })
+    };
+
+    let on_select_newer = {
+        let filtered_episodes = filtered_episodes.clone();
+        let selected_episodes = selected_episodes.clone();
+        use_callback((), move |cutoff_episode_id: i32, _| {
+            let episodes = &*filtered_episodes;
+            let cutoff_index = episodes
+                .iter()
+                .position(|ep| ep.episodeid == cutoff_episode_id)
+                .unwrap_or(0);
+            let newer_ids: HashSet<i32> = episodes
+                .iter()
+                .take(cutoff_index + 1)
+                .map(|ep| ep.episodeid)
+                .collect();
+            let mut current = (*selected_episodes).clone();
+            current.extend(newer_ids);
+            selected_episodes.set(current);
+        })
+    };
 
     #[wasm_bindgen]
     extern "C" {
@@ -3334,279 +3985,126 @@ pub fn episode_layout() -> Html {
                                             })
                                         };
                                         let sanitized_description = sanitize_html(&podcast_info.description);
+                                        let is_video_podcast = search_data.podcast_feed_results
+                                            .as_ref()
+                                            .map(|r| r.episodes.iter().any(|e| e.is_video))
+                                            .unwrap_or(false);
                                         let layout = if state.is_mobile.unwrap_or(false) {
+                                            let server_for_proxy = server_name.clone().unwrap_or_default();
                                             html! {
-                                                <div class="mobile-layout">
-                                                    <div class="button-container">
+                                                <div class="mobile-layout ep-mobile-pod-header">
+
+                                                    // ── Compact header: artwork + title + actions ──
+                                                    <div class="ep-mobile-header">
+                                                        <FallbackImage
+                                                            src={podcast_info.artworkurl.clone()}
+                                                            alt={format!("Cover for {}", &podcast_info.podcastname)}
+                                                            class="ep-mobile-art rounded-corners"
+                                                        />
+                                                        <div class="ep-mobile-meta">
+                                                            <div class="flex items-center gap-2">
+                                                                <h2 class="ep-mobile-title">{ &podcast_info.podcastname }</h2>
+                                                                { if is_video_podcast {
+                                                                    html! {
+                                                                        <span class="inline-flex items-center gap-1 bg-opacity-80 bg-gray-700 text-white text-xs px-1.5 py-0.5 rounded-full">
+                                                                            <i class="ph ph-television"></i>
+                                                                            { &i18n_video }
+                                                                        </span>
+                                                                    }
+                                                                } else { html! {} }}
+                                                            </div>
+                                                            <p class="ep-mobile-podcast-name">{ &podcast_info.author }</p>
+                                                            <p class="ep-mobile-subinfo">
+                                                                { format!("{}{} · {}{}",
+                                                                    i18n_episode_count,
+                                                                    &podcast_info.episodecount,
+                                                                    i18n_explicit,
+                                                                    if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    // ── Icon action bar ──
+                                                    <div class={if podcast_state.podcast_added.unwrap_or(false) { "ep-mobile-actions" } else { "ep-mobile-actions ep-mobile-actions-sparse" }}>
+                                                        // Subscribe / unsubscribe — always shown
+                                                        <button onclick={toggle_podcast} title="Add or remove podcast" class="ep-mobile-action-btn ep-mobile-action-play">
+                                                            { button_content }
+                                                        </button>
+                                                        // Website link — always shown
                                                         <button
                                                             onclick={
                                                                 let pod_link = pod_link.clone();
                                                                 Callback::from(move |_| web_link.emit(pod_link.clone()))
                                                             }
-                                                            title="Visit external podcast website" class="item-container-button font-bold rounded-full self-center mr-4">
+                                                            title="Visit podcast website"
+                                                            class="ep-mobile-action-btn"
+                                                        >
                                                             { website_icon }
                                                         </button>
-                                                        {
-                                                            if let Some(funding_list) = &state.podcast_funding {
-                                                                if !funding_list.is_empty() {
-                                                                    let funding_list_clone = funding_list.clone();
-                                                                    html! {
-                                                                        <>
-                                                                        { for funding_list_clone.iter().map(|funding| {
-                                                                            let open_in_new_tab = open_in_new_tab.clone();
-                                                                            let payment_icon = payment_icon.clone();
-                                                                            let url = funding.url.clone();
-                                                                            html! {
-                                                                                <button
-                                                                                    onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
-                                                                                    title={funding.description.clone()}
-                                                                                    class="item-container-button font-bold rounded-full self-center mr-4"
-                                                                                >
-                                                                                    { payment_icon } // Replace with your payment_icon component
-                                                                                </button>
-                                                                            }
-                                                                        })}
-                                                                        </>
-                                                                    }
-                                                                } else {
-                                                                    html! {}
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        {
-                                                            if search_state.podcast_added.unwrap() {
-                                                                html! {
-                                                                    <button
-                                                                        onclick={
-                                                                            let page_state = page_state.clone();
-                                                                            Callback::from(move |_| {
-                                                                                page_state.set(PageState::RSSFeed);
-                                                                            })
-                                                                        }
-                                                                        title="Get RSS Feed URL"
-                                                                        class="item-container-button font-bold rounded-full self-center mr-4"
-                                                                        style="width: 30px; height: 30px;"
-                                                                    >
-                                                                        { rss_icon }
-                                                                    </button>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        {
-                                                            if search_state.podcast_added.unwrap() {
-                                                                html! {
-                                                                    <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                        { download_all }
-                                                                    </button>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                            { button_content }
-                                                        </button>
-                                                        {
-                                                            if search_state.podcast_added.unwrap() {
-                                                                html! {
-                                                                    <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                        { setting_content }
-                                                                    </button>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                    </div>
-                                                    <div class="item-header-mobile-cover-container">
-                                                        <FallbackImage
-                                                            src={podcast_info.artworkurl.clone()}
-                                                            // onclick={on_title_click.clone()}
-                                                            alt={format!("Cover for {}", &podcast_info.podcastname)}
-                                                            class={"item-header-mobile-cover"}
-                                                        />
-                                                    </div>
-
-                                                    <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
-                                                    <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
-                                                        { sanitized_description }
-                                                        <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
-                                                    </div>
-                                                    <p class="header-info">{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</p>
-                                                    <p class="header-info">{ format!("{}{}", i18n_authors, &podcast_info.author) }</p>
-                                                    <p class="header-info">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</p>
-                                                    {
-                                                        if !podcast_info.is_youtube.unwrap_or(false) {  // Only show if not a YouTube channel
-                                                            if podcast_info.podcastindexid == 0 {
-                                                                html! {
-                                                                    <div class="import-box mt-2">
-                                                                        <p class="item_container-text text-sm">
-                                                                            {"⚠️ This podcast isn't matched to Podcast Index. "}
-                                                                            <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
-                                                                                {&i18n.t("episodes_layout.match_it_here")}
-                                                                            </a>
-                                                                            {" to enable host and guest information."}
-                                                                        </p>
-                                                                    </div>
-                                                                }
-                                                            } else if let Some(people) = &state.podcast_people {
-                                                                if !people.is_empty() {
-                                                                    html! {
-                                                                        <div class="header-info relative">
-                                                                            <div class="max-w-full overflow-x-auto">
-                                                                                <HostDropdown
-                                                                                    title="Hosts"
-                                                                                    hosts={people.clone()}
-                                                                                    podcast_feed_url={podcast_info.feedurl}
-                                                                                    podcast_id={*podcast_id}
-                                                                                    podcast_index_id={podcast_info.podcastindexid}
-                                                                                />
-                                                                            </div>
-                                                                        </div>
-                                                                    }
-                                                                } else {
-                                                                    html! {}
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    <div>
-                                                    <div class="categories-container">
-                                                    {
-                                                        if let Some(categories) = &podcast_info.categories {
+                                                        // Subscribed-only actions
+                                                        { if podcast_state.podcast_added.unwrap_or(false) {
                                                             html! {
                                                                 <>
-                                                                { for categories.iter().map(|(_, category_name)| {
-                                                                    html! { <span class="category-box">{ category_name }</span> }
-                                                                }) }
+                                                                <button onclick={toggle_download} title="Download all episodes" class="ep-mobile-action-btn">
+                                                                    { download_all }
+                                                                </button>
+                                                                <button
+                                                                    onclick={
+                                                                        let page_state = page_state.clone();
+                                                                        Callback::from(move |_| page_state.set(PageState::RSSFeed))
+                                                                    }
+                                                                    title="Get RSS Feed URL"
+                                                                    class="ep-mobile-action-btn"
+                                                                >
+                                                                    { rss_icon }
+                                                                </button>
+                                                                <button onclick={toggle_settings} title="Podcast settings" class="ep-mobile-action-btn">
+                                                                    { setting_content }
+                                                                </button>
                                                                 </>
                                                             }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
+                                                        } else { html! {} }}
+                                                        // Funding buttons (if any)
+                                                        { if let Some(funding_list) = &state.podcast_funding {
+                                                            if !funding_list.is_empty() {
+                                                                let funding_list_clone = funding_list.clone();
+                                                                html! {
+                                                                    <>
+                                                                    { for funding_list_clone.iter().map(|funding| {
+                                                                        let open_in_new_tab = open_in_new_tab.clone();
+                                                                        let payment_icon = payment_icon.clone();
+                                                                        let url = funding.url.clone();
+                                                                        html! {
+                                                                            <button
+                                                                                onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
+                                                                                title={funding.description.clone()}
+                                                                                class="ep-mobile-action-btn"
+                                                                            >
+                                                                                { payment_icon }
+                                                                            </button>
+                                                                        }
+                                                                    })}
+                                                                    </>
+                                                                }
+                                                            } else { html! {} }
+                                                        } else { html! {} }}
                                                     </div>
 
-                                                    </div>
-                                                </div>
-                                            }
-                                        } else {
-                                            let pod_link = podcast_info.feedurl.clone();
-                                            html! {
-                                                <div class="item-header">
-                                                    <FallbackImage
-                                                        src={podcast_info.artworkurl.clone()}
-                                                        // onclick={on_title_click.clone()}
-                                                        alt={format!("Cover for {}", &podcast_info.podcastname)}
-                                                        class={"item-header-cover"}
-                                                    />
-                                                    <div class="item-header-info">
-                                                        <div class="title-button-container">
-                                                            <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
-                                                            {
-                                                                if search_state.podcast_added.unwrap() {
-                                                                    html! {
-                                                                        <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                            { download_all }
-                                                                        </button>
-                                                                    }
-                                                                } else {
-                                                                    html! {}
-                                                                }
-                                                            }
-                                                            <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button font-bold py-2 px-4 rounded-full self-center mr-4"} style="width: 60px; height: 60px;">
-                                                                { button_content }
-                                                            </button>
-                                                            {
-                                                                if search_state.podcast_added.unwrap() {
-                                                                    html! {
-                                                                        <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                            { setting_content }
-                                                                        </button>
-                                                                    }
-                                                                } else {
-                                                                    html! {}
-                                                                }
-                                                            }
-                                                        </div>
-
-                                                        // <p class="item-header-description">{ &podcast_info.podcast_description }</p>
+                                                    // ── Description (collapsed) ──
+                                                    <div class="ep-mobile-desc-section">
                                                         <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
                                                             { sanitized_description }
                                                             <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
                                                         </div>
-                                                        <button
-                                                            onclick={Callback::from(move |_| web_link.clone().emit(pod_link.to_string()))}
-                                                            title="Visit external podcast website" class={"item-container-button font-bold rounded-full self-center mr-4"} style="width: 30px; height: 30px;">
-                                                            { website_icon }
-                                                        </button>
-                                                        {
-                                                            if let Some(funding_list) = &state.podcast_funding {
-                                                                if !funding_list.is_empty() {
-                                                                    let funding_list_clone = funding_list.clone();
-                                                                    html! {
-                                                                        <>
-                                                                        { for funding_list_clone.iter().map(|funding| {
-                                                                            let open_in_new_tab = open_in_new_tab.clone();
-                                                                            let payment_icon = payment_icon.clone();
-                                                                            let url = funding.url.clone();
-                                                                            html! {
-                                                                                <button
-                                                                                    onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
-                                                                                    title={funding.description.clone()}
-                                                                                    class="item-container-button font-bold rounded-full self-center mr-4"
-                                                                                    style="width: 30px; height: 30px;"
-                                                                                >
-                                                                                    { payment_icon } // Replace with your payment_icon component
-                                                                                </button>
-                                                                            }
-                                                                        })}
-                                                                        </>
-                                                                    }
-                                                                } else {
-                                                                    html! {}
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        {
-                                                            if search_state.podcast_added.unwrap_or(false) {
-                                                                html! {
-                                                                    <button
-                                                                        onclick={
-                                                                            let page_state = page_state.clone();
-                                                                            Callback::from(move |_| {
-                                                                                page_state.set(PageState::RSSFeed);
-                                                                            })
-                                                                        }
-                                                                        title="Get RSS Feed URL"
-                                                                        class={"item-container-button font-bold rounded-full self-center mr-4"}
-                                                                        style="width: 30px; height: 30px;">
-                                                                        { rss_icon }
-                                                                    </button>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        <div class="item-header-info">
+                                                    </div>
 
-                                                            <p class="header-text">{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</p>
-                                                            <p class="header-text">{ format!("{}{}", i18n_authors, &podcast_info.author) }</p>
-                                                            <p class="header-text">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</p>
-                                                        {
-                                                            if podcast_info.podcastindexid == 0 {
-                                                                html! {
-                                                                    <div class="import-box mt-2">
+                                                    // ── Host strip or unmatched warning ──
+                                                    { if !podcast_info.is_youtube.unwrap_or(false) {
+                                                        if podcast_info.podcastindexid == 0 {
+                                                            html! {
+                                                                <div class="ep-mobile-hosts">
+                                                                    <div class="import-box">
                                                                         <p class="item_container-text text-sm">
                                                                             {"⚠️ This podcast isn't matched to Podcast Index. "}
                                                                             <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
@@ -3615,46 +4113,299 @@ pub fn episode_layout() -> Html {
                                                                             {" to enable host and guest information."}
                                                                         </p>
                                                                     </div>
-                                                                }
-                                                            } else if let Some(people) = &state.podcast_people {
-                                                                if !people.is_empty() {
+                                                                </div>
+                                                            }
+                                                        } else if let Some(people) = &state.podcast_people {
+                                                            if !people.is_empty() {
+                                                                let has_unknown_host = people.len() == 1
+                                                                    && people[0].name == "Unknown Host"
+                                                                    && people[0].role == Some("Host".to_string());
+                                                                if has_unknown_host {
+                                                                    let people_url = search_state.server_details.as_ref()
+                                                                        .and_then(|sd| sd.people_url.as_ref())
+                                                                        .cloned()
+                                                                        .unwrap_or_default();
+                                                                    let host_url = format!("{}/podcast/{}", people_url, podcast_info.podcastindexid);
                                                                     html! {
-                                                                        <div class="header-info relative" style="max-width: 100%; min-width: 0;">  // Added min-width: 0 to allow shrinking
-                                                                            <div class="max-w-full overflow-x-auto">
-                                                                                <HostDropdown
-                                                                                    title="Hosts"
-                                                                                    hosts={people.clone()}
-                                                                                    podcast_feed_url={podcast_info.feedurl}
-                                                                                    podcast_id={*podcast_id}
-                                                                                    podcast_index_id={podcast_info.podcastindexid}
-                                                                                />
-                                                                            </div>
+                                                                        <div class="ep-mobile-hosts">
+                                                                            <p class="ep-mobile-section-label">{ &i18n_hosts }</p>
+                                                                            <p class="ep-mobile-no-hosts-msg">
+                                                                                { i18n.t("host_component.no_hosts_found") }
+                                                                                <a href={host_url} target="_blank" class="ep-mobile-no-hosts-link">
+                                                                                    { i18n.t("host_component.add_hosts_here") }
+                                                                                </a>
+                                                                            </p>
                                                                         </div>
                                                                     }
                                                                 } else {
-                                                                    html! {}
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                            <div>
-                                                                {
-                                                                    if let Some(categories) = &podcast_info.categories {
-                                                                        html! {
-                                                                            <>
-                                                                            { for categories.values().map(|category_name| {
-                                                                                html! { <span class="category-box">{ category_name }</span> }
-                                                                            }) }
-                                                                            </>
-                                                                        }
-                                                                    } else {
-                                                                        html! {}
+                                                                    let server = server_for_proxy.clone();
+                                                                    html! {
+                                                                        <div class="ep-mobile-hosts">
+                                                                            <p class="ep-mobile-section-label">{ &i18n_hosts }</p>
+                                                                            <div class="ep-mobile-hosts-scroll">
+                                                                            { for people.iter().map(|person| {
+                                                                                let name = person.name.clone();
+                                                                                let role = person.role.clone();
+                                                                                let img_url = person.img.as_ref().map(|url| {
+                                                                                    format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
+                                                                                });
+                                                                                let hist = history.clone();
+                                                                                let nav_name = name.clone();
+                                                                                let on_chip_click = Callback::from(move |_: MouseEvent| {
+                                                                                    hist.push(format!("/person/{}", nav_name));
+                                                                                });
+                                                                                html! {
+                                                                                    <div class="ep-mobile-host-chip" onclick={on_chip_click}>
+                                                                                        { if let Some(src) = img_url {
+                                                                                            html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
+                                                                                        } else {
+                                                                                            html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
+                                                                                        }}
+                                                                                        <span class="ep-mobile-host-name">{ &person.name }</span>
+                                                                                        { if let Some(r) = &role {
+                                                                                            html! { <span class="ep-mobile-host-role">{ r }</span> }
+                                                                                        } else { html! {} }}
+                                                                                    </div>
+                                                                                }
+                                                                            })}
+                                                                            </div>
+                                                                        </div>
                                                                     }
                                                                 }
-                                                            </div>
+                                                            } else { html! {} }
+                                                        } else { html! {} }
+                                                    } else { html! {} }}
 
+                                                    // ── Categories ──
+                                                    { if let Some(categories) = &podcast_info.categories {
+                                                        if !categories.is_empty() {
+                                                            html! {
+                                                                <div class="ep-mobile-categories">
+                                                                    { for categories.iter().map(|(_, category_name)| {
+                                                                        html! { <span class="category-box">{ category_name }</span> }
+                                                                    })}
+                                                                </div>
+                                                            }
+                                                        } else { html! {} }
+                                                    } else { html! {} }}
+
+                                                </div>
+                                            }
+                                        } else {
+                                            let pod_link = podcast_info.feedurl.clone();
+                                            let server = server_name.clone().unwrap_or_default();
+                                            let subscribed = podcast_state.podcast_added.unwrap_or(false);
+                                            let backdrop_style = format!("background-image: url('{}');", &podcast_info.artworkurl);
+                                            let eyebrow_text = match podcast_info.categories.as_ref().and_then(|c| c.values().next()) {
+                                                Some(cat) => format!("{} · {}", i18n.t("episodes_layout.podcast"), cat),
+                                                None => i18n.t("episodes_layout.podcast").to_string(),
+                                            };
+                                            let sub_label = if *is_subscribing {
+                                                i18n.t("episodes_layout.subscribing").to_string()
+                                            } else if subscribed {
+                                                i18n.t("episodes_layout.subscribed").to_string()
+                                            } else {
+                                                i18n.t("episodes_layout.subscribe").to_string()
+                                            };
+                                            let primary_class = if subscribed { "pd-btn-primary is-subscribed" } else { "pd-btn-primary" };
+                                            html! {
+                                                <div class="pd-banner">
+                                                    <div class="pd-banner-backdrop" style={backdrop_style}></div>
+                                                    <div class="pd-banner-scrim"></div>
+                                                    <div class="pd-banner-inner">
+                                                        <div class="pd-banner-top">
+                                                            <FallbackImage
+                                                                src={podcast_info.artworkurl.clone()}
+                                                                alt={format!("Cover for {}", &podcast_info.podcastname)}
+                                                                class={"pd-banner-cover"}
+                                                            />
+                                                            <div class="pd-banner-head">
+                                                                <div class="pd-eyebrow">
+                                                                    <i class="ph ph-microphone-stage"></i>
+                                                                    <span>{ eyebrow_text }</span>
+                                                                </div>
+                                                                <div class="pd-banner-title-row">
+                                                                    <h2 class="pd-banner-title">{ &podcast_info.podcastname }</h2>
+                                                                    { if is_video_podcast {
+                                                                        html! {
+                                                                            <span class="inline-flex items-center gap-1 bg-opacity-80 bg-gray-700 text-white text-xs px-2 py-1 rounded-full self-center">
+                                                                                <i class="ph ph-television"></i>
+                                                                                { &i18n_video }
+                                                                            </span>
+                                                                        }
+                                                                    } else { html! {} }}
+                                                                </div>
+                                                                <div class="pd-banner-meta">
+                                                                    <span class="pd-author">{ &i18n_authors }<strong>{ &podcast_info.author }</strong></span>
+                                                                    <span class="pd-dot">{"•"}</span>
+                                                                    <span class="pd-stat"><i class="ph ph-stack"></i>{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</span>
+                                                                    <span class="pd-dot">{"•"}</span>
+                                                                    <span class="pd-stat">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</span>
+                                                                </div>
+                                                                <div class="pd-banner-actions">
+                                                                    <button onclick={toggle_podcast} title={i18n.t("episodes_layout.add_remove_podcast").to_string()} class={primary_class}>
+                                                                        { button_content }
+                                                                        <span>{ sub_label }</span>
+                                                                    </button>
+                                                                    { if subscribed {
+                                                                        html! {
+                                                                            <button onclick={toggle_download} title={i18n.t("episodes_layout.download_all_episodes").to_string()} class="pd-icon-btn">
+                                                                                { download_all }
+                                                                            </button>
+                                                                        }
+                                                                    } else { html! {} } }
+                                                                    <button
+                                                                        onclick={Callback::from(move |_| web_link.clone().emit(pod_link.to_string()))}
+                                                                        title="Visit external podcast website" class="pd-icon-btn">
+                                                                        { website_icon }
+                                                                    </button>
+                                                                    { if subscribed {
+                                                                        html! {
+                                                                            <button onclick={toggle_settings} title={i18n.t("episodes_layout.podcast_specific_settings").to_string()} class="pd-icon-btn">
+                                                                                { setting_content }
+                                                                            </button>
+                                                                        }
+                                                                    } else { html! {} } }
+                                                                    { if subscribed {
+                                                                        html! {
+                                                                            <button
+                                                                                onclick={
+                                                                                    let page_state = page_state.clone();
+                                                                                    Callback::from(move |_| { page_state.set(PageState::RSSFeed); })
+                                                                                }
+                                                                                title="Get RSS Feed URL"
+                                                                                class="pd-icon-btn">
+                                                                                { rss_icon }
+                                                                            </button>
+                                                                        }
+                                                                    } else { html! {} } }
+                                                                    { if let Some(funding_list) = &state.podcast_funding {
+                                                                        if !funding_list.is_empty() {
+                                                                            let funding_list_clone = funding_list.clone();
+                                                                            html! {
+                                                                                <>
+                                                                                { for funding_list_clone.iter().map(|funding| {
+                                                                                    let open_in_new_tab = open_in_new_tab.clone();
+                                                                                    let payment_icon = payment_icon.clone();
+                                                                                    let url = funding.url.clone();
+                                                                                    html! {
+                                                                                        <button
+                                                                                            onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
+                                                                                            title={funding.description.clone()}
+                                                                                            class="pd-icon-btn"
+                                                                                        >
+                                                                                            { payment_icon }
+                                                                                        </button>
+                                                                                    }
+                                                                                })}
+                                                                                </>
+                                                                            }
+                                                                        } else { html! {} }
+                                                                    } else { html! {} } }
+                                                                </div>
+                                                            </div>
                                                         </div>
+
+                                                        <div class="item-header-description desc-collapsed pd-banner-desc" id={desc_id.clone()} onclick={toggle_description.clone()}>
+                                                            { sanitized_description }
+                                                            <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
+                                                        </div>
+
+                                                        { if !podcast_info.is_youtube.unwrap_or(false) {
+                                                            if podcast_info.podcastindexid == 0 {
+                                                                html! {
+                                                                    <div class="pd-banner-warning">
+                                                                        <div class="import-box">
+                                                                            <p class="item_container-text text-sm">
+                                                                                {"⚠️ This podcast isn't matched to Podcast Index. "}
+                                                                                <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
+                                                                                    {&i18n.t("episodes_layout.match_it_here")}
+                                                                                </a>
+                                                                                {" to enable host and guest information."}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                }
+                                                            } else if let Some(people) = &state.podcast_people {
+                                                                if !people.is_empty() {
+                                                                    let has_unknown_host = people.len() == 1
+                                                                        && people[0].name == "Unknown Host"
+                                                                        && people[0].role == Some("Host".to_string());
+                                                                    if has_unknown_host {
+                                                                        let people_url = search_state.server_details.as_ref()
+                                                                            .and_then(|sd| sd.people_url.as_ref())
+                                                                            .cloned()
+                                                                            .unwrap_or_default();
+                                                                        let host_url = format!("{}/podcast/{}", people_url, podcast_info.podcastindexid);
+                                                                        html! {
+                                                                            <div class="pd-banner-nohosts">
+                                                                                <span class="pd-host-by">{ &i18n_hosts }</span>
+                                                                                <p class="pd-banner-nohosts-msg">
+                                                                                    { i18n.t("host_component.no_hosts_found") }
+                                                                                    <a href={host_url} target="_blank" class="pd-banner-nohosts-link">
+                                                                                        { i18n.t("host_component.add_hosts_here") }
+                                                                                    </a>
+                                                                                </p>
+                                                                            </div>
+                                                                        }
+                                                                    } else {
+                                                                        let names: Vec<String> = people.iter().map(|p| p.name.clone()).collect();
+                                                                        let names_joined = match names.len() {
+                                                                            0 => String::new(),
+                                                                            1 => names[0].clone(),
+                                                                            2 => format!("{} & {}", names[0], names[1]),
+                                                                            _ => {
+                                                                                let (last, rest) = names.split_last().unwrap();
+                                                                                format!("{} & {}", rest.join(", "), last)
+                                                                            }
+                                                                        };
+                                                                        let server2 = server.clone();
+                                                                        html! {
+                                                                            <div class="pd-banner-hosts">
+                                                                                <div class="pd-host-stack">
+                                                                                    { for people.iter().take(6).map(|person| {
+                                                                                        let name = person.name.clone();
+                                                                                        let img_url = person.img.as_ref().map(|url| {
+                                                                                            format!("{}/api/proxy/image?url={}", server2, urlencoding::encode(url))
+                                                                                        });
+                                                                                        let hist = history.clone();
+                                                                                        let nav_name = name.clone();
+                                                                                        let on_chip_click = Callback::from(move |_: MouseEvent| {
+                                                                                            hist.push(format!("/person/{}", nav_name));
+                                                                                        });
+                                                                                        html! {
+                                                                                            <div class="pd-host-avatar-wrap" title={name.clone()} onclick={on_chip_click}>
+                                                                                                { if let Some(src) = img_url {
+                                                                                                    html! { <img src={src} alt={name.clone()} class="pd-host-avatar" /> }
+                                                                                                } else {
+                                                                                                    html! { <div class="pd-host-avatar pd-host-avatar-ph"><i class="ph ph-user"></i></div> }
+                                                                                                }}
+                                                                                            </div>
+                                                                                        }
+                                                                                    })}
+                                                                                </div>
+                                                                                <div class="pd-host-label">
+                                                                                    <span class="pd-host-by">{ i18n.t("episodes_layout.hosted_by") }</span>
+                                                                                    <span class="pd-host-names">{ names_joined }</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        }
+                                                                    }
+                                                                } else { html! {} }
+                                                            } else { html! {} }
+                                                        } else { html! {} } }
+
+                                                        { if let Some(categories) = &podcast_info.categories {
+                                                            if !categories.is_empty() {
+                                                                html! {
+                                                                    <div class="pd-banner-cats">
+                                                                        { for categories.values().map(|category_name| {
+                                                                            html! { <span class="category-box">{ category_name }</span> }
+                                                                        }) }
+                                                                    </div>
+                                                                }
+                                                            } else { html! {} }
+                                                        } else { html! {} } }
                                                     </div>
                                                 </div>
                                             }
@@ -3668,14 +4419,12 @@ pub fn episode_layout() -> Html {
                                 {
                                     // Modern mobile-friendly filter bar
                                     html! {
-                                        <div class="mb-6 space-y-4">
-                                            // Combined search and sort bar (seamless design)
-                                            <div class="flex gap-0 h-12">
-                                                // Search input (left half)
-                                                <div class="flex-1 relative">
+                                        <div class="pfb-section">
+                                            <div class="pfb-bar">
+                                                <div class="sp-input">
+                                                    <i class="ph ph-headphones sp-search-ico"></i>
                                                     <input
                                                         type="text"
-                                                        class="search-input"
                                                         placeholder={i18n_search_episodes_placeholder.clone()}
                                                         value={(*episode_search_term).clone()}
                                                         oninput={
@@ -3687,13 +4436,10 @@ pub fn episode_layout() -> Html {
                                                             })
                                                         }
                                                     />
-                                                    <i class="ph ph-magnifying-glass search-icon"></i>
                                                 </div>
-
-                                                // Sort dropdown (right half)
-                                                <div class="flex-shrink-0 relative min-w-[160px]">
+                                                <div class="pfb-sort">
                                                     <select
-                                                        class="sort-dropdown"
+                                                        class="pfb-sort-select"
                                                         onchange={
                                                             let episode_sort_direction = episode_sort_direction.clone();
                                                             let podcast_id_clone = podcast_id.clone();
@@ -3701,7 +4447,6 @@ pub fn episode_layout() -> Html {
                                                                 let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
                                                                 let value = target.value();
 
-                                                                // Save preference to per-podcast local storage
                                                                 if *podcast_id_clone > 0 {
                                                                     let preference_key = format!("podcast_{}", *podcast_id_clone);
                                                                     set_filter_preference(&preference_key, &value);
@@ -3720,105 +4465,90 @@ pub fn episode_layout() -> Html {
                                                         }
                                                     >
                                                         <option value="newest" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"
                                                         }>{&i18n_newest_first}</option>
                                                         <option value="oldest" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"
                                                         }>{&i18n_oldest_first}</option>
                                                         <option value="shortest" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"
                                                         }>{&i18n_shortest_first}</option>
                                                         <option value="longest" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"
                                                         }>{&i18n_longest_first}</option>
                                                         <option value="title_az" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"
                                                         }>{&i18n_title_az}</option>
                                                         <option value="title_za" selected={
-                                                            let preference_key = if *podcast_id > 0 {
-                                                                format!("podcast_{}", *podcast_id)
-                                                            } else {
-                                                                "episodes".to_string()
-                                                            };
+                                                            let preference_key = if *podcast_id > 0 { format!("podcast_{}", *podcast_id) } else { "episodes".to_string() };
                                                             get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"
                                                         }>{&i18n_title_za}</option>
                                                     </select>
-                                                    <i class="ph ph-caret-down dropdown-arrow"></i>
+                                                    <i class="ph ph-caret-down pfb-sort-arrow"></i>
                                                 </div>
                                             </div>
-
-                                            // Filter chips (horizontal scroll on mobile)
-                                            <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-                                                // Clear all filters
+                                            <div class="sp-chips pfb-chips">
                                                 <button
                                                     onclick={
                                                         let show_in_progress = show_in_progress.clone();
                                                         let episode_search_term = episode_search_term.clone();
                                                         let completed_filter_state = completed_filter_state.clone();
+                                                        let podcast_id_clone = podcast_id.clone();
                                                         Callback::from(move |_| {
                                                             completed_filter_state.set(CompletedFilter::ShowAll);
                                                             show_in_progress.set(false);
                                                             episode_search_term.set(String::new());
+                                                            if *podcast_id_clone > 0 {
+                                                                let completed_key = format!("podcast_{}_completed_filter", *podcast_id_clone);
+                                                                set_filter_preference(&completed_key, "show_all");
+                                                            }
                                                         })
                                                     }
-                                                    class="filter-chip"
+                                                    class="sp-chip"
                                                 >
-                                                    <i class="ph ph-broom text-lg"></i>
-                                                    <span class="text-sm font-medium">{&i18n_clear_all}</span>
+                                                    <i class="ph ph-broom"></i>
+                                                    <span>{&i18n_clear_all}</span>
                                                 </button>
-
-                                                // Completed filter chip (3-state)
                                                 <button
                                                     onclick={
                                                         let completed_filter_state = completed_filter_state.clone();
+                                                        let podcast_id_clone = podcast_id.clone();
                                                         Callback::from(move |_| {
-                                                            completed_filter_state.set(match *completed_filter_state {
+                                                            let new_filter = match *completed_filter_state {
                                                                 CompletedFilter::ShowAll => CompletedFilter::ShowOnly,
                                                                 CompletedFilter::ShowOnly => CompletedFilter::Hide,
                                                                 CompletedFilter::Hide => CompletedFilter::ShowAll,
-                                                            });
+                                                            };
+                                                            if *podcast_id_clone > 0 {
+                                                                let completed_key = format!("podcast_{}_completed_filter", *podcast_id_clone);
+                                                                let value = match new_filter {
+                                                                    CompletedFilter::ShowOnly => "show_only",
+                                                                    CompletedFilter::Hide => "hide",
+                                                                    CompletedFilter::ShowAll => "show_all",
+                                                                };
+                                                                set_filter_preference(&completed_key, value);
+                                                            }
+                                                            completed_filter_state.set(new_filter);
                                                         })
                                                     }
                                                     title={completed_title.clone()}
                                                     class={classes!(
-                                                        "filter-chip",
+                                                        "sp-chip",
                                                         match *completed_filter_state {
-                                                            CompletedFilter::ShowOnly => "filter-chip-active",
-                                                            CompletedFilter::Hide => "filter-chip-alert",
+                                                            CompletedFilter::ShowOnly => "is-active",
+                                                            CompletedFilter::Hide => "is-alert",
                                                             CompletedFilter::ShowAll => ""
                                                         }
                                                     )}
                                                 >
-                                                    <i class={classes!("ph", completed_icon, "text-lg")}></i>
-                                                    <span class="text-sm font-medium">{completed_text}</span>
+                                                    <i class={classes!("ph", completed_icon)}></i>
+                                                    <span>{completed_text}</span>
                                                 </button>
-
-                                                // In progress filter chip
                                                 <button
                                                     onclick={
                                                         let show_in_progress = show_in_progress.clone();
@@ -3826,37 +4556,26 @@ pub fn episode_layout() -> Html {
                                                             show_in_progress.set(!*show_in_progress);
                                                         })
                                                     }
-                                                    class={classes!(
-                                                        "filter-chip",
-                                                        if *show_in_progress { "filter-chip-active" } else { "" }
-                                                    )}
+                                                    class={classes!("sp-chip", if *show_in_progress { "is-active" } else { "" })}
                                                 >
-                                                    <i class="ph ph-hourglass-medium text-lg"></i>
-                                                    <span class="text-sm font-medium">{&i18n_in_progress}</span>
+                                                    <i class="ph ph-hourglass-medium"></i>
+                                                    <span>{&i18n_in_progress}</span>
                                                 </button>
-
-                                                // Selection mode toggle
                                                 <button
                                                     onclick={
                                                         let is_selecting = is_selecting.clone();
                                                         let selected_episodes = selected_episodes.clone();
                                                         Callback::from(move |_| {
                                                             if *is_selecting {
-                                                                // Exit selection mode and clear selections
                                                                 selected_episodes.set(HashSet::new());
                                                             }
                                                             is_selecting.set(!*is_selecting);
                                                         })
                                                     }
-                                                    class={classes!(
-                                                        "filter-chip",
-                                                        if *is_selecting { "filter-chip-active" } else { "" }
-                                                    )}
+                                                    class={classes!("sp-chip", if *is_selecting { "is-active" } else { "" })}
                                                 >
-                                                    <i class="ph ph-check-square text-lg"></i>
-                                                    <span class="text-sm font-medium">
-                                                        {if *is_selecting { &i18n_exit_select } else { &i18n_select }}
-                                                    </span>
+                                                    <i class="ph ph-check-square"></i>
+                                                    <span>{if *is_selecting { &i18n_exit_select } else { &i18n_select }}</span>
                                                 </button>
                                             </div>
 
@@ -3924,6 +4643,24 @@ pub fn episode_layout() -> Html {
                                                             >
                                                                 {&i18n_select_unplayed}
                                                             </button>
+
+                                                            // Select In Progress Only
+                                                            <button
+                                                                onclick={
+                                                                    let filtered_episodes = filtered_episodes_clone.clone();
+                                                                    let selected_episodes = selected_episodes_clone.clone();
+                                                                    Callback::from(move |_| {
+                                                                        let in_progress_ids: HashSet<i32> = filtered_episodes.iter()
+                                                                            .filter(|ep| !ep.completed && ep.listenduration > 0)
+                                                                            .map(|ep| ep.episodeid)
+                                                                            .collect();
+                                                                        selected_episodes.set(in_progress_ids);
+                                                                    })
+                                                                }
+                                                                class="bulk-filter-button"
+                                                            >
+                                                                {&i18n_select_in_progress}
+                                                            </button>
                                                         </div>
                                                     }
                                                 } else {
@@ -3943,13 +4680,12 @@ pub fn episode_layout() -> Html {
                                         let user_id_value = user_id.unwrap_or(0);
 
                                         html! {
-                                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                                                <div class="flex items-center justify-between">
-                                                    <div class="text-sm text-blue-800 flex items-center">
-                                                        <i class="ph ph-check-circle text-lg mr-2"></i>
-                                                        {format!("{} episode{} selected", selected_count, if selected_count == 1 { "" } else { "s" })}
-                                                    </div>
-                                                    <div class="flex gap-2 flex-wrap">
+                                            <div class="bulk-actions-bar">
+                                                <div class="bulk-actions-bar__count">
+                                                    <i class="ph ph-check-circle"></i>
+                                                    {format!("{} episode{} selected", selected_count, if selected_count == 1 { "" } else { "s" })}
+                                                </div>
+                                                <div class="bulk-actions-bar__actions">
                                                         // Mark Complete button
                                                         <button
                                                             onclick={
@@ -3962,7 +4698,7 @@ pub fn episode_layout() -> Html {
                                                                     let selected_ids = selected_ids.clone();
                                                                     let api_key = api_key.clone();
                                                                     let server_name = server_name.clone();
-                                                                    let dispatch = dispatch.clone();
+                                                                    let _dispatch = dispatch.clone();
                                                                     let selected_episodes = selected_episodes.clone();
                                                                     spawn_local(async move {
                                                                         let request = BulkEpisodeActionRequest {
@@ -3976,13 +4712,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }
@@ -3990,8 +4726,9 @@ pub fn episode_layout() -> Html {
                                                                     });
                                                                 })
                                                             }
-                                                            class="bulk-action-success"
+                                                            class="btn btn-secondary"
                                                         >
+                                                            <i class="ph ph-check-circle"></i>
                                                             {&i18n_mark_complete}
                                                         </button>
 
@@ -4007,7 +4744,7 @@ pub fn episode_layout() -> Html {
                                                                     let selected_ids = selected_ids.clone();
                                                                     let api_key = api_key.clone();
                                                                     let server_name = server_name.clone();
-                                                                    let dispatch = dispatch.clone();
+                                                                    let _dispatch = dispatch.clone();
                                                                     let selected_episodes = selected_episodes.clone();
                                                                     spawn_local(async move {
                                                                         let request = BulkEpisodeActionRequest {
@@ -4021,13 +4758,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }
@@ -4035,8 +4772,9 @@ pub fn episode_layout() -> Html {
                                                                     });
                                                                 })
                                                             }
-                                                            class="bulk-action-primary"
+                                                            class="btn btn-secondary"
                                                         >
+                                                            <i class="ph ph-star"></i>
                                                             {&i18n.t("episodes_layout.save")}
                                                         </button>
 
@@ -4052,7 +4790,7 @@ pub fn episode_layout() -> Html {
                                                                     let selected_ids = selected_ids.clone();
                                                                     let api_key = api_key.clone();
                                                                     let server_name = server_name.clone();
-                                                                    let dispatch = dispatch.clone();
+                                                                    let _dispatch = dispatch.clone();
                                                                     let selected_episodes = selected_episodes.clone();
                                                                     spawn_local(async move {
                                                                         let request = BulkEpisodeActionRequest {
@@ -4066,13 +4804,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }
@@ -4080,8 +4818,9 @@ pub fn episode_layout() -> Html {
                                                                     });
                                                                 })
                                                             }
-                                                            class="px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md"
+                                                            class="btn btn-secondary"
                                                         >
+                                                            <i class="ph ph-list-plus"></i>
                                                             {&i18n_queue_episodes}
                                                         </button>
 
@@ -4097,7 +4836,7 @@ pub fn episode_layout() -> Html {
                                                                     let selected_ids = selected_ids.clone();
                                                                     let api_key = api_key.clone();
                                                                     let server_name = server_name.clone();
-                                                                    let dispatch = dispatch.clone();
+                                                                    let _dispatch = dispatch.clone();
                                                                     let selected_episodes = selected_episodes.clone();
                                                                     spawn_local(async move {
                                                                         let request = BulkEpisodeActionRequest {
@@ -4111,13 +4850,13 @@ pub fn episode_layout() -> Html {
                                                                             &request
                                                                         ).await {
                                                                             Ok(message) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.info_message = Some(message);
                                                                                 });
                                                                                 selected_episodes.set(HashSet::new());
                                                                             }
                                                                             Err(e) => {
-                                                                                dispatch.reduce_mut(|state| {
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
                                                                                     state.error_message = Some(format!("Error: {}", e));
                                                                                 });
                                                                             }
@@ -4125,11 +4864,11 @@ pub fn episode_layout() -> Html {
                                                                     });
                                                                 })
                                                             }
-                                                            class="px-3 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded-md"
+                                                            class="btn btn-secondary"
                                                         >
+                                                            <i class="ph ph-download-simple"></i>
                                                             {&i18n_download_episodes}
                                                         </button>
-                                                    </div>
                                                 </div>
                                             </div>
                                         }
@@ -4139,13 +4878,20 @@ pub fn episode_layout() -> Html {
                                 }
 
                                 {
-                                    if let (Some(_), Some(podcast_info)) = (podcast_feed_results, &clicked_podcast_info) {
-                                        let podcast_link_clone = podcast_info.feedurl.clone();
-                                        let podcast_title = podcast_info.podcastname.clone();
+                                    if *is_subscribing {
+                                        html! {
+                                            <div class="flex flex-col items-center justify-center py-12 gap-4">
+                                                <div class="spinner"></div>
+                                                <p class="item_container-text">{ &i18n_loading }</p>
+                                            </div>
+                                        }
+                                    } else if let (Some(_), Some(podcast_info)) = (podcast_feed_results, &clicked_podcast_info) {
+                                        let _podcast_link_clone = podcast_info.feedurl.clone();
+                                        let _podcast_title = podcast_info.podcastname.clone();
 
                                         // Episode selection callback
                                         let selected_episodes_clone = selected_episodes.clone();
-                                        let on_episode_select = Callback::from(move |(episode_id, is_selected): (i32, bool)| {
+                                        let _on_episode_select = Callback::from(move |(episode_id, is_selected): (i32, bool)| {
                                             selected_episodes_clone.set({
                                                 let mut current = (*selected_episodes_clone).clone();
                                                 if is_selected {
@@ -4157,50 +4903,64 @@ pub fn episode_layout() -> Html {
                                             });
                                         });
 
-                                        // Select all older episodes callback
-                                        let filtered_episodes_older = filtered_episodes.clone();
-                                        let selected_episodes_older = selected_episodes.clone();
-                                        let on_select_older = Callback::from(move |cutoff_episode_id: i32| {
-                                            let cutoff_index = filtered_episodes_older.iter()
-                                                .position(|ep| ep.episodeid == cutoff_episode_id)
-                                                .unwrap_or(0);
+                                        // on_select_older / on_select_newer hoisted to
+                                        // use_callback at the top of the function (stable
+                                        // identity across renders).
 
-                                            let older_ids: HashSet<i32> = filtered_episodes_older.iter()
-                                                .skip(cutoff_index) // Include the cutoff episode and all after it (older in reverse chronological order)
-                                                .map(|ep| ep.episodeid)
-                                                .collect();
+                                        // Key encodes the filter signature so a sort / completed-filter /
+                                        // in-progress / podcast switch remounts the view and re-runs the
+                                        // ramp. Search term is deliberately omitted — including it would
+                                        // remount on every keystroke.
+                                        let sort_code = match *episode_sort_direction {
+                                            Some(EpisodeSortDirection::NewestFirst) => "n",
+                                            Some(EpisodeSortDirection::OldestFirst) => "o",
+                                            Some(EpisodeSortDirection::ShortestFirst) => "s",
+                                            Some(EpisodeSortDirection::LongestFirst) => "l",
+                                            Some(EpisodeSortDirection::TitleAZ) => "a",
+                                            Some(EpisodeSortDirection::TitleZA) => "z",
+                                            None => "_",
+                                        };
+                                        let filter_code = match *completed_filter_state {
+                                            CompletedFilter::ShowAll => "a",
+                                            CompletedFilter::ShowOnly => "c",
+                                            CompletedFilter::Hide => "h",
+                                        };
+                                        let view_key = format!(
+                                            "elv-{}-{}-{}-{}",
+                                            *podcast_id, sort_code, filter_code, *show_in_progress
+                                        );
 
-                                            selected_episodes_older.set({
-                                                let mut current = (*selected_episodes_older).clone();
-                                                current.extend(older_ids);
-                                                current
-                                            });
-                                        });
-
-                                        // Select all newer episodes callback
-                                        let filtered_episodes_newer = filtered_episodes.clone();
-                                        let selected_episodes_newer = selected_episodes.clone();
-                                        let on_select_newer = Callback::from(move |cutoff_episode_id: i32| {
-                                            let cutoff_index = filtered_episodes_newer.iter()
-                                                .position(|ep| ep.episodeid == cutoff_episode_id)
-                                                .unwrap_or(0);
-
-                                            let newer_ids: HashSet<i32> = filtered_episodes_newer.iter()
-                                                .take(cutoff_index + 1) // Include episodes before the cutoff (newer in reverse chronological order)
-                                                .map(|ep| ep.episodeid)
-                                                .collect();
-
-                                            selected_episodes_newer.set({
-                                                let mut current = (*selected_episodes_newer).clone();
-                                                current.extend(newer_ids);
-                                                current
-                                            });
-                                        });
+                                        let loaded_count = search_data
+                                            .podcast_feed_results
+                                            .as_ref()
+                                            .map(|r| r.episodes.len() as i64)
+                                            .unwrap_or(0);
+                                        let backend_total = search_data
+                                            .podcast_feed_results
+                                            .as_ref()
+                                            .map(|r| r.total)
+                                            .unwrap_or(0);
+                                        let backend_can_load_more =
+                                            loaded_count > 0 && loaded_count < backend_total;
+                                        let episodes_rc: Rc<Vec<Episode>> = (*filtered_episodes).clone();
+                                        let selected_eps_rc: Rc<HashSet<i32>> =
+                                            Rc::new((*selected_episodes).clone());
 
                                         html! {
-                                            <VirtualList
-                                                episodes={ (*filtered_episodes).clone() }
-                                            />
+                                            <div class="flex-grow overflow-y-auto">
+                                                <EpisodeListView
+                                                    key={view_key}
+                                                    episodes={episodes_rc}
+                                                    backend_can_load_more={backend_can_load_more}
+                                                    loading_more={*loading_more}
+                                                    on_load_more={on_load_more.clone()}
+                                                    is_delete_mode={*is_selecting}
+                                                    on_checkbox_change={on_episode_checkbox_change.clone()}
+                                                    on_select_above={on_select_newer.clone()}
+                                                    on_select_below={on_select_older.clone()}
+                                                    selected_episodes={selected_eps_rc}
+                                                />
+                                            </div>
                                         }
                                     } else {
                                         html! {
@@ -4217,30 +4977,7 @@ pub fn episode_layout() -> Html {
                     }
                 }
             <App_drawer />
-            {
-                if let Some(audio_props) = &state.currently_playing {
-                    html! {
-                        <AudioPlayer
-                            episode={audio_props.episode.clone()}
-                            src={audio_props.src.clone()}
-                            title={audio_props.title.clone()}
-                            description={audio_props.description.clone()}
-                            release_date={audio_props.release_date.clone()}
-                            artwork_url={audio_props.artwork_url.clone()}
-                            duration={audio_props.duration.clone()}
-                            episode_id={audio_props.episode_id.clone()}
-                            duration_sec={audio_props.duration_sec.clone()}
-                            start_pos_sec={audio_props.start_pos_sec.clone()}
-                            end_pos_sec={audio_props.end_pos_sec.clone()}
-                            offline={audio_props.offline.clone()}
-                            is_youtube={audio_props.is_youtube.clone()}
-                        is_video={audio_props.is_video.clone()}
-                        />
-                    }
-                } else {
-                    html! {}
-                }
-            }
+            <AudioPlayerBar />
             </div>
 
         }
