@@ -265,7 +265,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
     _playingState.add(AudioState.error);
   }
 
-  void _handleCompletedEvent() {
+  Future<void> _handleCompletedEvent() async {
     log.info('Episode completed');
     if (_currentEpisode != null) {
       _currentEpisode!.played = true;
@@ -283,11 +283,18 @@ class NativeAudioPlayerService extends AudioPlayerService {
       }
     }
 
-    // Play next episode from queue
+    // Play next episode from queue. The legacy local up-next queue
+    // (addUpNextEpisode/_queue) is checked first for backwards compatibility,
+    // but nothing in the current PinePods UI populates it anymore - episodes
+    // are queued server-side (see PinepodsQueue/PinepodsUpNextView). Fall back
+    // to that server queue so auto-advance actually works in practice.
     if (_queue.isNotEmpty) {
       final nextEpisode = _queue.removeAt(0);
       _updateQueueState();
-      playEpisode(episode: nextEpisode, resume: false);
+      await playEpisode(episode: nextEpisode, resume: false);
+    } else if (_pinepodsAudioService != null &&
+        await _pinepodsAudioService!.playNextFromServerQueue()) {
+      // Playback of the next server-queued episode already started.
     } else {
       _playingState.add(AudioState.stopped);
     }

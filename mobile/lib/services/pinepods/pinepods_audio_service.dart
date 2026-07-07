@@ -467,6 +467,40 @@ class PinepodsAudioService {
     _onStopCallback?.call();
   }
 
+  /// Play the next episode from the PinePods server queue and remove it from
+  /// that queue. This is the queue the PinePods UI actually manages (Queue tab
+  /// / Up Next view), used as the auto-advance source when an episode
+  /// finishes. Returns true if an episode was found and playback started.
+  Future<bool> playNextFromServerQueue() async {
+    final userId = _settingsBloc.currentSettings.pinepodsUserId;
+    if (userId == null) return false;
+
+    try {
+      final queued = await _pinepodsService.getQueuedEpisodes(userId);
+      if (queued.isEmpty) return false;
+
+      final next = queued.first;
+
+      // Remove it from the server queue before playing so it isn't replayed
+      // the next time an episode finishes.
+      try {
+        await _pinepodsService.removeQueuedEpisode(next.episodeId, userId, next.isYoutube);
+      } catch (e) {
+        log.warning('Could not remove next episode from server queue (continuing): $e');
+      }
+
+      await playPinepodsEpisode(
+        pinepodsEpisode: next,
+        resume: next.isStarted,
+        skipQueue: true,
+      );
+      return true;
+    } catch (e) {
+      log.warning('Could not advance to next episode from server queue: $e');
+      return false;
+    }
+  }
+
   /// Stop periodic updates
   void _stopPeriodicUpdates() {
     _episodeUpdateTimer?.cancel();
