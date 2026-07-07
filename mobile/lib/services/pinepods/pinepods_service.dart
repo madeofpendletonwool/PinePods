@@ -22,13 +22,25 @@ class PinepodsService {
   String? _server;
   String? _apiKey;
 
-  /// Shared across every PinepodsService instance (widgets each construct
-  /// their own `PinepodsService()`) so requests reuse keep-alive connections
-  /// instead of paying a fresh TCP+TLS handshake per call - which is what
-  /// happens with the top-level http.get/post/put functions, since each of
-  /// those creates and immediately closes its own client.
-  static final http.Client _client = http.Client();
-  static const Duration _timeout = Duration(seconds: 15);
+  /// Shared by default across every PinepodsService instance (widgets each
+  /// construct their own `PinepodsService()`) so requests reuse keep-alive
+  /// connections instead of paying a fresh TCP+TLS handshake per call - which
+  /// is what happens with the top-level http.get/post/put functions, since
+  /// each of those creates and immediately closes its own client.
+  static final http.Client _sharedClient = http.Client();
+  static const Duration _defaultTimeout = Duration(seconds: 15);
+
+  final http.Client _client;
+  final Duration _timeout;
+
+  /// [client] and [timeout] are only ever overridden in tests - production
+  /// code always uses the no-arg constructor, sharing [_sharedClient]. Not
+  /// annotated @visibleForTesting since (unlike a dedicated named
+  /// constructor) that would also flag the plain `PinepodsService()` calls
+  /// used throughout the app.
+  PinepodsService({http.Client? client, Duration? timeout})
+      : _client = client ?? _sharedClient,
+        _timeout = timeout ?? _defaultTimeout;
 
   Future<http.Response> _get(Uri url, {Map<String, String>? headers}) {
     return _client.get(url, headers: headers).timeout(_timeout);

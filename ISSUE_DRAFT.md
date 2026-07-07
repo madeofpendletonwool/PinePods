@@ -23,3 +23,12 @@ Combined, starting playback could involve 3-4+ sequential fresh-connection netwo
 
 - `PinepodsService` now uses a single shared `http.Client` (reused across all instances) with a 15s timeout wrapped around every request.
 - `_loadEpisodeDetails` and `playPinepodsEpisode` now fetch their independent data with `Future.wait` instead of sequential awaits.
+
+## Tests
+
+There was no existing unit test setup for the mobile app (no `test/` directory, `flutter_test`/`mockito` were unused dev dependencies). Added:
+
+- `mobile/test/services/pinepods/pinepods_service_test.dart` - injects a fake `http.Client` (`package:http/testing.dart`) to verify a stalled request now times out instead of hanging forever, that normal responses still work, and that the client is reused across calls rather than recreated. Required making `PinepodsService`'s client/timeout constructor-injectable (defaults unchanged for all existing call sites).
+- `mobile/test/services/pinepods/pinepods_audio_service_parallel_test.dart` - verifies `playPinepodsEpisode` fetches podcast id and podcast 2.0 data concurrently (bounded wall-clock time) rather than sequentially.
+
+Hand-written mocks throughout, since this project has no `build_runner` setup for `@GenerateMocks` codegen. I couldn't run `flutter test` in the environment these changes were written in (no Flutter/Dart SDK available there) - please run it before merging.
