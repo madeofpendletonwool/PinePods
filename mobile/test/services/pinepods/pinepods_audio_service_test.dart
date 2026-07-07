@@ -10,16 +10,72 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
+import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 
-class MockAudioPlayerService extends Mock implements AudioPlayerService {}
+// Mockito's `any`/`argThat` matchers are statically typed `Null`, which the
+// analyzer rejects for non-nullable parameters (see mockito's
+// NULL_SAFETY_README, "Solution 2: manual mock implementation"). Since this
+// project doesn't have build_runner-based @GenerateMocks codegen, the methods
+// exercised below are manually overridden with nullable parameter types and
+// delegate to Mock's noSuchMethod.
+class MockAudioPlayerService extends Mock implements AudioPlayerService {
+  @override
+  Future<void> playEpisode({Episode? episode, bool? resume}) => super.noSuchMethod(
+        Invocation.method(#playEpisode, [], {#episode: episode, #resume: resume}),
+        returnValue: Future<void>.value(),
+      );
 
-class MockPinepodsService extends Mock implements PinepodsService {}
+  @override
+  Future<Episode?> findDownloadedEpisode(int? episodeId) => super.noSuchMethod(
+        Invocation.method(#findDownloadedEpisode, [episodeId]),
+        returnValue: Future<Episode?>.value(),
+      );
 
-class MockSettingsBloc extends Mock implements SettingsBloc {}
+  @override
+  Future<void> setPlaybackSpeed(double? speed) => super.noSuchMethod(
+        Invocation.method(#setPlaybackSpeed, [speed]),
+        returnValue: Future<void>.value(),
+      );
+}
+
+class MockPinepodsService extends Mock implements PinepodsService {
+  @override
+  Future<bool> queueEpisode(int? episodeId, int? userId, bool? isYoutube) => super.noSuchMethod(
+        Invocation.method(#queueEpisode, [episodeId, userId, isYoutube]),
+        returnValue: Future.value(false),
+      );
+
+  @override
+  Future<bool> removeQueuedEpisode(int? episodeId, int? userId, bool? isYoutube) => super.noSuchMethod(
+        Invocation.method(#removeQueuedEpisode, [episodeId, userId, isYoutube]),
+        returnValue: Future.value(false),
+      );
+
+  @override
+  Future<List<PinepodsEpisode>> getQueuedEpisodes(int? userId) => super.noSuchMethod(
+        Invocation.method(#getQueuedEpisodes, [userId]),
+        returnValue: Future.value(<PinepodsEpisode>[]),
+      );
+
+  @override
+  Future<PlayEpisodeDetails> getPlayEpisodeDetails(int? userId, int? podcastId, bool? isYoutube) =>
+      super.noSuchMethod(
+        Invocation.method(#getPlayEpisodeDetails, [userId, podcastId, isYoutube]),
+        returnValue: Future.value(PlayEpisodeDetails(playbackSpeed: 1.0, startSkip: 0, endSkip: 0)),
+      );
+}
+
+class MockSettingsBloc extends Mock implements SettingsBloc {
+  @override
+  AppSettings get currentSettings => super.noSuchMethod(
+        Invocation.getter(#currentSettings),
+        returnValue: AppSettings.sensibleDefaults(),
+      );
+}
 
 PinepodsEpisode _episode({
   int episodeId = 101,
