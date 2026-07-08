@@ -4071,3 +4071,205 @@ pub async fn proxy_search(
 
     Ok(Json(body))
 }
+
+// Derive a sibling search-service endpoint URL from SEARCH_API_URL, which by
+// convention ends in "/api/search" (e.g. https://search.pinepods.online/api/search).
+// Lets discovery calls (trending/categories) reuse the same internal host config.
+pub fn search_service_url(endpoint: &str) -> String {
+    let base = std::env::var("SEARCH_API_URL")
+        .unwrap_or_else(|_| "https://search.pinepods.online/api/search".to_string());
+    base.replace("/api/search", endpoint)
+}
+
+#[derive(Deserialize, Debug, utoipa::IntoParams)]
+pub struct ProxyTrendingParams {
+    #[serde(default)]
+    pub cat: Option<String>,
+    #[serde(default)]
+    pub notcat: Option<String>,
+    #[serde(default)]
+    pub lang: Option<String>,
+    #[serde(default)]
+    pub max: Option<u32>,
+    #[serde(default)]
+    pub since: Option<i64>,
+}
+
+// Proxy PodcastIndex trending through the backend so browsers/mobile never reach
+// SEARCH_API_URL directly. Powers the Discover page's category-filtered trending rows.
+#[utoipa::path(
+    get,
+    path = "/proxy_trending",
+    tag = "podcasts",
+    summary = "Proxy trending podcasts",
+    params(ProxyTrendingParams),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn proxy_trending(
+    Query(params): Query<ProxyTrendingParams>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let url = search_service_url("/api/trending");
+
+    let mut query_params: Vec<(&str, String)> = Vec::new();
+    if let Some(v) = params.cat.filter(|s| !s.is_empty()) {
+        query_params.push(("cat", v));
+    }
+    if let Some(v) = params.notcat.filter(|s| !s.is_empty()) {
+        query_params.push(("notcat", v));
+    }
+    if let Some(v) = params.lang.filter(|s| !s.is_empty()) {
+        query_params.push(("lang", v));
+    }
+    if let Some(v) = params.max {
+        query_params.push(("max", v.to_string()));
+    }
+    if let Some(v) = params.since {
+        query_params.push(("since", v.to_string()));
+    }
+
+    let response = reqwest::Client::new()
+        .get(&url)
+        .query(&query_params)
+        .send()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to call search service: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(AppError::external_error(&format!(
+            "Search service error: {}",
+            response.status()
+        )));
+    }
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to parse trending response: {}", e)))?;
+
+    Ok(Json(body))
+}
+
+// Proxy PodcastIndex /categories/list. Powers the Discover page's "Browse by category" chips.
+#[utoipa::path(
+    get,
+    path = "/proxy_categories",
+    tag = "podcasts",
+    summary = "Proxy podcast categories",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn proxy_categories(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let url = search_service_url("/api/categories");
+
+    let response = reqwest::Client::new()
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to call search service: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(AppError::external_error(&format!(
+            "Search service error: {}",
+            response.status()
+        )));
+    }
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to parse categories response: {}", e)))?;
+
+    Ok(Json(body))
+}
+
+#[derive(Deserialize, Debug, utoipa::IntoParams)]
+pub struct RecommendationsParams {
+    #[serde(default)]
+    pub refresh: Option<bool>,
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+// Personalized "podcasts you might like" for the Discover page (#103). Builds a taste
+// profile from the user's subscriptions + engagement, generates PodcastIndex trending
+// candidates, and cosine-ranks them (see services::recommendations). Results are cached
+// per user for 24h; pass ?refresh=1 to force a recompute. Falls back to an empty list for
+// users with no subscriptions (the Discover page still shows plain trending in that case).
+#[utoipa::path(
+    get,
+    path = "/recommendations",
+    tag = "podcasts",
+    summary = "Personalized podcast recommendations",
+    params(RecommendationsParams),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = Vec<crate::models::RecommendedPodcast>),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_recommendations(
+    Query(params): Query<RecommendationsParams>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<crate::models::RecommendedPodcast>>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let limit = params.limit.unwrap_or(24).clamp(1, 100);
+    let refresh = params.refresh.unwrap_or(false);
+
+    // Serve a fresh cache (<24h) unless a refresh was explicitly requested.
+    if !refresh {
+        if let Some(json) = state.db_pool.get_recommendation_cache(user_id, 24).await? {
+            if let Ok(cached) =
+                serde_json::from_str::<Vec<crate::models::RecommendedPodcast>>(&json)
+            {
+                return Ok(Json(cached));
+            }
+        }
+    }
+
+    let recs =
+        crate::services::recommendations::generate_recommendations(&state.db_pool, user_id, limit)
+            .await?;
+
+    // Best-effort cache write; a failure here shouldn't fail the request.
+    if let Ok(json) = serde_json::to_string(&recs) {
+        if let Err(e) = state.db_pool.upsert_recommendation_cache(user_id, &json).await {
+            tracing::warn!("Failed to cache recommendations for user {}: {}", user_id, e);
+        }
+    }
+
+    Ok(Json(recs))
+}

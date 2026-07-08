@@ -1036,6 +1036,11 @@ pub fn logout() -> Html {
     let selected_theme = local_storage
         .get_item("selected_theme")
         .expect("failed to get 'selected_theme'");
+    // Preserve the restore-in-progress flags. A server restore signs the admin out
+    // (it truncates the Sessions table), but RestoreOverlay needs these to survive the
+    // sign-out so it can show the overlay and poll after the reload.
+    let restore_active = local_storage.get_item("pinepods_restore_active").ok().flatten();
+    let restore_server = local_storage.get_item("pinepods_restore_server").ok().flatten();
 
     // Clear storages
     local_storage.clear().expect("failed to clear localStorage");
@@ -1048,6 +1053,11 @@ pub fn logout() -> Html {
         local_storage
             .set_item("selected_theme", &theme)
             .expect("failed to set 'selected_theme'");
+    }
+    // Restore the restore-in-progress flags.
+    if let (Some(active), Some(server)) = (restore_active, restore_server) {
+        let _ = local_storage.set_item("pinepods_restore_active", &active);
+        let _ = local_storage.set_item("pinepods_restore_server", &server);
     }
 
     // Clear Tauri credentials if running in Tauri

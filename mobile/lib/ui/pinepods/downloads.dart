@@ -486,6 +486,139 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
     _hideContextMenu();
   }
 
+  /// Rebuild a [PinepodsEpisode] with one or more status flags changed
+  /// (preserves podcastId, unlike some other pages' equivalents).
+  PinepodsEpisode _updateEpisodeFlags(
+    PinepodsEpisode e, {
+    bool? saved,
+    bool? queued,
+    bool? completed,
+    bool? downloaded,
+  }) {
+    return PinepodsEpisode(
+      podcastName: e.podcastName,
+      episodeTitle: e.episodeTitle,
+      episodePubDate: e.episodePubDate,
+      episodeDescription: e.episodeDescription,
+      episodeArtwork: e.episodeArtwork,
+      episodeUrl: e.episodeUrl,
+      episodeDuration: e.episodeDuration,
+      listenDuration: e.listenDuration,
+      episodeId: e.episodeId,
+      completed: completed ?? e.completed,
+      saved: saved ?? e.saved,
+      queued: queued ?? e.queued,
+      downloaded: downloaded ?? e.downloaded,
+      isYoutube: e.isYoutube,
+      podcastId: e.podcastId,
+    );
+  }
+
+  /// Ensure credentials are set and return the current userId, or null (after
+  /// showing a snackbar) when not logged in.
+  int? _requireUserId() {
+    final settings =
+        Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    final userId = settings.pinepodsUserId;
+    if (userId == null ||
+        settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return null;
+    }
+    _pinepodsService.setCredentials(
+        settings.pinepodsServer!, settings.pinepodsApiKey!);
+    return userId;
+  }
+
+  /// Replace a server episode in per-podcast page state so its status icons
+  /// update in place after an action.
+  void _updateServerEpisodeInState(int podcastId, PinepodsEpisode updated) {
+    setState(() {
+      final st = _podcastPageState[podcastId];
+      if (st == null) return;
+      final i =
+          st.episodes.indexWhere((e) => e.episodeId == updated.episodeId);
+      if (i != -1) st.episodes[i] = updated;
+    });
+  }
+
+  Future<void> _toggleSaveEpisode(
+    PinepodsEpisode episode,
+    void Function(PinepodsEpisode) onUpdated,
+  ) async {
+    final userId = _requireUserId();
+    if (userId == null) return;
+    try {
+      final wasSaved = episode.saved;
+      final success = wasSaved
+          ? await _pinepodsService.removeSavedEpisode(
+              episode.episodeId, userId, episode.isYoutube)
+          : await _pinepodsService.saveEpisode(
+              episode.episodeId, userId, episode.isYoutube);
+      if (success) {
+        onUpdated(_updateEpisodeFlags(episode, saved: !wasSaved));
+        _showSnackBar(wasSaved ? 'Removed from saved' : 'Episode saved!',
+            wasSaved ? Colors.orange : Colors.green);
+      } else {
+        _showSnackBar('Failed to update saved status', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('Error updating saved status: $e', Colors.red);
+    }
+  }
+
+  Future<void> _toggleQueueEpisode(
+    PinepodsEpisode episode,
+    void Function(PinepodsEpisode) onUpdated,
+  ) async {
+    final userId = _requireUserId();
+    if (userId == null) return;
+    try {
+      final wasQueued = episode.queued;
+      final success = wasQueued
+          ? await _pinepodsService.removeQueuedEpisode(
+              episode.episodeId, userId, episode.isYoutube)
+          : await _pinepodsService.queueEpisode(
+              episode.episodeId, userId, episode.isYoutube);
+      if (success) {
+        onUpdated(_updateEpisodeFlags(episode, queued: !wasQueued));
+        _showSnackBar(wasQueued ? 'Removed from queue' : 'Added to queue!',
+            wasQueued ? Colors.orange : Colors.green);
+      } else {
+        _showSnackBar('Failed to update queue', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('Error updating queue: $e', Colors.red);
+    }
+  }
+
+  Future<void> _toggleMarkComplete(
+    PinepodsEpisode episode,
+    void Function(PinepodsEpisode) onUpdated,
+  ) async {
+    final userId = _requireUserId();
+    if (userId == null) return;
+    try {
+      final wasCompleted = episode.completed;
+      final success = wasCompleted
+          ? await _pinepodsService.markEpisodeUncompleted(
+              episode.episodeId, userId, episode.isYoutube)
+          : await _pinepodsService.markEpisodeCompleted(
+              episode.episodeId, userId, episode.isYoutube);
+      if (success) {
+        onUpdated(_updateEpisodeFlags(episode, completed: !wasCompleted));
+        _showSnackBar(
+            wasCompleted ? 'Marked as incomplete' : 'Marked as complete!',
+            wasCompleted ? Colors.orange : Colors.green);
+      } else {
+        _showSnackBar('Failed to update completion', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('Error updating completion: $e', Colors.red);
+    }
+  }
+
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
@@ -598,6 +731,26 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
       barrierColor: Colors.black.withOpacity(0.3),
       builder: (context) => EpisodeContextMenu(
         episode: episode,
+        onSave: () {
+          Navigator.of(context).pop();
+          _toggleSaveEpisode(
+              episode, (u) => _updateServerEpisodeInState(podcastId, u));
+        },
+        onRemoveSaved: () {
+          Navigator.of(context).pop();
+          _toggleSaveEpisode(
+              episode, (u) => _updateServerEpisodeInState(podcastId, u));
+        },
+        onQueue: () {
+          Navigator.of(context).pop();
+          _toggleQueueEpisode(
+              episode, (u) => _updateServerEpisodeInState(podcastId, u));
+        },
+        onMarkComplete: () {
+          Navigator.of(context).pop();
+          _toggleMarkComplete(
+              episode, (u) => _updateServerEpisodeInState(podcastId, u));
+        },
         onDownload: () {
           Navigator.of(context).pop();
           _handleServerEpisodeDelete(episode, podcastId);
@@ -671,6 +824,24 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
       builder: (context) => EpisodeContextMenu(
         episode: pe,
         isDownloadedLocally: true,
+        // Save/queue/complete act on the server via the episode's server id;
+        // the local card doesn't track those flags, so no in-place update.
+        onSave: () {
+          Navigator.of(context).pop();
+          _toggleSaveEpisode(pe, (_) {});
+        },
+        onRemoveSaved: () {
+          Navigator.of(context).pop();
+          _toggleSaveEpisode(pe, (_) {});
+        },
+        onQueue: () {
+          Navigator.of(context).pop();
+          _toggleQueueEpisode(pe, (_) {});
+        },
+        onMarkComplete: () {
+          Navigator.of(context).pop();
+          _toggleMarkComplete(pe, (_) {});
+        },
         onDeleteLocalDownload: () {
           Navigator.of(context).pop();
           _handleLocalEpisodeDelete(episode);

@@ -201,6 +201,57 @@ class _SettingsState extends State<Settings> {
                 ),
               ),
               const SearchProviderWidget(),
+              SettingsDividerLabel(label: 'Download Management'),
+              const Divider(),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(Icons.wifi),
+                  title: const Text('Auto-download on WiFi only'),
+                  subtitle: const Text(
+                      'Only run automatic downloads (auto-download, queue and mirror) while on WiFi'),
+                  trailing: Switch.adaptive(
+                    value: snapshot.data!.autoDownloadWifiOnly,
+                    onChanged: (value) => setState(() => settingsBloc.setAutoDownloadWifiOnly(value)),
+                  ),
+                ),
+              ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(Icons.cloud_download),
+                  title: const Text('Prefer server download source'),
+                  subtitle: const Text(
+                      'Download from the server\'s copy when available, else the original feed'),
+                  trailing: Switch.adaptive(
+                    value: snapshot.data!.preferServerDownloadSource,
+                    onChanged: (value) => setState(() => settingsBloc.setPreferServerDownloadSource(value)),
+                  ),
+                ),
+              ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(Icons.playlist_add_check),
+                  title: const Text('Auto-download queued episodes'),
+                  subtitle: const Text('Keep the next N queued episodes downloaded'),
+                  trailing: _buildCountDropdown(
+                    context: context,
+                    value: snapshot.data!.autoDownloadQueueCount,
+                    options: const [0, 1, 2, 3, 5, 10],
+                    onChanged: (value) => settingsBloc.setAutoDownloadQueueCount(value),
+                  ),
+                ),
+              ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(Icons.sync),
+                  title: const Text('Mirror server downloads'),
+                  subtitle: const Text(
+                      'Keep this device in sync with the episodes downloaded on the server'),
+                  trailing: Switch.adaptive(
+                    value: snapshot.data!.mirrorServerDownloads,
+                    onChanged: (value) => setState(() => settingsBloc.setMirrorServerDownloads(value)),
+                  ),
+                ),
+              ),
               SettingsDividerLabel(label: 'Debug'),
               const Divider(),
               ListTile(
@@ -246,6 +297,32 @@ class _SettingsState extends State<Settings> {
           .map((seconds) => DropdownMenuItem<int>(
                 value: seconds,
                 child: Text('${seconds}s'),
+              ))
+          .toList(),
+      onChanged: (newValue) {
+        if (newValue != null) {
+          setState(() => onChanged(newValue));
+        }
+      },
+    );
+  }
+
+  /// Dropdown for selecting a small count (0 shown as "Off"). Ensures the stored
+  /// value is always selectable even if not one of the preset options.
+  Widget _buildCountDropdown({
+    required BuildContext context,
+    required int value,
+    required List<int> options,
+    required ValueChanged<int> onChanged,
+  }) {
+    final items = <int>{...options, value}.toList()..sort();
+    return DropdownButton<int>(
+      value: value,
+      underline: Container(),
+      items: items
+          .map((count) => DropdownMenuItem<int>(
+                value: count,
+                child: Text(count == 0 ? 'Off' : '$count'),
               ))
           .toList(),
       onChanged: (newValue) {

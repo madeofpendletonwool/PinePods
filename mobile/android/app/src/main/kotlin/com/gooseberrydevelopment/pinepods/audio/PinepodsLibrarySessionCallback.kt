@@ -40,13 +40,21 @@ class PinepodsLibrarySessionCallback(
         Log.d(TAG, "onConnect called by ${controller.packageName}")
         AudioPlayerPlugin.logToFlutter("INFO", TAG, "onConnect: accepting connection from ${controller.packageName}")
 
-        // Accept all connections (including Android Auto) with default permissions
-        // The default includes browsing permissions for MediaLibrarySession
-        val connectionResult = super.onConnect(session, controller)
+        // Accept all connections (including Android Auto) and additionally expose
+        // our custom rewind / fast-forward session commands so the custom-layout
+        // buttons (added in PinepodsMediaService.applyCustomLayout) are enabled.
+        val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+            .buildUpon()
+            .add(SessionCommand(ACTION_REWIND, Bundle.EMPTY))
+            .add(SessionCommand(ACTION_FAST_FORWARD, Bundle.EMPTY))
+            .build()
 
-        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Connection accepted for ${controller.packageName} with default permissions")
+        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Connection accepted for ${controller.packageName} with seek commands")
 
-        return connectionResult
+        return MediaSession.ConnectionResult.accept(
+            sessionCommands,
+            MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+        )
     }
 
     override fun onGetLibraryRoot(
@@ -301,6 +309,16 @@ class PinepodsLibrarySessionCallback(
         Log.d(TAG, "onCustomCommand: ${customCommand.customAction}")
 
         when (customCommand.customAction) {
+            ACTION_REWIND -> {
+                // Delegate to the session player (the ForwardingPlayer), whose
+                // seekBack() honors the configurable rewind interval.
+                session.player.seekBack()
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            ACTION_FAST_FORWARD -> {
+                session.player.seekForward()
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
             "setPlaybackSpeed" -> {
                 val speed = args.getFloat("speed", 1.0f)
                 service.setPlaybackSpeed(speed)
@@ -323,5 +341,10 @@ class PinepodsLibrarySessionCallback(
 
     companion object {
         private const val TAG = "LibrarySessionCallback"
+
+        // Custom session commands backing the rewind / fast-forward buttons in
+        // the media session custom layout (Android Auto + notification).
+        const val ACTION_REWIND = "com.gooseberrydevelopment.pinepods.REWIND"
+        const val ACTION_FAST_FORWARD = "com.gooseberrydevelopment.pinepods.FAST_FORWARD"
     }
 }

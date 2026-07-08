@@ -97,13 +97,18 @@ pub fn saved() -> Html {
     let form_name = use_state(|| String::new());
     let form_desc = use_state(|| String::new());
     let form_icon = use_state(|| "ph-bookmark-simple".to_string());
+    let form_categories = use_state(|| Vec::<String>::new());
+    let form_backfill = use_state(|| false);
     let form_saving = use_state(|| false);
+    // Distinct categories across the user's podcasts, for the auto-add picker
+    let available_categories = use_state(|| Vec::<String>::new());
 
     // Fetch collections on mount
     {
         let collections = collections.clone();
         let active_collection = active_collection.clone();
         let collections_loading = collections_loading.clone();
+        let available_categories = available_categories.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
@@ -116,6 +121,7 @@ pub fn saved() -> Html {
                     let collections = collections.clone();
                     let active_collection = active_collection.clone();
                     let collections_loading = collections_loading.clone();
+                    let available_categories = available_categories.clone();
                     spawn_local(async move {
                         match pod_req::call_get_collections(&server_name, &api_key, user_id).await {
                             Ok(cols) => {
@@ -128,6 +134,10 @@ pub fn saved() -> Html {
                             Err(_) => {
                                 collections_loading.set(false);
                             }
+                        }
+                        // Load the category list for the auto-add picker (best-effort)
+                        if let Ok(cats) = pod_req::call_get_user_categories(&server_name, &api_key, user_id).await {
+                            available_categories.set(cats);
                         }
                     });
                 }
@@ -306,10 +316,14 @@ pub fn saved() -> Html {
         let form_name = form_name.clone();
         let form_desc = form_desc.clone();
         let form_icon = form_icon.clone();
+        let form_categories = form_categories.clone();
+        let form_backfill = form_backfill.clone();
         Callback::from(move |_| {
             form_name.set(String::new());
             form_desc.set(String::new());
             form_icon.set("ph-bookmark-simple".to_string());
+            form_categories.set(Vec::new());
+            form_backfill.set(false);
             show_new_modal.set(true);
         })
     };
@@ -319,12 +333,16 @@ pub fn saved() -> Html {
         let form_name = form_name.clone();
         let form_desc = form_desc.clone();
         let form_icon = form_icon.clone();
+        let form_categories = form_categories.clone();
+        let form_backfill = form_backfill.clone();
         let active_collection = active_collection.clone();
         Callback::from(move |_| {
             if let Some(c) = active_collection.as_ref() {
                 form_name.set(c.name.clone());
                 form_desc.set(c.description.clone().unwrap_or_default());
                 form_icon.set(c.icon.clone());
+                form_categories.set(c.auto_add_categories.clone().unwrap_or_default());
+                form_backfill.set(false);
                 show_edit_modal.set(true);
             }
         })
@@ -337,6 +355,8 @@ pub fn saved() -> Html {
         let form_name = form_name.clone();
         let form_desc = form_desc.clone();
         let form_icon = form_icon.clone();
+        let form_categories = form_categories.clone();
+        let form_backfill = form_backfill.clone();
         let form_saving = form_saving.clone();
         let show_new_modal = show_new_modal.clone();
         let collections = collections.clone();
@@ -352,11 +372,14 @@ pub fn saved() -> Html {
             let (Some(Some(api_key)), Some(user_id), Some(server_name)) =
                 (api_key.clone(), user_id.clone(), server_name.clone()) else { return; };
             let desc = (*form_desc).trim().to_string();
+            let categories = (*form_categories).clone();
             let req = CreateCollectionRequest {
                 user_id,
                 name,
                 description: if desc.is_empty() { None } else { Some(desc) },
                 icon: Some((*form_icon).clone()),
+                auto_add_categories: Some(categories.clone()),
+                backfill: Some(*form_backfill && !categories.is_empty()),
             };
             let form_saving = form_saving.clone();
             let show_new_modal = show_new_modal.clone();
@@ -396,6 +419,8 @@ pub fn saved() -> Html {
         let form_name = form_name.clone();
         let form_desc = form_desc.clone();
         let form_icon = form_icon.clone();
+        let form_categories = form_categories.clone();
+        let form_backfill = form_backfill.clone();
         let form_saving = form_saving.clone();
         let show_edit_modal = show_edit_modal.clone();
         let collections = collections.clone();
@@ -412,10 +437,13 @@ pub fn saved() -> Html {
             let (Some(Some(api_key)), Some(user_id), Some(server_name)) =
                 (api_key.clone(), user_id.clone(), server_name.clone()) else { return; };
             let desc = (*form_desc).trim().to_string();
+            let categories = (*form_categories).clone();
             let req = UpdateCollectionRequest {
                 name: Some(name),
                 description: Some(desc),
                 icon: Some((*form_icon).clone()),
+                auto_add_categories: Some(categories.clone()),
+                backfill: Some(*form_backfill && !categories.is_empty()),
             };
             let form_saving = form_saving.clone();
             let show_edit_modal = show_edit_modal.clone();
@@ -555,6 +583,9 @@ pub fn saved() -> Html {
                       form_name: UseStateHandle<String>,
                       form_desc: UseStateHandle<String>,
                       form_icon: UseStateHandle<String>,
+                      form_categories: UseStateHandle<Vec<String>>,
+                      form_backfill: UseStateHandle<bool>,
+                      available_categories: UseStateHandle<Vec<String>>,
                       on_submit: Callback<MouseEvent>,
                       on_close: Callback<MouseEvent>,
                       on_delete: Option<Callback<MouseEvent>>,
@@ -607,6 +638,67 @@ pub fn saved() -> Html {
                                         })}
                                     />
                                 </div>
+                                <div>
+                                    <label class="block mb-1 text-sm font-medium">{ i18n.t("collections.auto_add_categories") }</label>
+                                    <p class="text-xs opacity-70 mb-2">{ i18n.t("collections.auto_add_help") }</p>
+                                    {
+                                        if available_categories.is_empty() {
+                                            html! { <p class="text-xs opacity-70">{ i18n.t("collections.no_categories") }</p> }
+                                        } else {
+                                            html! {
+                                                <div class="sp-chips" style="justify-content: flex-start; margin: 0;">
+                                                    {
+                                                        available_categories.iter().map(|cat| {
+                                                            let cat = cat.clone();
+                                                            let selected = form_categories.contains(&cat);
+                                                            let onclick = {
+                                                                let form_categories = form_categories.clone();
+                                                                let cat = cat.clone();
+                                                                Callback::from(move |_| {
+                                                                    let mut next = (*form_categories).clone();
+                                                                    if let Some(pos) = next.iter().position(|c| c == &cat) {
+                                                                        next.remove(pos);
+                                                                    } else {
+                                                                        next.push(cat.clone());
+                                                                    }
+                                                                    form_categories.set(next);
+                                                                })
+                                                            };
+                                                            html! {
+                                                                <button
+                                                                    type="button"
+                                                                    class={classes!("sp-chip", if selected { "is-active" } else { "" })}
+                                                                    {onclick}
+                                                                >
+                                                                    <span>{ cat }</span>
+                                                                </button>
+                                                            }
+                                                        }).collect::<Html>()
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    }
+                                    {
+                                        if !form_categories.is_empty() {
+                                            html! {
+                                                <label class="flex items-center gap-2 mt-3 text-sm cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={*form_backfill}
+                                                        onchange={let form_backfill = form_backfill.clone(); Callback::from(move |e: Event| {
+                                                            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+                                                            form_backfill.set(input.checked());
+                                                        })}
+                                                    />
+                                                    <span>{ i18n.t("collections.backfill_existing") }</span>
+                                                </label>
+                                            }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
+                                </div>
                                 <div class="flex items-center justify-between gap-2 pt-2">
                                     {
                                         if let Some(on_delete) = on_delete.clone() {
@@ -650,6 +742,15 @@ pub fn saved() -> Html {
         html! {}
     };
 
+    // Search bar reflects the active collection's name + icon.
+    let (active_name, active_icon) = active_collection
+        .as_ref()
+        .map(|c| (c.name.clone(), c.icon.clone()))
+        .unwrap_or_else(|| ("Saved".to_string(), "ph-bookmark".to_string()));
+    let search_placeholder = i18n
+        .t("collections.search_placeholder")
+        .replace("{name}", &active_name);
+
     html! {
         <>
         <div class="main-container">
@@ -665,10 +766,10 @@ pub fn saved() -> Html {
                                 { tab_bar }
                                 <div class="pfb-bar">
                                     <div class="sp-input">
-                                        <i class="ph ph-bookmark sp-search-ico"></i>
+                                        <i class={classes!("ph", active_icon.clone(), "sp-search-ico")}></i>
                                         <input
                                             type="text"
-                                            placeholder={i18n.t("saved.search_placeholder")}
+                                            placeholder={search_placeholder.clone()}
                                             value={(*episode_search_term).clone()}
                                             oninput={let episode_search_term = episode_search_term.clone();
                                                 Callback::from(move |e: InputEvent| {
@@ -797,6 +898,7 @@ pub fn saved() -> Html {
                     &i18n.t("collections.new_collection"),
                     false,
                     form_name.clone(), form_desc.clone(), form_icon.clone(),
+                    form_categories.clone(), form_backfill.clone(), available_categories.clone(),
                     on_create_submit.clone(),
                     { let show_new_modal = show_new_modal.clone(); Callback::from(move |_| show_new_modal.set(false)) },
                     None,
@@ -810,6 +912,7 @@ pub fn saved() -> Html {
                     &i18n.t("collections.edit_collection"),
                     true,
                     form_name.clone(), form_desc.clone(), form_icon.clone(),
+                    form_categories.clone(), form_backfill.clone(), available_categories.clone(),
                     on_edit_submit.clone(),
                     { let show_edit_modal = show_edit_modal.clone(); Callback::from(move |_| show_edit_modal.set(false)) },
                     Some(on_delete_collection.clone()),

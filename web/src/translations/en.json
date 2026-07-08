@@ -38,6 +38,7 @@
   },
   "app_drawer": {
     "discover_hosts": "Discover Hosts",
+    "discover": "Discover",
     "downloads": "Downloads",
     "feed": "Feed",
     "history": "History",
@@ -53,10 +54,16 @@
     "subscribed_people": "Subscribed People"
   },
   "discover": {
-    "title": "Discover Hosts",
+    "title": "Discover",
     "stats_summary": "{hosts} hosts across {podcasts} podcasts",
     "empty_title": "Nothing to discover yet",
     "empty_message": "Host data comes from the community PodPeopleDB.",
+    "for_you": "For You",
+    "for_you_empty": "Subscribe to a few podcasts and we'll suggest shows you might like here.",
+    "trending": "Trending Now",
+    "browse_by_category": "Browse by Category",
+    "all_categories": "All",
+    "hosts_section": "Discover Hosts",
     "top_hosts": "Top Hosts",
     "recently_added": "Recently Added",
     "popular_podcasts": "Popular Podcasts",
@@ -1145,8 +1152,10 @@
     "searching": "Searching..."
   },
   "podcast_layout": {
+    "add": "Add podcast",
     "add_error": "Error adding podcast",
     "by": "By",
+    "remove": "Remove podcast",
     "episode": "episode",
     "episodes": "episodes",
     "explicit": "Explicit",
@@ -1552,7 +1561,12 @@
     "add_mode_submenu": "Sub-menu flyout",
     "add_mode_description": "Choose how the \"Add to Collection\" menu behaves on episodes.",
     "empty_title": "No episodes in this collection yet",
-    "empty_instructions": "Add episodes by opening any episode's three-dot menu and choosing \"Add to Collection\"."
+    "empty_instructions": "Add episodes by opening any episode's three-dot menu and choosing \"Add to Collection\".",
+    "search_placeholder": "Search {name} episodes...",
+    "auto_add_categories": "Auto-add by category",
+    "auto_add_help": "Episodes from podcasts in the selected categories are added automatically as new episodes come in.",
+    "no_categories": "No categories found on your podcasts yet.",
+    "backfill_existing": "Add existing matching episodes now"
   },
   "ai_settings": {
     "ai_service": "AI service:",

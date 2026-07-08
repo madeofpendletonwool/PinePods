@@ -1,6 +1,8 @@
 // lib/ui/pinepods/episode_details.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
@@ -14,6 +16,7 @@ import 'package:pinepods_mobile/ui/widgets/episode_description.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
+import 'package:pinepods_mobile/ui/pinepods/episode_ai_section.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
@@ -41,6 +44,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
   String _errorMessage = '';
   List<Person> _persons = [];
   bool _isDownloadedLocally = false;
+  int? _userId; // set once credentials are established in _loadEpisodeDetails
 
   // Play-button loading feedback: true while we've kicked off playback for this
   // episode but the audio system hasn't yet acknowledged it as now-playing.
@@ -140,6 +144,74 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
     }
   }
 
+  Future<void> _shareEpisode() async {
+    if (_episode == null) return;
+
+    final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    if (settings.pinepodsServer == null || settings.pinepodsApiKey == null) {
+      _showSnackBar('Not connected to a server', Colors.red);
+      return;
+    }
+
+    _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    _showSnackBar('Creating share link…', Colors.blueGrey);
+
+    try {
+      final urlKey = await _pinepodsService.createShareLink(_episode!.episodeId);
+      final shareUrl = '${settings.pinepodsServer}/shared_episode/$urlKey';
+      if (!mounted) return;
+      await _showShareDialog(shareUrl);
+    } catch (e) {
+      if (mounted) _showSnackBar('Failed to create share link: $e', Colors.red);
+    }
+  }
+
+  Future<void> _showShareDialog(String shareUrl) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Share Episode'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Anyone with this link can listen to the episode. The link expires in 60 days.',
+            ),
+            const SizedBox(height: 12),
+            SelectableText(
+              shareUrl,
+              style: Theme.of(dialogContext).textTheme.bodySmall,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: shareUrl));
+              _showSnackBar('Link copied', Colors.green);
+            },
+            icon: const Icon(Icons.copy),
+            label: const Text('Copy'),
+          ),
+          TextButton.icon(
+            onPressed: () {
+              SharePlus.instance.share(
+                ShareParams(text: shareUrl, subject: _episode?.episodeTitle),
+              );
+            },
+            icon: const Icon(Icons.ios_share),
+            label: const Text('Share'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _loadEpisodeDetails() async {
     setState(() {
       _isLoading = true;
@@ -164,6 +236,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
       _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
       GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
       final userId = settings.pinepodsUserId!;
+      _userId = userId;
 
       final episodeDetails = await _pinepodsService.getEpisodeMetadata(
         _episode!.episodeId,
@@ -322,6 +395,20 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
     } catch (e) {
       _showSnackBar('Failed to jump to timestamp: ${e.toString()}', Colors.red);
     }
+  }
+
+  // Re-supply the native player with this episode's skip segments after a
+  // review/detect change — but only if it is the one currently playing, so we
+  // never push a different episode's ad ranges onto the active player.
+  Future<void> _resupplySkipSegmentsIfPlaying() async {
+    final aps = _audioPlayerService ??
+        Provider.of<AudioPlayerService>(context, listen: false);
+    final current = aps.nowPlaying;
+    if (current == null || current.guid != _episode!.episodeUrl) return;
+    final podcastId = _episode!.podcastId;
+    if (podcastId == null || _userId == null) return;
+    await _audioService?.refreshSkipSegments(
+        _episode!.episodeId, _userId!, podcastId);
   }
 
   String _formatDuration(Duration duration) {
@@ -926,9 +1013,24 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                     ),
                   ],
                 ),
+
+                const SizedBox(height: 8),
+
+                // Fourth row: Share (full width)
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _shareEpisode,
+                        icon: const Icon(Icons.share_outlined),
+                        label: const Text('Share'),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
-            
+
             // Hosts/Guests section
             if (_persons.isNotEmpty) ...[
               const SizedBox(height: 24),
@@ -1007,6 +1109,17 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
               content: _episode!.episodeDescription,
               onTimestampTap: _handleTimestampTap,
             ),
+
+            // AI features (#726 transcript / #790 ad-block). Self-hides unless
+            // the server reports the AI sidecar as available.
+            if (_userId != null)
+              EpisodeAiSection(
+                episode: _episode!,
+                userId: _userId!,
+                pinepodsService: _pinepodsService,
+                onSeek: _handleTimestampTap,
+                onSegmentsChanged: _resupplySkipSegmentsIfPlaying,
+              ),
                   ],
                 ),
               ),

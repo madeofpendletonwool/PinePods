@@ -52,7 +52,7 @@ pub fn app_drawer() -> Html {
     #[cfg(not(feature = "server_build"))]
     let i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
     let i18n_subscribed_people = i18n.t("app_drawer.subscribed_people").to_string();
-    let i18n_discover_hosts = i18n.t("app_drawer.discover_hosts").to_string();
+    let i18n_discover = i18n.t("app_drawer.discover").to_string();
     let i18n_podcasts = i18n.t("navigation.podcasts").to_string();
     let i18n_settings = i18n.t("app_drawer.settings").to_string();
     let i18n_sign_out = i18n.t("app_drawer.sign_out").to_string();
@@ -304,9 +304,9 @@ pub fn app_drawer() -> Html {
                         </Link<Route>>
                     </div>
                     <div onclick={toggle_drawer.clone()}>
-                        <Link<Route> to={Route::DiscoverHosts} classes="sb-item">
+                        <Link<Route> to={Route::Discover} classes="sb-item">
                             <i class="ph ph-compass"></i>
-                            <span>{&i18n_discover_hosts}</span>
+                            <span>{&i18n_discover}</span>
                         </Link<Route>>
                     </div>
                     <div onclick={toggle_drawer.clone()}>

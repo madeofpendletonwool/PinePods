@@ -5615,11 +5615,18 @@ pub struct Collection {
     pub created_at: String,
     pub last_updated: String,
     pub episode_count: i64,
+    #[serde(default)]
+    pub auto_add_categories: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct CollectionsResponse {
     pub collections: Vec<Collection>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UserCategoriesResponse {
+    pub categories: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -5628,6 +5635,8 @@ pub struct CreateCollectionRequest {
     pub name: String,
     pub description: Option<String>,
     pub icon: Option<String>,
+    pub auto_add_categories: Option<Vec<String>>,
+    pub backfill: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -5642,6 +5651,8 @@ pub struct UpdateCollectionRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub icon: Option<String>,
+    pub auto_add_categories: Option<Vec<String>>,
+    pub backfill: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -5670,6 +5681,25 @@ pub async fn call_get_collections(
     if response.ok() {
         let parsed = response.json::<CollectionsResponse>().await?;
         Ok(parsed.collections)
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
+}
+
+pub async fn call_get_user_categories(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<Vec<String>, Error> {
+    let endpoint = format!("{}/api/data/collections/categories/{}", server, user_id);
+    let response = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        let parsed = response.json::<UserCategoriesResponse>().await?;
+        Ok(parsed.categories)
     } else {
         Err(anyhow::anyhow!("Server returned error: {}", response.status()))
     }

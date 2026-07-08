@@ -18,7 +18,12 @@ dependencies:
   flutter_carplay: ^1.6.3
   device_info_plus: ^13.2.0
   extended_image: ^10.0.1
-  file_picker: ^10.3.3
+  # 12.0.0-beta migrated file_picker's Windows implementation to win32 ^6.
+  # Its Windows Dart code is compiled on Android/iOS too (the conditional export
+  # keys on dart.library.ffi, not the OS), so the 10.x line — which is pinned to
+  # win32 ^5 — fails to compile against the win32 ^6 that every other plugin
+  # requires. Staying on the 12 beta keeps a single, consistent win32 ^6.
+  file_picker: ^12.0.0-beta.7
   flutter_dialogs: ^3.0.0
   flutter_downloader: ^1.11.8
   flutter_secure_storage: ^10.0.0-beta.4
@@ -60,13 +65,6 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
-
-# win32 is only pulled in by the *_windows implementations of plugins
-# (file_picker/share_plus/device_info_plus/secure_storage). This app targets
-# Android/iOS only, so we pin win32 forward to satisfy the newer plugins that
-# require ^6 without downgrading file_picker.
-dependency_overrides:
-  win32: ^6.0.1
 
 flutter_icons:
   image_path_android: "assets/images/favicon.png"

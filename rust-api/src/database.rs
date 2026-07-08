@@ -5210,6 +5210,7 @@ impl DatabasePool {
         req: &crate::models::CreateCollectionRequest,
     ) -> AppResult<i32> {
         let icon = req.icon.clone().unwrap_or_else(|| "ph-bookmark-simple".to_string());
+        let categories = serialize_auto_add_categories(req.auto_add_categories.as_deref());
         match self {
             DatabasePool::Postgres(pool) => {
                 // Surface a clean conflict instead of a 500 on duplicate name
@@ -5225,13 +5226,14 @@ impl DatabasePool {
                 }
 
                 let row = sqlx::query(
-                    r#"INSERT INTO "Collections" (userid, name, description, icon, isdefault)
-                       VALUES ($1, $2, $3, $4, FALSE) RETURNING collectionid"#,
+                    r#"INSERT INTO "Collections" (userid, name, description, icon, isdefault, autoaddcategories)
+                       VALUES ($1, $2, $3, $4, FALSE, $5) RETURNING collectionid"#,
                 )
                 .bind(req.user_id)
                 .bind(&req.name)
                 .bind(&req.description)
                 .bind(&icon)
+                .bind(&categories)
                 .fetch_one(pool)
                 .await?;
                 Ok(row.try_get("collectionid")?)
@@ -5247,12 +5249,13 @@ impl DatabasePool {
                 }
 
                 let result = sqlx::query(
-                    "INSERT INTO Collections (UserID, Name, Description, Icon, IsDefault) VALUES (?, ?, ?, ?, FALSE)",
+                    "INSERT INTO Collections (UserID, Name, Description, Icon, IsDefault, AutoAddCategories) VALUES (?, ?, ?, ?, FALSE, ?)",
                 )
                 .bind(req.user_id)
                 .bind(&req.name)
                 .bind(&req.description)
                 .bind(&icon)
+                .bind(&categories)
                 .execute(pool)
                 .await?;
                 Ok(result.last_insert_id() as i32)
@@ -5305,6 +5308,7 @@ impl DatabasePool {
                         c.description,
                         c.isdefault,
                         c.icon,
+                        c.autoaddcategories,
                         c.createdat,
                         c.lastupdated,
                         CASE
@@ -5340,6 +5344,7 @@ impl DatabasePool {
                             .format("%Y-%m-%dT%H:%M:%S")
                             .to_string(),
                         episode_count: row.try_get("episode_count")?,
+                        auto_add_categories: parse_auto_add_categories(row.try_get("autoaddcategories").ok()),
                     });
                 }
                 Ok(collections)
@@ -5353,6 +5358,7 @@ impl DatabasePool {
                         c.Description as description,
                         c.IsDefault as isdefault,
                         c.Icon as icon,
+                        c.AutoAddCategories as autoaddcategories,
                         c.CreatedAt as createdat,
                         c.LastUpdated as lastupdated,
                         CASE
@@ -5389,6 +5395,7 @@ impl DatabasePool {
                             .format("%Y-%m-%dT%H:%M:%S")
                             .to_string(),
                         episode_count: row.try_get("episode_count")?,
+                        auto_add_categories: parse_auto_add_categories(row.try_get("autoaddcategories").ok()),
                     });
                 }
                 Ok(collections)
@@ -5476,6 +5483,211 @@ impl DatabasePool {
                 .bind(user_id)
                 .execute(pool)
                 .await?;
+            }
+        }
+
+        // Auto-add categories are set explicitly (an empty list clears the rule), so they can't
+        // use the COALESCE-ignore-NULL pattern above — only touch the column when provided.
+        if req.auto_add_categories.is_some() {
+            let categories = serialize_auto_add_categories(req.auto_add_categories.as_deref());
+            match self {
+                DatabasePool::Postgres(pool) => {
+                    sqlx::query(
+                        r#"UPDATE "Collections" SET autoaddcategories = $1, lastupdated = CURRENT_TIMESTAMP
+                           WHERE collectionid = $2 AND userid = $3 AND isdefault = FALSE"#,
+                    )
+                    .bind(&categories)
+                    .bind(collection_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                }
+                DatabasePool::MySQL(pool) => {
+                    sqlx::query(
+                        "UPDATE Collections SET AutoAddCategories = ?, LastUpdated = CURRENT_TIMESTAMP
+                         WHERE CollectionID = ? AND UserID = ? AND IsDefault = FALSE",
+                    )
+                    .bind(&categories)
+                    .bind(collection_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Distinct podcast category names across the user's subscriptions, sorted alphabetically.
+    /// Feeds the auto-add category picker in the collection edit modal.
+    pub async fn get_user_categories(&self, user_id: i32) -> AppResult<Vec<String>> {
+        let raw_rows: Vec<String> = match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_scalar(
+                    r#"SELECT categories FROM "Podcasts"
+                       WHERE userid = $1 AND categories IS NOT NULL AND categories <> ''"#,
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query_scalar(
+                    "SELECT Categories FROM Podcasts
+                     WHERE UserID = ? AND Categories IS NOT NULL AND Categories <> ''",
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?
+            }
+        };
+
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for raw in &raw_rows {
+            if let Some(map) = self.parse_categories_json(raw) {
+                for name in map.values() {
+                    let trimmed = name.trim();
+                    if !trimmed.is_empty() {
+                        seen.insert(trimmed.to_string());
+                    }
+                }
+            }
+        }
+        Ok(seen.into_iter().collect())
+    }
+
+    /// Auto-add every episode from podcasts in the collection's category rule that isn't already
+    /// a member. Idempotent (skips existing rows); no-op for the default collection or when the
+    /// collection has no category rule. Categories are OR-matched as case-insensitive substrings.
+    pub async fn auto_add_category_episodes(&self, collection_id: i32) -> AppResult<()> {
+        // Load the collection's owner, default flag, and category rule in one shot.
+        let (is_default, categories) = match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(
+                    r#"SELECT isdefault, autoaddcategories FROM "Collections" WHERE collectionid = $1"#,
+                )
+                .bind(collection_id)
+                .fetch_optional(pool)
+                .await?;
+                match row {
+                    Some(r) => (
+                        r.try_get::<bool, _>("isdefault")?,
+                        parse_auto_add_categories(r.try_get("autoaddcategories").ok()),
+                    ),
+                    None => return Ok(()),
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(
+                    "SELECT IsDefault, AutoAddCategories as autoaddcategories FROM Collections WHERE CollectionID = ?",
+                )
+                .bind(collection_id)
+                .fetch_optional(pool)
+                .await?;
+                match row {
+                    Some(r) => (
+                        r.try_get::<i8, _>("IsDefault")? != 0,
+                        parse_auto_add_categories(r.try_get("autoaddcategories").ok()),
+                    ),
+                    None => return Ok(()),
+                }
+            }
+        };
+
+        if is_default {
+            return Ok(());
+        }
+        let categories = match categories {
+            Some(c) if !c.is_empty() => c,
+            _ => return Ok(()),
+        };
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Category placeholders start at $2 ($1 is collection_id).
+                let cat_clause: String = (0..categories.len())
+                    .map(|i| format!("LOWER(p.categories) LIKE LOWER(${})", i + 2))
+                    .collect::<Vec<_>>()
+                    .join(" OR ");
+                let sql = format!(
+                    r#"INSERT INTO "CollectionEpisodes" (collectionid, episodeid)
+                       SELECT $1, e.episodeid
+                       FROM "Episodes" e
+                       JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                       WHERE ({cat_clause})
+                         AND NOT EXISTS (
+                             SELECT 1 FROM "CollectionEpisodes" ce
+                             WHERE ce.collectionid = $1 AND ce.episodeid = e.episodeid
+                         )"#,
+                );
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(collection_id);
+                for cat in &categories {
+                    q = q.bind(format!("%{}%", cat));
+                }
+                q.execute(pool).await?;
+
+                sqlx::query(r#"UPDATE "Collections" SET lastupdated = CURRENT_TIMESTAMP WHERE collectionid = $1"#)
+                    .bind(collection_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let cat_clause: String = std::iter::repeat("LOWER(p.Categories) LIKE LOWER(?)")
+                    .take(categories.len())
+                    .collect::<Vec<_>>()
+                    .join(" OR ");
+                let sql = format!(
+                    "INSERT INTO CollectionEpisodes (CollectionID, EpisodeID)
+                     SELECT ?, e.EpisodeID
+                     FROM Episodes e
+                     JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                     WHERE ({cat_clause})
+                       AND NOT EXISTS (
+                           SELECT 1 FROM CollectionEpisodes ce
+                           WHERE ce.CollectionID = ? AND ce.EpisodeID = e.EpisodeID
+                       )",
+                );
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(collection_id);
+                for cat in &categories {
+                    q = q.bind(format!("%{}%", cat));
+                }
+                q = q.bind(collection_id);
+                q.execute(pool).await?;
+
+                sqlx::query("UPDATE Collections SET LastUpdated = CURRENT_TIMESTAMP WHERE CollectionID = ?")
+                    .bind(collection_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Run auto-add for every collection that has a category rule. Called after the scheduled
+    /// podcast refresh so freshly-ingested episodes flow into their matching collections.
+    pub async fn refresh_category_collections(&self) -> AppResult<()> {
+        let ids: Vec<i32> = match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_scalar(
+                    r#"SELECT collectionid FROM "Collections"
+                       WHERE isdefault = FALSE AND autoaddcategories IS NOT NULL AND autoaddcategories <> ''"#,
+                )
+                .fetch_all(pool)
+                .await?
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query_scalar(
+                    "SELECT CollectionID FROM Collections
+                     WHERE IsDefault = FALSE AND AutoAddCategories IS NOT NULL AND AutoAddCategories <> ''",
+                )
+                .fetch_all(pool)
+                .await?
+            }
+        };
+
+        for id in ids {
+            if let Err(e) = self.auto_add_category_episodes(id).await {
+                tracing::warn!("Auto-add for collection {} failed: {}", id, e);
             }
         }
         Ok(())
@@ -10837,6 +11049,156 @@ impl DatabasePool {
                     .fetch_optional(pool)
                     .await?;
                 Ok(row.map(|r| r.try_get::<bool, _>("isfavorite").unwrap_or(false)).unwrap_or(false))
+            }
+        }
+    }
+
+    // Return the cached recommendations JSON for a user if present and newer than
+    // max_age_hours; otherwise None (signals the caller to regenerate). See migration 058.
+    pub async fn get_recommendation_cache(&self, user_id: i32, max_age_hours: i32) -> AppResult<Option<String>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT resultsjson FROM "RecommendationCache"
+                    WHERE userid = $1 AND generatedat > CURRENT_TIMESTAMP - make_interval(hours => $2)
+                "#)
+                .bind(user_id)
+                .bind(max_age_hours)
+                .fetch_optional(pool)
+                .await?;
+                Ok(row.map(|r| r.try_get::<String, _>("resultsjson").unwrap_or_default()))
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT ResultsJSON FROM RecommendationCache
+                    WHERE UserID = ? AND GeneratedAt > (NOW() - INTERVAL ? HOUR)
+                "#)
+                .bind(user_id)
+                .bind(max_age_hours)
+                .fetch_optional(pool)
+                .await?;
+                Ok(row.map(|r| r.try_get::<String, _>("ResultsJSON").unwrap_or_default()))
+            }
+        }
+    }
+
+    // Upsert a user's recommendations JSON, stamping GeneratedAt to now. One row per user.
+    pub async fn upsert_recommendation_cache(&self, user_id: i32, results_json: &str) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"
+                    INSERT INTO "RecommendationCache" (userid, generatedat, resultsjson)
+                    VALUES ($1, CURRENT_TIMESTAMP, $2)
+                    ON CONFLICT (userid) DO UPDATE SET generatedat = CURRENT_TIMESTAMP, resultsjson = EXCLUDED.resultsjson
+                "#)
+                .bind(user_id)
+                .bind(results_json)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(r#"
+                    INSERT INTO RecommendationCache (UserID, GeneratedAt, ResultsJSON)
+                    VALUES (?, NOW(), ?)
+                    ON DUPLICATE KEY UPDATE GeneratedAt = NOW(), ResultsJSON = VALUES(ResultsJSON)
+                "#)
+                .bind(user_id)
+                .bind(results_json)
+                .execute(pool)
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // User IDs that already have a cached recommendation set (i.e. have used the Discover
+    // page). The scheduler refreshes these nightly so return visits are instant; brand-new
+    // users are handled on demand by the endpoint.
+    pub async fn get_recommendation_cache_user_ids(&self) -> AppResult<Vec<i32>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"SELECT userid FROM "RecommendationCache""#)
+                    .fetch_all(pool)
+                    .await?;
+                Ok(rows.iter().filter_map(|r| r.try_get::<i32, _>("userid").ok()).collect())
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query("SELECT UserID FROM RecommendationCache")
+                    .fetch_all(pool)
+                    .await?;
+                Ok(rows.iter().filter_map(|r| r.try_get::<i32, _>("UserID").ok()).collect())
+            }
+        }
+    }
+
+    // Lean per-subscription inputs for the recommendation taste profile (#103). Only touches
+    // columns guaranteed to exist on Podcasts, unlike return_pods_extra (which references a
+    // non-existent p.isyoutube column). play_count = number of listen-history rows for the sub.
+    pub async fn get_recommendation_taste_inputs(
+        &self,
+        user_id: i32,
+    ) -> AppResult<Vec<crate::models::RecommendationTasteInput>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT p.podcastname, p.author, p.description, p.categories,
+                           p.podcastindexid, p.feedurl,
+                           COALESCE(p.isfavorite, false) AS isfavorite,
+                           COUNT(ueh.userepisodehistoryid) AS play_count
+                    FROM "Podcasts" p
+                    LEFT JOIN "Episodes" e ON p.podcastid = e.podcastid
+                    LEFT JOIN "UserEpisodeHistory" ueh ON e.episodeid = ueh.episodeid AND ueh.userid = $1
+                    WHERE p.userid = $1 AND COALESCE(p.displaypodcast, TRUE) = TRUE
+                    GROUP BY p.podcastid, p.podcastname, p.author, p.description, p.categories,
+                             p.podcastindexid, p.feedurl, p.isfavorite
+                "#)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+                Ok(rows.iter().map(|row| {
+                    let cats: Option<String> = row.try_get("categories").ok();
+                    crate::models::RecommendationTasteInput {
+                        podcastname: row.try_get::<Option<String>, _>("podcastname").ok().flatten().unwrap_or_default(),
+                        author: row.try_get::<Option<String>, _>("author").ok().flatten(),
+                        description: row.try_get::<Option<String>, _>("description").ok().flatten(),
+                        categories: cats.and_then(|c| self.parse_categories_json(&c)),
+                        podcastindexid: row.try_get::<Option<i32>, _>("podcastindexid").ok().flatten().map(|v| v as i64),
+                        feedurl: row.try_get::<Option<String>, _>("feedurl").ok().flatten().unwrap_or_default(),
+                        is_favorite: row.try_get::<bool, _>("isfavorite").unwrap_or(false),
+                        play_count: row.try_get::<i64, _>("play_count").unwrap_or(0),
+                    }
+                }).collect())
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT p.PodcastName, p.Author, p.Description, p.Categories,
+                           p.PodcastIndexID, p.FeedURL,
+                           COALESCE(p.IsFavorite, false) AS isfavorite,
+                           COUNT(ueh.UserEpisodeHistoryID) AS play_count
+                    FROM Podcasts p
+                    LEFT JOIN Episodes e ON p.PodcastID = e.PodcastID
+                    LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
+                    WHERE p.UserID = ? AND COALESCE(p.DisplayPodcast, TRUE) = TRUE
+                    GROUP BY p.PodcastID, p.PodcastName, p.Author, p.Description, p.Categories,
+                             p.PodcastIndexID, p.FeedURL, p.IsFavorite
+                "#)
+                .bind(user_id)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+                Ok(rows.iter().map(|row| {
+                    let cats: Option<String> = row.try_get("Categories").ok();
+                    crate::models::RecommendationTasteInput {
+                        podcastname: row.try_get::<Option<String>, _>("PodcastName").ok().flatten().unwrap_or_default(),
+                        author: row.try_get::<Option<String>, _>("Author").ok().flatten(),
+                        description: row.try_get::<Option<String>, _>("Description").ok().flatten(),
+                        categories: cats.and_then(|c| self.parse_categories_json(&c)),
+                        podcastindexid: row.try_get::<Option<i32>, _>("PodcastIndexID").ok().flatten().map(|v| v as i64),
+                        feedurl: row.try_get::<Option<String>, _>("FeedURL").ok().flatten().unwrap_or_default(),
+                        is_favorite: row.try_get::<bool, _>("isfavorite").unwrap_or(false),
+                        play_count: row.try_get::<i64, _>("play_count").unwrap_or(0),
+                    }
+                }).collect())
             }
         }
     }
@@ -30353,6 +30715,26 @@ where
         }
     }
     Ok(())
+}
+
+/// Serialize a collection's auto-add category list for storage.
+/// Returns `None` (SQL NULL) when the list is absent or empty, otherwise a JSON array string.
+fn serialize_auto_add_categories(categories: Option<&[String]>) -> Option<String> {
+    match categories {
+        Some(cats) if !cats.is_empty() => serde_json::to_string(cats).ok(),
+        _ => None,
+    }
+}
+
+/// Parse a stored `AutoAddCategories` value (JSON array string) back into a list.
+/// Returns `None` for NULL/empty/unparseable values.
+fn parse_auto_add_categories(stored: Option<String>) -> Option<Vec<String>> {
+    let s = stored?;
+    if s.trim().is_empty() {
+        return None;
+    }
+    let cats = serde_json::from_str::<Vec<String>>(&s).ok()?;
+    if cats.is_empty() { None } else { Some(cats) }
 }
 
 #[cfg(test)]

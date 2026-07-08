@@ -39,6 +39,10 @@ class NativeAudioPlayerService extends AudioPlayerService {
   var _sleep = Sleep(type: SleepType.none);
   var _sleepEpisodesRemaining = 0;
 
+  /// Guards against a double-fired native `completed` event launching two
+  /// concurrent auto-advances.
+  bool _handlingCompletion = false;
+
   Episode? _currentEpisode;
   Transcript? _currentTranscript;
 
@@ -202,7 +206,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
         _handleErrorEvent(event);
         break;
       case 'completed':
-        _handleCompletedEvent();
+        unawaited(_handleCompletedEvent());
         break;
       case 'mediaButtonAction':
         _handleMediaButtonAction(event);
@@ -262,31 +266,61 @@ class NativeAudioPlayerService extends AudioPlayerService {
     _playingState.add(AudioState.error);
   }
 
-  void _handleCompletedEvent() {
+  Future<void> _handleCompletedEvent() async {
     log.info('Episode completed');
-    if (_currentEpisode != null) {
-      _currentEpisode!.played = true;
-      _currentEpisode!.position = 0;
-      repository.saveEpisode(_currentEpisode!);
+    if (_handlingCompletion) {
+      log.info('Already handling completion - ignoring duplicate event');
+      return;
     }
+    _handlingCompletion = true;
+    try {
+      final completedEpisode = _currentEpisode;
+      if (completedEpisode != null) {
+        completedEpisode.played = true;
+        completedEpisode.position = 0;
+        repository.saveEpisode(completedEpisode);
+      }
 
-    // Check sleep timer
-    if (_sleep.type == SleepType.episode) {
-      _sleepEpisodesRemaining--;
-      if (_sleepEpisodesRemaining <= 0) {
-        log.info('Sleep timer triggered - episode count reached');
-        stop();
+      // Check sleep timer
+      if (_sleep.type == SleepType.episode) {
+        _sleepEpisodesRemaining--;
+        if (_sleepEpisodesRemaining <= 0) {
+          log.info('Sleep timer triggered - episode count reached');
+          stop();
+          return;
+        }
+      }
+
+      // Legacy Anytime "Up Next" queue (never populated by PinePods playback,
+      // but kept for the non-PinePods path).
+      if (_queue.isNotEmpty) {
+        final nextEpisode = _queue.removeAt(0);
+        _updateQueueState();
+        await playEpisode(episode: nextEpisode, resume: false);
         return;
       }
-    }
 
-    // Play next episode from queue
-    if (_queue.isNotEmpty) {
-      final nextEpisode = _queue.removeAt(0);
-      _updateQueueState();
-      playEpisode(episode: nextEpisode, resume: false);
-    } else {
-      _playingState.add(AudioState.stopped);
+      // PinePods auto-advance: continue the playlist / auto-play-next / server
+      // queue. Keep the player on screen (buffering) during the network round
+      // trip so it doesn't flicker to "stopped"; the next episode's playEpisode
+      // emits its own buffering/playing, and if nothing is queued we stop.
+      //
+      // NOTE: we deliberately do NOT gate on the Episode.guid here — PinePods
+      // episodes are played with guid == episode URL (see
+      // PinepodsAudioService._convertToEpisode), not "pinepods_<id>". The
+      // PinepodsAudioService knows whether it is tracking an episode and returns
+      // false (→ stop) when it is not.
+      if (_pinepodsAudioService != null) {
+        _playingState.add(AudioState.buffering);
+        final advanced = await _pinepodsAudioService!.handleEpisodeCompleted();
+        if (!advanced) {
+          _playingState.add(AudioState.stopped);
+        }
+      } else {
+        _playingState.add(AudioState.stopped);
+      }
+    } finally {
+      _handlingCompletion = false;
     }
   }
 
@@ -530,30 +564,45 @@ class NativeAudioPlayerService extends AudioPlayerService {
   }
 
   @override
-  Future<void> applyEpisodeSilenceTrim(
-    bool enabled,
-    List<Map<String, double>> segments,
-  ) async {
-    log.info('applyEpisodeSilenceTrim: enabled=$enabled, segments=${segments.length}');
+  Future<void> applyEpisodeSkipSegments({
+    required bool silenceEnabled,
+    required List<Map<String, double>> silenceRanges,
+    required List<Map<String, double>> adRanges,
+  }) async {
+    log.info('applyEpisodeSkipSegments: silenceEnabled=$silenceEnabled, '
+        'silence=${silenceRanges.length}, ads=${adRanges.length}');
     // Session-only: unlike trimSilence(), this does NOT persist to the global
     // settingsService, so a per-podcast value never overwrites the user default.
     if (Platform.isAndroid) {
-      // Android uses ExoPlayer's native real-time skip-silence DSP. Effective
+      // Silence stays on ExoPlayer's real-time skip-silence DSP. Effective
       // enablement is the per-podcast flag OR the user's global preference.
-      final effective = enabled || settingsService.trimSilence;
+      final effective = silenceEnabled || settingsService.trimSilence;
       try {
         await platform.invokeMethod('setTrimSilence', {'enabled': effective});
       } catch (e) {
         log.severe('Error applying episode trim silence (Android): $e');
       }
+      // Ads (#790) can't ride the DSP (they're content, not silence): send the
+      // ranges to the native position-poll seeker. Empty list clears them.
+      try {
+        await platform.invokeMethod('setAdSkipSegments', {
+          'segments':
+              adRanges.map((s) => {'start': s['start'], 'end': s['end']}).toList(),
+        });
+      } catch (e) {
+        log.severe('Error applying episode ad-skip segments (Android): $e');
+      }
     } else if (Platform.isIOS) {
-      // iOS (AVPlayer has no DSP skip-silence): apply pre-computed silence ranges.
+      // iOS (AVPlayer has no DSP skip-silence): the native seek observer is
+      // kind-agnostic, so send the union of silence + active-ad ranges and let
+      // it seek past any of them. Enabled whenever there's anything to skip.
+      final combined = [...silenceRanges, ...adRanges]
+          .map((s) => {'start': s['start'], 'end': s['end']})
+          .toList();
       try {
         await platform.invokeMethod('setSkipSegments', {
-          'enabled': enabled,
-          'segments': segments
-              .map((s) => {'start': s['start'], 'end': s['end']})
-              .toList(),
+          'enabled': combined.isNotEmpty,
+          'segments': combined,
         });
       } catch (e) {
         log.severe('Error applying episode skip segments (iOS): $e');

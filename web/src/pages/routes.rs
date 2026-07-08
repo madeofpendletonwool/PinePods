@@ -39,6 +39,9 @@ pub enum Route {
     PodLayout,
     #[at("/people_subs")]
     SubscribedPeople,
+    #[at("/discover")]
+    Discover,
+    // Kept as an alias so pre-rename links/bookmarks still resolve to the Discover page.
     #[at("/discover_hosts")]
     DiscoverHosts,
     #[at("/search_new")]

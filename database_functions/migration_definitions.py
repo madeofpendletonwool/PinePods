@@ -5521,3 +5521,84 @@ def migration_056_create_ad_detection_and_ai_settings(conn, db_type: str):
         raise
     finally:
         cursor.close()
+
+
+@register_migration("057", "add_collection_auto_add_categories", "Add AutoAddCategories column to Collections for auto-adding episodes by podcast category", requires=["048"])
+def add_collection_auto_add_categories(conn, db_type: str) -> None:
+    """Add the per-collection AutoAddCategories rule.
+
+    Stores a JSON array of podcast category names (e.g. ["Technology","News"]). When set,
+    episodes from podcasts in any of those categories are auto-added to the collection during
+    the scheduled refresh (and optionally backfilled on save). NULL/empty means no auto-add.
+    Intentionally limited to category matching — anything richer overlaps smart playlists."""
+    logger.info("Starting migration 057: add AutoAddCategories column to Collections")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                ALTER TABLE "Collections"
+                ADD COLUMN IF NOT EXISTS AutoAddCategories TEXT
+            """)
+        else:  # MySQL/MariaDB
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'Collections'
+                AND COLUMN_NAME = 'AutoAddCategories'
+            """)
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    ALTER TABLE Collections
+                    ADD COLUMN AutoAddCategories TEXT
+                """)
+                logger.info("Added AutoAddCategories column to Collections table")
+            else:
+                logger.info("AutoAddCategories column already exists in Collections table")
+
+        logger.info("AutoAddCategories column migration completed")
+
+    finally:
+        cursor.close()
+
+
+@register_migration("058", "create_recommendation_cache", "Create RecommendationCache table for the Discover page's per-user podcast recommendations (#103)", requires=["001"])
+def migration_058_create_recommendation_cache(conn, db_type: str) -> None:
+    """Per-user cache of generated podcast recommendations for the Discover page (#103).
+
+    Recommendations are expensive (external PodcastIndex trending calls + cosine ranking), so
+    they're computed at most daily per user and stored here as a JSON array of RecommendedPodcast
+    objects. One row per user (UserID is the PK); refreshed by the scheduler nightly or on demand
+    via /api/data/recommendations?refresh=1. Rows are disposable — dropping the table just forces a
+    recompute — so no migration backfill is needed."""
+    logger.info("Starting migration 058: Create RecommendationCache table")
+    cursor = conn.cursor()
+
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "RecommendationCache" (
+                    UserID INT PRIMARY KEY,
+                    GeneratedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ResultsJSON TEXT NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
+                )
+            """)
+        else:  # MySQL / MariaDB
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS RecommendationCache (
+                    UserID INT PRIMARY KEY,
+                    GeneratedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ResultsJSON LONGTEXT NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+
+        logger.info("RecommendationCache migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in RecommendationCache migration: {e}")
+        raise
+    finally:
+        cursor.close()

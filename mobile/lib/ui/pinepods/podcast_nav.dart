@@ -36,15 +36,22 @@ Future<void> navigateToPodcastById(
 
   try {
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-    final userId = settingsBloc.currentSettings.pinepodsUserId;
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
 
-    if (userId == null) {
+    if (userId == null ||
+        settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null) {
       showError('Not logged in', Colors.red);
       return;
     }
 
+    // PinepodsService is not a singleton, so a fresh instance has no
+    // credentials — set them before making the call.
+    final service = PinepodsService()
+      ..setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
     final podcastDetails =
-        await PinepodsService().getPodcastDetailsById(podcastId, userId);
+        await service.getPodcastDetailsById(podcastId, userId);
 
     if (!context.mounted) return;
 

@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, CollectionModalState, EpisodeStatusState, NotificationState};
+use crate::components::context::{AppState, CollectionModalState, ContextMenuState, EpisodeStatusState, NotificationState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::context::UIState;
 #[cfg(not(feature = "server_build"))]
@@ -21,7 +21,7 @@ use std::collections::HashSet;
 use crate::requests::pod_req::{
     call_get_episode_metadata, call_get_podcast_details, EpisodeRequest,
 };
-use gloo_events::EventListener;
+use gloo_events::{EventListener, EventListenerOptions};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;
@@ -39,6 +39,41 @@ pub enum PageType {
     Downloads,
     LocalDownloads,
     Default,
+}
+
+thread_local! {
+    /// Monotonic counter used to give each ContextMenuButton a unique id so the
+    /// global ContextMenuState can track which single menu is open.
+    static CTX_MENU_SEQ: std::cell::Cell<u64> = std::cell::Cell::new(0);
+}
+
+/// Compute the fixed-position placement `(top, right_edge)` for the dropdown,
+/// anchored to the button's bottom-right. When the menu height is known and it
+/// would overflow the bottom of the viewport (with more room above than below),
+/// it flips to open upward. `right_edge` is the button's right edge; the caller
+/// renders it as `right: calc(100vw - {right_edge}px)`.
+fn compute_menu_placement(button: &HtmlElement, menu: Option<&HtmlElement>) -> (i32, i32) {
+    let btn = button.get_bounding_client_rect();
+    let right_edge = btn.right();
+    let viewport_h = window()
+        .and_then(|w| w.inner_height().ok())
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let menu_h = menu
+        .map(|m| m.get_bounding_client_rect().height())
+        .unwrap_or(0.0);
+
+    let space_below = viewport_h - btn.bottom();
+    let space_above = btn.top();
+
+    let top = if menu_h > 0.0 && menu_h + 4.0 > space_below && space_above > space_below {
+        // Flip up: anchor the menu's bottom just above the button, clamped to the top edge.
+        (btn.top() - menu_h - 4.0).max(4.0)
+    } else {
+        btn.bottom() + 4.0
+    };
+
+    (top as i32, right_edge as i32)
 }
 
 #[derive(Properties, Clone, PartialEq)]
@@ -69,10 +104,18 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let i18n_mark_episode_incomplete = i18n.t("context_menu_button.mark_episode_incomplete").to_string();
     let i18n_mark_episode_complete = i18n.t("context_menu_button.mark_episode_complete").to_string();
     let i18n_add_to_collection = i18n.t("collections.add_to_collection").to_string();
-    // None = closed; Some((right, bottom)) = open at this viewport position.
+    // None = closed; Some((top, right_edge)) = open at this fixed viewport position.
     // Single state ensures the dropdown never renders at a stale position.
     let dropdown_state = use_state(|| Option::<(i32, i32)>::None);
     let dropdown_open = dropdown_state.is_some();
+    // Unique id for this menu instance + the globally-open menu id, so opening
+    // one menu closes any other (see effect below).
+    let instance_id = *use_state(|| CTX_MENU_SEQ.with(|c| {
+        let n = c.get() + 1;
+        c.set(n);
+        n
+    }));
+    let active_menu_id = use_selector(|state: &ContextMenuState| state.open_id);
     let check_episode_id = props.episode.episodeid;
     // Auth selectors — only re-render on login/logout, not on episode actions
     let api_key_sel = use_selector(|state: &AppState| {
@@ -156,12 +199,78 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             e.stop_propagation();
             if dropdown_state.is_some() {
                 dropdown_state.set(None);
+                Dispatch::<ContextMenuState>::global().reduce_mut(|s| {
+                    if s.open_id == Some(instance_id) {
+                        s.open_id = None;
+                    }
+                });
             } else if let Some(btn) = button_ref.cast::<web_sys::HtmlElement>() {
-                let rect = btn.get_bounding_client_rect();
-                dropdown_state.set(Some((rect.right() as i32, rect.bottom() as i32)));
+                // Provisional placement (menu not yet rendered so height is unknown);
+                // the post-mount effect re-measures and flips up if needed.
+                dropdown_state.set(Some(compute_menu_placement(&btn, None)));
+                Dispatch::<ContextMenuState>::global()
+                    .reduce_mut(|s| s.open_id = Some(instance_id));
             }
         })
     };
+
+    // Close this menu when another menu becomes the active one. Skipped for the
+    // long-press (show_menu_only) instance, which is coordinated by its parent.
+    {
+        let dropdown_state = dropdown_state.clone();
+        let show_menu_only = props.show_menu_only;
+        use_effect_with(*active_menu_id, move |active| {
+            if !show_menu_only && *active != Some(instance_id) && dropdown_state.is_some() {
+                dropdown_state.set(None);
+            }
+            || ()
+        });
+    }
+
+    // After the menu mounts (or the window/scroll position changes), re-measure
+    // and reposition so it tracks its button and flips up near the viewport edge.
+    {
+        let dropdown_state = dropdown_state.clone();
+        let dropdown_ref = dropdown_ref.clone();
+        let button_ref = button_ref.clone();
+        use_effect_with(dropdown_open, move |open| {
+            let mut listeners: Vec<EventListener> = Vec::new();
+            if *open {
+                let reposition = {
+                    let dropdown_state = dropdown_state.clone();
+                    let dropdown_ref = dropdown_ref.clone();
+                    let button_ref = button_ref.clone();
+                    move || {
+                        if let Some(btn) = button_ref.cast::<HtmlElement>() {
+                            let menu = dropdown_ref.cast::<HtmlElement>();
+                            let pos = compute_menu_placement(&btn, menu.as_ref());
+                            if *dropdown_state != Some(pos) {
+                                dropdown_state.set(Some(pos));
+                            }
+                        }
+                    }
+                };
+                // Run once now that the menu is measurable (applies flip-up).
+                reposition();
+
+                if let Some(win) = window() {
+                    let capture = EventListenerOptions::run_in_capture_phase();
+                    // Capture phase catches scrolls from any container (VirtualList
+                    // may scroll the window or a nested element); scroll doesn't bubble.
+                    let scroll_cb = reposition.clone();
+                    listeners.push(EventListener::new_with_options(
+                        &win,
+                        "scroll",
+                        capture,
+                        move |_| scroll_cb(),
+                    ));
+                    let resize_cb = reposition.clone();
+                    listeners.push(EventListener::new(&win, "resize", move |_| resize_cb()));
+                }
+            }
+            move || drop(listeners)
+        });
+    }
 
     // Close dropdown when clicking outside
     {
@@ -188,12 +297,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
                 move |event: &web_sys::Event| {
                     if dropdown_state.is_some() {
-                        web_sys::console::log_1(&"[ctx-menu] outside-click handler fired".into());
                         if let Ok(target) = event.target().unwrap().dyn_into::<HtmlElement>() {
-                            web_sys::console::log_1(&format!("[ctx-menu] target tag: {}", target.tag_name()).into());
                             if let Some(dropdown_element) = dropdown_ref.cast::<HtmlElement>() {
                                 let outside_dropdown = !dropdown_element.contains(Some(&target));
-                                web_sys::console::log_1(&format!("[ctx-menu] outside_dropdown: {}", outside_dropdown).into());
 
                                 let outside_button = if let Some(button_element) =
                                     button_ref.cast::<HtmlElement>()
@@ -204,16 +310,18 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                                 };
 
                                 if outside_dropdown && outside_button {
-                                    web_sys::console::log_1(&"[ctx-menu] closing via outside-click".into());
                                     dropdown_state.set(None);
+                                    Dispatch::<ContextMenuState>::global().reduce_mut(|s| {
+                                        if s.open_id == Some(instance_id) {
+                                            s.open_id = None;
+                                        }
+                                    });
                                     if show_menu_only {
                                         if let Some(on_close) = &on_close {
                                             on_close.emit(());
                                         }
                                     }
                                 }
-                            } else {
-                                web_sys::console::log_1(&"[ctx-menu] dropdown_ref is None!".into());
                             }
                         }
                     }
@@ -839,6 +947,11 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
         Callback::from(move |_| {
             dropdown_state.set(None);
+            Dispatch::<ContextMenuState>::global().reduce_mut(|s| {
+                if s.open_id == Some(instance_id) {
+                    s.open_id = None;
+                }
+            });
 
             if show_menu_only {
                 if let Some(on_close) = &on_close {
@@ -851,7 +964,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let wrap_action = |action: Callback<MouseEvent>| {
         let close = close_dropdown.clone();
         Callback::from(move |e: MouseEvent| {
-            web_sys::console::error_1(&"[ctx-menu] wrap_action FIRED".into());
             e.stop_propagation();
             action.emit(e);
             close.emit(());
@@ -1158,9 +1270,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let block_row_activation = Callback::from(|e: MouseEvent| e.stop_propagation());
     let block_row_touch = Callback::from(|e: TouchEvent| e.stop_propagation());
-    let debug_container_click = Callback::from(|_: MouseEvent| {
-        web_sys::console::log_1(&"[ctx-menu] click reached .ep-context-menu container".into());
-    });
 
     let dropdown_html = if props.show_menu_only {
         if let Some((x, y)) = props.position {
@@ -1178,15 +1287,14 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         } else {
             html! {}
         }
-    } else if let Some((right, bottom_of_btn)) = *dropdown_state {
+    } else if let Some((top, right_edge)) = *dropdown_state {
         html! {
             <div
                 ref={dropdown_ref.clone()}
                 class="ep-context-menu"
-                style={format!("position: fixed; top: {}px; right: calc(100vw - {}px);", bottom_of_btn + 4, right)}
+                style={format!("position: fixed; top: {}px; right: calc(100vw - {}px);", top, right_edge)}
                 onmousedown={block_row_activation}
                 ontouchstart={block_row_touch}
-                onclick={debug_container_click}
             >
                 <ul class="ep-context-menu-list">{ action_buttons }</ul>
             </div>

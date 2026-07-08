@@ -1,4 +1,4 @@
-pub(crate) mod discover_hosts;
+pub(crate) mod discover;
 pub(crate) mod downloads;
 #[cfg(not(feature = "server_build"))]
 pub(crate) mod downloads_tauri;

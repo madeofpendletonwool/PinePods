@@ -26,6 +26,15 @@ struct PodcastQuery {
 }
 
 #[derive(Deserialize)]
+struct TrendingQuery {
+    cat: Option<String>,
+    notcat: Option<String>,
+    lang: Option<String>,
+    max: Option<u32>,
+    since: Option<i64>,
+}
+
+#[derive(Deserialize)]
 struct YouTubeChannelQuery {
     id: String,
 }
@@ -348,6 +357,86 @@ async fn podcast_handler(
     handle_response(response).await
 }
 
+// Proxy PodcastIndex /podcasts/trending. Powers the Discover page's category-filtered
+// "trending" rows and the recommendation engine's candidate generation.
+async fn trending_handler(
+    query: web::Query<TrendingQuery>,
+    hit_counters: web::Data<HitCounters>,
+) -> impl Responder {
+    println!("trending_handler called");
+    hit_counters.increment_podcast_index();
+
+    let (api_key, api_secret) = match get_api_credentials() {
+        Ok(creds) => creds,
+        Err(response) => return response,
+    };
+
+    let headers = match create_auth_headers(&api_key, &api_secret) {
+        Ok(h) => h,
+        Err(response) => return response,
+    };
+
+    // Forward only the params the caller actually supplied; reqwest handles encoding.
+    let mut params: Vec<(&str, String)> = Vec::new();
+    if let Some(cat) = &query.cat {
+        if !cat.is_empty() {
+            params.push(("cat", cat.clone()));
+        }
+    }
+    if let Some(notcat) = &query.notcat {
+        if !notcat.is_empty() {
+            params.push(("notcat", notcat.clone()));
+        }
+    }
+    if let Some(lang) = &query.lang {
+        if !lang.is_empty() {
+            params.push(("lang", lang.clone()));
+        }
+    }
+    if let Some(max) = query.max {
+        params.push(("max", max.to_string()));
+    }
+    if let Some(since) = query.since {
+        params.push(("since", since.to_string()));
+    }
+
+    println!("Using Podcast Index trending URL with params: {:?}", params);
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://api.podcastindex.org/api/1.0/podcasts/trending")
+        .query(&params)
+        .headers(headers)
+        .send()
+        .await;
+    handle_response(response).await
+}
+
+// Proxy PodcastIndex /categories/list (the canonical category taxonomy). Changes rarely;
+// callers cache it. Powers the Discover page's "Browse by category" chips.
+async fn categories_handler(hit_counters: web::Data<HitCounters>) -> impl Responder {
+    println!("categories_handler called");
+    hit_counters.increment_podcast_index();
+
+    let (api_key, api_secret) = match get_api_credentials() {
+        Ok(creds) => creds,
+        Err(response) => return response,
+    };
+
+    let headers = match create_auth_headers(&api_key, &api_secret) {
+        Ok(h) => h,
+        Err(response) => return response,
+    };
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://api.podcastindex.org/api/1.0/categories/list")
+        .headers(headers)
+        .send()
+        .await;
+    handle_response(response).await
+}
+
 async fn youtube_channel_handler(
     query: web::Query<YouTubeChannelQuery>,
     hit_counters: web::Data<HitCounters>,
@@ -571,6 +660,8 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .route("/api/search", web::get().to(search_handler))
             .route("/api/podcast", web::get().to(podcast_handler))
+            .route("/api/trending", web::get().to(trending_handler))
+            .route("/api/categories", web::get().to(categories_handler))
             .route("/api/youtube/channel", web::get().to(youtube_channel_handler))
             .route("/api/stats", web::get().to(stats_handler))
     })

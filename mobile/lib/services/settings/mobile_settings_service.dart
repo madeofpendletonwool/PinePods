@@ -292,6 +292,42 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  bool get autoDownloadWifiOnly => _sharedPreferences.getBool('autoDownloadWifiOnly') ?? true;
+
+  @override
+  set autoDownloadWifiOnly(bool value) {
+    _sharedPreferences.setBool('autoDownloadWifiOnly', value);
+    settingsNotifier.sink.add('autoDownloadWifiOnly');
+  }
+
+  @override
+  bool get preferServerDownloadSource => _sharedPreferences.getBool('preferServerDownloadSource') ?? true;
+
+  @override
+  set preferServerDownloadSource(bool value) {
+    _sharedPreferences.setBool('preferServerDownloadSource', value);
+    settingsNotifier.sink.add('preferServerDownloadSource');
+  }
+
+  @override
+  int get autoDownloadQueueCount => _sharedPreferences.getInt('autoDownloadQueueCount') ?? 0;
+
+  @override
+  set autoDownloadQueueCount(int value) {
+    _sharedPreferences.setInt('autoDownloadQueueCount', value);
+    settingsNotifier.sink.add('autoDownloadQueueCount');
+  }
+
+  @override
+  bool get mirrorServerDownloads => _sharedPreferences.getBool('mirrorServerDownloads') ?? false;
+
+  @override
+  set mirrorServerDownloads(bool value) {
+    _sharedPreferences.setBool('mirrorServerDownloads', value);
+    settingsNotifier.sink.add('mirrorServerDownloads');
+  }
+
+  @override
   AppSettings? settings;
 
   @override

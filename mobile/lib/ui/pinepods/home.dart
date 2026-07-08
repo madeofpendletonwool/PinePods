@@ -28,6 +28,8 @@ import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/services/auto_download/auto_download_service.dart';
+import 'package:pinepods_mobile/services/auto_download/queue_download_service.dart';
+import 'package:pinepods_mobile/services/auto_download/mirror_download_service.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
@@ -83,6 +85,20 @@ class _PinepodsHomeState extends State<PinepodsHome> {
 
       // Check for new episodes on auto-download podcasts (fire-and-forget)
       AutoDownloadService.checkAndDownloadNewEpisodes(
+        context: context,
+        pinepodsService: _pinepodsService,
+        userId: settings.pinepodsUserId!,
+      );
+
+      // Keep the top-N queued episodes downloaded (fire-and-forget)
+      QueueDownloadService.syncQueueDownloads(
+        context: context,
+        pinepodsService: _pinepodsService,
+        userId: settings.pinepodsUserId!,
+      );
+
+      // Mirror the server's downloaded episodes to this device (fire-and-forget)
+      MirrorDownloadService.syncMirror(
         context: context,
         pinepodsService: _pinepodsService,
         userId: settings.pinepodsUserId!,
@@ -1271,6 +1287,26 @@ class _EpisodeCardState extends State<_EpisodeCard> {
       iconColor = Theme.of(context).primaryColor;
     }
 
+    // Status indicators shown inline with the duration so the right column can
+    // host a larger play button without growing the card.
+    final statusIcons = <Widget>[
+      if (widget.episode.saved)
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Icon(Icons.bookmark, size: 16, color: Colors.orange[600]),
+        ),
+      if (widget.episode.downloaded)
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Icon(Icons.download_done, size: 16, color: Colors.green[600]),
+        ),
+      if (widget.episode.queued)
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Icon(Icons.queue_music, size: 16, color: Colors.blue[600]),
+        ),
+    ];
+
     return Card(
       child: InkWell(
         onTap: widget.onTap,
@@ -1336,87 +1372,62 @@ class _EpisodeCardState extends State<_EpisodeCard> {
                     ),
                     const SizedBox(height: 4),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
                           widget.episode.formattedListenDuration ?? '',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
+                        const Spacer(),
                         Text(
                           widget.episode.formattedDuration,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
+                        ...statusIcons,
                       ],
                     ),
                   ] else ...[
-                    Text(
-                      widget.episode.formattedDuration,
-                      style: Theme.of(context).textTheme.bodySmall,
+                    Row(
+                      children: [
+                        Text(
+                          widget.episode.formattedDuration,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const Spacer(),
+                        ...statusIcons,
+                      ],
                     ),
                   ],
                 ],
               ),
             ),
-            // Status indicators and play button
-            Column(
-              children: [
-                if (widget.onPlayPressed != null)
-                  SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      child: showSpinner
-                          ? Padding(
-                              key: const ValueKey('loading'),
-                              padding: const EdgeInsets.all(4.0),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Theme.of(context).primaryColor,
-                                ),
-                              ),
-                            )
-                          : GestureDetector(
-                              key: ValueKey(playIcon),
-                              behavior: HitTestBehavior.opaque,
-                              onTap: _onButtonTap,
-                              child: Icon(playIcon, color: iconColor, size: 28),
+            // Larger play button (status icons moved next to the duration).
+            if (widget.onPlayPressed != null) ...[
+              const SizedBox(width: 4),
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: showSpinner
+                      ? Padding(
+                          key: const ValueKey('loading'),
+                          padding: const EdgeInsets.all(8.0),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Theme.of(context).primaryColor,
                             ),
-                    ),
-                  ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.episode.saved)
-                      Icon(
-                        Icons.bookmark,
-                        size: 16,
-                        color: Colors.orange[600],
-                      ),
-                    if (widget.episode.downloaded)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 4),
-                        child: Icon(
-                          Icons.download_done,
-                          size: 16,
-                          color: Colors.green[600],
+                          ),
+                        )
+                      : GestureDetector(
+                          key: ValueKey(playIcon),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _onButtonTap,
+                          child: Icon(playIcon, color: iconColor, size: 40),
                         ),
-                      ),
-                    if (widget.episode.queued)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 4),
-                        child: Icon(
-                          Icons.queue_music,
-                          size: 16,
-                          color: Colors.blue[600],
-                        ),
-                      ),
-                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ],
         ),
       ),

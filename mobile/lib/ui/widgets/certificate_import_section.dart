@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:typed_data';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/services/security/certificate_manager.dart';
@@ -29,7 +31,7 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
   Future<void> _importServerCa() async {
     final file = await _pickFile(const ['pem', 'crt', 'cer', 'der']);
     if (file == null) return;
-    final bytes = file.bytes;
+    final bytes = await _readBytes(file);
     if (bytes == null) {
       _snack('Could not read the selected file.');
       return;
@@ -49,7 +51,7 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
   Future<void> _importClientCert() async {
     final file = await _pickFile(const ['p12', 'pfx']);
     if (file == null) return;
-    final bytes = file.bytes;
+    final bytes = await _readBytes(file);
     if (bytes == null) {
       _snack('Could not read the selected file.');
       return;
@@ -71,15 +73,20 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
 
   Future<PlatformFile?> _pickFile(List<String> extensions) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      return await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: extensions,
-        withData: true,
       );
-      if (result == null || result.files.isEmpty) return null;
-      return result.files.first;
     } catch (e) {
       _snack('Could not open file picker: $e');
+      return null;
+    }
+  }
+
+  Future<Uint8List?> _readBytes(PlatformFile file) async {
+    try {
+      return await file.readAsBytes();
+    } catch (_) {
       return null;
     }
   }

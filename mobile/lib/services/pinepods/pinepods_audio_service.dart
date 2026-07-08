@@ -28,6 +28,11 @@ class PinepodsAudioService {
   int? _currentEpisodeId;
   int? _currentUserId;
   bool _isYoutube = false;
+
+  /// The playlist the current episode is being played from, if any. Used to
+  /// continue playback through the playlist when an episode completes.
+  /// (NativeAudioPlayerService.setPlaylistContext is a no-op, so we track it here.)
+  int? _currentPlaylistId;
   double _lastRecordedPosition = 0;
   bool _isSyncingPosition = false;
   bool _hasPendingPositionSync = false;
@@ -51,6 +56,7 @@ class PinepodsAudioService {
   }
 
   void setPlaylistContext(int? playlistId) {
+    _currentPlaylistId = playlistId;
     _audioPlayerService.setPlaylistContext(playlistId);
   }
 
@@ -77,6 +83,7 @@ class PinepodsAudioService {
     bool skipQueue = false,
     int? playlistId,
   }) async {
+    _currentPlaylistId = playlistId;
     _audioPlayerService.setPlaylistContext(playlistId);
     try {
       final settings = _settingsBloc.currentSettings;
@@ -165,25 +172,10 @@ class PinepodsAudioService {
         await _audioPlayerService.seek(position: playDetails.startSkip);
       }
 
-      // Silence trim (#727): honor the per-podcast setting (falling back to the
-      // user's global preference), applied to this session only. Android uses
-      // ExoPlayer's native skip-silence; iOS applies the server-detected ranges.
-      try {
-        final trimSettings = await _pinepodsService.getSilenceTrim(userId, podcastId);
-        List<Map<String, double>> segments = const [];
-        if (trimSettings.enabled) {
-          final fetched = await _pinepodsService.getEpisodeSkipSegments(episodeId, userId);
-          segments = fetched
-              .where((s) => s.kind == 'silence')
-              .map((s) => {'start': s.startTime, 'end': s.endTime})
-              .toList();
-        }
-        // Pass the per-podcast flag; the native service ORs it with the user's
-        // global trim-silence preference (Android DSP path).
-        await _audioPlayerService.applyEpisodeSilenceTrim(trimSettings.enabled, segments);
-      } catch (e) {
-        log.fine('Could not apply silence trim (continuing): $e');
-      }
+      // Silence (#727) + ad-skip (#790): fetch and apply the server-detected
+      // skip ranges for this episode. Decoupled from the silence toggle so ads
+      // skip even when silence-trim is off.
+      await refreshSkipSegments(episodeId, userId, podcastId);
 
       // Add to history. Routes through the offline outbox so it is not lost when
       // the device is offline (e.g. playing a local download on a plane).
@@ -226,6 +218,40 @@ class PinepodsAudioService {
     } catch (e) {
       log.severe('Error playing PinePods episode: $e');
       rethrow;
+    }
+  }
+
+  /// Fetch the server-detected skip segments for an episode and push the active
+  /// ranges to the native player. Silence (#727) honors the per-podcast toggle
+  /// (Android ORs it with the user's global preference on the DSP path); ad
+  /// ranges (#790) are gated on the server-resolved per-user status
+  /// (active/confirmed => skip) and are independent of the silence toggle.
+  ///
+  /// Safe to call again mid-episode (e.g. after a Confirm/Deny/Detect in the UI)
+  /// to re-supply the native layer — do NOT cache a one-time snapshot.
+  Future<void> refreshSkipSegments(int episodeId, int userId, int podcastId) async {
+    try {
+      final trimSettings = await _pinepodsService.getSilenceTrim(userId, podcastId);
+      final fetched = await _pinepodsService.getEpisodeSkipSegments(episodeId, userId);
+
+      final silenceRanges = trimSettings.enabled
+          ? fetched
+              .where((s) => s.kind == 'silence')
+              .map((s) => {'start': s.startTime, 'end': s.endTime})
+              .toList()
+          : <Map<String, double>>[];
+      final adRanges = fetched
+          .where((s) => s.isActiveAd)
+          .map((s) => {'start': s.startTime, 'end': s.endTime})
+          .toList();
+
+      await _audioPlayerService.applyEpisodeSkipSegments(
+        silenceEnabled: trimSettings.enabled,
+        silenceRanges: silenceRanges,
+        adRanges: adRanges,
+      );
+    } catch (e) {
+      log.fine('Could not apply skip segments (continuing): $e');
     }
   }
 
@@ -398,6 +424,140 @@ class PinepodsAudioService {
       log.info('Recorded listen duration: ${listenDuration}s');
     } catch (e) {
       log.warning('Failed to record listen duration: $e');
+    }
+  }
+
+  /// Handle natural end-of-episode: advance to the next thing to play.
+  ///
+  /// Mirrors the web frontend's `onended` handler
+  /// (web/src/components/audio.rs) with a 3-priority advance:
+  ///   1. Playlist continuation (if the current episode came from a playlist)
+  ///   2. Per-podcast auto-play-next (next episode of the same podcast)
+  ///   3. Server-side queue (next queued episode)
+  ///
+  /// Returns `true` if a next episode was started, `false` if there was nothing
+  /// to play (so the caller can stop playback / hide the player). Every network
+  /// call is guarded so a transient failure never leaves playback wedged.
+  Future<bool> handleEpisodeCompleted() async {
+    final episodeId = _currentEpisodeId;
+    final userId = _currentUserId;
+    if (episodeId == null || userId == null) {
+      log.warning('Cannot advance on completion - missing episode/user id');
+      return false;
+    }
+
+    // Ensure the shared service has credentials (it may have been used by
+    // other screens since playback started).
+    final settings = _settingsBloc.currentSettings;
+    if (settings.pinepodsServer == null || settings.pinepodsApiKey == null) {
+      log.warning('Cannot advance on completion - missing server credentials');
+      return false;
+    }
+    _pinepodsService.setCredentials(
+      settings.pinepodsServer!,
+      settings.pinepodsApiKey!,
+    );
+
+    // Mark the finished episode completed on the server. On natural completion
+    // nothing else records the final state (periodic sync can be up to 15s
+    // stale), so do it explicitly to keep history/queue correct.
+    try {
+      await _pinepodsService.markEpisodeCompleted(episodeId, userId, _isYoutube);
+    } catch (e) {
+      log.fine('Could not mark episode completed (continuing): $e');
+    }
+
+    // PRIORITY 1: Playlist continuation.
+    final playlistId = _currentPlaylistId;
+    if (playlistId != null) {
+      try {
+        final next = await _pinepodsService.getNextPlaylistEpisode(
+          episodeId,
+          playlistId,
+          userId,
+        );
+        if (next != null) {
+          log.info('Auto-advancing to next playlist episode: ${next.episodeTitle}');
+          await playPinepodsEpisode(
+            pinepodsEpisode: next,
+            resume: false,
+            playlistId: playlistId,
+          );
+          return true;
+        }
+        // Playlist exhausted - clear the context and fall through.
+        log.info('Playlist exhausted, clearing playlist context');
+        _currentPlaylistId = null;
+      } catch (e) {
+        log.fine('Could not get next playlist episode (continuing): $e');
+      }
+    }
+
+    // PRIORITY 2: Per-podcast auto-play-next.
+    try {
+      final podcastId = await _pinepodsService.getPodcastIdFromEpisode(
+        episodeId,
+        userId,
+        _isYoutube,
+      );
+      final autoPlayNext = await _pinepodsService.getAutoPlayNextStatus(
+        podcastId,
+        userId,
+      );
+      if (autoPlayNext) {
+        final next = await _pinepodsService.getNextPodcastEpisode(episodeId, userId);
+        if (next != null) {
+          log.info('Auto-play-next enabled, playing next podcast episode: ${next.episodeTitle}');
+          await playPinepodsEpisode(
+            pinepodsEpisode: next,
+            resume: false,
+            // Auto-play-next episodes shouldn't be added to the queue.
+            skipQueue: true,
+          );
+          return true;
+        }
+        log.info('No next episode found in podcast, falling through to queue');
+      }
+    } catch (e) {
+      log.fine('Could not evaluate auto-play-next (continuing): $e');
+    }
+
+    // PRIORITY 3: Server-side queue.
+    try {
+      final queued = await _pinepodsService.getQueuedEpisodes(userId);
+      log.info('Found ${queued.length} episodes in queue');
+
+      // Remove the just-finished episode and any completed leftovers so the
+      // queue stays clean and we don't replay something already listened to.
+      for (final ep in queued) {
+        if (ep.episodeId == episodeId || ep.completed) {
+          try {
+            await _pinepodsService.removeQueuedEpisode(
+              ep.episodeId,
+              userId,
+              ep.isYoutube,
+            );
+          } catch (e) {
+            log.fine('Could not remove queued episode ${ep.episodeId}: $e');
+          }
+        }
+      }
+
+      // Re-fetch to get the queue in its updated order. The backend returns
+      // episodes ORDER BY queueposition ASC, so the first entry is next.
+      final updated = await _pinepodsService.getQueuedEpisodes(userId);
+      if (updated.isEmpty) {
+        log.info('Queue empty after cleanup - stopping playback');
+        return false;
+      }
+
+      final next = updated.first;
+      log.info('Auto-advancing to next queued episode: ${next.episodeTitle}');
+      await playPinepodsEpisode(pinepodsEpisode: next, resume: false);
+      return true;
+    } catch (e) {
+      log.warning('Failed to advance from queue on completion: $e');
+      return false;
     }
   }
 
@@ -598,6 +758,7 @@ class PinepodsAudioService {
     _stopPeriodicUpdates();
     _currentEpisodeId = null;
     _currentUserId = null;
+    _currentPlaylistId = null;
   }
 }
 

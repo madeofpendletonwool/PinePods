@@ -21,12 +21,15 @@ import androidx.media3.common.ForwardingPlayer
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.upstream.DefaultAllocator
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
 import androidx.media3.ui.PlayerNotificationManager
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.gooseberrydevelopment.pinepods.MainActivity
+import com.gooseberrydevelopment.pinepods.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.guava.future
@@ -48,6 +51,10 @@ class PinepodsMediaService : MediaLibraryService() {
     private val binder = LocalBinder()
     private val handler = Handler(Looper.getMainLooper())
     private var positionUpdateRunnable: Runnable? = null
+    // Ad-skip ranges (#790), in SECONDS. ExoPlayer's skipSilenceEnabled DSP can
+    // only remove silence, not ads (which are content), so ads are skipped by
+    // seeking past these ranges from the 1s position poll. Cleared per-episode.
+    private var adSkipSegments: List<Pair<Double, Double>> = emptyList()
 
     inner class LocalBinder : Binder() {
         fun getService(): PinepodsMediaService = this@PinepodsMediaService
@@ -142,6 +149,14 @@ class PinepodsMediaService : MediaLibraryService() {
             .also { sessionActivityIntent?.let { intent -> it.setSessionActivity(intent) } }
 
         mediaSession = builder.build()
+
+        // Because we hide the skip-to-next/previous commands (see
+        // createSeekOnlyPlayer), Media3's default transport UI would only leave
+        // play/pause. Add explicit rewind / fast-forward buttons to the custom
+        // layout so Android Auto and the notification show them and they trigger
+        // the player's seekBack() / seekForward() (which honor the configurable
+        // interval).
+        applyCustomLayout()
 
         Log.d(TAG, "MediaLibrarySession built successfully - sessionId: ${mediaSession?.id}, token: ${mediaSession?.sessionCompatToken}")
 
@@ -412,6 +427,7 @@ class PinepodsMediaService : MediaLibraryService() {
         stopPositionUpdates()
         positionUpdateRunnable = object : Runnable {
             override fun run() {
+                applyAdSkipIfNeeded()
                 sendPlaybackStateEvent()
                 handler.postDelayed(this, 1000)  // Update every 1s (battery: halves channel/UI work)
             }
@@ -469,6 +485,10 @@ class PinepodsMediaService : MediaLibraryService() {
                 Log.d(TAG, "Playing: ${builtMetadata.title} by ${builtMetadata.artist}")
                 Log.d(TAG, "Media item URI: $uri, startPosition: $startPosition")
 
+                // New episode: drop the previous episode's ad-skip ranges. The
+                // Dart layer re-supplies them via setAdSkipSegments after load.
+                adSkipSegments = emptyList()
+
                 p.setMediaItem(mediaItem)
                 p.prepare()
 
@@ -504,6 +524,7 @@ class PinepodsMediaService : MediaLibraryService() {
         Log.d(TAG, "stop")
         player?.stop()
         player?.clearMediaItems()
+        adSkipSegments = emptyList()
     }
 
     fun seek(positionMs: Int) {
@@ -536,6 +557,27 @@ class PinepodsMediaService : MediaLibraryService() {
         seekForwardMs = if (forwardMs > 0) forwardMs else seekForwardMs
         seekBackMs = if (backwardMs > 0) backwardMs else seekBackMs
         Log.d(TAG, "setSkipIntervals: forward=${seekForwardMs}ms back=${seekBackMs}ms")
+    }
+
+    /**
+     * Publishes rewind / fast-forward buttons to the media session's custom
+     * layout so Android Auto and the media notification render them. They use
+     * the built-in seek player commands, which the ForwardingPlayer maps to the
+     * configurable increments.
+     */
+    private fun applyCustomLayout() {
+        val session = mediaSession ?: return
+        val rewindButton = CommandButton.Builder()
+            .setSessionCommand(SessionCommand(PinepodsLibrarySessionCallback.ACTION_REWIND, android.os.Bundle.EMPTY))
+            .setIconResId(R.drawable.ic_car_rewind)
+            .setDisplayName("Rewind")
+            .build()
+        val fastForwardButton = CommandButton.Builder()
+            .setSessionCommand(SessionCommand(PinepodsLibrarySessionCallback.ACTION_FAST_FORWARD, android.os.Bundle.EMPTY))
+            .setIconResId(R.drawable.ic_car_fast_forward)
+            .setDisplayName("Fast forward")
+            .build()
+        session.setCustomLayout(listOf(rewindButton, fastForwardButton))
     }
 
     /**
@@ -581,6 +623,32 @@ class PinepodsMediaService : MediaLibraryService() {
     fun setTrimSilence(enabled: Boolean) {
         Log.d(TAG, "setTrimSilence: $enabled")
         player?.skipSilenceEnabled = enabled
+    }
+
+    // Ad-skip (#790): replace the active ad ranges (seconds). Empty list clears.
+    // The 1s position poll seeks past any range the playhead enters.
+    fun setAdSkipSegments(segments: List<Pair<Double, Double>>) {
+        Log.d(TAG, "setAdSkipSegments: ${segments.size} range(s)")
+        adSkipSegments = segments.sortedBy { it.first }
+    }
+
+    // Called every ~1s from the position poll. If the playhead is inside an
+    // active ad range, seek to its end. Times are seconds; ExoPlayer is ms.
+    // Uses a 0.25s tail tolerance (matching iOS) to avoid boundary seek-loops.
+    private fun applyAdSkipIfNeeded() {
+        if (adSkipSegments.isEmpty()) return
+        val p = player ?: return
+        val posMs = p.currentPosition
+        if (posMs < 0) return
+        for ((start, end) in adSkipSegments) {
+            val startMs = (start * 1000).toLong()
+            val endMs = (end * 1000).toLong()
+            if (posMs >= startMs && posMs < endMs - 250) {
+                Log.d(TAG, "Ad-skip: seeking from ${posMs}ms past ad ending ${endMs}ms")
+                p.seekTo(endMs)
+                break
+            }
+        }
     }
 
     fun setVolumeBoost(enabled: Boolean) {
