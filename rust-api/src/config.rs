@@ -359,14 +359,28 @@ impl Config {
         let encoded_password = urlencoding::encode(&self.database.password);
         
         let url = match self.database.db_type.as_str() {
-            "postgresql" => format!(
-                "postgresql://{}:{}@{}:{}/{}",
-                encoded_username,
-                encoded_password,
-                self.database.host,
-                self.database.port,
-                self.database.name
-            ),
+            "postgresql" => {
+                // A DB_HOST that begins with '/' is a Unix socket directory
+                // (e.g. /var/run/postgresql). Interpolated verbatim it produces
+                // "user:pass@/var/run/postgresql:5432/db", whose host component is
+                // empty, and sqlx rejects that with EmptyHost. Percent-encoding the
+                // path into the host position is how sqlx expects a socket: on parse
+                // it percent-decodes the host and treats a leading '/' as a socket
+                // path. This mirrors sqlx's own PgConnectOptions::build_url output.
+                let host = if self.database.host.starts_with('/') {
+                    urlencoding::encode(&self.database.host).into_owned()
+                } else {
+                    self.database.host.clone()
+                };
+                format!(
+                    "postgresql://{}:{}@{}:{}/{}",
+                    encoded_username,
+                    encoded_password,
+                    host,
+                    self.database.port,
+                    self.database.name
+                )
+            }
             _ => format!(
                 "mysql://{}:{}@{}:{}/{}",
                 encoded_username,
@@ -401,5 +415,102 @@ impl Config {
         }
         
         url
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::postgres::PgConnectOptions;
+    use std::str::FromStr;
+
+    fn db_config(host: &str) -> DatabaseConfig {
+        DatabaseConfig {
+            db_type: "postgresql".to_string(),
+            host: host.to_string(),
+            port: 5432,
+            username: "pinepods".to_string(),
+            password: "pass".to_string(),
+            name: "pinepods".to_string(),
+            max_connections: 32,
+            min_connections: 1,
+        }
+    }
+
+    fn config_with_host(host: &str) -> Config {
+        Config {
+            database: db_config(host),
+            redis: RedisConfig {
+                host: "localhost".to_string(),
+                port: 6379,
+                max_connections: 32,
+                password: None,
+                username: None,
+                database: None,
+            },
+            server: ServerConfig { port: 8032, host: "0.0.0.0".to_string() },
+            security: SecurityConfig {
+                api_key_header: "pinepods_api".to_string(),
+                jwt_secret: "secret".to_string(),
+                password_salt_rounds: 12,
+            },
+            email: EmailConfig {
+                smtp_server: None,
+                smtp_port: None,
+                smtp_username: None,
+                smtp_password: None,
+                from_email: None,
+            },
+            oidc: OIDCConfig {
+                disable_standard_login: false,
+                provider_name: None,
+                client_id: None,
+                client_secret: None,
+                authorization_url: None,
+                token_url: None,
+                user_info_url: None,
+                button_text: None,
+                scope: None,
+                button_color: None,
+                button_text_color: None,
+                icon_svg: None,
+                name_claim: None,
+                email_claim: None,
+                username_claim: None,
+                roles_claim: None,
+                user_role: None,
+                admin_role: None,
+            },
+            api: ApiConfig {
+                search_api_url: "https://search.example/api/search".to_string(),
+                people_api_url: "https://people.example".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn tcp_host_url_is_unchanged() {
+        let url = config_with_host("db").database_url();
+        assert_eq!(url, "postgresql://pinepods:pass@db:5432/pinepods");
+        assert!(PgConnectOptions::from_str(&url).is_ok());
+    }
+
+    #[test]
+    fn unix_socket_host_is_percent_encoded_and_parses() {
+        // Previously this produced "...@/var/run/postgresql:5432/..." and sqlx
+        // rejected it with EmptyHost (issue #776). The socket path must be
+        // percent-encoded into the host position.
+        let url = config_with_host("/var/run/postgresql").database_url();
+        assert_eq!(
+            url,
+            "postgresql://pinepods:pass@%2Fvar%2Frun%2Fpostgresql:5432/pinepods"
+        );
+
+        // sqlx must accept it (no EmptyHost) and recognize it as a Unix socket.
+        let opts = PgConnectOptions::from_str(&url).expect("sqlx should parse socket URL");
+        assert_eq!(
+            opts.get_socket().map(|p| p.to_string_lossy().into_owned()),
+            Some("/var/run/postgresql".to_string())
+        );
     }
 }
