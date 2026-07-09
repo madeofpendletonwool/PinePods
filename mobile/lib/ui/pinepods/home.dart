@@ -48,10 +48,78 @@ class _PinepodsHomeState extends State<PinepodsHome> {
   int? _contextMenuEpisodeIndex;
   bool _isContextMenuForContinueListening = false;
 
+  // Refreshes stats/"Continue Listening"/"Up Next" whenever a *different*
+  // episode becomes the now-playing one - covers playback started from
+  // anywhere (mini player, Episode Details, Android Auto, auto-advance to
+  // the next queued episode), not just navigation that started on this page.
+  AudioBloc? _audioBloc;
+  StreamSubscription<Episode?>? _nowPlayingSub;
+  String? _lastNowPlayingGuid;
+
   @override
   void initState() {
     super.initState();
     _loadHomeContent();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bloc = Provider.of<AudioBloc>(context, listen: false);
+    if (_audioBloc != bloc) {
+      _nowPlayingSub?.cancel();
+      _audioBloc = bloc;
+      _lastNowPlayingGuid = bloc.nowPlaying?.valueOrNull?.guid;
+      _nowPlayingSub = bloc.nowPlaying?.listen((episode) {
+        if (episode?.guid != _lastNowPlayingGuid) {
+          _lastNowPlayingGuid = episode?.guid;
+          _refreshHomeContentSilently();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _nowPlayingSub?.cancel();
+    super.dispose();
+  }
+
+  /// Re-fetches home data in the background, without showing the full-page
+  /// loading spinner, so the previously-loaded content stays visible (and
+  /// usable) while the refresh is in flight. Used after actions that can
+  /// change what should be shown - starting playback, or returning from a
+  /// screen (Episode Details, etc.) where the queue may have changed -
+  /// unlike [_loadHomeContent] this never surfaces a failure to the user:
+  /// it's a best-effort background sync, and the last good snapshot is a
+  /// better fallback than an error screen.
+  Future<void> _refreshHomeContentSilently() async {
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+
+    if (settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null ||
+        settings.pinepodsUserId == null) {
+      return;
+    }
+
+    try {
+      _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+      GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+      final futures = await Future.wait([
+        _pinepodsService.getHomeOverview(settings.pinepodsUserId!),
+        _pinepodsService.getPlaylists(settings.pinepodsUserId!),
+      ]);
+
+      if (!mounted) return;
+      setState(() {
+        _homeData = futures[0] as HomeOverview;
+        _playlistData = futures[1] as PlaylistResponse;
+      });
+    } catch (e) {
+      // Best-effort background refresh - keep showing the last good snapshot.
+    }
   }
 
   Future<void> _loadHomeContent() async {
@@ -410,6 +478,10 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             }
           });
           _showSnackBar('Removed from queue', Colors.orange);
+          // The per-card flag above is enough for this card's own icon, but
+          // the "Up Next" preview and the Queue stat count are a separate
+          // snapshot that needs its own refresh.
+          _refreshHomeContentSilently();
         }
       } else {
         success = await _pinepodsService.queueEpisode(
@@ -426,6 +498,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             }
           });
           _showSnackBar('Added to queue!', Colors.green);
+          _refreshHomeContentSilently();
         }
       }
 
@@ -781,7 +854,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                       initialEpisode: pinepodsEpisode,
                     ),
                   ),
-                );
+                ).then((_) => _refreshHomeContentSilently());
               },
               onLongPress: () => _showContextMenu(_homeData!.inProgressEpisodes.indexOf(episode), true),
               onPlayPressed: () => _playEpisode(episode),
@@ -863,7 +936,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                       initialEpisode: pinepodsEpisode,
                     ),
                   ),
-                );
+                ).then((_) => _refreshHomeContentSilently());
               },
               onPlayPressed: () => _playEpisode(episode),
             ),
@@ -982,7 +1055,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                       initialEpisode: pinepodsEpisode,
                     ),
                   ),
-                );
+                ).then((_) => _refreshHomeContentSilently());
               },
               onLongPress: () => _showContextMenu(_homeData!.recentEpisodes.indexOf(episode), false),
               onPlayPressed: () => _playEpisode(episode),
