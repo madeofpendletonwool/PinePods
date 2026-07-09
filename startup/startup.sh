@@ -32,9 +32,17 @@ export VALKEY_HOST=${VALKEY_HOST:-'valkey'}
 export VALKEY_PORT=${VALKEY_PORT:-'6379'}
 export DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE:-'en'}
 
-# Save user's HOSTNAME to SERVER_URL before Docker overwrites it with container ID
-# This preserves the user-configured server URL for RSS feed generation
-export SERVER_URL=${HOSTNAME}
+# Fall back to HOSTNAME for SERVER_URL if SERVER_URL isn't already set.
+# IMPORTANT: this must NOT unconditionally overwrite SERVER_URL. Some container
+# runtimes/orchestration setups (e.g. rootless Podman under a systemd unit) set
+# their own HOSTNAME (the container/pod name) in the environment, which can
+# arrive *after* a user's `-e HOSTNAME=...` and win, or otherwise take
+# precedence over it. When that happens this line used to clobber SERVER_URL
+# with that runtime-assigned value every time, breaking RSS feed generation
+# (absolute URLs for <link>/<guid>/<enclosure> end up using the container name
+# instead of the configured domain - see #903). Setting SERVER_URL directly
+# is not affected by that problem, so respect it if the user already set it.
+export SERVER_URL=${SERVER_URL:-$HOSTNAME}
 
 # Export OIDC environment variables
 export OIDC_DISABLE_STANDARD_LOGIN=${OIDC_DISABLE_STANDARD_LOGIN:-'false'}
