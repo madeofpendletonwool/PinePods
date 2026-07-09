@@ -128,7 +128,7 @@ class LocalDownloadUtils {
 
     for (final stale in result.staleRecords) {
       logger.warning('LocalDownload', 'Healing stale download record for missing file: ${stale.guid}');
-      resetDownloadState(stale);
+      clearDownloadState(stale);
       await repository.saveEpisode(stale);
     }
 
