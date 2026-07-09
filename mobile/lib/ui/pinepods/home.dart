@@ -1283,8 +1283,14 @@ class _EpisodeCardState extends State<_EpisodeCard> {
       // episode currently playing - mirrors what mini_player.dart already
       // does with the same stream. Without this the bar was frozen at
       // whatever listenDuration Home's data snapshot had when it loaded.
+      // Ticks fire roughly once a second during playback, so only rebuild
+      // this card when it's the one actually playing - checking the guid
+      // before calling setState avoids every card on Home rebuilding on
+      // every tick.
       _positionSub = bloc.playPosition?.listen((state) {
-        if (mounted) setState(() => _positionState = state);
+        if (!mounted) return;
+        if (state.episode?.guid != widget.episode.episodeUrl) return;
+        setState(() => _positionState = state);
       });
     }
   }
