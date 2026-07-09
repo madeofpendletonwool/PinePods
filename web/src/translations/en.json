@@ -404,6 +404,7 @@
     "ad_detection_started": "Ad detection started — this can take a while.",
     "ad_detection_error": "Could not start ad detection"
   },
+  "failed_to_find_podcast_metadata": "Failed to find podcast's metadata.",
   "episode_list_item": {
     "completed": "Completed"
   },
@@ -849,7 +850,14 @@
     "nextcloud_advanced_hint": "If you need more advanced sync features (like device management), consider using the internal gpodder API or a dedicated gpodder server instead.",
     "external_gpodder_active": "External GPodder sync is currently active with ",
     "gpodder_full_sync": "GPodder sync provides full podcast synchronization capabilities including managing multiple devices, subscription synchronization, and episode status tracking.",
-    "gpodder_compatible": "You can use this sync method with any gpodder-compatible clients like AntennaPod, and others."
+    "gpodder_compatible": "You can use this sync method with any gpodder-compatible clients like AntennaPod, and others.",
+    "no_statistics_available": "No Statistics Available",
+    "click_refresh": "Click refresh above to load statistics.",
+    "loading_default_device": "Loading default device...",
+    "no_default_device_set": "No Default Device Set",
+    "gpodder_device_mgmt": "Device management for this sync method is handled directly on your GPodder server.",
+    "no_sync_configured": "No sync method configured yet.",
+    "testing": "Testing..."
   },
   "notification_center": {
     "active_tasks": "Active Tasks",
@@ -949,7 +957,9 @@
     "time_zone": "Time Zone",
     "time_zone_setup": "Time Zone Setup",
     "unexpected_error": "An unexpected error occurred during login.",
-    "username_conflict": "Unable to create account - username already exists"
+    "username_conflict": "Unable to create account - username already exists",
+    "date_format_iso8601": "ISO 8601",
+    "date_format_julian": "YY/DDD (Julian)"
   },
   "oidc": {
     "add_oidc_provider": "Add OIDC Provider",
@@ -981,7 +991,14 @@
     "use_this_url_when_configuring": "Use this URL when configuring your OIDC provider's callback/redirect settings.",
     "user_info_url": "User Info URL",
     "user_role": "User Role",
-    "username_claim": "Username Claim"
+    "username_claim": "Username Claim",
+    "environment": "Environment",
+    "failed_to_update_provider": "Failed to update provider: ",
+    "github_provider_detected": "GitHub Provider Detected",
+    "github_no_standard_scopes": "GitHub does not support standard OIDC scopes.",
+    "standard_oidc_scopes": "Standard OIDC Scopes",
+    "github_scopes": "GitHub Scopes",
+    "google_scopes": "Google Scopes"
   },
   "people_subs": {
     "avatar_alt": "Avatar for",
@@ -1149,7 +1166,10 @@
     "match_btn": "Match",
     "enter_podcast_id": "Search By Podcast Index ID",
     "search": "Search",
-    "searching": "Searching..."
+    "searching": "Searching...",
+    "loading_podcasts": "Loading Podcasts...",
+    "no_matches_found": "No Matches Found",
+    "try_manual_search": "Try a manual search below."
   },
   "podcast_layout": {
     "add": "Add podcast",

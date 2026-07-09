@@ -33,6 +33,10 @@ class PinepodsAudioService {
   /// continue playback through the playlist when an episode completes.
   /// (NativeAudioPlayerService.setPlaylistContext is a no-op, so we track it here.)
   int? _currentPlaylistId;
+
+  /// Duration (seconds) the server currently has stored for the playing episode.
+  /// Used to detect when the decoded length differs so we can correct it.
+  int? _currentEpisodeDuration;
   double _lastRecordedPosition = 0;
   bool _isSyncingPosition = false;
   bool _hasPendingPositionSync = false;
@@ -106,23 +110,33 @@ class PinepodsAudioService {
       }
 
       _currentEpisodeId = episodeId;
+      _currentEpisodeDuration = pinepodsEpisode.episodeDuration;
 
       // Is there a local download for this episode? If so we play the on-disk
       // file and tolerate the server being unreachable for everything else.
       final localDownload = await _audioPlayerService.findDownloadedEpisode(episodeId);
       final hasLocalDownload = localDownload != null;
 
-      // Get podcast ID for settings (tolerate offline / failures)
-      int podcastId = 0;
-      try {
-        podcastId = await _pinepodsService.getPodcastIdFromEpisode(
+      // Get podcast ID for settings, and podcast 2.0 data (chapters/persons/
+      // transcripts) in parallel - these two calls don't depend on each other,
+      // and running them sequentially only adds latency before playback starts.
+      // Both tolerate offline / failures.
+      final results = await Future.wait<dynamic>([
+        _pinepodsService.getPodcastIdFromEpisode(
           episodeId,
           userId,
           pinepodsEpisode.isYoutube,
-        );
-      } catch (e) {
-        log.fine('Could not fetch podcast id (continuing): $e');
-      }
+        ).catchError((e) {
+          log.fine('Could not fetch podcast id (continuing): $e');
+          return 0;
+        }),
+        _pinepodsService.fetchPodcasting2Data(episodeId, userId).catchError((e) {
+          log.fine('Could not fetch podcast 2.0 data (continuing): $e');
+          return null;
+        }),
+      ]);
+      final podcastId = results[0] as int;
+      final podcast2Data = results[1] as Map<String, dynamic>?;
 
       // Get playback settings (speed, skip times). This already returns sane
       // defaults on failure.
@@ -131,14 +145,6 @@ class PinepodsAudioService {
         podcastId,
         pinepodsEpisode.isYoutube,
       );
-
-      // Fetch podcast 2.0 data including chapters (tolerate offline / failures)
-      Map<String, dynamic>? podcast2Data;
-      try {
-        podcast2Data = await _pinepodsService.fetchPodcasting2Data(episodeId, userId);
-      } catch (e) {
-        log.fine('Could not fetch podcast 2.0 data (continuing): $e');
-      }
 
       // Convert PinepodsEpisode to Episode for the audio player
       final episode = _convertToEpisode(pinepodsEpisode, playDetails, podcast2Data);
@@ -561,6 +567,46 @@ class PinepodsAudioService {
     }
   }
 
+  /// Correct the server's stored episode duration to the real decoded length.
+  ///
+  /// Feeds frequently ship a missing or zero itunes:duration, which leaves the
+  /// episode with episodeduration = 0 in the database. The web player already
+  /// corrects this on play; without the equivalent here, playing such an episode
+  /// on mobile records a listen position against a zero duration and leaves the
+  /// row in a state that crashes the web frontend (divide-by-zero). Mirroring the
+  /// web behaviour keeps durations accurate and stops the bad rows being created.
+  ///
+  /// [actualDurationSeconds] is the decoded length reported by the player.
+  Future<void> updateEpisodeDurationIfNeeded(double actualDurationSeconds) async {
+    final episodeId = _currentEpisodeId;
+    if (episodeId == null) return;
+
+    // Ignore bogus/unavailable durations from the decoder.
+    if (!actualDurationSeconds.isFinite || actualDurationSeconds <= 0) return;
+
+    final newDuration = actualDurationSeconds.round();
+
+    // Only correct when it actually differs from what the server has, and avoid
+    // resending on every play once corrected.
+    if (_currentEpisodeDuration != null && _currentEpisodeDuration == newDuration) {
+      return;
+    }
+
+    try {
+      final ok = await _pinepodsService.updateEpisodeDuration(
+        episodeId,
+        newDuration,
+        _isYoutube,
+      );
+      if (ok) {
+        _currentEpisodeDuration = newDuration;
+        log.info('Corrected episode $episodeId duration to ${newDuration}s');
+      }
+    } catch (e) {
+      log.fine('Could not update episode duration (continuing): $e');
+    }
+  }
+
   /// Handle pause event - sync position to server
   Future<void> onPause() async {
     try {
@@ -759,6 +805,7 @@ class PinepodsAudioService {
     _currentEpisodeId = null;
     _currentUserId = null;
     _currentPlaylistId = null;
+    _currentEpisodeDuration = null;
   }
 }
 

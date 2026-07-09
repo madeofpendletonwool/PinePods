@@ -371,7 +371,10 @@
     "youtube_download_limit": "Nedladdningsgräns för YouTubeavsnitt (i dagar):",
     "youtube_episode_limit_updated": "Nedladdningsgränsen för YouTubeavsnitt har uppdaterats!",
     "youtube_limit_description": "Justera hur länge ljudfiler från ett youtubeflöde sparas när det laddas ner via servern. YouTubeavsnitt kommer därefter att tas bort för att frigöra utrymme.",
-    "video": "Video"
+    "video": "Video",
+    "trim_silence": "Trim silence",
+    "trim_silence_description": "Auto-detect and skip silence on new downloads",
+    "aggressiveness": "Aggressiveness"
   },
   "export_settings": {
     "download_export_opml": "Exportera/ladda ner OPML",

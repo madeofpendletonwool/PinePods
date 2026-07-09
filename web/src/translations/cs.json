@@ -371,7 +371,10 @@
     "youtube_download_limit": "",
     "youtube_episode_limit_updated": "",
     "youtube_limit_description": "",
-    "video": "Video"
+    "video": "Video",
+    "trim_silence": "Trim silence",
+    "trim_silence_description": "Auto-detect and skip silence on new downloads",
+    "aggressiveness": "Aggressiveness"
   },
   "export_settings": {
     "download_export_opml": "",

@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
+import 'package:pinepods_mobile/core/stale_download.dart';
 import 'package:pinepods_mobile/core/utils.dart';
 import 'package:pinepods_mobile/entities/chapter.dart';
 import 'package:pinepods_mobile/entities/downloadable.dart';
@@ -48,6 +49,10 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
   DateTime? _episodeStartTime;
   Timer? _localPositionTimer;
+
+  /// Whether we've already reported the decoded duration for the current
+  /// episode to the server (see PinepodsAudioService.updateEpisodeDurationIfNeeded).
+  bool _actualDurationReported = false;
 
   StreamSubscription<int>? _sleepSubscription;
   StreamSubscription? _nativeEventSubscription;
@@ -238,6 +243,14 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
       // Update chapter if needed
       _updateChapter(position ~/ 1000, duration ~/ 1000);
+
+      // Once the decoder reports a real length, correct the server's stored
+      // duration if it's wrong (e.g. feeds shipping a missing/zero duration).
+      // Mirrors the web player; only fires once per episode.
+      if (!_actualDurationReported && duration > 0) {
+        _actualDurationReported = true;
+        _pinepodsAudioService?.updateEpisodeDurationIfNeeded(duration / 1000.0);
+      }
     }
   }
 
@@ -357,6 +370,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
     _currentEpisode = episode;
     _currentEpisode!.played = false;
+    _actualDurationReported = false;
 
     // Get URI (local file or stream)
     final uri = await _generateEpisodeUri(episode);
@@ -738,10 +752,55 @@ class NativeAudioPlayerService extends AudioPlayerService {
   Future<String?> _generateEpisodeUri(Episode episode) async {
     if (episode.downloadState == DownloadState.downloaded) {
       if (await hasStoragePermission()) {
-        return await resolvePath(episode);
+        final path = await resolvePath(episode);
+
+        // The DB row can say "downloaded" while the file itself is gone -
+        // cleared by the OS under storage pressure, an SD card that's been
+        // swapped/unmounted, a changed storage root after an app update, or
+        // an interrupted download that never got marked as failed. Handing
+        // ExoPlayer/AVPlayer a path to a missing (or empty/corrupt) file
+        // fails asynchronously with no useful error surfaced to the user -
+        // the mini player just appears then immediately disappears. Detect
+        // it up front instead: fall back to streaming, and repair the stale
+        // record so the "Downloaded" badge stops lying and future attempts
+        // don't hit the same dead path.
+        final file = File(path);
+        if (await file.exists() && (await file.length()) > 0) {
+          return path;
+        }
+
+        log.warning('Downloaded file missing/empty for "${episode.title}" at $path - streaming instead');
+        await _clearStaleDownloadRecord(episode);
       }
     }
     return episode.contentUrl;
+  }
+
+  /// Reset every download record pointing at a file that no longer exists on
+  /// disk, so those episodes go back to showing as not-downloaded instead of
+  /// continuing to point at a dead local path. See findStaleDownloadRecords
+  /// for why matching happens by filepath/filename rather than guid.
+  Future<void> _clearStaleDownloadRecord(Episode episode) async {
+    try {
+      final all = await repository.findAllEpisodes();
+      final staleRecords = findStaleDownloadRecords(
+        all,
+        filepath: episode.filepath,
+        filename: episode.filename,
+      );
+
+      for (final record in staleRecords) {
+        clearDownloadState(record);
+        await repository.saveEpisode(record);
+      }
+
+      // Keep the in-memory object used for *this* playback attempt in sync
+      // too, so the 'isLocal' flag computed right after this call is
+      // correct even if [episode] itself was never a real repository row.
+      clearDownloadState(episode);
+    } catch (e) {
+      log.warning('Failed to clear stale download record for "${episode.title}": $e');
+    }
   }
 
   Future<int> _getBestEpisodePosition(Episode episode) async {

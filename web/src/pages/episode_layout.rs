@@ -3875,7 +3875,14 @@ pub fn episode_layout() -> Html {
                 let i18n_podcast_successfully_added = i18n_podcast_successfully_added.clone();
                 let i18n_failed_to_add_podcast = i18n_failed_to_add_podcast.clone();
                 let callback_podcast_id = added_id.clone();
-                let podcast_id_og = pod_values.clone().unwrap().podcastid.clone();
+                // Use podcastindexid, not podcastid: get_podcast_details_dynamic always
+                // returns podcastid=0 for a podcast that hasn't been added yet (there's no
+                // row in the Podcasts table for it), while podcastindexid carries the real
+                // Podcast Index feed ID threaded through from the search result. Passing
+                // podcastid here persists podcast_index_id=0 on add, so the podcast shows
+                // up as unmatched on the Podcast Index Matching settings page even though
+                // it was subscribed straight from a Podcast Index search result (#886).
+                let podcast_id_og = pod_values.clone().unwrap().podcastindexid.clone();
                 let pod_title_og = pod_values.clone().unwrap().podcastname.clone();
                 let pod_artwork_og = pod_values.clone().unwrap().artworkurl.clone();
                 let pod_author_og = pod_values.clone().unwrap().author.clone();
