@@ -4608,8 +4608,19 @@ impl DatabasePool {
                         }));
                     }
 
-                    // Process podcast_ids - in MySQL it might be stored as JSON string
-                    let raw_podcast_ids: Option<String> = row.try_get("PodcastIDs").ok();
+                    // Process podcast_ids - in MySQL it might be stored as JSON string.
+                    // MariaDB reports its JSON column type over the wire with a binary
+                    // charset, so sqlx sees it as SQL type BLOB rather than VARCHAR/TEXT.
+                    // Decoding directly as Option<String> then fails, and `.ok()` silently
+                    // swallows that error so podcast_ids always reports as None here on
+                    // installs where this column comes back as BLOB (same issue fixed for the
+                    // smart-playlist code paths in #773/#913). Decode as raw bytes first, and
+                    // only fall back to a direct String decode where the driver reports a text
+                    // charset for this column.
+                    let raw_podcast_ids: Option<String> = match row.try_get::<Option<Vec<u8>>, _>("PodcastIDs") {
+                        Ok(bytes_opt) => bytes_opt.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+                        Err(_) => row.try_get("PodcastIDs").ok(),
+                    };
                     let mut podcast_ids: Option<Vec<i32>> = None;
                     
                     if let Some(raw_ids) = raw_podcast_ids {
