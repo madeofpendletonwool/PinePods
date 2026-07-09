@@ -28883,7 +28883,18 @@ impl DatabasePool {
                 }
                 
                 // 3. PODCAST FILTER - handle JSON array of podcast IDs (MySQL)
-                if let Some(podcast_ids_json) = playlist.try_get::<Option<String>, _>("PodcastIDs")?.as_ref() {
+                // MariaDB's JSON column type is reported over the wire with a binary
+                // charset, so sqlx sees it as SQL type BLOB rather than VARCHAR/TEXT.
+                // Decoding it directly as Option<String> then fails with a "mismatched
+                // types" error on every request (see #773). Decode as raw bytes first,
+                // matching the fallback already used in PlaylistConfig::from_mysql_row,
+                // and only fall back to a direct String decode for installs where the
+                // driver does report a text charset for this column.
+                let podcast_ids_json_owned: Option<String> = match playlist.try_get::<Option<Vec<u8>>, _>("PodcastIDs") {
+                    Ok(bytes_opt) => bytes_opt.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+                    Err(_) => playlist.try_get::<Option<String>, _>("PodcastIDs")?,
+                };
+                if let Some(podcast_ids_json) = podcast_ids_json_owned.as_ref() {
                     if !podcast_ids_json.is_empty() && podcast_ids_json != "[]" && podcast_ids_json != "null" {
                         match serde_json::from_str::<Vec<i32>>(podcast_ids_json) {
                             Ok(podcast_ids) if !podcast_ids.is_empty() && !podcast_ids.contains(&-1) => {
@@ -29052,7 +29063,13 @@ impl DatabasePool {
                 let min_dur_secs: Option<i32> = playlist.try_get("MinDuration")?;
                 let max_dur_secs: Option<i32> = playlist.try_get("MaxDuration")?;
                 let is_system_raw: i8 = playlist.try_get("IsSystemPlaylist")?;
-                let podcast_ids_raw: Option<String> = playlist.try_get("PodcastIDs").ok().flatten();
+                // Same BLOB-vs-VARCHAR decode as the podcast filter above (#773) - without
+                // this, `.ok()` silently swallows the decode error and podcast_ids always
+                // reports as None here on installs where MariaDB reports this column as BLOB.
+                let podcast_ids_raw: Option<String> = match playlist.try_get::<Option<Vec<u8>>, _>("PodcastIDs") {
+                    Ok(bytes_opt) => bytes_opt.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+                    Err(_) => playlist.try_get("PodcastIDs").ok().flatten(),
+                };
                 let podcast_ids: Option<Vec<i32>> = podcast_ids_raw
                     .as_deref()
                     .and_then(|s| serde_json::from_str(s).ok());
