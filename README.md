@@ -184,18 +184,6 @@ sudo docker compose up -d
 Open `http://localhost:8040` and you'll be prompted to create your first admin
 account. That's it — you're up.
 
-> :information_source: **RSS feed links coming out wrong (e.g. showing your container
-> name instead of your domain)?** PinePods reads `HOSTNAME` above as a convenience and
-> copies it into an internal `SERVER_URL` value used to build absolute URLs for
-> generated RSS feeds (`<link>`, `<guid>`, `<enclosure>`). Some container
-> runtimes/orchestration setups — rootless Podman under a systemd unit is a known
-> case — set their own `HOSTNAME` (the container/pod name) in the environment, which
-> can override the value you passed in. If your RSS feed's episode links look like
-> `pinepods-pod/api/data/stream/...` instead of your real domain, set `SERVER_URL`
-> directly (same value you'd put in `HOSTNAME`) instead of, or in addition to,
-> `HOSTNAME` — PinePods checks for `SERVER_URL` first and, unlike `HOSTNAME`, nothing
-> in the container platform can silently overwrite it.
-
 > :information_source: **On PostgreSQL 18 / upgrading from 17.** New installs default to
 > `postgres:18` and need no special steps. Two things to know when moving an existing
 > install to 18:
