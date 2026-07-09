@@ -143,20 +143,22 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
       GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
       final userId = settings.pinepodsUserId!;
 
-      final episodeDetails = await _pinepodsService.getEpisodeMetadata(
-        _episode!.episodeId,
-        userId,
-        isYoutube: _episode!.isYoutube,
-        personEpisode: false, // Adjust if needed
-      );
+      // Fetch episode metadata and podcast 2.0 data (persons) in parallel -
+      // neither depends on the other's result, and fetching them sequentially
+      // only adds latency before the page can render.
+      final results = await Future.wait<dynamic>([
+        _pinepodsService.getEpisodeMetadata(
+          _episode!.episodeId,
+          userId,
+          isYoutube: _episode!.isYoutube,
+          personEpisode: false, // Adjust if needed
+        ),
+        _pinepodsService.fetchPodcasting2Data(_episode!.episodeId, userId),
+      ]);
+      final episodeDetails = results[0] as PinepodsEpisode?;
+      final podcast2Data = results[1] as Map<String, dynamic>?;
 
       if (episodeDetails != null) {
-        // Fetch podcast 2.0 data for persons information
-        final podcast2Data = await _pinepodsService.fetchPodcasting2Data(
-          episodeDetails.episodeId,
-          userId,
-        );
-        
         List<Person> persons = [];
         if (podcast2Data != null) {
           final personsData = podcast2Data['people'] as List<dynamic>?;
