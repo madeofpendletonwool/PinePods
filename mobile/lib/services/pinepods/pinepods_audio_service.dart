@@ -109,17 +109,26 @@ class PinepodsAudioService {
       final localDownload = await _audioPlayerService.findDownloadedEpisode(episodeId);
       final hasLocalDownload = localDownload != null;
 
-      // Get podcast ID for settings (tolerate offline / failures)
-      int podcastId = 0;
-      try {
-        podcastId = await _pinepodsService.getPodcastIdFromEpisode(
+      // Get podcast ID for settings, and podcast 2.0 data (chapters/persons/
+      // transcripts) in parallel - these two calls don't depend on each other,
+      // and running them sequentially only adds latency before playback starts.
+      // Both tolerate offline / failures.
+      final results = await Future.wait<dynamic>([
+        _pinepodsService.getPodcastIdFromEpisode(
           episodeId,
           userId,
           pinepodsEpisode.isYoutube,
-        );
-      } catch (e) {
-        log.fine('Could not fetch podcast id (continuing): $e');
-      }
+        ).catchError((e) {
+          log.fine('Could not fetch podcast id (continuing): $e');
+          return 0;
+        }),
+        _pinepodsService.fetchPodcasting2Data(episodeId, userId).catchError((e) {
+          log.fine('Could not fetch podcast 2.0 data (continuing): $e');
+          return null;
+        }),
+      ]);
+      final podcastId = results[0] as int;
+      final podcast2Data = results[1] as Map<String, dynamic>?;
 
       // Get playback settings (speed, skip times). This already returns sane
       // defaults on failure.
@@ -128,14 +137,6 @@ class PinepodsAudioService {
         podcastId,
         pinepodsEpisode.isYoutube,
       );
-
-      // Fetch podcast 2.0 data including chapters (tolerate offline / failures)
-      Map<String, dynamic>? podcast2Data;
-      try {
-        podcast2Data = await _pinepodsService.fetchPodcasting2Data(episodeId, userId);
-      } catch (e) {
-        log.fine('Could not fetch podcast 2.0 data (continuing): $e');
-      }
 
       // Convert PinepodsEpisode to Episode for the audio player
       final episode = _convertToEpisode(pinepodsEpisode, playDetails, podcast2Data);
