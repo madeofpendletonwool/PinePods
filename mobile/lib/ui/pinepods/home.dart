@@ -27,6 +27,7 @@ import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/services/auto_download/auto_download_service.dart';
+import 'package:pinepods_mobile/ui/utils/live_progress.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
@@ -1253,9 +1254,11 @@ class _EpisodeCardState extends State<_EpisodeCard> {
   bool _isLoading = false;
   AudioState _audioState = AudioState.none;
   Episode? _nowPlaying;
+  PositionState? _positionState;
   AudioBloc? _audioBloc;
   StreamSubscription? _nowPlayingSub;
   StreamSubscription? _audioStateSub;
+  StreamSubscription? _positionSub;
 
   @override
   void didChangeDependencies() {
@@ -1264,6 +1267,7 @@ class _EpisodeCardState extends State<_EpisodeCard> {
     if (_audioBloc != bloc) {
       _nowPlayingSub?.cancel();
       _audioStateSub?.cancel();
+      _positionSub?.cancel();
       _audioBloc = bloc;
 
       _nowPlayingSub = bloc.nowPlaying?.listen((ep) {
@@ -1275,6 +1279,19 @@ class _EpisodeCardState extends State<_EpisodeCard> {
           if (state == AudioState.error) _isLoading = false;
         });
       });
+      // Live position ticks for this card's progress bar while it's the
+      // episode currently playing - mirrors what mini_player.dart already
+      // does with the same stream. Without this the bar was frozen at
+      // whatever listenDuration Home's data snapshot had when it loaded.
+      // Ticks fire roughly once a second during playback, so only rebuild
+      // this card when it's the one actually playing - checking the guid
+      // before calling setState avoids every card on Home rebuilding on
+      // every tick.
+      _positionSub = bloc.playPosition?.listen((state) {
+        if (!mounted) return;
+        if (state.episode?.guid != widget.episode.episodeUrl) return;
+        setState(() => _positionState = state);
+      });
     }
   }
 
@@ -1282,12 +1299,33 @@ class _EpisodeCardState extends State<_EpisodeCard> {
   void dispose() {
     _nowPlayingSub?.cancel();
     _audioStateSub?.cancel();
+    _positionSub?.cancel();
     super.dispose();
   }
 
   bool get _isCurrentEpisode =>
       widget.episode.episodeUrl.isNotEmpty &&
       _nowPlaying?.guid == widget.episode.episodeUrl;
+
+  /// Progress (0-100) to show on the bar: live position while this card is
+  /// the episode actually playing, otherwise the static value from Home's
+  /// last-loaded snapshot.
+  double get _displayProgressPercentage => LiveProgressResolver.percentage(
+        isCurrentEpisode: _isCurrentEpisode,
+        staticPercentage: widget.episode.progressPercentage,
+        livePercentage: _positionState?.percentage,
+      );
+
+  String? get _displayListenDurationText => LiveProgressResolver.elapsedText(
+        isCurrentEpisode: _isCurrentEpisode,
+        staticText: widget.episode.formattedListenDuration,
+        livePosition: _positionState?.position,
+      );
+
+  bool get _showProgressSection => LiveProgressResolver.shouldShowProgress(
+        isCurrentEpisode: _isCurrentEpisode,
+        hasStaticProgress: widget.episode.listenDuration != null && widget.episode.listenDuration! > 0,
+      );
 
   bool get _isPlaying =>
       _isCurrentEpisode &&
@@ -1385,10 +1423,13 @@ class _EpisodeCardState extends State<_EpisodeCard> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 8),
-                  // Progress bar for in-progress episodes
-                  if (widget.episode.listenDuration != null && widget.episode.listenDuration! > 0) ...[
+                  // Progress bar for in-progress episodes - also shown while
+                  // this card is actively playing even if Home's snapshot
+                  // hadn't recorded a listen position yet (e.g. just started
+                  // from 0 via auto-advance or this card's own play button).
+                  if (_showProgressSection) ...[
                     LinearProgressIndicator(
-                      value: widget.episode.progressPercentage / 100,
+                      value: _displayProgressPercentage / 100,
                       backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
                       valueColor: AlwaysStoppedAnimation<Color>(
                         Theme.of(context).colorScheme.primary,
@@ -1399,7 +1440,7 @@ class _EpisodeCardState extends State<_EpisodeCard> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          widget.episode.formattedListenDuration ?? '',
+                          _displayListenDurationText ?? '',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         Text(
