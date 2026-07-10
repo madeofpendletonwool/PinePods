@@ -418,47 +418,6 @@ pub async fn remove_podcast_id(
     Ok(Json(RemovePodcastResponse { success: true }))
 }
 
-// Remove podcast by name and URL - matches call_remove_podcasts_name from frontend
-#[utoipa::path(
-    post,
-    path = "/remove_podcast_name",
-    tag = "podcasts",
-    summary = "Remove podcast by name",
-    request_body = crate::models::RemovePodcastByNameRequest,
-    security(("api_key" = [])),
-    responses(
-        (status = 200, description = "Success", body = serde_json::Value),
-        (status = 401, description = "Invalid or missing API key"),
-    ),
-)]
-pub async fn remove_podcast_by_name(
-    headers: HeaderMap,
-    State(state): State<AppState>,
-    Json(request): Json<crate::models::RemovePodcastByNameRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    
-    // Verify API key
-    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
-    if !is_valid {
-        return Err(AppError::unauthorized("Invalid API key"));
-    }
-
-    // Check authorization - users can only remove their own podcasts (or web key / admin)
-    if !check_user_access(&state, &api_key, request.user_id).await? {
-        return Err(AppError::forbidden("You can only remove your own podcasts!"));
-    }
-
-    // Remove podcast from database using the comprehensive method
-    state.db_pool.remove_podcast_by_name_url(
-        &request.podcast_name,
-        &request.podcast_url,
-        request.user_id,
-    ).await?;
-    
-    Ok(Json(serde_json::json!({ "success": true })))
-}
-
 // Get podcasts for a user - matches call_get_podcasts from frontend
 #[utoipa::path(
     get,

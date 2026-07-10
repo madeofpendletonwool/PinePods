@@ -7573,43 +7573,6 @@
         ]
       }
     },
-    "/api/data/remove_podcast_name": {
-      "post": {
-        "tags": [
-          "podcasts"
-        ],
-        "summary": "Remove podcast by name",
-        "operationId": "remove_podcast_by_name",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RemovePodcastByNameRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
-          }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
-      }
-    },
     "/api/data/remove_podcast_sync": {
       "delete": {
         "tags": [
@@ -14875,26 +14838,6 @@
             "format": "int32"
           },
           "category": {
-            "type": "string"
-          }
-        }
-      },
-      "RemovePodcastByNameRequest": {
-        "type": "object",
-        "required": [
-          "user_id",
-          "podcast_name",
-          "podcast_url"
-        ],
-        "properties": {
-          "user_id": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "podcast_name": {
-            "type": "string"
-          },
-          "podcast_url": {
             "type": "string"
           }
         }

@@ -251,7 +251,6 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::podcasts::get_merged_podcasts))
         .routes(routes!(handlers::podcasts::remove_podcast))
         .routes(routes!(handlers::podcasts::remove_podcast_id))
-        .routes(routes!(handlers::podcasts::remove_podcast_by_name))
         .routes(routes!(handlers::podcasts::return_pods))
         .routes(routes!(handlers::podcasts::return_pods_extra))
         .routes(routes!(handlers::podcasts::get_time_info))

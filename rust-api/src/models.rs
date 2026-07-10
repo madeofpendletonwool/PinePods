@@ -186,14 +186,6 @@ pub struct PodcastExtraListResponse {
     pub pods: Vec<PodcastExtraResponse>,
 }
 
-// Remove podcast request model
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub struct RemovePodcastByNameRequest {
-    pub user_id: i32,
-    pub podcast_name: String,
-    pub podcast_url: String,
-}
-
 // Time info response model
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TimeInfoResponse {

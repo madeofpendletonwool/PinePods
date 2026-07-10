@@ -1,8 +1,13 @@
 // lib/ui/utils/local_download_utils.dart
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/core/download_presence.dart';
+import 'package:pinepods_mobile/core/utils.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/downloadable.dart';
+import 'package:pinepods_mobile/repository/repository.dart';
 import 'package:pinepods_mobile/services/logging/app_logger.dart';
 import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
@@ -74,24 +79,20 @@ class LocalDownloadUtils {
     
     try {
       final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
-      
+      final repository = podcastBloc.podcastService.repository;
+
       // Get all episodes and find matches with both new and old GUID formats
-      final allEpisodes = await podcastBloc.podcastService.repository.findAllEpisodes();
-      final matchingEpisodes = allEpisodes.where((ep) => 
+      final allEpisodes = await repository.findAllEpisodes();
+      final matchingEpisodes = allEpisodes.where((ep) =>
         ep.guid == guid || ep.guid.startsWith('${guid}_')
       ).toList();
-      
+
       logger.debug('LocalDownload', 'Repository lookup for $guid: found ${matchingEpisodes.length} matching episodes');
-      
-      // Found matching episodes
-      
-      // Consider downloaded if ANY matching episode is downloaded
-      final isDownloaded = matchingEpisodes.any((ep) => 
-        ep.downloaded || ep.downloadState == DownloadState.downloaded
-      );
-      
+
+      final isDownloaded = await _resolvePresenceAndHeal(repository, matchingEpisodes, logger);
+
       logger.debug('LocalDownload', 'Final download status for $guid: $isDownloaded');
-      
+
       // Cache the result
       _localDownloadStatusCache[guid] = isDownloaded;
       return isDownloaded;
@@ -124,6 +125,54 @@ class LocalDownloadUtils {
         '?api_key=$apiKey&user_id=$userId&type=$type';
   }
 
+  /// Checks each row in [matchingEpisodes] that's marked downloaded against
+  /// the filesystem (not just the DB flag), heals - resets - any whose file
+  /// is missing so the "Downloaded" badge stops lying about them, and
+  /// returns whether at least one is genuinely present. See
+  /// core/download_presence.dart for why matching can involve more than one
+  /// row (legacy duplicate-guid downloads) and why the decision logic lives
+  /// there as a plain, testable function rather than inline here.
+  static Future<bool> _resolvePresenceAndHeal(
+    Repository repository,
+    List<Episode> matchingEpisodes,
+    AppLogger logger,
+  ) async {
+    final downloadedRows = matchingEpisodes
+        .where((ep) => ep.downloaded || ep.downloadState == DownloadState.downloaded)
+        .toList();
+
+    if (downloadedRows.isEmpty) return false;
+
+    final fileExists = <Episode, bool>{};
+    for (final row in downloadedRows) {
+      fileExists[row] = await _fileActuallyExists(row);
+    }
+
+    final result = resolveDownloadPresence(matchingEpisodes, fileExists);
+
+    for (final stale in result.staleRecords) {
+      logger.warning('LocalDownload', 'Healing stale download record for missing file: ${stale.guid}');
+      clearDownloadState(stale);
+      await repository.saveEpisode(stale);
+    }
+
+    return result.isDownloaded;
+  }
+
+  static Future<bool> _fileActuallyExists(Episode episode) async {
+    if (episode.filepath == null || episode.filename == null) return false;
+
+    try {
+      if (!await hasStoragePermission()) return false;
+
+      final path = await resolvePath(episode);
+      final file = File(path);
+      return await file.exists() && (await file.length()) > 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /// Update local download status cache
   static void updateLocalDownloadStatus(PinepodsEpisode episode, bool isDownloaded) {
     final guid = generateEpisodeGuid(episode);
@@ -140,39 +189,33 @@ class LocalDownloadUtils {
     
     try {
       final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
-      
+      final repository = podcastBloc.podcastService.repository;
+
       // Get all downloaded episodes from repository
-      final allEpisodes = await podcastBloc.podcastService.repository.findAllEpisodes();
+      final allEpisodes = await repository.findAllEpisodes();
       logger.debug('LocalDownload', 'Found ${allEpisodes.length} total episodes in repository');
-      
+
       // Filter to PinePods episodes only and log them
       final pinepodsEpisodes = allEpisodes.where((ep) => ep.guid.startsWith('pinepods_')).toList();
       logger.debug('LocalDownload', 'Found ${pinepodsEpisodes.length} PinePods episodes in repository');
-      
+
       // Found pinepods episodes in repository
-      
+
       // Now check each episode against the repository
       for (final episode in episodes) {
         final guid = generateEpisodeGuid(episode);
-        
+
         // Look for episodes with either new format (pinepods_123) or old format (pinepods_123_timestamp)
-        final matchingEpisodes = allEpisodes.where((ep) => 
+        final matchingEpisodes = allEpisodes.where((ep) =>
           ep.guid == guid || ep.guid.startsWith('${guid}_')
         ).toList();
-        
-        // Checking for matching episodes
-        
-        // Consider downloaded if ANY matching episode is downloaded
-        final isDownloaded = matchingEpisodes.any((ep) => 
-          ep.downloaded || ep.downloadState == DownloadState.downloaded
-        );
-        
-        _localDownloadStatusCache[guid] = isDownloaded;
+
+        _localDownloadStatusCache[guid] = await _resolvePresenceAndHeal(repository, matchingEpisodes, logger);
         // Episode status checked
       }
-      
+
       // Download statuses cached
-      
+
     } catch (e) {
       logger.error('LocalDownload', 'Error loading local download statuses', e.toString());
     }

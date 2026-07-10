@@ -5,7 +5,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
-import 'package:pinepods_mobile/core/stale_download.dart';
+import 'package:pinepods_mobile/core/download_presence.dart';
 import 'package:pinepods_mobile/core/utils.dart';
 import 'package:pinepods_mobile/entities/chapter.dart';
 import 'package:pinepods_mobile/entities/downloadable.dart';
