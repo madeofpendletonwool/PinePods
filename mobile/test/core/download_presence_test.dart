@@ -1,12 +1,13 @@
-// Unit tests for findStaleDownloadRecords/clearDownloadState, extracted from
-// native_audio_player_service.dart's fix for playing a "downloaded" episode
-// whose file no longer exists on disk (the mini player would appear then
-// immediately disappear with no explanation). These are pure functions over
-// plain Episode objects, so no file-system/repository/platform-channel
-// scaffolding is needed to test them.
+// Unit tests for the shared download-presence helpers used by both the
+// playback path (NativeAudioPlayerService, which repairs a record the
+// moment a missing file is discovered while trying to play it) and the UI
+// path (LocalDownloadUtils, which proactively checks presence for the
+// "Downloaded" badge). These are pure functions over plain Episode objects,
+// so no file-system/repository/platform-channel scaffolding is needed to
+// test them.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pinepods_mobile/core/stale_download.dart';
+import 'package:pinepods_mobile/core/download_presence.dart';
 import 'package:pinepods_mobile/entities/downloadable.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 
@@ -77,6 +78,61 @@ void main() {
       );
 
       expect(result, isEmpty);
+    });
+  });
+
+  group('resolveDownloadPresence', () {
+    test('is downloaded when the single matching row is present on disk', () {
+      final row = _episode(guid: 'pinepods_101');
+
+      final result = resolveDownloadPresence([row], {row: true});
+
+      expect(result.isDownloaded, isTrue);
+      expect(result.staleRecords, isEmpty);
+    });
+
+    test('is not downloaded and flags the row as stale when its file is missing', () {
+      final row = _episode(guid: 'pinepods_101');
+
+      final result = resolveDownloadPresence([row], {row: false});
+
+      expect(result.isDownloaded, isFalse);
+      expect(result.staleRecords, [row]);
+    });
+
+    test('is downloaded if any duplicate/legacy-guid row is present, even if another is stale', () {
+      final missing = _episode(guid: 'pinepods_101');
+      final present = _episode(guid: 'pinepods_101_1699999999');
+
+      final result = resolveDownloadPresence(
+        [missing, present],
+        {missing: false, present: true},
+      );
+
+      expect(result.isDownloaded, isTrue);
+      // Still worth healing the dead duplicate even though the episode
+      // overall counts as downloaded via the other row.
+      expect(result.staleRecords, [missing]);
+    });
+
+    test('ignores rows that are not marked downloaded', () {
+      final notDownloaded = _episode(guid: 'pinepods_101', downloadState: DownloadState.none);
+
+      final result = resolveDownloadPresence([notDownloaded], {});
+
+      expect(result.isDownloaded, isFalse);
+      expect(result.staleRecords, isEmpty);
+    });
+
+    test('treats a downloaded row missing from the presence map as stale', () {
+      // Defensive case: a caller that forgot to check a downloaded row
+      // should not silently count it as present.
+      final row = _episode(guid: 'pinepods_101');
+
+      final result = resolveDownloadPresence([row], {});
+
+      expect(result.isDownloaded, isFalse);
+      expect(result.staleRecords, [row]);
     });
   });
 
