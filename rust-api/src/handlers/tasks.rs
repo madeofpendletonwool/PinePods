@@ -379,8 +379,14 @@ pub async fn cleanup_tasks_internal(state: &AppState) -> AppResult<()> {
     tracing::info!("Starting internal cleanup tasks (scheduler)");
     
     state.db_pool.cleanup_old_episodes().await?;
+
+    // Auto-delete server downloads past their per-user/per-podcast retention window (#655)
+    if let Err(e) = state.db_pool.auto_delete_old_downloads().await {
+        tracing::error!("Auto-delete old downloads failed during cleanup tasks: {}", e);
+    }
+
     tracing::info!("Cleanup tasks completed successfully");
-    
+
     Ok(())
 }
 

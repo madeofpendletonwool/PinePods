@@ -1,0 +1,92 @@
+{{- if .Values.ai.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pinepods.fullname" . }}-ai
+  labels:
+    {{- include "pinepods.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Model cache volume is RWO
+  selector:
+    matchLabels:
+      {{- include "pinepods.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ai
+  template:
+    metadata:
+      labels:
+        {{- include "pinepods.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ai
+    spec:
+      containers:
+        - name: ai
+          image: "{{ .Values.ai.image.repository }}:{{ .Values.ai.image.tag }}"
+          imagePullPolicy: {{ .Values.ai.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ai.service.port }}
+              protocol: TCP
+          env:
+            - name: WHISPER_MODEL
+              value: {{ .Values.ai.whisper.model | quote }}
+            - name: WHISPER_DEVICE
+              value: {{ .Values.ai.whisper.device | quote }}
+            - name: WHISPER_COMPUTE_TYPE
+              value: {{ .Values.ai.whisper.computeType | quote }}
+            - name: PINEPODS_AI_PORT
+              value: {{ .Values.ai.service.port | quote }}
+            {{- if .Values.ai.llm }}
+            # Ad detection (#790) — initial defaults; models are managed at runtime from
+            # Settings → AI in the web UI.
+            - name: AI_LLM_MODEL
+              value: {{ .Values.ai.llm.model | default "" | quote }}
+            {{- if .Values.ai.llm.url }}
+            - name: AI_LLM_URL
+              value: {{ .Values.ai.llm.url | quote }}
+            {{- end }}
+            {{- if .Values.ai.llm.modelName }}
+            - name: AI_LLM_MODEL_NAME
+              value: {{ .Values.ai.llm.modelName | quote }}
+            {{- end }}
+            {{- if .Values.ai.llm.apiKey }}
+            - name: AI_LLM_API_KEY
+              value: {{ .Values.ai.llm.apiKey | quote }}
+            {{- end }}
+            {{- end }}
+          volumeMounts:
+            # Read-only view of the SAME downloads volume the main app writes to,
+            # mounted at the identical path so absolute file paths resolve.
+            {{- if .Values.persistence.enabled }}
+            - name: downloads
+              mountPath: /opt/pinepods/downloads
+              readOnly: true
+            {{- end }}
+            {{- if .Values.ai.persistence.enabled }}
+            - name: models
+              mountPath: /models
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.ai.resources | nindent 12 }}
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        - name: downloads
+          persistentVolumeClaim:
+            claimName: {{ if .Values.persistence.downloads.existingClaim }}{{ .Values.persistence.downloads.existingClaim }}{{ else }}{{ include "pinepods.fullname" . }}-downloads{{ end }}
+            readOnly: true
+        {{- end }}
+        {{- if .Values.ai.persistence.enabled }}
+        - name: models
+          persistentVolumeClaim:
+            claimName: {{ if .Values.ai.persistence.existingClaim }}{{ .Values.ai.persistence.existingClaim }}{{ else }}{{ include "pinepods.fullname" . }}-ai-models{{ end }}
+        {{- end }}
+{{- end }}

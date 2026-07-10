@@ -1,5 +1,11 @@
 name: Build Helm Chart
 
+# Least-privilege default; the build job overrides this with its own per-job
+# permissions block. The commit-back to the repo uses secrets.PUSH_PAT, not the
+# workflow GITHUB_TOKEN, so contents:read is sufficient here.
+permissions:
+  contents: read
+
 on:
   release:
     types: [published]

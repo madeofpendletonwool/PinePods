@@ -367,7 +367,8 @@ pub async fn download_episode_file(
             let row = sqlx::query(r#"
                 SELECT e."episodeurl", e."episodetitle", p."podcastname",
                        e."episodepubdate", p."author", e."episodeartwork", p."artworkurl",
-                       e."episodedescription", p."username", p."password"
+                       e."episodedescription", p."username", p."password",
+                       p."feedurl", e."episodeguid", e."episodeduration"
                 FROM "Episodes" e
                 JOIN "Podcasts" p ON e."podcastid" = p."podcastid"
                 WHERE e."episodeid" = $1
@@ -386,14 +387,18 @@ pub async fn download_episode_file(
                 row.try_get::<Option<String>, _>("artworkurl")?,
                 row.try_get::<Option<String>, _>("episodedescription")?,
                 row.try_get::<Option<String>, _>("username")?,
-                row.try_get::<Option<String>, _>("password")?
+                row.try_get::<Option<String>, _>("password")?,
+                row.try_get::<Option<String>, _>("feedurl")?,
+                row.try_get::<Option<String>, _>("episodeguid")?,
+                row.try_get::<Option<i32>, _>("episodeduration")?
             )
         }
         crate::database::DatabasePool::MySQL(pool) => {
             let row = sqlx::query("
                 SELECT e.EpisodeURL, e.EpisodeTitle, p.PodcastName,
                        e.EpisodePubDate, p.Author, e.EpisodeArtwork, p.ArtworkURL,
-                       e.EpisodeDescription, p.Username, p.Password
+                       e.EpisodeDescription, p.Username, p.Password,
+                       p.FeedURL, e.EpisodeGUID, e.EpisodeDuration
                 FROM Episodes e
                 JOIN Podcasts p ON e.PodcastID = p.PodcastID
                 WHERE e.EpisodeID = ?
@@ -412,12 +417,15 @@ pub async fn download_episode_file(
                 row.try_get::<Option<String>, _>("ArtworkURL")?,
                 row.try_get::<Option<String>, _>("EpisodeDescription")?,
                 row.try_get::<Option<String>, _>("Username")?,
-                row.try_get::<Option<String>, _>("Password")?
+                row.try_get::<Option<String>, _>("Password")?,
+                row.try_get::<Option<String>, _>("FeedURL")?,
+                row.try_get::<Option<String>, _>("EpisodeGUID")?,
+                row.try_get::<Option<i32>, _>("EpisodeDuration")?
             )
         }
     };
 
-    let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, _description, feed_username, feed_password) = episode_info;
+    let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, description, feed_username, feed_password, feed_url, episode_guid, episode_duration) = episode_info;
 
     // Download the episode file. Send a podcast-client User-Agent first; some hosts
     // (e.g. Buzzsprout) reject requests without one with 403 Forbidden.
@@ -468,14 +476,24 @@ pub async fn download_episode_file(
     std::fs::write(&temp_path, &audio_bytes)
         .map_err(|e| AppError::internal(&format!("Failed to write temp file: {}", e)))?;
     
-    // Add metadata using the same function as server downloads
-    if let Err(e) = add_podcast_metadata(
+    // Add metadata using the same shared tagging as server downloads. The client
+    // download streams a single mp3 with no folder, so sidecars do not apply here.
+    let episode_meta = crate::services::download_metadata::EpisodeMetadata {
+        title: episode_title.clone(),
+        artist: author.clone().unwrap_or_else(|| "Unknown".to_string()),
+        album: podcast_name.clone(),
+        date: pub_date,
+        description: description.clone(),
+        feed_url: feed_url.clone(),
+        episode_url: Some(episode_url.clone()),
+        guid: episode_guid.clone(),
+        duration: episode_duration,
+        episode_artwork: episode_artwork.clone(),
+        podcast_artwork: artwork_url.clone(),
+    };
+    if let Err(e) = crate::services::download_metadata::add_podcast_metadata(
         &temp_path,
-        &episode_title,
-        author.as_deref().unwrap_or("Unknown"),
-        &podcast_name,
-        pub_date.as_ref(),
-        episode_artwork.as_deref().or(artwork_url.as_deref())
+        &episode_meta,
     ).await {
         tracing::warn!("Failed to add metadata to downloaded episode: {}", e);
     }
@@ -520,83 +538,3 @@ pub async fn download_episode_file(
     Ok(response)
 }
 
-// Function to add metadata to downloaded MP3 files (copied from tasks.rs)
-async fn add_podcast_metadata(
-    file_path: &std::path::Path,
-    title: &str,
-    artist: &str,
-    album: &str,
-    date: Option<&chrono::NaiveDateTime>,
-    artwork_url: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use id3::TagLike;  // Import the trait to use methods
-    use chrono::Datelike;  // For year(), month(), day() methods
-    
-    // Create ID3 tag and add basic metadata
-    let mut tag = id3::Tag::new();
-    tag.set_title(title);
-    tag.set_artist(artist);
-    tag.set_album(album);
-    
-    // Set date if available
-    if let Some(date) = date {
-        tag.set_date_recorded(id3::Timestamp {
-            year: date.year(),
-            month: Some(date.month() as u8),
-            day: Some(date.day() as u8),
-            hour: None,
-            minute: None,
-            second: None,
-        });
-    }
-    
-    // Add genre for podcasts
-    tag.set_genre("Podcast");
-    
-    // Download and add artwork if available
-    if let Some(artwork_url) = artwork_url {
-        if let Ok(artwork_data) = download_artwork(artwork_url).await {
-            // Determine MIME type based on the data
-            let mime_type = if artwork_data.starts_with(&[0xFF, 0xD8, 0xFF]) {
-                "image/jpeg"
-            } else if artwork_data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
-                "image/png"
-            } else {
-                "image/jpeg" // Default fallback
-            };
-            
-            tag.add_frame(id3::frame::Picture {
-                mime_type: mime_type.to_string(),
-                picture_type: id3::frame::PictureType::CoverFront,
-                description: "Cover".to_string(),
-                data: artwork_data,
-            });
-        }
-    }
-    
-    // Write the tag to the file
-    tag.write_to_path(file_path, id3::Version::Id3v24)?;
-    
-    Ok(())
-}
-
-// Helper function to download artwork (copied from tasks.rs)
-async fn download_artwork(url: &str) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
-    let client = reqwest::Client::new();
-    let response = client
-        .get(url)
-        .header("User-Agent", "PinePods/1.0")
-        .send()
-        .await?;
-    
-    if response.status().is_success() {
-        let bytes = response.bytes().await?;
-        // Limit artwork size to reasonable bounds (e.g., 5MB)
-        if bytes.len() > 5 * 1024 * 1024 {
-            return Err("Artwork too large".into());
-        }
-        Ok(bytes.to_vec())
-    } else {
-        Err(format!("Failed to download artwork: HTTP {}", response.status()).into())
-    }
-}

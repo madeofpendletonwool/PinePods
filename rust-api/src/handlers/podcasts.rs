@@ -1697,6 +1697,60 @@ pub async fn get_auto_download_status(
     }))
 }
 
+// Request for get_auto_queue_status (#648)
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct AutoQueueStatusRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+// Response for auto-queue status (#648)
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct AutoQueueStatusResponse {
+    pub auto_queue: bool,
+}
+
+// Get auto-queue status for a podcast (#648)
+#[utoipa::path(
+    post,
+    path = "/get_auto_queue_status",
+    tag = "podcasts",
+    summary = "Get auto queue status",
+    request_body = AutoQueueStatusRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = AutoQueueStatusResponse),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_auto_queue_status(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<AutoQueueStatusRequest>,
+) -> Result<Json<AutoQueueStatusResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You can only get the status for your own podcast."));
+    }
+
+    let status = state.db_pool.call_get_auto_queue_status(request.podcast_id, request.user_id).await?;
+    if status.is_none() {
+        return Err(AppError::not_found("Podcast not found"));
+    }
+
+    Ok(Json(AutoQueueStatusResponse {
+        auto_queue: status.unwrap()
+    }))
+}
+
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct AutoPlayNextStatusRequest {
     pub podcast_id: i32,
@@ -2491,11 +2545,24 @@ pub async fn fetch_transcript(
     Json(request): Json<FetchTranscriptRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = _state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
         return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    // Internal AI transcript (#726): resolve from the DB and return as SRT so it renders through
+    // the same transcript UI as feed transcripts. URL form: pinepods-internal://transcript/<id>
+    if let Some(rest) = request.url.strip_prefix("pinepods-internal://transcript/") {
+        if let Ok(episode_id) = rest.parse::<i32>() {
+            return match crate::services::transcription::get_episode_transcript_srt(&_state.db_pool, episode_id).await {
+                Ok(Some(srt)) => Ok(Json(serde_json::json!({ "success": true, "content": srt }))),
+                Ok(None) => Ok(Json(serde_json::json!({ "success": false, "error": "No transcript available" }))),
+                Err(e) => Ok(Json(serde_json::json!({ "success": false, "error": e }))),
+            };
+        }
+        return Ok(Json(serde_json::json!({ "success": false, "error": "Invalid internal transcript URL" })));
     }
 
     // Fetch the transcript content from the external URL
@@ -2832,6 +2899,85 @@ pub async fn get_playback_speed(
 
     let playback_speed = state.db_pool.get_playback_speed(data.user_id, false, data.podcast_id).await?;
     Ok(Json(serde_json::json!({ "playback_speed": playback_speed })))
+}
+
+// Request struct for get_auto_download_delete_days (#655)
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct GetAutoDownloadDeleteDaysRequest {
+    pub user_id: i32,
+    pub podcast_id: Option<i32>,
+}
+
+// Get auto-delete-downloads days (#655) - user default (no podcast_id) or per-podcast raw value
+#[utoipa::path(
+    post,
+    path = "/get_auto_download_delete_days",
+    tag = "podcasts",
+    summary = "Get auto-delete downloads days",
+    request_body = GetAutoDownloadDeleteDaysRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_auto_download_delete_days(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(data): Json<GetAutoDownloadDeleteDaysRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only get their own metadata
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != data.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only get metadata for yourself!"));
+    }
+
+    let (days, customized) = state.db_pool.get_auto_download_delete_days(data.user_id, data.podcast_id).await?;
+    Ok(Json(serde_json::json!({ "days": days, "customized": customized })))
+}
+
+// Request struct for get_default_volume (#828)
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct GetDefaultVolumeRequest {
+    pub user_id: i32,
+}
+
+// Get per-user default playback volume (0-100) (#828)
+#[utoipa::path(
+    post,
+    path = "/get_default_volume",
+    tag = "podcasts",
+    summary = "Get default volume",
+    request_body = GetDefaultVolumeRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_default_volume(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(data): Json<GetDefaultVolumeRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only get their own metadata
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != data.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only get metadata for yourself!"));
+    }
+
+    let volume = state.db_pool.get_default_volume(data.user_id).await?;
+    Ok(Json(serde_json::json!({ "default_volume": volume })))
 }
 
 // Query struct for get_playlist_episodes
@@ -3874,4 +4020,206 @@ pub async fn proxy_search(
         .map_err(|e| AppError::external_error(&format!("Failed to parse search response: {}", e)))?;
 
     Ok(Json(body))
+}
+
+// Derive a sibling search-service endpoint URL from SEARCH_API_URL, which by
+// convention ends in "/api/search" (e.g. https://search.pinepods.online/api/search).
+// Lets discovery calls (trending/categories) reuse the same internal host config.
+pub fn search_service_url(endpoint: &str) -> String {
+    let base = std::env::var("SEARCH_API_URL")
+        .unwrap_or_else(|_| "https://search.pinepods.online/api/search".to_string());
+    base.replace("/api/search", endpoint)
+}
+
+#[derive(Deserialize, Debug, utoipa::IntoParams)]
+pub struct ProxyTrendingParams {
+    #[serde(default)]
+    pub cat: Option<String>,
+    #[serde(default)]
+    pub notcat: Option<String>,
+    #[serde(default)]
+    pub lang: Option<String>,
+    #[serde(default)]
+    pub max: Option<u32>,
+    #[serde(default)]
+    pub since: Option<i64>,
+}
+
+// Proxy PodcastIndex trending through the backend so browsers/mobile never reach
+// SEARCH_API_URL directly. Powers the Discover page's category-filtered trending rows.
+#[utoipa::path(
+    get,
+    path = "/proxy_trending",
+    tag = "podcasts",
+    summary = "Proxy trending podcasts",
+    params(ProxyTrendingParams),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn proxy_trending(
+    Query(params): Query<ProxyTrendingParams>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let url = search_service_url("/api/trending");
+
+    let mut query_params: Vec<(&str, String)> = Vec::new();
+    if let Some(v) = params.cat.filter(|s| !s.is_empty()) {
+        query_params.push(("cat", v));
+    }
+    if let Some(v) = params.notcat.filter(|s| !s.is_empty()) {
+        query_params.push(("notcat", v));
+    }
+    if let Some(v) = params.lang.filter(|s| !s.is_empty()) {
+        query_params.push(("lang", v));
+    }
+    if let Some(v) = params.max {
+        query_params.push(("max", v.to_string()));
+    }
+    if let Some(v) = params.since {
+        query_params.push(("since", v.to_string()));
+    }
+
+    let response = reqwest::Client::new()
+        .get(&url)
+        .query(&query_params)
+        .send()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to call search service: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(AppError::external_error(&format!(
+            "Search service error: {}",
+            response.status()
+        )));
+    }
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to parse trending response: {}", e)))?;
+
+    Ok(Json(body))
+}
+
+// Proxy PodcastIndex /categories/list. Powers the Discover page's "Browse by category" chips.
+#[utoipa::path(
+    get,
+    path = "/proxy_categories",
+    tag = "podcasts",
+    summary = "Proxy podcast categories",
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn proxy_categories(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let url = search_service_url("/api/categories");
+
+    let response = reqwest::Client::new()
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to call search service: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(AppError::external_error(&format!(
+            "Search service error: {}",
+            response.status()
+        )));
+    }
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to parse categories response: {}", e)))?;
+
+    Ok(Json(body))
+}
+
+#[derive(Deserialize, Debug, utoipa::IntoParams)]
+pub struct RecommendationsParams {
+    #[serde(default)]
+    pub refresh: Option<bool>,
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+// Personalized "podcasts you might like" for the Discover page (#103). Builds a taste
+// profile from the user's subscriptions + engagement, generates PodcastIndex trending
+// candidates, and cosine-ranks them (see services::recommendations). Results are cached
+// per user for 24h; pass ?refresh=1 to force a recompute. Falls back to an empty list for
+// users with no subscriptions (the Discover page still shows plain trending in that case).
+#[utoipa::path(
+    get,
+    path = "/recommendations",
+    tag = "podcasts",
+    summary = "Personalized podcast recommendations",
+    params(RecommendationsParams),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = Vec<crate::models::RecommendedPodcast>),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_recommendations(
+    Query(params): Query<RecommendationsParams>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<crate::models::RecommendedPodcast>>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let limit = params.limit.unwrap_or(24).clamp(1, 100);
+    let refresh = params.refresh.unwrap_or(false);
+
+    // Serve a fresh cache (<24h) unless a refresh was explicitly requested.
+    if !refresh {
+        if let Some(json) = state.db_pool.get_recommendation_cache(user_id, 24).await? {
+            if let Ok(cached) =
+                serde_json::from_str::<Vec<crate::models::RecommendedPodcast>>(&json)
+            {
+                return Ok(Json(cached));
+            }
+        }
+    }
+
+    let recs =
+        crate::services::recommendations::generate_recommendations(&state.db_pool, user_id, limit)
+            .await?;
+
+    // Best-effort cache write; a failure here shouldn't fail the request.
+    if let Ok(json) = serde_json::to_string(&recs) {
+        if let Err(e) = state.db_pool.upsert_recommendation_cache(user_id, &json).await {
+            tracing::warn!("Failed to cache recommendations for user {}: {}", user_id, e);
+        }
+    }
+
+    Ok(Json(recs))
 }

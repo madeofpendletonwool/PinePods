@@ -132,9 +132,17 @@ class MobileDownloadService extends DownloadService {
 
           log.fine('Download episode (${episode.title}) $filename to $downloadPath/$filename');
 
-          /// If we get a redirect to an http endpoint the download will fail. Let's fully resolve
-          /// the URL before calling download and ensure it is https.
-          var url = await resolveUrl(episode.contentUrl!, forceHttps: true);
+          String url;
+          if (episode.downloadUrl != null && episode.downloadUrl!.isNotEmpty) {
+            // A server-copy download URL is already fully resolved (no feed
+            // redirects) and may legitimately be http on a LAN server, so use
+            // it as-is rather than resolving/forcing https.
+            url = episode.downloadUrl!;
+          } else {
+            /// If we get a redirect to an http endpoint the download will fail. Let's fully resolve
+            /// the URL before calling download and ensure it is https.
+            url = await resolveUrl(episode.contentUrl!, forceHttps: true);
+          }
 
           final taskId = await downloadManager.enqueueTask(url, downloadPath, filename);
 

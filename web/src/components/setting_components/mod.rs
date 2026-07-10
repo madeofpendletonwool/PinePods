@@ -1,4 +1,5 @@
 pub mod api_keys;
+pub mod auto_delete_settings;
 pub mod custom_theme_creator;
 pub mod backup_server;
 pub mod custom_feed;
@@ -17,6 +18,7 @@ pub mod restore_server;
 pub mod rss_feeds;
 pub mod start_page_options;
 pub mod theme_options;
+pub mod ai_settings;
 pub mod user_self_service;
 pub mod user_self_settings;
 pub mod user_settings;

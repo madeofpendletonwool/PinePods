@@ -16,6 +16,44 @@ pub struct FeedQuery {
     pub podcast_id: Option<i32>,
     #[serde(rename = "type")]
     pub source_type: Option<String>,
+    /// Which collection to build the feed from. Absent = all subscriptions (default).
+    /// One of: saved, queue, playlist, collection, downloads, history.
+    pub source: Option<String>,
+    /// Playlist or collection id (required when `source` is `playlist` or `collection`).
+    pub id: Option<i32>,
+}
+
+/// The set of episodes a feed is built from.
+#[derive(Debug, Clone)]
+pub enum FeedSource {
+    /// All of the user's subscriptions (optionally filtered by podcast_id / type).
+    Subscriptions,
+    Saved,
+    Queue,
+    Playlist(i32),
+    Collection(i32),
+    Downloads,
+    History,
+}
+
+impl FeedSource {
+    /// Parse the `source`/`id` query params into a FeedSource.
+    fn from_query(source: Option<&str>, id: Option<i32>) -> Result<Self, AppError> {
+        match source.map(|s| s.to_ascii_lowercase()).as_deref() {
+            None | Some("") | Some("subscriptions") | Some("all") => Ok(FeedSource::Subscriptions),
+            Some("saved") => Ok(FeedSource::Saved),
+            Some("queue") => Ok(FeedSource::Queue),
+            Some("downloads") => Ok(FeedSource::Downloads),
+            Some("history") => Ok(FeedSource::History),
+            Some("playlist") => id
+                .map(FeedSource::Playlist)
+                .ok_or_else(|| AppError::bad_request("source=playlist requires an id parameter")),
+            Some("collection") => id
+                .map(FeedSource::Collection)
+                .ok_or_else(|| AppError::bad_request("source=collection requires an id parameter")),
+            Some(other) => Err(AppError::bad_request(format!("Unknown feed source: {}", other))),
+        }
+    }
 }
 
 // Get RSS feed for user - matches Python get_user_feed function exactly
@@ -39,7 +77,10 @@ pub async fn get_user_feed(
     let limit = query.limit.unwrap_or(1000);
     let podcast_id = query.podcast_id;
     let source_type = query.source_type.as_deref();
-    
+
+    // Determine which collection the feed is built from.
+    let feed_source = FeedSource::from_query(query.source.as_deref(), query.id)?;
+
     // Get domain from request
     let domain = extract_domain_from_request(&request);
 
@@ -52,7 +93,7 @@ pub async fn get_user_feed(
 
     // Get RSS key validation
     let rss_key = state.db_pool.get_rss_key_if_valid(api_key, podcast_id_list.as_ref()).await?;
-    
+
     let rss_key = if let Some(key) = rss_key {
         key
     } else {
@@ -60,7 +101,7 @@ pub async fn get_user_feed(
         if key_id == 0 {
             return Err(AppError::forbidden("Invalid API key"));
         }
-        
+
         // Create a backwards compatibility RSS key structure
         RssKeyInfo {
             podcast_ids: vec![-1],
@@ -69,14 +110,26 @@ pub async fn get_user_feed(
         }
     };
 
-    let feed_content = state.db_pool.generate_podcast_rss(
-        rss_key,
-        limit,
-        source_type,
-        &domain,
-        podcast_id_list.as_ref(),
-    ).await?;
-    
+    let feed_content = match feed_source {
+        FeedSource::Subscriptions => {
+            state.db_pool.generate_podcast_rss(
+                rss_key,
+                limit,
+                source_type,
+                &domain,
+                podcast_id_list.as_ref(),
+            ).await?
+        }
+        other => {
+            state.db_pool.generate_collection_rss(
+                rss_key.user_id,
+                other,
+                limit,
+                &domain,
+            ).await?
+        }
+    };
+
     Ok(Response::builder()
         .header("content-type", "application/rss+xml")
         .body(feed_content)

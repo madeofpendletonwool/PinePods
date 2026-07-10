@@ -44,6 +44,12 @@ class AppSettings {
   /// If true, volume is boosted. Currently Android only.
   final bool volumeBoost;
 
+  /// Number of seconds the fast-forward control skips ahead.
+  final int fastForwardInterval;
+
+  /// Number of seconds the rewind control skips back.
+  final int rewindInterval;
+
   /// If 0, list view; else grid view
   final int layout;
 
@@ -60,6 +66,19 @@ class AppSettings {
   /// Custom order for bottom navigation bar items
   final List<String> bottomBarOrder;
 
+  /// Only run automatic downloads while connected to WiFi/ethernet.
+  final bool autoDownloadWifiOnly;
+
+  /// Prefer pulling episode bytes from the server's downloaded copy when one
+  /// exists, falling back to the original feed URL otherwise.
+  final bool preferServerDownloadSource;
+
+  /// Number of leading queue episodes to keep downloaded locally (0 = disabled).
+  final int autoDownloadQueueCount;
+
+  /// Keep local downloads mirrored to the server's downloaded episodes.
+  final bool mirrorServerDownloads;
+
   AppSettings({
     required this.theme,
     required this.markDeletedEpisodesAsPlayed,
@@ -74,6 +93,8 @@ class AppSettings {
     required this.autoUpdateEpisodePeriod,
     required this.trimSilence,
     required this.volumeBoost,
+    required this.fastForwardInterval,
+    required this.rewindInterval,
     required this.layout,
     this.pinepodsServer,
     this.pinepodsApiKey,
@@ -81,6 +102,10 @@ class AppSettings {
     this.pinepodsUsername,
     this.pinepodsEmail,
     required this.bottomBarOrder,
+    this.autoDownloadWifiOnly = true,
+    this.preferServerDownloadSource = true,
+    this.autoDownloadQueueCount = 0,
+    this.mirrorServerDownloads = false,
   });
 
   AppSettings.sensibleDefaults()
@@ -97,13 +122,19 @@ class AppSettings {
         autoUpdateEpisodePeriod = -1,
         trimSilence = false,
         volumeBoost = false,
+        fastForwardInterval = 30,
+        rewindInterval = 10,
         layout = 0,
         pinepodsServer = null,
         pinepodsApiKey = null,
         pinepodsUserId = null,
         pinepodsUsername = null,
         pinepodsEmail = null,
-        bottomBarOrder = const ['Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists', 'Search'];
+        bottomBarOrder = const ['Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists', 'Search'],
+        autoDownloadWifiOnly = true,
+        preferServerDownloadSource = true,
+        autoDownloadQueueCount = 0,
+        mirrorServerDownloads = false;
 
   AppSettings copyWith({
     String? theme,
@@ -119,6 +150,8 @@ class AppSettings {
     int? autoUpdateEpisodePeriod,
     bool? trimSilence,
     bool? volumeBoost,
+    int? fastForwardInterval,
+    int? rewindInterval,
     int? layout,
     String? pinepodsServer,
     String? pinepodsApiKey,
@@ -126,6 +159,10 @@ class AppSettings {
     String? pinepodsUsername,
     String? pinepodsEmail,
     List<String>? bottomBarOrder,
+    bool? autoDownloadWifiOnly,
+    bool? preferServerDownloadSource,
+    int? autoDownloadQueueCount,
+    bool? mirrorServerDownloads,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -141,6 +178,8 @@ class AppSettings {
         autoUpdateEpisodePeriod: autoUpdateEpisodePeriod ?? this.autoUpdateEpisodePeriod,
         trimSilence: trimSilence ?? this.trimSilence,
         volumeBoost: volumeBoost ?? this.volumeBoost,
+        fastForwardInterval: fastForwardInterval ?? this.fastForwardInterval,
+        rewindInterval: rewindInterval ?? this.rewindInterval,
         layout: layout ?? this.layout,
         pinepodsServer: pinepodsServer ?? this.pinepodsServer,
         pinepodsApiKey: pinepodsApiKey ?? this.pinepodsApiKey,
@@ -148,5 +187,9 @@ class AppSettings {
         pinepodsUsername: pinepodsUsername ?? this.pinepodsUsername,
         pinepodsEmail: pinepodsEmail ?? this.pinepodsEmail,
         bottomBarOrder: bottomBarOrder ?? this.bottomBarOrder,
+        autoDownloadWifiOnly: autoDownloadWifiOnly ?? this.autoDownloadWifiOnly,
+        preferServerDownloadSource: preferServerDownloadSource ?? this.preferServerDownloadSource,
+        autoDownloadQueueCount: autoDownloadQueueCount ?? this.autoDownloadQueueCount,
+        mirrorServerDownloads: mirrorServerDownloads ?? this.mirrorServerDownloads,
       );
 }

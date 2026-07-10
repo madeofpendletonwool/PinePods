@@ -118,6 +118,11 @@ impl BackgroundScheduler {
                     warn!("⚠️ Playlist episode count update failed during scheduled refresh: {}", e);
                 }
 
+                // Auto-add freshly-ingested episodes into collections with a category rule
+                if let Err(e) = state.db_pool.refresh_category_collections().await {
+                    warn!("⚠️ Category collection auto-add failed during scheduled refresh: {}", e);
+                }
+
                 // Propagate new podcast episodes into PeopleEpisodes for subscribed people
                 if let Err(e) = state.db_pool.refresh_people_episodes_from_podcasts().await {
                     warn!("⚠️ People episodes sync failed during scheduled refresh: {}", e);
@@ -141,7 +146,31 @@ impl BackgroundScheduler {
             warn!("⚠️ Auto complete episodes failed during nightly tasks: {}", e);
         }
 
+        // Refresh Discover-page recommendations for users who already have a cached set,
+        // so their next visit is instant. New users are generated on demand by the endpoint.
+        if let Err(e) = Self::refresh_recommendations_internal(&state).await {
+            warn!("⚠️ Recommendation refresh failed during nightly tasks: {}", e);
+        }
+
         info!("✅ Nightly tasks completed");
+        Ok(())
+    }
+
+    // Regenerate and re-cache recommendations for every user with an existing cache entry.
+    async fn refresh_recommendations_internal(state: &Arc<AppState>) -> AppResult<()> {
+        let user_ids = state.db_pool.get_recommendation_cache_user_ids().await?;
+        for uid in user_ids {
+            match crate::services::recommendations::generate_recommendations(&state.db_pool, uid, 24).await {
+                Ok(recs) => {
+                    if let Ok(json) = serde_json::to_string(&recs) {
+                        if let Err(e) = state.db_pool.upsert_recommendation_cache(uid, &json).await {
+                            warn!("⚠️ Failed to cache recommendations for user {}: {}", uid, e);
+                        }
+                    }
+                }
+                Err(e) => warn!("⚠️ Recommendation refresh failed for user {}: {}", uid, e),
+            }
+        }
         Ok(())
     }
 

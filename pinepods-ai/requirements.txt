@@ -1,0 +1,10 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+faster-whisper==1.1.0
+# faster-whisper imports `requests` (in utils.py) but doesn't always declare it — pin it explicitly.
+requests==2.32.3
+# Local LLM (GGUF) backend for ad detection (#790). Built from source at image time.
+llama-cpp-python==0.3.2
+# Pull GGUF weights from Hugging Face for local ad-detection models.
+huggingface_hub==0.27.0

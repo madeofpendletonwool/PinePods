@@ -566,6 +566,14 @@ class PinepodsAudioPlayer: NSObject {
         updateNowPlayingPlaybackInfo()
     }
 
+    /// Push the user-configured skip intervals to the remote command center so
+    /// lock-screen / CarPlay / head-unit controls skip by the same amount as the
+    /// in-app buttons.
+    func setSkipIntervals(forwardMs: Int, backwardMs: Int) {
+        NSLog("[PinepodsAudioPlayer] setSkipIntervals: forward=\(forwardMs)ms back=\(backwardMs)ms")
+        remoteCommandManager?.updateSkipIntervals(forwardMs: forwardMs, backwardMs: backwardMs)
+    }
+
     /// Configure server-detected silence ranges for the current episode (#727).
     /// Passing enabled=false or an empty list disables skipping.
     func setSkipSegments(enabled: Bool, segments: [(start: Double, end: Double)]) {

@@ -42,6 +42,9 @@ services:
       TZ: "America/New_York"
       # Language Configuration
       DEFAULT_LANGUAGE: "en"
+      # Optional AI features (#726 transcripts, #790 ad detection). Uncomment + run the
+      # pinepods-ai service below to enable; leave unset to keep AI features disabled.
+      # PINEPODS_AI_URL: "http://pinepods-ai:8100"
     volumes:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
@@ -55,3 +58,27 @@ services:
     depends_on:
       - db
       - valkey
+
+  # Optional AI sidecar for transcription (#726) + ad detection (#790). Disabled by
+  # default — uncomment this whole service AND the PINEPODS_AI_URL var above to enable.
+  # Model choices are managed at runtime from Settings → AI in the web UI; the env vars
+  # below are only initial defaults. It only needs read-only access to the downloads dir.
+  # pinepods-ai:
+  #   image: madeofpendletonwool/pinepods-ai:latest
+  #   environment:
+  #     WHISPER_MODEL: "base"        # tiny|base|small|medium|large-v3
+  #     WHISPER_DEVICE: "cpu"        # cuda if using a GPU image
+  #     WHISPER_COMPUTE_TYPE: "int8"
+  #     # Ad detection (#790): use a bundled local GGUF, or point AI_LLM_URL at an
+  #     # OpenAI-compatible endpoint (Ollama/LM Studio/cloud). Best set from the UI.
+  #     AI_LLM_MODEL: ""             # local GGUF filename under /models (optional default)
+  #     # AI_LLM_URL: "http://ollama:11434/v1"
+  #     # AI_LLM_API_KEY: ""
+  #     # AI_LLM_MODEL_NAME: "qwen2.5:3b"
+  #   volumes:
+  #     - /home/user/pinepods/downloads:/opt/pinepods/downloads:ro
+  #     - pinepods-ai-models:/models
+  #   restart: always
+
+# volumes:
+#   pinepods-ai-models:

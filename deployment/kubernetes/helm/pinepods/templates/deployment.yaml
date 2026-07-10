@@ -36,6 +36,11 @@ spec:
                   name: {{ .Values.externalDatabase.existingSecret.name }}
                   key: {{ .Values.externalDatabase.existingSecret.key }}
             {{- end }}
+            {{- if .Values.ai.enabled }}
+            # Optional AI sidecar (#726). Present only when ai.enabled=true.
+            - name: PINEPODS_AI_URL
+              value: "http://{{ include "pinepods.fullname" . }}-ai:{{ .Values.ai.service.port }}"
+            {{- end }}
             {{- with .Values.extraEnv}}
               {{- toYaml . | nindent 12 }}
             {{- end }}

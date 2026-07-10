@@ -12,6 +12,7 @@ import 'package:pinepods_mobile/ui/settings/search_provider.dart';
 import 'package:pinepods_mobile/ui/settings/settings_section_label.dart';
 import 'package:pinepods_mobile/ui/settings/bottom_bar_order.dart';
 import 'package:pinepods_mobile/ui/widgets/action_text.dart';
+import 'package:pinepods_mobile/ui/widgets/certificate_import_section.dart';
 import 'package:pinepods_mobile/ui/settings/pinepods_login.dart';
 import 'package:pinepods_mobile/ui/debug/debug_logs_page.dart';
 import 'package:pinepods_mobile/ui/themes.dart';
@@ -175,7 +176,82 @@ class _SettingsState extends State<Settings> {
                   ),
                 ),
               ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(Icons.fast_forward),
+                  title: const Text('Fast-forward interval'),
+                  trailing: _buildIntervalDropdown(
+                    context: context,
+                    value: snapshot.data!.fastForwardInterval,
+                    options: const [10, 15, 30, 45, 60],
+                    onChanged: (value) => settingsBloc.setFastForwardInterval(value),
+                  ),
+                ),
+              ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(Icons.fast_rewind),
+                  title: const Text('Rewind interval'),
+                  trailing: _buildIntervalDropdown(
+                    context: context,
+                    value: snapshot.data!.rewindInterval,
+                    options: const [5, 10, 15, 30, 45],
+                    onChanged: (value) => settingsBloc.setRewindInterval(value),
+                  ),
+                ),
+              ),
               const SearchProviderWidget(),
+              SettingsDividerLabel(label: 'Download Management'),
+              const Divider(),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(Icons.wifi),
+                  title: const Text('Auto-download on WiFi only'),
+                  subtitle: const Text(
+                      'Only run automatic downloads (auto-download, queue and mirror) while on WiFi'),
+                  trailing: Switch.adaptive(
+                    value: snapshot.data!.autoDownloadWifiOnly,
+                    onChanged: (value) => setState(() => settingsBloc.setAutoDownloadWifiOnly(value)),
+                  ),
+                ),
+              ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(Icons.cloud_download),
+                  title: const Text('Prefer server download source'),
+                  subtitle: const Text(
+                      'Download from the server\'s copy when available, else the original feed'),
+                  trailing: Switch.adaptive(
+                    value: snapshot.data!.preferServerDownloadSource,
+                    onChanged: (value) => setState(() => settingsBloc.setPreferServerDownloadSource(value)),
+                  ),
+                ),
+              ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(Icons.playlist_add_check),
+                  title: const Text('Auto-download queued episodes'),
+                  subtitle: const Text('Keep the next N queued episodes downloaded'),
+                  trailing: _buildCountDropdown(
+                    context: context,
+                    value: snapshot.data!.autoDownloadQueueCount,
+                    options: const [0, 1, 2, 3, 5, 10],
+                    onChanged: (value) => settingsBloc.setAutoDownloadQueueCount(value),
+                  ),
+                ),
+              ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(Icons.sync),
+                  title: const Text('Mirror server downloads'),
+                  subtitle: const Text(
+                      'Keep this device in sync with the episodes downloaded on the server'),
+                  trailing: Switch.adaptive(
+                    value: snapshot.data!.mirrorServerDownloads,
+                    onChanged: (value) => setState(() => settingsBloc.setMirrorServerDownloads(value)),
+                  ),
+                ),
+              ),
               SettingsDividerLabel(label: 'Debug'),
               const Divider(),
               ListTile(
@@ -191,11 +267,70 @@ class _SettingsState extends State<Settings> {
                   );
                 },
               ),
+              SettingsDividerLabel(label: 'Certificates'),
+              const Divider(),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                child: CertificateImportSection(),
+              ),
               const PinepodsLoginWidget(),
               const _WebAppInfoWidget(),
             ],
           );
         });
+  }
+
+  /// Dropdown for selecting a skip interval (in seconds). Ensures the
+  /// currently-stored value is always selectable even if it isn't one of the
+  /// preset options.
+  Widget _buildIntervalDropdown({
+    required BuildContext context,
+    required int value,
+    required List<int> options,
+    required ValueChanged<int> onChanged,
+  }) {
+    final items = <int>{...options, value}.toList()..sort();
+    return DropdownButton<int>(
+      value: value,
+      underline: Container(),
+      items: items
+          .map((seconds) => DropdownMenuItem<int>(
+                value: seconds,
+                child: Text('${seconds}s'),
+              ))
+          .toList(),
+      onChanged: (newValue) {
+        if (newValue != null) {
+          setState(() => onChanged(newValue));
+        }
+      },
+    );
+  }
+
+  /// Dropdown for selecting a small count (0 shown as "Off"). Ensures the stored
+  /// value is always selectable even if not one of the preset options.
+  Widget _buildCountDropdown({
+    required BuildContext context,
+    required int value,
+    required List<int> options,
+    required ValueChanged<int> onChanged,
+  }) {
+    final items = <int>{...options, value}.toList()..sort();
+    return DropdownButton<int>(
+      value: value,
+      underline: Container(),
+      items: items
+          .map((count) => DropdownMenuItem<int>(
+                value: count,
+                child: Text(count == 0 ? 'Off' : '$count'),
+              ))
+          .toList(),
+      onChanged: (newValue) {
+        if (newValue != null) {
+          setState(() => onChanged(newValue));
+        }
+      },
+    );
   }
 
   Widget _buildAndroid(BuildContext context) {

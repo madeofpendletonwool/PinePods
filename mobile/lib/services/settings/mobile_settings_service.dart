@@ -244,6 +244,28 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  set fastForwardInterval(int seconds) {
+    _sharedPreferences.setInt('fastForwardInterval', seconds);
+    settingsNotifier.sink.add('fastForwardInterval');
+  }
+
+  @override
+  int get fastForwardInterval {
+    return _sharedPreferences.getInt('fastForwardInterval') ?? 30;
+  }
+
+  @override
+  set rewindInterval(int seconds) {
+    _sharedPreferences.setInt('rewindInterval', seconds);
+    settingsNotifier.sink.add('rewindInterval');
+  }
+
+  @override
+  int get rewindInterval {
+    return _sharedPreferences.getInt('rewindInterval') ?? 10;
+  }
+
+  @override
   set layoutMode(int mode) {
     _sharedPreferences.setInt('layout', mode);
     settingsNotifier.sink.add('layout');
@@ -267,6 +289,42 @@ class MobileSettingsService extends SettingsService {
   set bottomBarOrder(List<String> value) {
     _sharedPreferences.setString('bottom_bar_order', value.join(','));
     settingsNotifier.sink.add('bottom_bar_order');
+  }
+
+  @override
+  bool get autoDownloadWifiOnly => _sharedPreferences.getBool('autoDownloadWifiOnly') ?? true;
+
+  @override
+  set autoDownloadWifiOnly(bool value) {
+    _sharedPreferences.setBool('autoDownloadWifiOnly', value);
+    settingsNotifier.sink.add('autoDownloadWifiOnly');
+  }
+
+  @override
+  bool get preferServerDownloadSource => _sharedPreferences.getBool('preferServerDownloadSource') ?? true;
+
+  @override
+  set preferServerDownloadSource(bool value) {
+    _sharedPreferences.setBool('preferServerDownloadSource', value);
+    settingsNotifier.sink.add('preferServerDownloadSource');
+  }
+
+  @override
+  int get autoDownloadQueueCount => _sharedPreferences.getInt('autoDownloadQueueCount') ?? 0;
+
+  @override
+  set autoDownloadQueueCount(int value) {
+    _sharedPreferences.setInt('autoDownloadQueueCount', value);
+    settingsNotifier.sink.add('autoDownloadQueueCount');
+  }
+
+  @override
+  bool get mirrorServerDownloads => _sharedPreferences.getBool('mirrorServerDownloads') ?? false;
+
+  @override
+  set mirrorServerDownloads(bool value) {
+    _sharedPreferences.setBool('mirrorServerDownloads', value);
+    settingsNotifier.sink.add('mirrorServerDownloads');
   }
 
   @override

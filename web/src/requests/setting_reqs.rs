@@ -585,6 +585,71 @@ pub async fn call_download_status(server_name: String, api_key: String) -> Resul
     }
 }
 
+// Admin download-metadata settings (#451/#533/#658). Used for both GET and POST.
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct DownloadMetadataSettings {
+    pub folder_cover: bool,
+    pub episode_cover: bool,
+    pub metadata_sidecar: bool,
+    pub metadata_format: String,
+    pub metadata_subfolder: bool,
+}
+
+pub async fn call_get_download_metadata_settings(
+    server_name: String,
+    api_key: String,
+) -> Result<DownloadMetadataSettings, Error> {
+    let url = format!("{}/api/data/download_metadata_settings", server_name);
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response
+            .json::<DownloadMetadataSettings>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!(
+            "Error fetching download metadata settings: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_set_download_metadata_settings(
+    server_name: String,
+    api_key: String,
+    settings: &DownloadMetadataSettings,
+) -> Result<SuccessResponse, Error> {
+    let url = format!("{}/api/data/download_metadata_settings", server_name);
+    let body = serde_json::to_string(settings)
+        .map_err(|e| Error::msg(format!("Error serializing settings: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(body)
+        .map_err(|e| Error::msg(format!("Error building request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response
+            .json::<SuccessResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!(
+            "Error saving download metadata settings: {}",
+            response.status_text()
+        )))
+    }
+}
+
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct SelfServiceStatusResponse {
     status: bool,
@@ -2554,6 +2619,22 @@ pub struct AutoCompleteSecondsResponse {
     pub auto_complete_seconds: i32,
 }
 
+#[derive(Serialize, Debug)]
+pub struct GetDefaultVolumeRequest {
+    pub user_id: i32,
+}
+
+#[derive(Serialize, Debug)]
+pub struct SetDefaultVolumeRequest {
+    pub user_id: i32,
+    pub volume: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct DefaultVolumeResponse {
+    pub default_volume: i32,
+}
+
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
 pub struct UpdateSettingResponse {
@@ -2706,6 +2787,64 @@ pub async fn call_update_auto_complete_seconds(
     } else {
         Err(Error::msg(format!(
             "Error updating auto complete seconds: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_get_default_volume(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<i32, Error> {
+    let url = format!("{}/api/data/get_default_volume", server_name);
+
+    let request_body = GetDefaultVolumeRequest { user_id };
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: DefaultVolumeResponse = response.json().await?;
+        Ok(response_data.default_volume)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting default volume: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_update_default_volume(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    volume: i32,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/user/set_default_volume", server_name);
+
+    let request_body = SetDefaultVolumeRequest { user_id, volume };
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        Ok(true)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating default volume: {}",
             response.status_text()
         )))
     }

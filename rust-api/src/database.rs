@@ -33,31 +33,58 @@ pub struct ScheduledBackupRow {
 
 impl DatabasePool {
     pub async fn new(config: &Config) -> AppResult<Self> {
-        let database_url = config.database_url();
-        
-        match config.database.db_type.as_str() {
+        let db = &config.database;
+        // A DB_HOST beginning with '/' is treated as a Unix domain socket
+        // directory rather than a TCP hostname (e.g. /var/run/postgresql).
+        let host_is_socket = db.host.starts_with('/');
+
+        match db.db_type.as_str() {
             "postgresql" => {
+                let mut options = sqlx::postgres::PgConnectOptions::new()
+                    .username(&db.username)
+                    .password(&db.password)
+                    .database(&db.name)
+                    // Port is still relevant for sockets: PG names the socket
+                    // file `.s.PGSQL.<port>`.
+                    .port(db.port);
+                options = if host_is_socket {
+                    options.socket(&db.host)
+                } else {
+                    options.host(&db.host)
+                };
+
                 let pool = sqlx::postgres::PgPoolOptions::new()
-                    .max_connections(config.database.max_connections)
-                    .min_connections(config.database.min_connections)
+                    .max_connections(db.max_connections)
+                    .min_connections(db.min_connections)
                     .acquire_timeout(Duration::from_secs(30))
-                    .connect(&database_url)
+                    .connect_with(options)
                     .await?;
 
                 // Skip migrations for now - database already exists
-                
+
                 Ok(DatabasePool::Postgres(pool))
             }
             _ => {
+                let mut options = sqlx::mysql::MySqlConnectOptions::new()
+                    .username(&db.username)
+                    .password(&db.password)
+                    .database(&db.name)
+                    .port(db.port);
+                options = if host_is_socket {
+                    options.socket(&db.host)
+                } else {
+                    options.host(&db.host)
+                };
+
                 let pool = sqlx::mysql::MySqlPoolOptions::new()
-                    .max_connections(config.database.max_connections)
-                    .min_connections(config.database.min_connections)
+                    .max_connections(db.max_connections)
+                    .min_connections(db.min_connections)
                     .acquire_timeout(Duration::from_secs(30))
-                    .connect(&database_url)
+                    .connect_with(options)
                     .await?;
 
                 // Skip migrations for now - database already exists
-                
+
                 Ok(DatabasePool::MySQL(pool))
             }
         }
@@ -1378,6 +1405,7 @@ impl DatabasePool {
                         artworkurl as artwork_url,
                         isyoutubechannel as is_youtube,
                         autodownload as auto_download,
+                        autoqueue as auto_queue,
                         username as username,
                         password as password,
                         feedcutoffdays as feed_cutoff_days,
@@ -1398,6 +1426,7 @@ impl DatabasePool {
                         artwork_url: row.try_get("artwork_url").unwrap_or_default(),
                         is_youtube: row.try_get("is_youtube")?,
                         auto_download: row.try_get("auto_download")?,
+                        auto_queue: row.try_get("auto_queue").unwrap_or(false),
                         username: row.try_get("username").ok(),
                         password: row.try_get("password").ok(),
                         feed_cutoff_days: row.try_get("feed_cutoff_days").ok(),
@@ -1415,6 +1444,7 @@ impl DatabasePool {
                         ArtworkURL as artwork_url,
                         IsYouTubeChannel as is_youtube,
                         AutoDownload as auto_download,
+                        AutoQueue as auto_queue,
                         Username as username,
                         Password as password,
                         FeedCutoffDays as feed_cutoff_days,
@@ -1435,6 +1465,7 @@ impl DatabasePool {
                         artwork_url: row.try_get("artwork_url").unwrap_or_default(),
                         is_youtube: row.try_get("is_youtube")?,
                         auto_download: row.try_get("auto_download")?,
+                        auto_queue: row.try_get("auto_queue").unwrap_or(false),
                         username: row.try_get("username").ok(),
                         password: row.try_get("password").ok(),
                         feed_cutoff_days: row.try_get("feed_cutoff_days").ok(),
@@ -2221,9 +2252,10 @@ impl DatabasePool {
                         SELECT
                             "Episodes".episodetitle as episodetitle,
                             "Podcasts".podcastname as podcastname,
+                            "Episodes".podcastid as podcastid,
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "Episodes".episodeartwork
@@ -2260,6 +2292,7 @@ impl DatabasePool {
                         SELECT
                             "YouTubeVideos".videotitle as episodetitle,
                             "Podcasts".podcastname as podcastname,
+                            "YouTubeVideos".podcastid as podcastid,
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
                             CASE 
@@ -2303,6 +2336,7 @@ impl DatabasePool {
                     episodes.push(crate::models::QueuedEpisode {
                         episodetitle: row.try_get("episodetitle")?,
                         podcastname: row.try_get("podcastname")?,
+                        podcastid: row.try_get("podcastid")?,
                         episodepubdate: {
                             let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
                             naive.format("%Y-%m-%dT%H:%M:%S").to_string()
@@ -2334,6 +2368,7 @@ impl DatabasePool {
                         SELECT
                             Episodes.EpisodeTitle as episodetitle,
                             Podcasts.PodcastName as podcastname,
+                            Episodes.PodcastID as podcastid,
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
                             CASE
@@ -2373,6 +2408,7 @@ impl DatabasePool {
                         SELECT
                             YouTubeVideos.VideoTitle as episodetitle,
                             Podcasts.PodcastName as podcastname,
+                            YouTubeVideos.PodcastID as podcastid,
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
                             CASE 
@@ -2416,6 +2452,7 @@ impl DatabasePool {
                     episodes.push(crate::models::QueuedEpisode {
                         episodetitle: row.try_get("episodetitle")?,
                         podcastname: row.try_get("podcastname")?,
+                        podcastid: row.try_get("podcastid")?,
                         episodepubdate: {
                             let dt = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("episodepubdate")?;
                             dt.format("%Y-%m-%dT%H:%M:%S").to_string()
@@ -5126,6 +5163,7 @@ impl DatabasePool {
         req: &crate::models::CreateCollectionRequest,
     ) -> AppResult<i32> {
         let icon = req.icon.clone().unwrap_or_else(|| "ph-bookmark-simple".to_string());
+        let categories = serialize_auto_add_categories(req.auto_add_categories.as_deref());
         match self {
             DatabasePool::Postgres(pool) => {
                 // Surface a clean conflict instead of a 500 on duplicate name
@@ -5141,13 +5179,14 @@ impl DatabasePool {
                 }
 
                 let row = sqlx::query(
-                    r#"INSERT INTO "Collections" (userid, name, description, icon, isdefault)
-                       VALUES ($1, $2, $3, $4, FALSE) RETURNING collectionid"#,
+                    r#"INSERT INTO "Collections" (userid, name, description, icon, isdefault, autoaddcategories)
+                       VALUES ($1, $2, $3, $4, FALSE, $5) RETURNING collectionid"#,
                 )
                 .bind(req.user_id)
                 .bind(&req.name)
                 .bind(&req.description)
                 .bind(&icon)
+                .bind(&categories)
                 .fetch_one(pool)
                 .await?;
                 Ok(row.try_get("collectionid")?)
@@ -5163,12 +5202,13 @@ impl DatabasePool {
                 }
 
                 let result = sqlx::query(
-                    "INSERT INTO Collections (UserID, Name, Description, Icon, IsDefault) VALUES (?, ?, ?, ?, FALSE)",
+                    "INSERT INTO Collections (UserID, Name, Description, Icon, IsDefault, AutoAddCategories) VALUES (?, ?, ?, ?, FALSE, ?)",
                 )
                 .bind(req.user_id)
                 .bind(&req.name)
                 .bind(&req.description)
                 .bind(&icon)
+                .bind(&categories)
                 .execute(pool)
                 .await?;
                 Ok(result.last_insert_id() as i32)
@@ -5221,6 +5261,7 @@ impl DatabasePool {
                         c.description,
                         c.isdefault,
                         c.icon,
+                        c.autoaddcategories,
                         c.createdat,
                         c.lastupdated,
                         CASE
@@ -5256,6 +5297,7 @@ impl DatabasePool {
                             .format("%Y-%m-%dT%H:%M:%S")
                             .to_string(),
                         episode_count: row.try_get("episode_count")?,
+                        auto_add_categories: parse_auto_add_categories(row.try_get("autoaddcategories").ok()),
                     });
                 }
                 Ok(collections)
@@ -5269,6 +5311,7 @@ impl DatabasePool {
                         c.Description as description,
                         c.IsDefault as isdefault,
                         c.Icon as icon,
+                        c.AutoAddCategories as autoaddcategories,
                         c.CreatedAt as createdat,
                         c.LastUpdated as lastupdated,
                         CASE
@@ -5305,6 +5348,7 @@ impl DatabasePool {
                             .format("%Y-%m-%dT%H:%M:%S")
                             .to_string(),
                         episode_count: row.try_get("episode_count")?,
+                        auto_add_categories: parse_auto_add_categories(row.try_get("autoaddcategories").ok()),
                     });
                 }
                 Ok(collections)
@@ -5392,6 +5436,211 @@ impl DatabasePool {
                 .bind(user_id)
                 .execute(pool)
                 .await?;
+            }
+        }
+
+        // Auto-add categories are set explicitly (an empty list clears the rule), so they can't
+        // use the COALESCE-ignore-NULL pattern above — only touch the column when provided.
+        if req.auto_add_categories.is_some() {
+            let categories = serialize_auto_add_categories(req.auto_add_categories.as_deref());
+            match self {
+                DatabasePool::Postgres(pool) => {
+                    sqlx::query(
+                        r#"UPDATE "Collections" SET autoaddcategories = $1, lastupdated = CURRENT_TIMESTAMP
+                           WHERE collectionid = $2 AND userid = $3 AND isdefault = FALSE"#,
+                    )
+                    .bind(&categories)
+                    .bind(collection_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                }
+                DatabasePool::MySQL(pool) => {
+                    sqlx::query(
+                        "UPDATE Collections SET AutoAddCategories = ?, LastUpdated = CURRENT_TIMESTAMP
+                         WHERE CollectionID = ? AND UserID = ? AND IsDefault = FALSE",
+                    )
+                    .bind(&categories)
+                    .bind(collection_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Distinct podcast category names across the user's subscriptions, sorted alphabetically.
+    /// Feeds the auto-add category picker in the collection edit modal.
+    pub async fn get_user_categories(&self, user_id: i32) -> AppResult<Vec<String>> {
+        let raw_rows: Vec<String> = match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_scalar(
+                    r#"SELECT categories FROM "Podcasts"
+                       WHERE userid = $1 AND categories IS NOT NULL AND categories <> ''"#,
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query_scalar(
+                    "SELECT Categories FROM Podcasts
+                     WHERE UserID = ? AND Categories IS NOT NULL AND Categories <> ''",
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?
+            }
+        };
+
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for raw in &raw_rows {
+            if let Some(map) = self.parse_categories_json(raw) {
+                for name in map.values() {
+                    let trimmed = name.trim();
+                    if !trimmed.is_empty() {
+                        seen.insert(trimmed.to_string());
+                    }
+                }
+            }
+        }
+        Ok(seen.into_iter().collect())
+    }
+
+    /// Auto-add every episode from podcasts in the collection's category rule that isn't already
+    /// a member. Idempotent (skips existing rows); no-op for the default collection or when the
+    /// collection has no category rule. Categories are OR-matched as case-insensitive substrings.
+    pub async fn auto_add_category_episodes(&self, collection_id: i32) -> AppResult<()> {
+        // Load the collection's owner, default flag, and category rule in one shot.
+        let (is_default, categories) = match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(
+                    r#"SELECT isdefault, autoaddcategories FROM "Collections" WHERE collectionid = $1"#,
+                )
+                .bind(collection_id)
+                .fetch_optional(pool)
+                .await?;
+                match row {
+                    Some(r) => (
+                        r.try_get::<bool, _>("isdefault")?,
+                        parse_auto_add_categories(r.try_get("autoaddcategories").ok()),
+                    ),
+                    None => return Ok(()),
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(
+                    "SELECT IsDefault, AutoAddCategories as autoaddcategories FROM Collections WHERE CollectionID = ?",
+                )
+                .bind(collection_id)
+                .fetch_optional(pool)
+                .await?;
+                match row {
+                    Some(r) => (
+                        r.try_get::<i8, _>("IsDefault")? != 0,
+                        parse_auto_add_categories(r.try_get("autoaddcategories").ok()),
+                    ),
+                    None => return Ok(()),
+                }
+            }
+        };
+
+        if is_default {
+            return Ok(());
+        }
+        let categories = match categories {
+            Some(c) if !c.is_empty() => c,
+            _ => return Ok(()),
+        };
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Category placeholders start at $2 ($1 is collection_id).
+                let cat_clause: String = (0..categories.len())
+                    .map(|i| format!("LOWER(p.categories) LIKE LOWER(${})", i + 2))
+                    .collect::<Vec<_>>()
+                    .join(" OR ");
+                let sql = format!(
+                    r#"INSERT INTO "CollectionEpisodes" (collectionid, episodeid)
+                       SELECT $1, e.episodeid
+                       FROM "Episodes" e
+                       JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                       WHERE ({cat_clause})
+                         AND NOT EXISTS (
+                             SELECT 1 FROM "CollectionEpisodes" ce
+                             WHERE ce.collectionid = $1 AND ce.episodeid = e.episodeid
+                         )"#,
+                );
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(collection_id);
+                for cat in &categories {
+                    q = q.bind(format!("%{}%", cat));
+                }
+                q.execute(pool).await?;
+
+                sqlx::query(r#"UPDATE "Collections" SET lastupdated = CURRENT_TIMESTAMP WHERE collectionid = $1"#)
+                    .bind(collection_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let cat_clause: String = std::iter::repeat("LOWER(p.Categories) LIKE LOWER(?)")
+                    .take(categories.len())
+                    .collect::<Vec<_>>()
+                    .join(" OR ");
+                let sql = format!(
+                    "INSERT INTO CollectionEpisodes (CollectionID, EpisodeID)
+                     SELECT ?, e.EpisodeID
+                     FROM Episodes e
+                     JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                     WHERE ({cat_clause})
+                       AND NOT EXISTS (
+                           SELECT 1 FROM CollectionEpisodes ce
+                           WHERE ce.CollectionID = ? AND ce.EpisodeID = e.EpisodeID
+                       )",
+                );
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(collection_id);
+                for cat in &categories {
+                    q = q.bind(format!("%{}%", cat));
+                }
+                q = q.bind(collection_id);
+                q.execute(pool).await?;
+
+                sqlx::query("UPDATE Collections SET LastUpdated = CURRENT_TIMESTAMP WHERE CollectionID = ?")
+                    .bind(collection_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Run auto-add for every collection that has a category rule. Called after the scheduled
+    /// podcast refresh so freshly-ingested episodes flow into their matching collections.
+    pub async fn refresh_category_collections(&self) -> AppResult<()> {
+        let ids: Vec<i32> = match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_scalar(
+                    r#"SELECT collectionid FROM "Collections"
+                       WHERE isdefault = FALSE AND autoaddcategories IS NOT NULL AND autoaddcategories <> ''"#,
+                )
+                .fetch_all(pool)
+                .await?
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query_scalar(
+                    "SELECT CollectionID FROM Collections
+                     WHERE IsDefault = FALSE AND AutoAddCategories IS NOT NULL AND AutoAddCategories <> ''",
+                )
+                .fetch_all(pool)
+                .await?
+            }
+        };
+
+        for id in ids {
+            if let Err(e) = self.auto_add_category_episodes(id).await {
+                tracing::warn!("Auto-add for collection {} failed: {}", id, e);
             }
         }
         Ok(())
@@ -10553,6 +10802,50 @@ impl DatabasePool {
         Ok(())
     }
 
+    // Set per-podcast auto-delete-downloads days override (#655) - mirrors set_podcast_playback_speed
+    pub async fn set_podcast_auto_download_delete_days(&self, user_id: i32, podcast_id: i32, days: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET autodownloaddeletedays = $1, autodownloaddeletecustomized = TRUE WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(days)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET AutoDownloadDeleteDays = ?, AutoDownloadDeleteCustomized = TRUE WHERE PodcastID = ? AND UserID = ?")
+                    .bind(days)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Clear per-podcast auto-delete override - resets the podcast back to the global default (#655)
+    pub async fn clear_podcast_auto_download_delete_days(&self, user_id: i32, podcast_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET autodownloaddeletedays = 0, autodownloaddeletecustomized = FALSE WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET AutoDownloadDeleteDays = 0, AutoDownloadDeleteCustomized = FALSE WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     // Enable/disable auto download for podcast - matches Python enable_auto_download function
     pub async fn enable_auto_download(&self, podcast_id: i32, auto_download: bool, user_id: i32) -> AppResult<()> {
         match self {
@@ -10590,6 +10883,29 @@ impl DatabasePool {
             DatabasePool::MySQL(pool) => {
                 sqlx::query("UPDATE Podcasts SET AutoPlayNext = ? WHERE PodcastID = ? AND UserID = ?")
                     .bind(auto_play_next)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Enable/disable auto-queue new episodes for podcast (#648)
+    pub async fn enable_auto_queue(&self, podcast_id: i32, auto_queue: bool, user_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET autoqueue = $1 WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(auto_queue)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET AutoQueue = ? WHERE PodcastID = ? AND UserID = ?")
+                    .bind(auto_queue)
                     .bind(podcast_id)
                     .bind(user_id)
                     .execute(pool)
@@ -10707,6 +11023,156 @@ impl DatabasePool {
                     .fetch_optional(pool)
                     .await?;
                 Ok(row.map(|r| r.try_get::<bool, _>("isfavorite").unwrap_or(false)).unwrap_or(false))
+            }
+        }
+    }
+
+    // Return the cached recommendations JSON for a user if present and newer than
+    // max_age_hours; otherwise None (signals the caller to regenerate). See migration 058.
+    pub async fn get_recommendation_cache(&self, user_id: i32, max_age_hours: i32) -> AppResult<Option<String>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT resultsjson FROM "RecommendationCache"
+                    WHERE userid = $1 AND generatedat > CURRENT_TIMESTAMP - make_interval(hours => $2)
+                "#)
+                .bind(user_id)
+                .bind(max_age_hours)
+                .fetch_optional(pool)
+                .await?;
+                Ok(row.map(|r| r.try_get::<String, _>("resultsjson").unwrap_or_default()))
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT ResultsJSON FROM RecommendationCache
+                    WHERE UserID = ? AND GeneratedAt > (NOW() - INTERVAL ? HOUR)
+                "#)
+                .bind(user_id)
+                .bind(max_age_hours)
+                .fetch_optional(pool)
+                .await?;
+                Ok(row.map(|r| r.try_get::<String, _>("ResultsJSON").unwrap_or_default()))
+            }
+        }
+    }
+
+    // Upsert a user's recommendations JSON, stamping GeneratedAt to now. One row per user.
+    pub async fn upsert_recommendation_cache(&self, user_id: i32, results_json: &str) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"
+                    INSERT INTO "RecommendationCache" (userid, generatedat, resultsjson)
+                    VALUES ($1, CURRENT_TIMESTAMP, $2)
+                    ON CONFLICT (userid) DO UPDATE SET generatedat = CURRENT_TIMESTAMP, resultsjson = EXCLUDED.resultsjson
+                "#)
+                .bind(user_id)
+                .bind(results_json)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(r#"
+                    INSERT INTO RecommendationCache (UserID, GeneratedAt, ResultsJSON)
+                    VALUES (?, NOW(), ?)
+                    ON DUPLICATE KEY UPDATE GeneratedAt = NOW(), ResultsJSON = VALUES(ResultsJSON)
+                "#)
+                .bind(user_id)
+                .bind(results_json)
+                .execute(pool)
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // User IDs that already have a cached recommendation set (i.e. have used the Discover
+    // page). The scheduler refreshes these nightly so return visits are instant; brand-new
+    // users are handled on demand by the endpoint.
+    pub async fn get_recommendation_cache_user_ids(&self) -> AppResult<Vec<i32>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"SELECT userid FROM "RecommendationCache""#)
+                    .fetch_all(pool)
+                    .await?;
+                Ok(rows.iter().filter_map(|r| r.try_get::<i32, _>("userid").ok()).collect())
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query("SELECT UserID FROM RecommendationCache")
+                    .fetch_all(pool)
+                    .await?;
+                Ok(rows.iter().filter_map(|r| r.try_get::<i32, _>("UserID").ok()).collect())
+            }
+        }
+    }
+
+    // Lean per-subscription inputs for the recommendation taste profile (#103). Only touches
+    // columns guaranteed to exist on Podcasts, unlike return_pods_extra (which references a
+    // non-existent p.isyoutube column). play_count = number of listen-history rows for the sub.
+    pub async fn get_recommendation_taste_inputs(
+        &self,
+        user_id: i32,
+    ) -> AppResult<Vec<crate::models::RecommendationTasteInput>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT p.podcastname, p.author, p.description, p.categories,
+                           p.podcastindexid, p.feedurl,
+                           COALESCE(p.isfavorite, false) AS isfavorite,
+                           COUNT(ueh.userepisodehistoryid) AS play_count
+                    FROM "Podcasts" p
+                    LEFT JOIN "Episodes" e ON p.podcastid = e.podcastid
+                    LEFT JOIN "UserEpisodeHistory" ueh ON e.episodeid = ueh.episodeid AND ueh.userid = $1
+                    WHERE p.userid = $1 AND COALESCE(p.displaypodcast, TRUE) = TRUE
+                    GROUP BY p.podcastid, p.podcastname, p.author, p.description, p.categories,
+                             p.podcastindexid, p.feedurl, p.isfavorite
+                "#)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+                Ok(rows.iter().map(|row| {
+                    let cats: Option<String> = row.try_get("categories").ok();
+                    crate::models::RecommendationTasteInput {
+                        podcastname: row.try_get::<Option<String>, _>("podcastname").ok().flatten().unwrap_or_default(),
+                        author: row.try_get::<Option<String>, _>("author").ok().flatten(),
+                        description: row.try_get::<Option<String>, _>("description").ok().flatten(),
+                        categories: cats.and_then(|c| self.parse_categories_json(&c)),
+                        podcastindexid: row.try_get::<Option<i32>, _>("podcastindexid").ok().flatten().map(|v| v as i64),
+                        feedurl: row.try_get::<Option<String>, _>("feedurl").ok().flatten().unwrap_or_default(),
+                        is_favorite: row.try_get::<bool, _>("isfavorite").unwrap_or(false),
+                        play_count: row.try_get::<i64, _>("play_count").unwrap_or(0),
+                    }
+                }).collect())
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT p.PodcastName, p.Author, p.Description, p.Categories,
+                           p.PodcastIndexID, p.FeedURL,
+                           COALESCE(p.IsFavorite, false) AS isfavorite,
+                           COUNT(ueh.UserEpisodeHistoryID) AS play_count
+                    FROM Podcasts p
+                    LEFT JOIN Episodes e ON p.PodcastID = e.PodcastID
+                    LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
+                    WHERE p.UserID = ? AND COALESCE(p.DisplayPodcast, TRUE) = TRUE
+                    GROUP BY p.PodcastID, p.PodcastName, p.Author, p.Description, p.Categories,
+                             p.PodcastIndexID, p.FeedURL, p.IsFavorite
+                "#)
+                .bind(user_id)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+                Ok(rows.iter().map(|row| {
+                    let cats: Option<String> = row.try_get("Categories").ok();
+                    crate::models::RecommendationTasteInput {
+                        podcastname: row.try_get::<Option<String>, _>("PodcastName").ok().flatten().unwrap_or_default(),
+                        author: row.try_get::<Option<String>, _>("Author").ok().flatten(),
+                        description: row.try_get::<Option<String>, _>("Description").ok().flatten(),
+                        categories: cats.and_then(|c| self.parse_categories_json(&c)),
+                        podcastindexid: row.try_get::<Option<i32>, _>("PodcastIndexID").ok().flatten().map(|v| v as i64),
+                        feedurl: row.try_get::<Option<String>, _>("FeedURL").ok().flatten().unwrap_or_default(),
+                        is_favorite: row.try_get::<bool, _>("isfavorite").unwrap_or(false),
+                        play_count: row.try_get::<i64, _>("play_count").unwrap_or(0),
+                    }
+                }).collect())
             }
         }
     }
@@ -10998,6 +11464,40 @@ impl DatabasePool {
         }
     }
 
+    // Get auto-queue status for a podcast (#648)
+    pub async fn call_get_auto_queue_status(&self, podcast_id: i32, user_id: i32) -> AppResult<Option<bool>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT autoqueue FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = row {
+                    let result: Option<bool> = row.try_get("autoqueue")?;
+                    Ok(result)
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT AutoQueue FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = row {
+                    let result: Option<bool> = row.try_get("AutoQueue")?;
+                    Ok(result)
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
     // Get auto play next status for a podcast
     pub async fn get_auto_play_next_status(&self, podcast_id: i32, user_id: i32) -> AppResult<Option<bool>> {
         match self {
@@ -11040,6 +11540,7 @@ impl DatabasePool {
                     r#"SELECT
                         e.episodetitle,
                         p.podcastname,
+                        e.podcastid,
                         e.episodepubdate,
                         e.episodedescription,
                         CASE
@@ -11079,6 +11580,7 @@ impl DatabasePool {
                     Ok(Some(crate::models::QueuedEpisode {
                         episodetitle: row.try_get("episodetitle")?,
                         podcastname: row.try_get("podcastname")?,
+                        podcastid: row.try_get("podcastid")?,
                         episodepubdate: {
                             let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
                             naive.format("%Y-%m-%dT%H:%M:%S").to_string()
@@ -11107,6 +11609,7 @@ impl DatabasePool {
                     "SELECT
                         e.EpisodeTitle as episodetitle,
                         p.PodcastName as podcastname,
+                        e.PodcastID as podcastid,
                         e.EpisodePubDate as episodepubdate,
                         e.EpisodeDescription as episodedescription,
                         CASE
@@ -11151,6 +11654,7 @@ impl DatabasePool {
                     Ok(Some(crate::models::QueuedEpisode {
                         episodetitle: row.try_get("episodetitle")?,
                         podcastname: row.try_get("podcastname")?,
+                        podcastid: row.try_get("podcastid")?,
                         episodepubdate: {
                             let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
                             naive.format("%Y-%m-%dT%H:%M:%S").to_string()
@@ -11198,6 +11702,7 @@ impl DatabasePool {
             episodeid: ep.episodeid,
             episodetitle: ep.episodetitle.clone(),
             podcastname: ep.podcastname.clone(),
+            podcastid: ep.podcastid.unwrap_or(0),
             episodepubdate: ep.episodepubdate.clone(),
             episodedescription: ep.episodedescription.clone(),
             episodeartwork: ep.episodeartwork.clone(),
@@ -12873,6 +13378,105 @@ impl DatabasePool {
                 Ok(result.unwrap_or(0) == 1)
             }
         }
+    }
+
+    // Get the admin download-metadata settings (#451/#533/#658). Missing row or
+    // NULLs fall back to the disabled/default set.
+    pub async fn get_download_settings(&self) -> AppResult<crate::services::download_metadata::DownloadSettings> {
+        use crate::services::download_metadata::DownloadSettings;
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT downloadfoldercover, downloadepisodecover, downloadmetadatasidecar,
+                           downloadmetadataformat, downloadmetadatasubfolder
+                    FROM "AppSettings"
+                    LIMIT 1
+                "#)
+                .fetch_optional(pool)
+                .await?;
+
+                Ok(match row {
+                    Some(row) => DownloadSettings {
+                        folder_cover: row.try_get::<Option<bool>, _>("downloadfoldercover")?.unwrap_or(false),
+                        episode_cover: row.try_get::<Option<bool>, _>("downloadepisodecover")?.unwrap_or(false),
+                        metadata_sidecar: row.try_get::<Option<bool>, _>("downloadmetadatasidecar")?.unwrap_or(false),
+                        metadata_format: row.try_get::<Option<String>, _>("downloadmetadataformat")?.unwrap_or_else(|| "both".to_string()),
+                        metadata_subfolder: row.try_get::<Option<bool>, _>("downloadmetadatasubfolder")?.unwrap_or(true),
+                    },
+                    None => DownloadSettings::disabled(),
+                })
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("
+                    SELECT DownloadFolderCover, DownloadEpisodeCover, DownloadMetadataSidecar,
+                           DownloadMetadataFormat, DownloadMetadataSubfolder
+                    FROM AppSettings
+                    LIMIT 1
+                ")
+                .fetch_optional(pool)
+                .await?;
+
+                Ok(match row {
+                    Some(row) => DownloadSettings {
+                        folder_cover: row.try_get::<Option<i32>, _>("DownloadFolderCover")?.unwrap_or(0) == 1,
+                        episode_cover: row.try_get::<Option<i32>, _>("DownloadEpisodeCover")?.unwrap_or(0) == 1,
+                        metadata_sidecar: row.try_get::<Option<i32>, _>("DownloadMetadataSidecar")?.unwrap_or(0) == 1,
+                        metadata_format: row.try_get::<Option<String>, _>("DownloadMetadataFormat")?.unwrap_or_else(|| "both".to_string()),
+                        metadata_subfolder: row.try_get::<Option<i32>, _>("DownloadMetadataSubfolder")?.unwrap_or(1) == 1,
+                    },
+                    None => DownloadSettings::disabled(),
+                })
+            }
+        }
+    }
+
+    // Update the admin download-metadata settings (#451/#533/#658).
+    pub async fn set_download_settings(
+        &self,
+        settings: &crate::services::download_metadata::DownloadSettings,
+    ) -> AppResult<()> {
+        // Normalize the format to a known value so the UI can't persist junk.
+        let format = match settings.metadata_format.as_str() {
+            "json" | "xml" | "ffmetadata" | "both" => settings.metadata_format.as_str(),
+            _ => "both",
+        };
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"
+                    UPDATE "AppSettings"
+                    SET downloadfoldercover = $1,
+                        downloadepisodecover = $2,
+                        downloadmetadatasidecar = $3,
+                        downloadmetadataformat = $4,
+                        downloadmetadatasubfolder = $5
+                "#)
+                .bind(settings.folder_cover)
+                .bind(settings.episode_cover)
+                .bind(settings.metadata_sidecar)
+                .bind(format)
+                .bind(settings.metadata_subfolder)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("
+                    UPDATE AppSettings
+                    SET DownloadFolderCover = ?,
+                        DownloadEpisodeCover = ?,
+                        DownloadMetadataSidecar = ?,
+                        DownloadMetadataFormat = ?,
+                        DownloadMetadataSubfolder = ?
+                ")
+                .bind(settings.folder_cover as i32)
+                .bind(settings.episode_cover as i32)
+                .bind(settings.metadata_sidecar as i32)
+                .bind(format)
+                .bind(settings.metadata_subfolder as i32)
+                .execute(pool)
+                .await?;
+            }
+        }
+        Ok(())
     }
 
     // Get self service status - matches Python self_service_status function exactly
@@ -19957,6 +20561,68 @@ impl DatabasePool {
         }
     }
 
+    // Get auto-delete-downloads setting (#655). Returns (days, customized).
+    // For the user default (podcast_id None) customized is always false. For a podcast, days is
+    // the raw per-podcast value and customized indicates whether it overrides the user default.
+    pub async fn get_auto_download_delete_days(&self, user_id: i32, podcast_id: Option<i32>) -> AppResult<(i32, bool)> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                if let Some(pod_id) = podcast_id {
+                    let row = sqlx::query(r#"SELECT autodownloaddeletedays, autodownloaddeletecustomized FROM "Podcasts" WHERE podcastid = $1"#)
+                        .bind(pod_id)
+                        .fetch_one(pool)
+                        .await?;
+                    Ok((
+                        row.try_get::<i32, _>("autodownloaddeletedays").unwrap_or(0),
+                        row.try_get::<bool, _>("autodownloaddeletecustomized").unwrap_or(false),
+                    ))
+                } else {
+                    let row = sqlx::query(r#"SELECT autodownloaddeletedays FROM "Users" WHERE userid = $1"#)
+                        .bind(user_id)
+                        .fetch_one(pool)
+                        .await?;
+                    Ok((row.try_get::<i32, _>("autodownloaddeletedays").unwrap_or(0), false))
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                if let Some(pod_id) = podcast_id {
+                    let row = sqlx::query("SELECT AutoDownloadDeleteDays, AutoDownloadDeleteCustomized FROM Podcasts WHERE PodcastID = ?")
+                        .bind(pod_id)
+                        .fetch_one(pool)
+                        .await?;
+                    let customized = row.try_get::<i8, _>("AutoDownloadDeleteCustomized").map(|v| v != 0).unwrap_or(false);
+                    Ok((row.try_get::<i32, _>("AutoDownloadDeleteDays").unwrap_or(0), customized))
+                } else {
+                    let row = sqlx::query("SELECT AutoDownloadDeleteDays FROM Users WHERE UserID = ?")
+                        .bind(user_id)
+                        .fetch_one(pool)
+                        .await?;
+                    Ok((row.try_get::<i32, _>("AutoDownloadDeleteDays").unwrap_or(0), false))
+                }
+            }
+        }
+    }
+
+    // Get per-user default playback volume (0-100). Falls back to 100 if unset (#828).
+    pub async fn get_default_volume(&self, user_id: i32) -> AppResult<i32> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT defaultvolume FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                Ok(row.try_get::<i32, _>("defaultvolume").unwrap_or(100))
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT DefaultVolume FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                Ok(row.try_get::<i32, _>("DefaultVolume").unwrap_or(100))
+            }
+        }
+    }
+
     // Add news feed if not already added - matches Python add_news_feed_if_not_added function exactly
 
     // Cleanup old episodes - matches Python cleanup_old_episodes function exactly
@@ -19964,6 +20630,195 @@ impl DatabasePool {
         self.cleanup_old_people_episodes(30).await?;
         self.cleanup_expired_shared_episodes().await?;
         Ok(())
+    }
+
+    // Auto-delete server downloads older than the resolved retention window (#655).
+    //
+    // Resolution mirrors the PlaybackSpeed pattern: for each downloaded item, the effective
+    // retention is the per-podcast AutoDownloadDeleteDays when AutoDownloadDeleteCustomized is
+    // set, otherwise the user's default. A resolved value of 0 means "never delete". Files under
+    // /opt/pinepods/downloads/ are removed first, then the DB row (reusing delete_episode, which
+    // also decrements UserStats.EpisodesDownloaded). local:// feeds are never touched.
+    pub async fn auto_delete_old_downloads(&self) -> AppResult<()> {
+        let now = chrono::Utc::now().naive_utc();
+        let mut deleted: u64 = 0;
+
+        for (user_id, content_id, location, downloaded_date, feed_url, effective_days) in
+            self.auto_delete_candidates_episodes().await?
+        {
+            if Self::should_auto_delete(now, downloaded_date, effective_days, feed_url.as_deref()) {
+                Self::remove_download_file(location.as_deref()).await;
+                self.delete_episode(user_id, content_id, false).await?;
+                deleted += 1;
+            }
+        }
+
+        for (user_id, content_id, location, downloaded_date, feed_url, effective_days) in
+            self.auto_delete_candidates_videos().await?
+        {
+            if Self::should_auto_delete(now, downloaded_date, effective_days, feed_url.as_deref()) {
+                Self::remove_download_file(location.as_deref()).await;
+                self.delete_episode(user_id, content_id, true).await?;
+                deleted += 1;
+            }
+        }
+
+        if deleted > 0 {
+            tracing::info!("Auto-delete: removed {} server download(s) past their retention window", deleted);
+        }
+        Ok(())
+    }
+
+    // Decide whether a single downloaded item is due for auto-deletion.
+    fn should_auto_delete(
+        now: chrono::NaiveDateTime,
+        downloaded_date: Option<chrono::NaiveDateTime>,
+        effective_days: i32,
+        feed_url: Option<&str>,
+    ) -> bool {
+        if effective_days <= 0 {
+            return false; // 0 = retention disabled for this item
+        }
+        if feed_url.map_or(false, |f| f.starts_with("local://")) {
+            return false; // never delete user-managed local media
+        }
+        match downloaded_date {
+            Some(dt) => dt < now - chrono::Duration::days(effective_days as i64),
+            None => false,
+        }
+    }
+
+    // Remove a downloaded file from disk if present (mirrors delete_episode handler behavior).
+    async fn remove_download_file(path: Option<&str>) {
+        if let Some(path) = path {
+            if tokio::fs::metadata(path).await.is_ok() {
+                if let Err(e) = tokio::fs::remove_file(path).await {
+                    tracing::error!("Auto-delete: could not remove file {}: {}", path, e);
+                }
+            }
+        }
+    }
+
+    // Candidate podcast-episode downloads with their resolved retention window.
+    // Returns (user_id, episode_id, location, downloaded_date, feed_url, effective_days).
+    async fn auto_delete_candidates_episodes(
+        &self,
+    ) -> AppResult<Vec<(i32, i32, Option<String>, Option<chrono::NaiveDateTime>, Option<String>, i32)>> {
+        let mut out = Vec::new();
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    r#"SELECT de.userid AS user_id, de.episodeid AS content_id,
+                              de.downloadedlocation AS location, de.downloadeddate AS downloaded_date,
+                              p.feedurl AS feed_url,
+                              CASE WHEN p.autodownloaddeletecustomized THEN p.autodownloaddeletedays
+                                   ELSE u.autodownloaddeletedays END AS effective_days
+                       FROM "DownloadedEpisodes" de
+                       JOIN "Episodes" e ON e.episodeid = de.episodeid
+                       JOIN "Podcasts" p ON p.podcastid = e.podcastid
+                       JOIN "Users" u ON u.userid = de.userid"#,
+                )
+                .fetch_all(pool)
+                .await?;
+                for row in &rows {
+                    out.push((
+                        row.try_get::<i32, _>("user_id").unwrap_or(0),
+                        row.try_get::<i32, _>("content_id").unwrap_or(0),
+                        row.try_get::<Option<String>, _>("location").unwrap_or(None),
+                        row.try_get::<Option<chrono::NaiveDateTime>, _>("downloaded_date").unwrap_or(None),
+                        row.try_get::<Option<String>, _>("feed_url").unwrap_or(None),
+                        row.try_get::<i32, _>("effective_days").unwrap_or(0),
+                    ));
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT de.UserID AS user_id, de.EpisodeID AS content_id,
+                            de.DownloadedLocation AS location, de.DownloadedDate AS downloaded_date,
+                            p.FeedURL AS feed_url,
+                            CAST(CASE WHEN p.AutoDownloadDeleteCustomized THEN p.AutoDownloadDeleteDays
+                                      ELSE u.AutoDownloadDeleteDays END AS SIGNED) AS effective_days
+                     FROM DownloadedEpisodes de
+                     JOIN Episodes e ON e.EpisodeID = de.EpisodeID
+                     JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                     JOIN Users u ON u.UserID = de.UserID",
+                )
+                .fetch_all(pool)
+                .await?;
+                for row in &rows {
+                    out.push((
+                        row.try_get::<i32, _>("user_id").unwrap_or(0),
+                        row.try_get::<i32, _>("content_id").unwrap_or(0),
+                        row.try_get::<Option<String>, _>("location").unwrap_or(None),
+                        row.try_get::<Option<chrono::NaiveDateTime>, _>("downloaded_date").unwrap_or(None),
+                        row.try_get::<Option<String>, _>("feed_url").unwrap_or(None),
+                        row.try_get::<i64, _>("effective_days").map(|v| v as i32).unwrap_or(0),
+                    ));
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    // Candidate YouTube-video downloads with their resolved retention window.
+    // Returns (user_id, video_id, location, downloaded_date, feed_url, effective_days).
+    async fn auto_delete_candidates_videos(
+        &self,
+    ) -> AppResult<Vec<(i32, i32, Option<String>, Option<chrono::NaiveDateTime>, Option<String>, i32)>> {
+        let mut out = Vec::new();
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    r#"SELECT dv.userid AS user_id, dv.videoid AS content_id,
+                              dv.downloadedlocation AS location, dv.downloadeddate AS downloaded_date,
+                              p.feedurl AS feed_url,
+                              CASE WHEN p.autodownloaddeletecustomized THEN p.autodownloaddeletedays
+                                   ELSE u.autodownloaddeletedays END AS effective_days
+                       FROM "DownloadedVideos" dv
+                       JOIN "YouTubeVideos" v ON v.videoid = dv.videoid
+                       JOIN "Podcasts" p ON p.podcastid = v.podcastid
+                       JOIN "Users" u ON u.userid = dv.userid"#,
+                )
+                .fetch_all(pool)
+                .await?;
+                for row in &rows {
+                    out.push((
+                        row.try_get::<i32, _>("user_id").unwrap_or(0),
+                        row.try_get::<i32, _>("content_id").unwrap_or(0),
+                        row.try_get::<Option<String>, _>("location").unwrap_or(None),
+                        row.try_get::<Option<chrono::NaiveDateTime>, _>("downloaded_date").unwrap_or(None),
+                        row.try_get::<Option<String>, _>("feed_url").unwrap_or(None),
+                        row.try_get::<i32, _>("effective_days").unwrap_or(0),
+                    ));
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT dv.UserID AS user_id, dv.VideoID AS content_id,
+                            dv.DownloadedLocation AS location, dv.DownloadedDate AS downloaded_date,
+                            p.FeedURL AS feed_url,
+                            CAST(CASE WHEN p.AutoDownloadDeleteCustomized THEN p.AutoDownloadDeleteDays
+                                      ELSE u.AutoDownloadDeleteDays END AS SIGNED) AS effective_days
+                     FROM DownloadedVideos dv
+                     JOIN YouTubeVideos v ON v.VideoID = dv.VideoID
+                     JOIN Podcasts p ON p.PodcastID = v.PodcastID
+                     JOIN Users u ON u.UserID = dv.UserID",
+                )
+                .fetch_all(pool)
+                .await?;
+                for row in &rows {
+                    out.push((
+                        row.try_get::<i32, _>("user_id").unwrap_or(0),
+                        row.try_get::<i32, _>("content_id").unwrap_or(0),
+                        row.try_get::<Option<String>, _>("location").unwrap_or(None),
+                        row.try_get::<Option<chrono::NaiveDateTime>, _>("downloaded_date").unwrap_or(None),
+                        row.try_get::<Option<String>, _>("feed_url").unwrap_or(None),
+                        row.try_get::<i64, _>("effective_days").map(|v| v as i32).unwrap_or(0),
+                    ));
+                }
+            }
+        }
+        Ok(out)
     }
 
     // Cleanup old people episodes - matches Python cleanup_old_people_episodes function exactly
@@ -22595,6 +23450,48 @@ impl DatabasePool {
         Ok(())
     }
 
+    // Set per-user default playback volume (0-100) (#828) - mirrors set_playback_speed_user
+    pub async fn set_default_volume(&self, user_id: i32, volume: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Users" SET defaultvolume = $1 WHERE userid = $2"#)
+                    .bind(volume)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Users SET DefaultVolume = ? WHERE UserID = ?")
+                    .bind(volume)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Set per-user default auto-delete-downloads days (#655) - mirrors set_playback_speed_user
+    pub async fn set_auto_download_delete_days_user(&self, user_id: i32, days: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Users" SET autodownloaddeletedays = $1 WHERE userid = $2"#)
+                    .bind(days)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Users SET AutoDownloadDeleteDays = ? WHERE UserID = ?")
+                    .bind(days)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     // Set user podcast cover preference - global setting
     pub async fn set_global_podcast_cover_preference(&self, user_id: i32, use_podcast_covers: bool) -> AppResult<()> {
         match self {
@@ -23377,161 +24274,395 @@ impl DatabasePool {
             ("All Podcasts".to_string(), format!("{}/static/assets/favicon.png", domain), "RSS feed for all podcasts from Pinepods".to_string())
         };
 
-        // Build RSS feed using quick-xml for proper XML escaping
+        // Get or create RSS key for this user to use in stream URLs
+        let user_rss_key = self.get_or_create_user_rss_key(user_id).await?;
+
+        // Get episodes (use the user's RSS key for stream URLs, not the requesting key)
+        let episodes = self.get_rss_episodes(user_id, limit, source_type, &effective_podcast_ids, podcast_filter, domain, &user_rss_key).await?;
+
+        Self::write_rss_document(
+            &format!("Pinepods - {}", podcast_name),
+            &feed_description,
+            &username,
+            &feed_image,
+            &episodes,
+        )
+    }
+
+    /// Serialize a channel + its episodes into an RSS 2.0 (iTunes) XML document.
+    /// Shared by the subscriptions feed and the per-collection feeds.
+    fn write_rss_document(
+        title: &str,
+        description: &str,
+        author: &str,
+        image: &str,
+        episodes: &[RssEpisode],
+    ) -> AppResult<String> {
         use quick_xml::events::{Event, BytesStart, BytesEnd, BytesText, BytesCData};
         use quick_xml::Writer;
         use std::io::Cursor;
 
         let mut writer = Writer::new(Cursor::new(Vec::new()));
-        
+
         // XML declaration
         writer.write_event(Event::Decl(quick_xml::events::BytesDecl::new("1.0", Some("UTF-8"), None)))?;
-        
+
         // RSS root element with namespace
         let mut rss_elem = BytesStart::new("rss");
         rss_elem.push_attribute(("version", "2.0"));
         rss_elem.push_attribute(("xmlns:itunes", "http://www.itunes.com/dtds/podcast-1.0.dtd"));
         writer.write_event(Event::Start(rss_elem))?;
-        
+
         // Channel
         writer.write_event(Event::Start(BytesStart::new("channel")))?;
-        
+
         // Channel metadata
         writer.write_event(Event::Start(BytesStart::new("title")))?;
-        writer.write_event(Event::Text(BytesText::new(&format!("Pinepods - {}", podcast_name))))?;
+        writer.write_event(Event::Text(BytesText::new(title)))?;
         writer.write_event(Event::End(BytesEnd::new("title")))?;
-        
+
         writer.write_event(Event::Start(BytesStart::new("link")))?;
         writer.write_event(Event::Text(BytesText::new("https://github.com/madeofpendletonwool/pinepods")))?;
         writer.write_event(Event::End(BytesEnd::new("link")))?;
-        
+
         writer.write_event(Event::Start(BytesStart::new("description")))?;
-        writer.write_event(Event::Text(BytesText::new(&feed_description)))?;
+        writer.write_event(Event::Text(BytesText::new(description)))?;
         writer.write_event(Event::End(BytesEnd::new("description")))?;
-        
+
         writer.write_event(Event::Start(BytesStart::new("language")))?;
         writer.write_event(Event::Text(BytesText::new("en")))?;
         writer.write_event(Event::End(BytesEnd::new("language")))?;
-        
+
         writer.write_event(Event::Start(BytesStart::new("itunes:author")))?;
-        writer.write_event(Event::Text(BytesText::new(&username)))?;
+        writer.write_event(Event::Text(BytesText::new(author)))?;
         writer.write_event(Event::End(BytesEnd::new("itunes:author")))?;
-        
+
         // iTunes image
         let mut itunes_image = BytesStart::new("itunes:image");
-        itunes_image.push_attribute(("href", feed_image.as_str()));
+        itunes_image.push_attribute(("href", image));
         writer.write_event(Event::Empty(itunes_image))?;
-        
+
         // RSS image block
         writer.write_event(Event::Start(BytesStart::new("image")))?;
-        
+
         writer.write_event(Event::Start(BytesStart::new("url")))?;
-        writer.write_event(Event::Text(BytesText::new(&feed_image)))?;
+        writer.write_event(Event::Text(BytesText::new(image)))?;
         writer.write_event(Event::End(BytesEnd::new("url")))?;
-        
+
         writer.write_event(Event::Start(BytesStart::new("title")))?;
-        writer.write_event(Event::Text(BytesText::new(&format!("Pinepods - {}", podcast_name))))?;
+        writer.write_event(Event::Text(BytesText::new(title)))?;
         writer.write_event(Event::End(BytesEnd::new("title")))?;
-        
+
         writer.write_event(Event::Start(BytesStart::new("link")))?;
         writer.write_event(Event::Text(BytesText::new("https://github.com/madeofpendletonwool/pinepods")))?;
         writer.write_event(Event::End(BytesEnd::new("link")))?;
-        
+
         writer.write_event(Event::End(BytesEnd::new("image")))?;
-        
+
         // TTL
         writer.write_event(Event::Start(BytesStart::new("ttl")))?;
         writer.write_event(Event::Text(BytesText::new("60")))?;
         writer.write_event(Event::End(BytesEnd::new("ttl")))?;
-        
-        // Get or create RSS key for this user to use in stream URLs
-        let user_rss_key = self.get_or_create_user_rss_key(user_id).await?;
-        
-        // Get episodes (use the user's RSS key for stream URLs, not the requesting key)
-        let episodes = self.get_rss_episodes(user_id, limit, source_type, &effective_podcast_ids, podcast_filter, domain, &user_rss_key).await?;
-        
+
         // Write episodes
         for episode in episodes {
             writer.write_event(Event::Start(BytesStart::new("item")))?;
-            
+
             // Title (using CDATA for safety)
             writer.write_event(Event::Start(BytesStart::new("title")))?;
             writer.write_event(Event::CData(BytesCData::new(&episode.title)))?;
             writer.write_event(Event::End(BytesEnd::new("title")))?;
-            
+
             // Link (URL will be properly escaped)
             writer.write_event(Event::Start(BytesStart::new("link")))?;
             writer.write_event(Event::Text(BytesText::new(&episode.url)))?;
             writer.write_event(Event::End(BytesEnd::new("link")))?;
-            
+
             // Description (using CDATA for safety)
             writer.write_event(Event::Start(BytesStart::new("description")))?;
             writer.write_event(Event::CData(BytesCData::new(&episode.description)))?;
             writer.write_event(Event::End(BytesEnd::new("description")))?;
-            
+
             // GUID
             writer.write_event(Event::Start(BytesStart::new("guid")))?;
             writer.write_event(Event::Text(BytesText::new(&episode.url)))?;
             writer.write_event(Event::End(BytesEnd::new("guid")))?;
-            
+
             // Pub date
             writer.write_event(Event::Start(BytesStart::new("pubDate")))?;
             writer.write_event(Event::Text(BytesText::new(&episode.pub_date)))?;
             writer.write_event(Event::End(BytesEnd::new("pubDate")))?;
-            
+
             // Author (if present)
             if let Some(ref author) = episode.author {
                 writer.write_event(Event::Start(BytesStart::new("itunes:author")))?;
                 writer.write_event(Event::Text(BytesText::new(author)))?;
                 writer.write_event(Event::End(BytesEnd::new("itunes:author")))?;
             }
-            
+
             // Artwork (if present)
             if let Some(ref artwork_url) = episode.artwork_url {
                 let mut itunes_img = BytesStart::new("itunes:image");
                 itunes_img.push_attribute(("href", artwork_url.as_str()));
                 writer.write_event(Event::Empty(itunes_img))?;
             }
-            
+
             // Duration (iTunes format: HH:MM:SS or MM:SS)
             if let Some(duration_seconds) = episode.duration {
                 let hours = duration_seconds / 3600;
                 let minutes = (duration_seconds % 3600) / 60;
                 let seconds = duration_seconds % 60;
-                
+
                 let duration_str = if hours > 0 {
                     format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
                 } else {
                     format!("{:02}:{:02}", minutes, seconds)
                 };
-                
+
                 writer.write_event(Event::Start(BytesStart::new("itunes:duration")))?;
                 writer.write_event(Event::Text(BytesText::new(&duration_str)))?;
                 writer.write_event(Event::End(BytesEnd::new("itunes:duration")))?;
             }
-            
+
             // Enclosure (length should be file size in bytes, using duration as placeholder)
             let mut enclosure = BytesStart::new("enclosure");
             enclosure.push_attribute(("url", episode.url.as_str()));
             enclosure.push_attribute(("length", episode.duration.unwrap_or(0).to_string().as_str()));
             enclosure.push_attribute(("type", "audio/mpeg"));
             writer.write_event(Event::Empty(enclosure))?;
-            
+
             writer.write_event(Event::End(BytesEnd::new("item")))?;
         }
-        
+
         // Close channel and RSS
         writer.write_event(Event::End(BytesEnd::new("channel")))?;
         writer.write_event(Event::End(BytesEnd::new("rss")))?;
-        
+
         // Convert to string
         let result = writer.into_inner().into_inner();
         let rss_content = String::from_utf8(result)
             .map_err(|e| AppError::internal(&format!("Failed to convert RSS to UTF-8: {}", e)))?;
-        
+
         Ok(rss_content)
     }
-    
+
+    /// Format a stored ISO timestamp (`%Y-%m-%dT%H:%M:%S`) as an RFC-822 pubDate.
+    fn rss_pub_date(iso: &str) -> String {
+        use chrono::{DateTime, Utc, NaiveDateTime};
+        match NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S") {
+            Ok(naive) => DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc)
+                .format("%a, %d %b %Y %H:%M:%S %z")
+                .to_string(),
+            Err(_) => Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string(),
+        }
+    }
+
+    /// Build a single RssEpisode from normalized collection-episode fields,
+    /// applying the same downloaded->stream-URL rewrite the subscriptions feed uses.
+    #[allow(clippy::too_many_arguments)]
+    fn build_rss_episode(
+        domain: &str,
+        user_rss_key: &str,
+        user_id: i32,
+        episodeid: i32,
+        title: String,
+        description: String,
+        episodeurl: String,
+        episodepubdate: &str,
+        episodeduration: i32,
+        episodeartwork: Option<String>,
+        author: Option<String>,
+        downloaded: bool,
+        is_youtube: bool,
+    ) -> RssEpisode {
+        let url = if downloaded {
+            let yt = if is_youtube { "&type=youtube" } else { "" };
+            format!(
+                "{}/api/data/stream/{}?api_key={}{}&user_id={}",
+                domain, episodeid, user_rss_key, yt, user_id
+            )
+        } else {
+            episodeurl
+        };
+
+        RssEpisode {
+            title,
+            description,
+            url,
+            pub_date: Self::rss_pub_date(episodepubdate),
+            duration: Some(episodeduration),
+            author,
+            artwork_url: episodeartwork.filter(|s| !s.is_empty()),
+        }
+    }
+
+    /// Map a JSON collection-episode row (playlist / history shape) into an RssEpisode.
+    fn build_rss_episode_from_json(
+        domain: &str,
+        user_rss_key: &str,
+        user_id: i32,
+        v: &serde_json::Value,
+    ) -> RssEpisode {
+        let episodeid = v.get("episodeid").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+        let title = v.get("episodetitle").and_then(|x| x.as_str()).unwrap_or("Untitled Episode").to_string();
+        let description = v.get("episodedescription").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let episodeurl = v.get("episodeurl").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let pubdate = v.get("episodepubdate").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let duration = v.get("episodeduration").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+        let artwork = v.get("episodeartwork").and_then(|x| x.as_str()).map(|s| s.to_string());
+        let podcastname = v.get("podcastname").and_then(|x| x.as_str()).map(|s| s.to_string());
+        let downloaded = v.get("downloaded").and_then(|x| x.as_bool()).unwrap_or(false);
+        let is_youtube = v.get("is_youtube").and_then(|x| x.as_bool()).unwrap_or(false);
+
+        Self::build_rss_episode(
+            domain, user_rss_key, user_id, episodeid, title, description, episodeurl,
+            &pubdate, duration, artwork, podcastname, downloaded, is_youtube,
+        )
+    }
+
+    /// Generate an RSS feed for one of a user's episode collections
+    /// (saved, queue, playlist, collection, downloads, history).
+    pub async fn generate_collection_rss(
+        &self,
+        user_id: i32,
+        source: crate::handlers::feed::FeedSource,
+        limit: i32,
+        domain: &str,
+    ) -> AppResult<String> {
+        use crate::handlers::feed::FeedSource;
+
+        // Check if RSS feeds are enabled for user
+        if !self.get_rss_feed_status(user_id).await? {
+            return Err(AppError::forbidden("RSS feeds not enabled for this user"));
+        }
+
+        // Cap for the collection fetchers that take an explicit limit; a non-positive
+        // limit means "no limit" (mirrors the subscriptions feed behavior).
+        let lim: i64 = if limit > 0 { limit as i64 } else { 100_000 };
+        let take_n: usize = if limit > 0 { limit as usize } else { usize::MAX };
+
+        // Username for channel <itunes:author>
+        let username = match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT username FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                match row {
+                    Some(row) => row.try_get::<String, _>("username").unwrap_or_else(|_| "Unknown User".to_string()),
+                    None => return Err(AppError::not_found("User not found")),
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT Username FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                match row {
+                    Some(row) => row.try_get::<String, _>("Username").unwrap_or_else(|_| "Unknown User".to_string()),
+                    None => return Err(AppError::not_found("User not found")),
+                }
+            }
+        };
+
+        // User RSS key for authenticated stream URLs on downloaded episodes
+        let user_rss_key = self.get_or_create_user_rss_key(user_id).await?;
+        let default_image = format!("{}/static/assets/favicon.png", domain);
+
+        // Resolve the feed title/description and the episode list per source.
+        let (feed_name, feed_description, episodes): (String, String, Vec<RssEpisode>) = match source {
+            FeedSource::Subscriptions => {
+                // Handled by generate_podcast_rss; guard just in case.
+                return Err(AppError::internal("Subscriptions feed must use generate_podcast_rss"));
+            }
+            FeedSource::Saved => {
+                let (eps, _) = self.get_saved_episodes(user_id, lim, 0, "date", "desc", "").await?;
+                let items = eps.into_iter().map(|e| Self::build_rss_episode(
+                    domain, &user_rss_key, user_id, e.episodeid, e.episodetitle, e.episodedescription,
+                    e.episodeurl, &e.episodepubdate, e.episodeduration, Some(e.episodeartwork),
+                    Some(e.podcastname), e.downloaded, e.is_youtube,
+                )).collect();
+                ("Saved Episodes".to_string(), "Your saved episodes from Pinepods".to_string(), items)
+            }
+            FeedSource::Queue => {
+                let eps = self.get_queued_episodes(user_id).await?;
+                let items = eps.into_iter().take(take_n).map(|e| Self::build_rss_episode(
+                    domain, &user_rss_key, user_id, e.episodeid, e.episodetitle, e.episodedescription,
+                    e.episodeurl, &e.episodepubdate, e.episodeduration, Some(e.episodeartwork),
+                    Some(e.podcastname), e.downloaded, e.is_youtube,
+                )).collect();
+                ("Queue".to_string(), "Your episode queue from Pinepods".to_string(), items)
+            }
+            FeedSource::Downloads => {
+                let eps = self.download_episode_list(user_id).await?;
+                let items = eps.into_iter().take(take_n).map(|e| Self::build_rss_episode(
+                    domain, &user_rss_key, user_id, e.episodeid, e.episodetitle, e.episodedescription,
+                    e.episodeurl, &e.episodepubdate, e.episodeduration, e.episodeartwork,
+                    Some(e.podcastname), e.downloaded, e.is_youtube,
+                )).collect();
+                ("Downloads".to_string(), "Your downloaded episodes from Pinepods".to_string(), items)
+            }
+            FeedSource::History => {
+                let (rows, _) = self.user_history(user_id, lim, 0, "date", "desc", "").await?;
+                let items = rows.iter()
+                    .map(|v| Self::build_rss_episode_from_json(domain, &user_rss_key, user_id, v))
+                    .collect();
+                ("History".to_string(), "Your recently played episodes from Pinepods".to_string(), items)
+            }
+            FeedSource::Playlist(playlist_id) => {
+                let value = self.get_playlist_episodes(user_id, playlist_id).await?;
+                let name = value
+                    .get("playlist_info")
+                    .and_then(|p| p.get("name"))
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("Playlist")
+                    .to_string();
+                let items = value
+                    .get("episodes")
+                    .and_then(|e| e.as_array())
+                    .map(|arr| arr.iter().take(take_n)
+                        .map(|v| Self::build_rss_episode_from_json(domain, &user_rss_key, user_id, v))
+                        .collect())
+                    .unwrap_or_default();
+                let desc = format!("Episodes from your \"{}\" playlist in Pinepods", name);
+                (name, desc, items)
+            }
+            FeedSource::Collection(collection_id) => {
+                // Ownership check
+                let (owner_id, is_default) = self.get_collection_meta(collection_id).await?;
+                if owner_id != user_id {
+                    return Err(AppError::forbidden("You can only view your own collections!"));
+                }
+                let (eps, _) = if is_default {
+                    self.get_saved_episodes(user_id, lim, 0, "date", "desc", "").await?
+                } else {
+                    self.get_collection_episodes(user_id, collection_id, lim, 0, "date", "desc", "").await?
+                };
+                let items = eps.into_iter().map(|e| Self::build_rss_episode(
+                    domain, &user_rss_key, user_id, e.episodeid, e.episodetitle, e.episodedescription,
+                    e.episodeurl, &e.episodepubdate, e.episodeduration, Some(e.episodeartwork),
+                    Some(e.podcastname), e.downloaded, e.is_youtube,
+                )).collect();
+                // Resolve the collection name for the channel title.
+                let name = self.get_collections(user_id).await?
+                    .into_iter()
+                    .find(|c| c.collection_id == collection_id)
+                    .map(|c| c.name)
+                    .unwrap_or_else(|| "Collection".to_string());
+                let desc = format!("Episodes from your \"{}\" collection in Pinepods", name);
+                (name, desc, items)
+            }
+        };
+
+        Self::write_rss_document(
+            &format!("Pinepods - {}", feed_name),
+            &feed_description,
+            &username,
+            &default_image,
+            &episodes,
+        )
+    }
+
     // Get user RSS key - matches Python get_user_rss_key function
     pub async fn get_user_rss_key(&self, user_id: i32) -> AppResult<Option<String>> {
         match self {
@@ -29818,6 +30949,26 @@ where
         }
     }
     Ok(())
+}
+
+/// Serialize a collection's auto-add category list for storage.
+/// Returns `None` (SQL NULL) when the list is absent or empty, otherwise a JSON array string.
+fn serialize_auto_add_categories(categories: Option<&[String]>) -> Option<String> {
+    match categories {
+        Some(cats) if !cats.is_empty() => serde_json::to_string(cats).ok(),
+        _ => None,
+    }
+}
+
+/// Parse a stored `AutoAddCategories` value (JSON array string) back into a list.
+/// Returns `None` for NULL/empty/unparseable values.
+fn parse_auto_add_categories(stored: Option<String>) -> Option<Vec<String>> {
+    let s = stored?;
+    if s.trim().is_empty() {
+        return None;
+    }
+    let cats = serde_json::from_str::<Vec<String>>(&s).ok()?;
+    if cats.is_empty() { None } else { Some(cats) }
 }
 
 #[cfg(test)]

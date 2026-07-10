@@ -1,5 +1,8 @@
 name: i18n String Coverage
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches: [main]

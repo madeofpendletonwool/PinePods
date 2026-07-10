@@ -479,7 +479,7 @@ fn process_node(
                                                     dispatch_clone.reduce_mut(move |state| {
                                                         state.audio_playing = Some(true);
                                                         state.playback_speed = 1.0;
-                                                        state.audio_volume = 100.0;
+                                                        // Keep the live session volume; do NOT reset on episode switch (#775).
                                                         state.offline = Some(false);
                                                         let ep = Episode {
                                                             episodeid: event_episode_id,
@@ -508,8 +508,11 @@ fn process_node(
                                                             is_video: ev_is_video,
                                                         });
                                                         state.set_media_source(url_clone.clone(), ev_is_video, dispatch_for_media);
+                                                        let session_vol = state.audio_volume;
                                                         if let Some(media) = &state.media_element {
                                                             media.set_current_time(seconds as f64);
+                                                            // Apply the live session volume to the new element (#828/#775)
+                                                            media.set_volume(session_vol / 100.0);
                                                             let _ = media.play();
                                                         }
                                                     });

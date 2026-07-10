@@ -123,6 +123,38 @@ pub struct PodcastResponse {
     pub is_video: bool,
 }
 
+// Lean per-subscription inputs for the recommendation taste profile (#103). Deliberately
+// selects only columns that are guaranteed to exist on the Podcasts table, avoiding the
+// heavier return_pods_extra query (which references a non-existent p.isyoutube column).
+#[derive(Debug, Clone)]
+pub struct RecommendationTasteInput {
+    pub podcastname: String,
+    pub author: Option<String>,
+    pub description: Option<String>,
+    pub categories: Option<std::collections::HashMap<String, String>>,
+    pub podcastindexid: Option<i64>,
+    pub feedurl: String,
+    pub is_favorite: bool,
+    pub play_count: i64,
+}
+
+// One recommended (not-yet-subscribed) podcast for the Discover page (#103). Built by
+// services/recommendations.rs from PodcastIndex trending candidates ranked against the
+// user's taste profile. `score` is the raw blended ranking score; `reason` is the
+// human-facing explanation (e.g. "Because you listen to Technology").
+#[derive(Debug, Serialize, Deserialize, Clone, utoipa::ToSchema)]
+pub struct RecommendedPodcast {
+    pub podcastindexid: Option<i64>,
+    pub title: String,
+    pub author: Option<String>,
+    pub image: Option<String>,
+    pub description: Option<String>,
+    pub feedurl: Option<String>,
+    pub categories: std::collections::HashMap<String, String>,
+    pub score: f64,
+    pub reason: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PodcastExtraResponse {
     pub podcastid: i32,
@@ -235,6 +267,8 @@ pub struct Collection {
     pub created_at: String,
     pub last_updated: String,
     pub episode_count: i64,
+    /// Podcast categories whose episodes are auto-added to this collection (None = disabled).
+    pub auto_add_categories: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
@@ -248,6 +282,10 @@ pub struct CreateCollectionRequest {
     pub name: String,
     pub description: Option<String>,
     pub icon: Option<String>,
+    /// Podcast categories to auto-add episodes from (None/empty = disabled).
+    pub auto_add_categories: Option<Vec<String>>,
+    /// When true, immediately backfill existing matching episodes after saving.
+    pub backfill: Option<bool>,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
@@ -261,6 +299,15 @@ pub struct UpdateCollectionRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub icon: Option<String>,
+    /// Podcast categories to auto-add episodes from (empty vec clears the rule).
+    pub auto_add_categories: Option<Vec<String>>,
+    /// When true, immediately backfill existing matching episodes after saving.
+    pub backfill: Option<bool>,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct UserCategoriesResponse {
+    pub categories: Vec<String>,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
@@ -360,6 +407,7 @@ pub struct QueueResponse {
 pub struct QueuedEpisode {
     pub episodetitle: String,
     pub podcastname: String,
+    pub podcastid: i32,
     pub episodepubdate: String,
     pub episodedescription: String,
     pub episodeartwork: String,

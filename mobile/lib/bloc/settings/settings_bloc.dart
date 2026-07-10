@@ -27,6 +27,8 @@ class SettingsBloc extends Bloc {
   final BehaviorSubject<bool> _showFunding = BehaviorSubject<bool>();
   final BehaviorSubject<bool> _trimSilence = BehaviorSubject<bool>();
   final BehaviorSubject<bool> _volumeBoost = BehaviorSubject<bool>();
+  final BehaviorSubject<int> _fastForwardInterval = BehaviorSubject<int>();
+  final BehaviorSubject<int> _rewindInterval = BehaviorSubject<int>();
   final BehaviorSubject<int> _autoUpdatePeriod = BehaviorSubject<int>();
   final BehaviorSubject<int> _layoutMode = BehaviorSubject<int>();
   final BehaviorSubject<String?> _pinepodsServer = BehaviorSubject<String?>();
@@ -35,6 +37,10 @@ class SettingsBloc extends Bloc {
   final BehaviorSubject<String?> _pinepodsUsername = BehaviorSubject<String?>();
   final BehaviorSubject<String?> _pinepodsEmail = BehaviorSubject<String?>();
   final BehaviorSubject<List<String>> _bottomBarOrder = BehaviorSubject<List<String>>();
+  final BehaviorSubject<bool> _autoDownloadWifiOnly = BehaviorSubject<bool>();
+  final BehaviorSubject<bool> _preferServerDownloadSource = BehaviorSubject<bool>();
+  final BehaviorSubject<int> _autoDownloadQueueCount = BehaviorSubject<int>();
+  final BehaviorSubject<bool> _mirrorServerDownloads = BehaviorSubject<bool>();
   var _currentSettings = AppSettings.sensibleDefaults();
 
   SettingsBloc(this._settingsService) {
@@ -98,6 +104,8 @@ class SettingsBloc extends Bloc {
       autoUpdateEpisodePeriod: _settingsService.autoUpdateEpisodePeriod,
       trimSilence: _settingsService.trimSilence,
       volumeBoost: _settingsService.volumeBoost,
+      fastForwardInterval: _settingsService.fastForwardInterval,
+      rewindInterval: _settingsService.rewindInterval,
       layout: _settingsService.layoutMode,
       pinepodsServer: _settingsService.pinepodsServer,
       pinepodsApiKey: _settingsService.pinepodsApiKey,
@@ -105,6 +113,10 @@ class SettingsBloc extends Bloc {
       pinepodsUsername: _settingsService.pinepodsUsername,
       pinepodsEmail: _settingsService.pinepodsEmail,
       bottomBarOrder: _settingsService.bottomBarOrder,
+      autoDownloadWifiOnly: _settingsService.autoDownloadWifiOnly,
+      preferServerDownloadSource: _settingsService.preferServerDownloadSource,
+      autoDownloadQueueCount: _settingsService.autoDownloadQueueCount,
+      mirrorServerDownloads: _settingsService.mirrorServerDownloads,
     );
 
     _settings.add(_currentSettings);
@@ -198,6 +210,18 @@ class SettingsBloc extends Bloc {
       _settingsService.volumeBoost = boost;
     });
 
+    _fastForwardInterval.listen((seconds) {
+      _currentSettings = _currentSettings.copyWith(fastForwardInterval: seconds);
+      _settings.add(_currentSettings);
+      _settingsService.fastForwardInterval = seconds;
+    });
+
+    _rewindInterval.listen((seconds) {
+      _currentSettings = _currentSettings.copyWith(rewindInterval: seconds);
+      _settings.add(_currentSettings);
+      _settingsService.rewindInterval = seconds;
+    });
+
     _pinepodsServer.listen((server) {
       _currentSettings = _currentSettings.copyWith(pinepodsServer: server);
       _settings.add(_currentSettings);
@@ -239,6 +263,30 @@ class SettingsBloc extends Bloc {
       _settings.add(_currentSettings);
       _settingsService.bottomBarOrder = order;
     });
+
+    _autoDownloadWifiOnly.listen((value) {
+      _currentSettings = _currentSettings.copyWith(autoDownloadWifiOnly: value);
+      _settings.add(_currentSettings);
+      _settingsService.autoDownloadWifiOnly = value;
+    });
+
+    _preferServerDownloadSource.listen((value) {
+      _currentSettings = _currentSettings.copyWith(preferServerDownloadSource: value);
+      _settings.add(_currentSettings);
+      _settingsService.preferServerDownloadSource = value;
+    });
+
+    _autoDownloadQueueCount.listen((value) {
+      _currentSettings = _currentSettings.copyWith(autoDownloadQueueCount: value);
+      _settings.add(_currentSettings);
+      _settingsService.autoDownloadQueueCount = value;
+    });
+
+    _mirrorServerDownloads.listen((value) {
+      _currentSettings = _currentSettings.copyWith(mirrorServerDownloads: value);
+      _settings.add(_currentSettings);
+      _settingsService.mirrorServerDownloads = value;
+    });
   }
 
   Stream<AppSettings> get settings => _settings.stream;
@@ -267,6 +315,10 @@ class SettingsBloc extends Bloc {
 
   void Function(bool) get volumeBoost => _volumeBoost.add;
 
+  void Function(int) get setFastForwardInterval => _fastForwardInterval.add;
+
+  void Function(int) get setRewindInterval => _rewindInterval.add;
+
   void Function(int) get layoutMode => _layoutMode.add;
 
   void Function(String?) get setPinepodsServer => _pinepodsServer.add;
@@ -280,6 +332,14 @@ class SettingsBloc extends Bloc {
   void Function(String?) get setPinepodsEmail => _pinepodsEmail.add;
 
   void Function(List<String>) get setBottomBarOrder => _bottomBarOrder.add;
+
+  void Function(bool) get setAutoDownloadWifiOnly => _autoDownloadWifiOnly.add;
+
+  void Function(bool) get setPreferServerDownloadSource => _preferServerDownloadSource.add;
+
+  void Function(int) get setAutoDownloadQueueCount => _autoDownloadQueueCount.add;
+
+  void Function(bool) get setMirrorServerDownloads => _mirrorServerDownloads.add;
 
   void Function(String) get setTheme => _theme.add;
 
@@ -349,6 +409,8 @@ class SettingsBloc extends Bloc {
     _showFunding.close();
     _trimSilence.close();
     _volumeBoost.close();
+    _fastForwardInterval.close();
+    _rewindInterval.close();
     _autoUpdatePeriod.close();
     _layoutMode.close();
     _pinepodsServer.close();
@@ -357,6 +419,10 @@ class SettingsBloc extends Bloc {
     _pinepodsUsername.close();
     _pinepodsEmail.close();
     _bottomBarOrder.close();
+    _autoDownloadWifiOnly.close();
+    _preferServerDownloadSource.close();
+    _autoDownloadQueueCount.close();
+    _mirrorServerDownloads.close();
     _settings.close();
   }
 }

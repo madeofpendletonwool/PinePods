@@ -271,6 +271,33 @@ pub fn settings() -> Html {
                             </div>
                             <div class="settings-section">
                                 <div class="settings-section-head">
+                                    <i class="ph ph-trash"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.auto_delete_settings") }</div>
+                                            <button class="info-btn" title={i18n.t("auto_delete_settings.description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::auto_delete_settings::AutoDeleteSettings />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-text-aa"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("settings.ai") }</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::ai_settings::AiSettings />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
                                     <i class="ph ph-shield-check"></i>
                                     <div>
                                         <div class="settings-section-title-row">

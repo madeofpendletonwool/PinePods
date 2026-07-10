@@ -185,9 +185,27 @@ class AudioPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     result.success(null)
                 }
 
+                "setAdSkipSegments" -> {
+                    val raw = call.argument<List<Map<String, Double>>>("segments") ?: emptyList()
+                    val segments = raw.mapNotNull { s ->
+                        val start = s["start"]
+                        val end = s["end"]
+                        if (start != null && end != null) Pair(start, end) else null
+                    }
+                    mediaService?.setAdSkipSegments(segments)
+                    result.success(null)
+                }
+
                 "setVolumeBoost" -> {
                     val enabled = call.argument<Boolean>("enabled") ?: false
                     mediaService?.setVolumeBoost(enabled)
+                    result.success(null)
+                }
+
+                "setSkipIntervals" -> {
+                    val forwardMs = (call.argument<Int>("forwardMs") ?: 30000).toLong()
+                    val backwardMs = (call.argument<Int>("backwardMs") ?: 10000).toLong()
+                    mediaService?.setSkipIntervals(forwardMs, backwardMs)
                     result.success(null)
                 }
 

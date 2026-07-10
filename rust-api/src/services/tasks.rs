@@ -302,7 +302,8 @@ impl TaskSpawner {
                         let row = sqlx::query(r#"
                             SELECT e."episodeurl", e."episodetitle", p."podcastname",
                                    e."episodepubdate", p."author", e."episodeartwork", p."artworkurl",
-                                   e."episodedescription", p."username", p."password"
+                                   e."episodedescription", p."username", p."password",
+                                   p."feedurl", e."episodeguid", e."episodeduration"
                             FROM "Episodes" e
                             JOIN "Podcasts" p ON e."podcastid" = p."podcastid"
                             WHERE e."episodeid" = $1
@@ -321,14 +322,18 @@ impl TaskSpawner {
                             row.try_get::<Option<String>, _>("artworkurl")?,
                             row.try_get::<Option<String>, _>("episodedescription")?,
                             row.try_get::<Option<String>, _>("username")?,
-                            row.try_get::<Option<String>, _>("password")?
+                            row.try_get::<Option<String>, _>("password")?,
+                            row.try_get::<Option<String>, _>("feedurl")?,
+                            row.try_get::<Option<String>, _>("episodeguid")?,
+                            row.try_get::<Option<i32>, _>("episodeduration")?
                         )
                     }
                     crate::database::DatabasePool::MySQL(pool) => {
                         let row = sqlx::query("
                             SELECT e.EpisodeURL, e.EpisodeTitle, p.PodcastName,
                                    e.EpisodePubDate, p.Author, e.EpisodeArtwork, p.ArtworkURL,
-                                   e.EpisodeDescription, p.Username, p.Password
+                                   e.EpisodeDescription, p.Username, p.Password,
+                                   p.FeedURL, e.EpisodeGUID, e.EpisodeDuration
                             FROM Episodes e
                             JOIN Podcasts p ON e.PodcastID = p.PodcastID
                             WHERE e.EpisodeID = ?
@@ -347,12 +352,15 @@ impl TaskSpawner {
                             row.try_get::<Option<String>, _>("ArtworkURL")?,
                             row.try_get::<Option<String>, _>("EpisodeDescription")?,
                             row.try_get::<Option<String>, _>("Username")?,
-                            row.try_get::<Option<String>, _>("Password")?
+                            row.try_get::<Option<String>, _>("Password")?,
+                            row.try_get::<Option<String>, _>("FeedURL")?,
+                            row.try_get::<Option<String>, _>("EpisodeGUID")?,
+                            row.try_get::<Option<i32>, _>("EpisodeDuration")?
                         )
                     }
                 };
 
-                let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, _description, feed_username, feed_password) = episode_info;
+                let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, description, feed_username, feed_password, feed_url, episode_guid, episode_duration) = episode_info;
 
                 task_manager.set_task_metadata(&task_id_clone, Some(episode_title.clone()), Some(podcast_name.clone())).await?;
 
@@ -480,16 +488,45 @@ impl TaskSpawner {
                 let status_message = format!("Processing {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 85.0, Some(status_message), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
                 
+                // Build the shared metadata used for both ID3 tagging and sidecars.
+                let episode_meta = crate::services::download_metadata::EpisodeMetadata {
+                    title: episode_title.clone(),
+                    artist: author.clone().unwrap_or_else(|| "Unknown".to_string()),
+                    album: podcast_name.clone(),
+                    date: pub_date,
+                    description: description.clone(),
+                    feed_url: feed_url.clone(),
+                    episode_url: Some(episode_url.clone()),
+                    guid: episode_guid.clone(),
+                    duration: episode_duration,
+                    episode_artwork: episode_artwork.clone(),
+                    podcast_artwork: artwork_url.clone(),
+                };
+
                 // Add metadata to the downloaded file
-                if let Err(e) = add_podcast_metadata(
+                if let Err(e) = crate::services::download_metadata::add_podcast_metadata(
                     &file_path,
-                    &episode_title,
-                    author.as_deref().unwrap_or("Unknown"),
-                    &podcast_name,
-                    pub_date.as_ref(),
-                    episode_artwork.as_deref().or(artwork_url.as_deref())
+                    &episode_meta,
                 ).await {
                     tracing::warn!("Failed to add metadata to {}: {}", file_path.display(), e);
+                }
+
+                // Optional sidecar artifacts (folder.jpg, episode cover, metadata files).
+                // Controlled by admin AppSettings; defaults keep the download tree unchanged.
+                let download_settings = db_pool
+                    .get_download_settings()
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("Failed to read download settings, skipping sidecars: {}", e);
+                        crate::services::download_metadata::DownloadSettings::disabled()
+                    });
+                if download_settings.any_enabled() {
+                    crate::services::download_metadata::write_sidecars(
+                        &download_dir,
+                        &file_path,
+                        &episode_meta,
+                        &download_settings,
+                    ).await;
                 }
                 
                 let status_message = format!("Finalizing {}", episode_title);
@@ -546,6 +583,9 @@ impl TaskSpawner {
                 // detached so it never delays the download's completion.
                 crate::services::audio_processing::maybe_detect_silence_after_download(db_pool.clone(), episode_id);
 
+                // Likewise auto-transcribe if the podcast opted in and the AI sidecar is configured.
+                crate::services::transcription::maybe_transcribe_episode(db_pool.clone(), episode_id);
+
                 Ok(serde_json::json!({
                     "episode_id": episode_id,
                     "user_id": user_id,
@@ -595,6 +635,194 @@ impl TaskSpawner {
             },
         )
         .await
+    }
+
+    /// Manually (re-)transcribe a single episode as a tracked background task. Reports live
+    /// progress (streamed from the AI sidecar) so the queue shows a moving percentage rather than
+    /// sitting on "pending" for a long episode.
+    pub async fn spawn_transcribe_episode(&self, episode_id: i32, user_id: i32, force: bool) -> AppResult<String> {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::time::Duration;
+
+        let db_pool = self.db_pool.clone();
+        let task_manager = self.task_manager.clone();
+        let task_id = task_manager
+            .create_task_with_item_id("transcribe_episode".to_string(), user_id, Some(episode_id))
+            .await?;
+        let task_id_clone = task_id.clone();
+
+        tokio::spawn(async move {
+            // Nudge to "Running" immediately so the UI reflects work in progress.
+            let _ = task_manager
+                .update_task_progress_with_item_id(&task_id_clone, 1.0, Some("Transcribing…".to_string()), Some(episode_id), Some("transcribe_episode".to_string()))
+                .await;
+
+            // Latest progress (0–100) shared with a ticker that publishes it to the task system,
+            // decoupling the sync progress callback from async task updates.
+            let progress = Arc::new(AtomicU32::new(1));
+            let ticker = {
+                let tm = task_manager.clone();
+                let tid = task_id_clone.clone();
+                let prog = progress.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        let p = prog.load(Ordering::Relaxed).max(1) as f64;
+                        let _ = tm
+                            .update_task_progress_with_item_id(&tid, p, Some("Transcribing…".to_string()), Some(episode_id), Some("transcribe_episode".to_string()))
+                            .await;
+                    }
+                })
+            };
+
+            let cb_progress = progress.clone();
+            let on_progress = move |p: f64| {
+                cb_progress.store((p * 100.0).round() as u32, Ordering::Relaxed);
+            };
+
+            let result = crate::services::transcription::transcribe_episode(&db_pool, episode_id, force, on_progress).await;
+            ticker.abort();
+
+            match result {
+                Ok(_) => {
+                    if let Err(e) = task_manager
+                        .complete_task(&task_id_clone, Some(serde_json::json!({ "episode_id": episode_id })), None)
+                        .await
+                    {
+                        tracing::error!("Failed to mark transcribe task {} completed: {}", task_id_clone, e);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Transcribe task {} failed: {}", task_id_clone, e);
+                    let _ = task_manager.fail_task(&task_id_clone, e).await;
+                }
+            }
+        });
+
+        Ok(task_id)
+    }
+
+    /// Detect ads for a single episode as a tracked background task, reporting live progress
+    /// (streamed from the AI sidecar's detection windows). Transcribes first if needed (#790).
+    pub async fn spawn_detect_ads(&self, episode_id: i32, user_id: i32, force: bool) -> AppResult<String> {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::time::Duration;
+
+        let db_pool = self.db_pool.clone();
+        let task_manager = self.task_manager.clone();
+        let task_id = task_manager
+            .create_task_with_item_id("detect_ads".to_string(), user_id, Some(episode_id))
+            .await?;
+        let task_id_clone = task_id.clone();
+
+        tokio::spawn(async move {
+            let _ = task_manager
+                .update_task_progress_with_item_id(&task_id_clone, 1.0, Some("Detecting ads…".to_string()), Some(episode_id), Some("detect_ads".to_string()))
+                .await;
+
+            let progress = Arc::new(AtomicU32::new(1));
+            let ticker = {
+                let tm = task_manager.clone();
+                let tid = task_id_clone.clone();
+                let prog = progress.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        let p = prog.load(Ordering::Relaxed).max(1) as f64;
+                        let _ = tm
+                            .update_task_progress_with_item_id(&tid, p, Some("Detecting ads…".to_string()), Some(episode_id), Some("detect_ads".to_string()))
+                            .await;
+                    }
+                })
+            };
+
+            let cb_progress = progress.clone();
+            let on_progress = move |p: f64| {
+                cb_progress.store((p * 100.0).round() as u32, Ordering::Relaxed);
+            };
+
+            let result = crate::services::ad_detection::detect_episode_ads(&db_pool, episode_id, force, on_progress).await;
+            ticker.abort();
+
+            match result {
+                Ok(count) => {
+                    if let Err(e) = task_manager
+                        .complete_task(&task_id_clone, Some(serde_json::json!({ "episode_id": episode_id, "ads": count })), None)
+                        .await
+                    {
+                        tracing::error!("Failed to mark detect_ads task {} completed: {}", task_id_clone, e);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Detect-ads task {} failed: {}", task_id_clone, e);
+                    let _ = task_manager.fail_task(&task_id_clone, e).await;
+                }
+            }
+        });
+
+        Ok(task_id)
+    }
+
+    /// Pull a model into the AI sidecar as a tracked background task, reporting download progress.
+    pub async fn spawn_pull_model(&self, spec: crate::services::ai_client::PullSpec, user_id: i32) -> AppResult<String> {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::time::Duration;
+
+        let task_manager = self.task_manager.clone();
+        let task_id = task_manager
+            .create_task_with_item_id("pull_model".to_string(), user_id, None)
+            .await?;
+        let task_id_clone = task_id.clone();
+        let label = spec.model.clone();
+
+        tokio::spawn(async move {
+            let msg = format!("Pulling {}…", label);
+            let _ = task_manager
+                .update_task_progress_with_item_id(&task_id_clone, 1.0, Some(msg.clone()), None, Some("pull_model".to_string()))
+                .await;
+
+            let progress = Arc::new(AtomicU32::new(1));
+            let ticker = {
+                let tm = task_manager.clone();
+                let tid = task_id_clone.clone();
+                let prog = progress.clone();
+                let msg = msg.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        let p = prog.load(Ordering::Relaxed).max(1) as f64;
+                        let _ = tm
+                            .update_task_progress_with_item_id(&tid, p, Some(msg.clone()), None, Some("pull_model".to_string()))
+                            .await;
+                    }
+                })
+            };
+
+            let cb_progress = progress.clone();
+            let on_progress = move |p: f64| {
+                cb_progress.store((p * 100.0).round() as u32, Ordering::Relaxed);
+            };
+
+            let result = crate::services::ai_client::pull_model(&spec, on_progress).await;
+            ticker.abort();
+
+            match result {
+                Ok(_) => {
+                    if let Err(e) = task_manager
+                        .complete_task(&task_id_clone, Some(serde_json::json!({ "model": label })), None)
+                        .await
+                    {
+                        tracing::error!("Failed to mark pull_model task {} completed: {}", task_id_clone, e);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Pull-model task {} failed: {}", task_id_clone, e);
+                    let _ = task_manager.fail_task(&task_id_clone, e).await;
+                }
+            }
+        });
+
+        Ok(task_id)
     }
 
     pub async fn spawn_download_youtube_video(&self, video_id: i32, user_id: i32) -> AppResult<String> {
@@ -930,87 +1158,6 @@ impl TaskSpawner {
                 }))
             },
         ).await
-    }
-}
-
-// Function to add metadata to downloaded MP3 files
-async fn add_podcast_metadata(
-    file_path: &std::path::Path,
-    title: &str,
-    artist: &str,
-    album: &str,
-    date: Option<&chrono::NaiveDateTime>,
-    artwork_url: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use id3::TagLike;  // Import the trait to use methods
-    use chrono::Datelike;  // For year(), month(), day() methods
-    
-    // Create ID3 tag and add basic metadata
-    let mut tag = id3::Tag::new();
-    tag.set_title(title);
-    tag.set_artist(artist);
-    tag.set_album(album);
-    
-    // Set date if available
-    if let Some(date) = date {
-        tag.set_date_recorded(id3::Timestamp {
-            year: date.year(),
-            month: Some(date.month() as u8),
-            day: Some(date.day() as u8),
-            hour: None,
-            minute: None,
-            second: None,
-        });
-    }
-    
-    // Add genre for podcasts
-    tag.set_genre("Podcast");
-    
-    // Download and add artwork if available
-    if let Some(artwork_url) = artwork_url {
-        if let Ok(artwork_data) = download_artwork(artwork_url).await {
-            // Determine MIME type based on the data
-            let mime_type = if artwork_data.starts_with(&[0xFF, 0xD8, 0xFF]) {
-                "image/jpeg"
-            } else if artwork_data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
-                "image/png"
-            } else {
-                "image/jpeg" // Default fallback
-            };
-            
-            tag.add_frame(id3::frame::Picture {
-                mime_type: mime_type.to_string(),
-                picture_type: id3::frame::PictureType::CoverFront,
-                description: "Cover".to_string(),
-                data: artwork_data,
-            });
-        }
-    }
-    
-    // Write the tag to the file
-    tag.write_to_path(file_path, id3::Version::Id3v24)?;
-    
-    Ok(())
-}
-
-// Helper function to download artwork
-async fn download_artwork(url: &str) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
-    let client = reqwest::Client::new();
-    let response = client
-        .get(url)
-        .header("User-Agent", "PinePods/1.0")
-        .send()
-        .await?;
-    
-    if response.status().is_success() {
-        let bytes = response.bytes().await?;
-        // Limit artwork size to reasonable bounds (e.g., 5MB)
-        if bytes.len() > 5 * 1024 * 1024 {
-            return Err("Artwork too large".into());
-        }
-        Ok(bytes.to_vec())
-    } else {
-        Err(format!("Failed to download artwork: HTTP {}", response.status()).into())
     }
 }
 

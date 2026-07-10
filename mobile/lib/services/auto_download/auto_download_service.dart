@@ -1,7 +1,10 @@
 // lib/services/auto_download/auto_download_service.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
+import 'package:pinepods_mobile/services/network/network_status.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,6 +19,13 @@ class AutoDownloadService {
     required PinepodsService pinepodsService,
     required int userId,
   }) async {
+    // Respect the WiFi-only preference for automatic downloads.
+    if (context.mounted) {
+      final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+      final allowed = await NetworkStatus.canAutoDownload(wifiOnly: settings.autoDownloadWifiOnly);
+      if (!allowed) return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
 
     List<Podcast> podcasts;

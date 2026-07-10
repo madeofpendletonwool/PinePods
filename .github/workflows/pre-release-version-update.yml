@@ -1,5 +1,10 @@
 name: Pre-Release Version Update
 
+# Commits the version bump and pushes it back to the repo using the workflow
+# GITHUB_TOKEN, which requires contents: write.
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:

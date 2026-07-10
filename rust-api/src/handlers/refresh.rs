@@ -188,6 +188,7 @@ struct PodcastRefreshItem {
     feed_url: String,
     artwork_url: Option<String>,
     auto_download: bool,
+    auto_queue: bool,
     username: Option<String>,
     password: Option<String>,
     is_youtube: bool,
@@ -222,6 +223,34 @@ async fn queue_auto_downloads(
         match task_result {
             Ok(task_id) => debug!("Auto-download task queued with ID: {}", task_id),
             Err(e) => warn!("Failed to queue auto-download: {}", e),
+        }
+    }
+}
+
+/// Append newly inserted episodes to the owning user's play queue, if the podcast has
+/// auto-queue enabled (#648). Unlike auto-download this is NOT gated on server downloads.
+/// `queue_episode` is idempotent (a re-run won't create duplicates). Episodes are enqueued
+/// oldest-first so a multi-episode feed drop lands in chronological listening order — DB
+/// pubdate strings render as "YYYY-MM-DD HH:MM:SS", which sorts lexically by time.
+async fn queue_auto_new_episodes(
+    state: &AppState,
+    user_id: i32,
+    auto_queue: bool,
+    new_episodes: &[crate::handlers::podcasts::Episode],
+) {
+    if !auto_queue || new_episodes.is_empty() {
+        return;
+    }
+    let mut ordered: Vec<&crate::handlers::podcasts::Episode> = new_episodes.iter().collect();
+    ordered.sort_by(|a, b| a.episodepubdate.cmp(&b.episodepubdate));
+    for episode in ordered {
+        match state
+            .db_pool
+            .queue_episode(episode.episodeid, user_id, episode.is_youtube)
+            .await
+        {
+            Ok(()) => debug!("Auto-queued episode {} for user {}", episode.episodeid, user_id),
+            Err(e) => warn!("Failed to auto-queue episode {}: {}", episode.episodeid, e),
         }
     }
 }
@@ -270,6 +299,12 @@ async fn refresh_feed_group(state: &AppState, group: &[PodcastRefreshItem]) -> u
                                     total_new += new_eps.len();
                                 }
                                 queue_auto_downloads(state, item.user_id, item.auto_download, &new_eps).await;
+                                queue_auto_new_episodes(state, item.user_id, item.auto_queue, &new_eps).await;
+                                // Auto-transcribe new episodes for opted-in podcasts (independent
+                                // of downloads — the pipeline fetches audio on demand).
+                                for ep in &new_eps {
+                                    crate::services::transcription::maybe_transcribe_episode(state.db_pool.clone(), ep.episodeid);
+                                }
                             }
                             Err(e) => warn!("Error applying feed to podcast {}: {}", item.podcast_id, e),
                         }
@@ -361,7 +396,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
     match &state.db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
             let rows = sqlx::query(
-                r#"SELECT podcastid, feedurl, artworkurl, autodownload, username, password,
+                r#"SELECT podcastid, feedurl, artworkurl, autodownload, autoqueue, username, password,
                           isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified
                    FROM "Podcasts"
                    WHERE COALESCE(refreshpodcast, TRUE) = TRUE
@@ -379,6 +414,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                     feed_url: result.try_get("feedurl")?,
                     artwork_url: result.try_get("artworkurl").ok(),
                     auto_download: result.try_get("autodownload")?,
+                    auto_queue: result.try_get("autoqueue").unwrap_or(false),
                     username: result.try_get("username").ok(),
                     password: result.try_get("password").ok(),
                     is_youtube: result.try_get("isyoutubechannel")?,
@@ -391,7 +427,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
         }
         crate::database::DatabasePool::MySQL(pool) => {
             let rows = sqlx::query(
-                "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
+                "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, AutoQueue, Username, Password,
                         IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified
                  FROM Podcasts
                  WHERE COALESCE(RefreshPodcast, 1) = 1
@@ -409,6 +445,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                     feed_url: result.try_get("FeedURL")?,
                     artwork_url: result.try_get("ArtworkURL").ok(),
                     auto_download: result.try_get("AutoDownload")?,
+                    auto_queue: result.try_get("AutoQueue").unwrap_or(false),
                     username: result.try_get("Username").ok(),
                     password: result.try_get("Password").ok(),
                     is_youtube: result.try_get("IsYouTubeChannel")?,
@@ -829,6 +866,7 @@ pub struct PodcastForRefresh {
     pub artwork_url: Option<String>,
     pub is_youtube: bool,
     pub auto_download: bool,
+    pub auto_queue: bool,
     pub username: Option<String>,
     pub password: Option<String>,
     pub feed_cutoff_days: Option<i32>,
@@ -900,6 +938,7 @@ async fn refresh_rss_feed(
     };
 
     queue_auto_downloads(state, user_id, podcast.auto_download, &new_episodes).await;
+    queue_auto_new_episodes(state, user_id, podcast.auto_queue, &new_episodes).await;
 
     if !new_episodes.is_empty() {
         info!("Refreshed podcast '{}' for user {}: {} new episodes", podcast.name, user_id, new_episodes.len());

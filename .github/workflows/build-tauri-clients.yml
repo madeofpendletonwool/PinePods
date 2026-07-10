@@ -1,5 +1,10 @@
 name: Build Tauri Clients
 
+# Uploads build outputs as release assets via softprops/action-gh-release using
+# the workflow GITHUB_TOKEN, which requires contents: write.
+permissions:
+  contents: write
+
 on:
   release:
     types: [published]

@@ -18,6 +18,9 @@ use crate::requests::pod_req::{
     call_remove_downloaded_episode, call_remove_queued_episode, call_remove_saved_episode,
     call_save_episode, DownloadEpisodeRequest, EpisodeRequest, FetchPodcasting2DataRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest, Transcript,
+    call_get_ai_status, call_get_episode_transcript, call_transcribe_episode, StoredTranscript,
+    call_get_episode_skip_segments, SkipSegment, call_detect_ads, call_adjust_ad_segment_review,
+    AdSegmentReviewRequest,
 };
 use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_parse_podcast_url};
 use i18nrs::yew::use_translation;
@@ -32,6 +35,7 @@ use web_sys::{window, Headers, Request, RequestInit, Response};
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::{BrowserHistory, History};
+use yew_router::hooks::use_location;
 use yewdux::prelude::*;
 
 #[allow(dead_code)]
@@ -195,6 +199,61 @@ pub struct TranscriptInlineProps {
     pub transcripts: Vec<Transcript>,
     pub server_name: String,
     pub api_key: String,
+    /// Detected ad time ranges (seconds) to highlight within the transcript (#790).
+    #[prop_or_default]
+    pub ad_ranges: Vec<(f64, f64)>,
+}
+
+/// One timed transcript cue parsed from SRT/VTT.
+struct TranscriptCue {
+    start: f64,
+    end: f64,
+    text: String,
+}
+
+/// Parse an SRT/VTT timestamp (`HH:MM:SS,mmm`, `MM:SS.mmm`, …) into seconds.
+fn parse_ts(s: &str) -> Option<f64> {
+    let s = s.trim().replace(',', ".");
+    let parts: Vec<&str> = s.split(':').collect();
+    let (h, m, sec) = match parts.as_slice() {
+        [h, m, s] => (h.trim().parse::<f64>().ok()?, m.parse::<f64>().ok()?, s.parse::<f64>().ok()?),
+        [m, s] => (0.0, m.trim().parse::<f64>().ok()?, s.parse::<f64>().ok()?),
+        _ => return None,
+    };
+    Some(h * 3600.0 + m * 60.0 + sec)
+}
+
+/// Parse SRT/VTT content into timed cues, so we can render the transcript as timestamped,
+/// clickable segments instead of an undifferentiated text blob (#790). Returns empty for content
+/// that has no cue timings (e.g. plain text / HTML), so callers can fall back to paragraphs.
+fn parse_transcript_cues(content: &str) -> Vec<TranscriptCue> {
+    let speaker_re = Regex::new(r"<v\s+[^>]*>").unwrap();
+    let mut cues = Vec::new();
+    let mut lines = content.lines().peekable();
+    while let Some(line) = lines.next() {
+        let Some(idx) = line.find("-->") else { continue };
+        let start = parse_ts(&line[..idx]);
+        let end = parse_ts(line[idx + 3..].split_whitespace().next().unwrap_or(""));
+        let (Some(start), Some(end)) = (start, end) else { continue };
+        let mut text_parts: Vec<String> = Vec::new();
+        while let Some(peek) = lines.peek() {
+            if peek.trim().is_empty() || peek.contains("-->") {
+                break;
+            }
+            let l = lines.next().unwrap();
+            let l = speaker_re.replace_all(l, "");
+            let l = l.replace("</v>", "");
+            let t = l.trim();
+            if !t.is_empty() {
+                text_parts.push(t.to_string());
+            }
+        }
+        let text = text_parts.join(" ");
+        if !text.is_empty() {
+            cues.push(TranscriptCue { start, end, text });
+        }
+    }
+    cues
 }
 
 /// Fetches and renders a transcript's text directly (no modal chrome), so it
@@ -226,9 +285,6 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
                 let mime_type = transcript.mime_type.clone();
 
                 spawn_local(async move {
-                    let speaker_regex = Regex::new(r"<v\s+[^>]+>").unwrap();
-                    let simple_speaker_regex = Regex::new(r"<v\s+").unwrap();
-
                     let api_url = format!("{}/api/data/fetch_transcript", server_name);
                     let request_body = serde_json::json!({ "url": url });
 
@@ -262,24 +318,9 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
                                                         div.set_inner_html(content);
                                                         div.text_content().unwrap_or_default()
                                                     }
-                                                    _ => content
-                                                        .lines()
-                                                        .filter(|line| {
-                                                            !line.trim().is_empty()
-                                                                && !line.trim().parse::<i32>().is_ok()
-                                                                && !line.starts_with("WEBVTT")
-                                                                && !line.contains("-->")
-                                                        })
-                                                        .map(|line| {
-                                                            let line =
-                                                                speaker_regex.replace_all(line, "");
-                                                            let line = simple_speaker_regex
-                                                                .replace_all(&line, "");
-                                                            line.trim().to_string()
-                                                        })
-                                                        .filter(|line| !line.is_empty())
-                                                        .collect::<Vec<_>>()
-                                                        .join("\n"),
+                                                    // Keep raw SRT/VTT so the render can parse
+                                                    // timecodes into clickable cues (#790).
+                                                    _ => content.to_string(),
                                                 };
                                                 transcript_content.set(Some(cleaned_text));
                                                 loading.set(false);
@@ -335,6 +376,20 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
         },
     );
 
+    // Seek the global player to a transcript timestamp when a cue is clicked.
+    let (ui_state, _) = use_store::<UIState>();
+    let seek = {
+        let ui_state = ui_state.clone();
+        Callback::from(move |t: f64| {
+            if let Some(me) = ui_state.media_element.as_ref() {
+                me.set_current_time(t);
+            } else if let Some(ae) = ui_state.audio_element.as_ref() {
+                ae.set_current_time(t);
+            }
+        })
+    };
+    let ad_ranges = props.ad_ranges.clone();
+
     html! {
         <div class="ep-transcript-content space-y-4 item_container-text prose dark:prose-invert max-w-none">
             if *loading {
@@ -344,8 +399,30 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
             } else if let Some(err) = &*error {
                 <div class="text-red-500 dark:text-red-400 p-2">{err}</div>
             } else if let Some(content) = &*transcript_content {
-                {
-                    if content.contains('<') && content.contains('>') {
+                {{
+                    let cues = parse_transcript_cues(content);
+                    if !cues.is_empty() {
+                        // Timecoded, clickable transcript with ad ranges highlighted (#790).
+                        html! {
+                            <div class="ep-transcript-cues">
+                                { for cues.iter().map(|cue| {
+                                    let is_ad = ad_ranges.iter().any(|(s, e)| cue.start < *e && cue.end > *s);
+                                    let start = cue.start;
+                                    let seek = seek.clone();
+                                    let onclick = Callback::from(move |_: MouseEvent| seek.emit(start));
+                                    let cls = if is_ad { "ep-transcript-cue is-ad" } else { "ep-transcript-cue" };
+                                    html! {
+                                        <div class={cls}>
+                                            <button class="ep-transcript-cue-ts" {onclick} title="Jump to this point">
+                                                { format_time(start as i32) }
+                                            </button>
+                                            <span class="ep-transcript-cue-text">{ &cue.text }</span>
+                                        </div>
+                                    }
+                                }) }
+                            </div>
+                        }
+                    } else if content.contains('<') && content.contains('>') {
                         html! { <div class="transcript-content" ref={content_ref}/> }
                     } else {
                         html! {
@@ -354,7 +431,7 @@ pub fn transcript_inline(props: &TranscriptInlineProps) -> Html {
                             </div>
                         }
                     }
-                }
+                }}
             }
         </div>
     }
@@ -617,12 +694,410 @@ enum EpisodeTab {
     People,
 }
 
+/// Build the internal `Transcript` entry that renders a stored AI transcript through the same
+/// pipeline as feed transcripts (the backend resolves this URL to SRT).
+fn ai_transcript_entry(episode_id: i32) -> Transcript {
+    Transcript {
+        url: format!("pinepods-internal://transcript/{}", episode_id),
+        mime_type: "application/srt".to_string(),
+        language: Some("AI".to_string()),
+        rel: Some("ai".to_string()),
+    }
+}
+
+/// Fire a transcription request for `episode_id`, showing a notification and flipping the local
+/// state to "running" optimistically. Shared by the desktop tab and the mobile actions.
+fn spawn_transcribe(
+    server_name: String,
+    api_key: Option<String>,
+    user_id: i32,
+    episode_id: i32,
+    submitting: UseStateHandle<bool>,
+    transcript: UseStateHandle<Option<StoredTranscript>>,
+    started_msg: String,
+    error_msg: String,
+) {
+    submitting.set(true);
+    wasm_bindgen_futures::spawn_local(async move {
+        match call_transcribe_episode(&server_name, &api_key, episode_id, user_id, false).await {
+            Ok(_) => {
+                Dispatch::<NotificationState>::global()
+                    .reduce_mut(|s| s.info_message = Some(started_msg));
+                transcript.set(Some(StoredTranscript {
+                    source: "generated".to_string(),
+                    language: None,
+                    model: None,
+                    status: "running".to_string(),
+                    full_text: None,
+                    segments: None,
+                }));
+            }
+            Err(e) => {
+                Dispatch::<NotificationState>::global()
+                    .reduce_mut(|s| s.error_message = Some(format!("{}: {}", error_msg, e)));
+            }
+        }
+        submitting.set(false);
+    });
+}
+
+#[derive(Properties, PartialEq)]
+pub struct TranscriptTabProps {
+    pub episode_id: i32,
+    /// Feed (built-in) transcripts for the episode, if any.
+    pub feed_transcripts: Vec<Transcript>,
+    pub server_name: String,
+    pub api_key: String,
+    pub ai_available: bool,
+}
+
+/// Unified transcript view for the episode's Transcript tab (#726): shows the built-in transcript
+/// if present, an AI transcript if one exists, a source selector when both are available, and a
+/// button to generate (or regenerate) an AI transcript when the sidecar is connected.
+#[function_component(TranscriptTab)]
+pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
+    let (i18n, _) = use_translation();
+    let (app, _) = use_store::<AppState>();
+    let user_id = app.user_details.as_ref().map(|ud| ud.UserID);
+
+    let ai_transcript = use_state(|| Option::<StoredTranscript>::None);
+    let selected = use_state(|| 0usize);
+    let submitting = use_state(|| false);
+    let episode_id = props.episode_id;
+
+    // Load any stored AI transcript for this episode.
+    {
+        let ai_transcript = ai_transcript.clone();
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        use_effect_with((episode_id, user_id), move |(episode_id, user_id)| {
+            let episode_id = *episode_id;
+            if let Some(user_id) = *user_id {
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(t) = call_get_episode_transcript(&server_name, &Some(api_key), user_id, episode_id).await {
+                        ai_transcript.set(t);
+                    }
+                });
+            }
+            || ()
+        });
+    }
+
+    // Load detected ad segments for inline review + transcript highlighting (#790).
+    let ad_segments = use_state(Vec::<SkipSegment>::new);
+    let ad_refresh = use_state(|| 0u32);
+    {
+        let ad_segments = ad_segments.clone();
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        let refresh = *ad_refresh;
+        use_effect_with((episode_id, user_id, refresh), move |(episode_id, user_id, _)| {
+            let episode_id = *episode_id;
+            if let Some(user_id) = *user_id {
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(segs) = call_get_episode_skip_segments(&server_name, &Some(api_key), user_id, episode_id).await {
+                        ad_segments.set(segs.into_iter().filter(|s| s.kind == "ad").collect());
+                    }
+                });
+            }
+            || ()
+        });
+    }
+    let ad_ranges: Vec<(f64, f64)> = ad_segments.iter().map(|s| (s.start_time, s.end_time)).collect();
+
+    let status = ai_transcript.as_ref().map(|t| t.status.clone());
+    let ai_complete = status.as_deref() == Some("complete");
+    let is_running = matches!(status.as_deref(), Some("running") | Some("pending"));
+
+    // Assemble selectable sources: built-in feed transcript(s) + the AI one (if complete).
+    let mut sources: Vec<(String, Transcript)> = Vec::new();
+    for t in &props.feed_transcripts {
+        let label = t
+            .language
+            .clone()
+            .filter(|l| !l.is_empty())
+            .unwrap_or_else(|| i18n.t("episode.transcript_builtin").to_string());
+        sources.push((label, t.clone()));
+    }
+    if ai_complete {
+        sources.push((i18n.t("episode.transcript_ai").to_string(), ai_transcript_entry(episode_id)));
+    }
+
+    let on_transcribe = {
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        let submitting = submitting.clone();
+        let ai_transcript = ai_transcript.clone();
+        let started = i18n.t("episode.transcription_started").to_string();
+        let err = i18n.t("episode.transcription_start_error").to_string();
+        Callback::from(move |_: MouseEvent| {
+            if let Some(user_id) = user_id {
+                spawn_transcribe(
+                    server_name.clone(), Some(api_key.clone()), user_id, episode_id,
+                    submitting.clone(), ai_transcript.clone(), started.clone(), err.clone(),
+                );
+            }
+        })
+    };
+
+    let sel_idx = (*selected).min(sources.len().saturating_sub(1));
+
+    // Source selector — only when there's a real choice.
+    let selector = if sources.len() > 1 {
+        html! {
+            <div class="ep-transcript-sources">
+                { for sources.iter().enumerate().map(|(i, (label, _))| {
+                    let selected = selected.clone();
+                    let onclick = Callback::from(move |_: MouseEvent| selected.set(i));
+                    let cls = if i == sel_idx { "ep-transcript-source-btn active" } else { "ep-transcript-source-btn" };
+                    html! { <button class={cls} {onclick}>{ label.clone() }</button> }
+                }) }
+            </div>
+        }
+    } else {
+        html! {}
+    };
+
+    let content = if let Some((_, t)) = sources.get(sel_idx) {
+        html! {
+            <TranscriptInline
+                transcripts={vec![t.clone()]}
+                server_name={props.server_name.clone()}
+                api_key={props.api_key.clone()}
+                ad_ranges={ad_ranges.clone()}
+            />
+        }
+    } else {
+        html! {}
+    };
+
+    // Generate / regenerate action (only when the AI sidecar is connected).
+    let action = if !props.ai_available {
+        html! {}
+    } else if is_running {
+        html! { <p class="ep-ai-transcript-status ep-transcript-gen">{ i18n.t("episode.transcribing") }</p> }
+    } else {
+        let (icon, label) = if *submitting {
+            ("ph-circle-notch", i18n.t("episode.transcribe_starting"))
+        } else if ai_complete {
+            ("ph-arrow-clockwise", i18n.t("episode.regenerate_ai_transcript"))
+        } else {
+            ("ph-text-aa", i18n.t("episode.generate_ai_transcript"))
+        };
+        html! {
+            <button class="ep-ai-transcript-btn ep-transcript-gen" onclick={on_transcribe} disabled={*submitting}>
+                <i class={format!("ph {}", icon)}></i>{ label }
+            </button>
+        }
+    };
+
+    // Nothing to show at all (no transcript and can't generate) — render empty.
+    if sources.is_empty() && !props.ai_available {
+        return html! {};
+    }
+
+    // Ad detection (#790): manual trigger + per-user confirm/deny of detected ads.
+    let on_detect_ads = {
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        let started = i18n.t("episode.ad_detection_started").to_string();
+        let err = i18n.t("episode.ad_detection_error").to_string();
+        Callback::from(move |_: MouseEvent| {
+            if let Some(user_id) = user_id {
+                let (server_name, api_key) = (server_name.clone(), api_key.clone());
+                let (started, err) = (started.clone(), err.clone());
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_detect_ads(&server_name, &Some(api_key), episode_id, user_id, true).await {
+                        Ok(_) => Dispatch::<NotificationState>::global().reduce_mut(|s| s.info_message = Some(started)),
+                        Err(e) => Dispatch::<NotificationState>::global().reduce_mut(|s| s.error_message = Some(format!("{}: {}", err, e))),
+                    }
+                });
+            }
+        })
+    };
+
+    let review_cb = {
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        let ad_refresh = ad_refresh.clone();
+        Callback::from(move |(segment_id, status): (i32, String)| {
+            if let Some(user_id) = user_id {
+                let (server_name, api_key) = (server_name.clone(), api_key.clone());
+                let ad_refresh = ad_refresh.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let req = AdSegmentReviewRequest { segment_id, user_id, status };
+                    let _ = call_adjust_ad_segment_review(&server_name, &Some(api_key), &req).await;
+                    ad_refresh.set(*ad_refresh + 1);
+                });
+            }
+        })
+    };
+
+    let detect_action = if props.ai_available {
+        html! {
+            <button class="ep-ai-transcript-btn ep-transcript-gen" onclick={on_detect_ads}>
+                <i class="ph ph-magnifying-glass"></i>{ i18n.t("episode.detect_ads") }
+            </button>
+        }
+    } else {
+        html! {}
+    };
+
+    let ad_review = if !ad_segments.is_empty() {
+        html! {
+            <div class="ep-ad-review">
+                <h4 class="ep-ad-review-title">{ i18n.t("episode.detected_ads") }</h4>
+                { for ad_segments.iter().map(|seg| {
+                    let seg_id = seg.segment_id;
+                    let status = seg.status.clone().unwrap_or_default();
+                    let range = format!("{} – {}", format_time(seg.start_time as i32), format_time(seg.end_time as i32));
+                    let skipping = matches!(status.as_str(), "active" | "confirmed");
+                    let confirm = { let r = review_cb.clone(); Callback::from(move |_: MouseEvent| r.emit((seg_id, "confirmed".to_string()))) };
+                    let deny = { let r = review_cb.clone(); Callback::from(move |_: MouseEvent| r.emit((seg_id, "rejected".to_string()))) };
+                    html! {
+                        <div class="ep-ad-review-row">
+                            <span class="ep-ad-review-range">{ range }</span>
+                            <span class={ if skipping { "ep-ad-status skipping" } else { "ep-ad-status kept" } }>
+                                { if skipping { i18n.t("episode.ad_skipping") } else { i18n.t("episode.ad_kept") } }
+                            </span>
+                            <button class="ep-ad-btn confirm" onclick={confirm} title="Skip this ad">
+                                <i class="ph ph-check"></i>
+                            </button>
+                            <button class="ep-ad-btn deny" onclick={deny} title="Keep this ad">
+                                <i class="ph ph-x"></i>
+                            </button>
+                        </div>
+                    }
+                }) }
+            </div>
+        }
+    } else {
+        html! {}
+    };
+
+    html! {
+        <div class="ep-pane">
+            { selector }
+            { content }
+            { action }
+            { detect_action }
+            { ad_review }
+        </div>
+    }
+}
+
+#[derive(Properties, PartialEq)]
+pub struct MobileTranscriptActionsProps {
+    pub episode_id: i32,
+    pub server_name: String,
+    pub api_key: String,
+    pub ai_available: bool,
+    /// Opens the transcript modal with the given source(s).
+    pub on_view: Callback<Vec<Transcript>>,
+}
+
+/// AI transcript actions for the mobile transcript section: view the AI transcript in the same
+/// modal used for feed transcripts, and generate/regenerate one.
+#[function_component(MobileTranscriptActions)]
+pub fn mobile_transcript_actions(props: &MobileTranscriptActionsProps) -> Html {
+    let (i18n, _) = use_translation();
+    let (app, _) = use_store::<AppState>();
+    let user_id = app.user_details.as_ref().map(|ud| ud.UserID);
+
+    let ai_transcript = use_state(|| Option::<StoredTranscript>::None);
+    let submitting = use_state(|| false);
+    let episode_id = props.episode_id;
+
+    {
+        let ai_transcript = ai_transcript.clone();
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        use_effect_with((episode_id, user_id), move |(episode_id, user_id)| {
+            let episode_id = *episode_id;
+            if let Some(user_id) = *user_id {
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(t) = call_get_episode_transcript(&server_name, &Some(api_key), user_id, episode_id).await {
+                        ai_transcript.set(t);
+                    }
+                });
+            }
+            || ()
+        });
+    }
+
+    let status = ai_transcript.as_ref().map(|t| t.status.clone());
+    let ai_complete = status.as_deref() == Some("complete");
+    let is_running = matches!(status.as_deref(), Some("running") | Some("pending"));
+
+    if !props.ai_available && !ai_complete {
+        return html! {};
+    }
+
+    let on_transcribe = {
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        let submitting = submitting.clone();
+        let ai_transcript = ai_transcript.clone();
+        let started = i18n.t("episode.transcription_started").to_string();
+        let err = i18n.t("episode.transcription_start_error").to_string();
+        Callback::from(move |_: MouseEvent| {
+            if let Some(user_id) = user_id {
+                spawn_transcribe(
+                    server_name.clone(), Some(api_key.clone()), user_id, episode_id,
+                    submitting.clone(), ai_transcript.clone(), started.clone(), err.clone(),
+                );
+            }
+        })
+    };
+
+    let view_ai = {
+        let on_view = props.on_view.clone();
+        Callback::from(move |_: MouseEvent| on_view.emit(vec![ai_transcript_entry(episode_id)]))
+    };
+
+    html! {
+        <>
+            { if ai_complete {
+                html! {
+                    <button class="ep-mobile-transcript-btn" onclick={view_ai}>
+                        <i class="ph ph-scroll"></i>{ i18n.t("episode.view_ai_transcript") }
+                    </button>
+                }
+            } else { html! {} } }
+            { if is_running {
+                html! { <p class="ep-ai-transcript-status">{ i18n.t("episode.transcribing") }</p> }
+            } else if props.ai_available {
+                let (icon, label) = if *submitting {
+                    ("ph-circle-notch", i18n.t("episode.transcribe_starting"))
+                } else if ai_complete {
+                    ("ph-arrow-clockwise", i18n.t("episode.regenerate_ai_transcript"))
+                } else {
+                    ("ph-text-aa", i18n.t("episode.generate_ai_transcript"))
+                };
+                html! {
+                    <button class="ep-mobile-transcript-btn" onclick={on_transcribe} disabled={*submitting}>
+                        <i class={format!("ph {}", icon)}></i>{ label }
+                    </button>
+                }
+            } else { html! {} } }
+        </>
+    }
+}
+
 #[function_component(Episode)]
 pub fn epsiode() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let (episode_detail_state, _) = use_store::<EpisodeDetailState>();
     let (prefs_state, _) = use_store::<UserPreferencesState>();
+
+    // Reactive key derived from the URL query string. yew_router matches only the path
+    // (`/episode`), so navigating between `?episode_id=A` and `?episode_id=B` does not remount
+    // this component. Subscribing to the location here makes the component re-render on any
+    // query change; feeding this key into the metadata fetch effect below re-runs the fetch.
+    let ep_query_key = use_location()
+        .map(|loc| loc.query_str().to_string())
+        .unwrap_or_default();
 
     // let error = use_state(|| None);
     let shared_url = use_state(|| Option::<String>::None);
@@ -682,6 +1157,24 @@ pub fn epsiode() -> Html {
     //let episode_id = state.selected_episode_id.clone();
     let ep_in_db = use_state(|| false);
     let ep_2_loading = use_state(|| true);
+
+    // Whether the optional AI sidecar is connected — gates the Transcript tab + generate action.
+    let ai_available = use_state(|| false);
+    {
+        let ai_available = ai_available.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        use_effect_with((), move |_| {
+            if let (Some(server_name), Some(api_key)) = (server_name, api_key) {
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(up) = call_get_ai_status(&server_name, &api_key).await {
+                        ai_available.set(up);
+                    }
+                });
+            }
+            || ()
+        });
+    }
 
     let page_state = use_state(|| PageState::Loading);
 
@@ -922,7 +1415,8 @@ pub fn epsiode() -> Html {
         let page_state = page_state.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
-        use_effect_with(server_name.clone(), move |_| {
+        // Depend on the query key too so switching episodes on the same route re-fetches.
+        use_effect_with((server_name.clone(), ep_query_key.clone()), move |_| {
             let window = web_sys::window().expect("no global window exists");
             let search_params = window.location().search().unwrap();
             let url_params = UrlSearchParams::new_with_str(&search_params).unwrap();
@@ -1914,47 +2408,60 @@ pub fn epsiode() -> Html {
                                         } else { html! {} }
                                     } else { html! {} }}
 
-                                    // ── Transcript ──
-                                    {
-                                        if let Some(transcript) = &audio_state.episode_page_transcript {
-                                            if !transcript.is_empty() {
-                                                let transcript_clone = transcript.clone();
-                                                html! {
-                                                    <>
-                                                    <div class="ep-mobile-transcript">
-                                                        <button
-                                                            onclick={Callback::from(move |_| {
-                                                                let tc = transcript_clone.clone();
-                                                                Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
-                                                                    s.show_transcript_modal = Some(true);
-                                                                    s.current_transcripts = Some(tc);
+                                    // ── Transcript (built-in + AI, #726) ──
+                                    { {
+                                        let feed = audio_state.episode_page_transcript.clone().unwrap_or_default();
+                                        let has_feed = !feed.is_empty();
+                                        if has_feed || *ai_available {
+                                            // Opens the shared transcript modal with the chosen source(s).
+                                            let on_view = Callback::from(move |sources: Vec<Transcript>| {
+                                                Dispatch::<EpisodeDetailState>::global().reduce_mut(move |s| {
+                                                    s.show_transcript_modal = Some(true);
+                                                    s.current_transcripts = Some(sources);
+                                                });
+                                            });
+                                            let on_view_feed = {
+                                                let on_view = on_view.clone();
+                                                let feed = feed.clone();
+                                                Callback::from(move |_: MouseEvent| on_view.emit(feed.clone()))
+                                            };
+                                            html! {
+                                                <>
+                                                <div class="ep-mobile-transcript">
+                                                    { if has_feed {
+                                                        html! {
+                                                            <button onclick={on_view_feed} class="ep-mobile-transcript-btn font-bold">
+                                                                <i class="ph ph-scroll"></i>
+                                                                { &i18n_view_transcript }
+                                                            </button>
+                                                        }
+                                                    } else { html! {} } }
+                                                    <MobileTranscriptActions
+                                                        episode_id={episode.episodeid}
+                                                        server_name={server_name.clone().unwrap_or_default()}
+                                                        api_key={api_key.clone().unwrap_or_default().unwrap_or_default()}
+                                                        ai_available={*ai_available}
+                                                        on_view={on_view.clone()}
+                                                    />
+                                                </div>
+                                                if let Some(show_modal) = episode_detail_state.show_transcript_modal {
+                                                    if show_modal {
+                                                        <TranscriptModal
+                                                            transcripts={episode_detail_state.current_transcripts.clone().unwrap_or_default()}
+                                                            server_name={server_name.clone().unwrap_or_default()}
+                                                            api_key={api_key.clone().unwrap_or_default().unwrap_or_default()}
+                                                            onclose={Callback::from(move |_| {
+                                                                Dispatch::<EpisodeDetailState>::global().reduce_mut(|s| {
+                                                                    s.show_transcript_modal = Some(false);
                                                                 });
                                                             })}
-                                                            class="ep-mobile-transcript-btn font-bold"
-                                                        >
-                                                            <i class="ph ph-scroll"></i>
-                                                            { &i18n_view_transcript }
-                                                        </button>
-                                                    </div>
-                                                    if let Some(show_modal) = episode_detail_state.show_transcript_modal {
-                                                        if show_modal {
-                                                            <TranscriptModal
-                                                                transcripts={episode_detail_state.current_transcripts.clone().unwrap_or_default()}
-                                                                server_name={server_name.clone().unwrap_or_default()}
-                                                                api_key={api_key.clone().unwrap().unwrap_or_default()}
-                                                                onclose={Callback::from(move |_| {
-                                                                    Dispatch::<EpisodeDetailState>::global().reduce_mut(|s| {
-                                                                        s.show_transcript_modal = Some(false);
-                                                                    });
-                                                                })}
-                                                            />
-                                                        }
+                                                        />
                                                     }
-                                                    </>
                                                 }
-                                            } else { html! {} }
+                                                </>
+                                            }
                                         } else { html! {} }
-                                    }
+                                    } }
 
                                     // ── Description ──
                                     <div class="ep-mobile-desc episode-single-desc episode-description">
@@ -2078,7 +2585,10 @@ pub fn epsiode() -> Html {
                                     {{
                                         let chapter_count = audio_state.episode_page_chapters.as_ref().map_or(0, |c| c.len());
                                         let has_chapters = chapter_count > 0;
-                                        let has_transcript = audio_state.episode_page_transcript.as_ref().map_or(false, |t| !t.is_empty());
+                                        let has_feed_transcript = audio_state.episode_page_transcript.as_ref().map_or(false, |t| !t.is_empty());
+                                        // The Transcript tab is available if there's a built-in transcript OR the AI
+                                        // sidecar is connected (so the user can generate one).
+                                        let has_transcript = has_feed_transcript || *ai_available;
                                         let has_people = !*ep_2_loading && audio_state.episode_page_people.as_ref().map_or(false, |p| !p.is_empty());
                                         let effective_tab = match *active_tab {
                                             EpisodeTab::Chapters if has_chapters => EpisodeTab::Chapters,
@@ -2216,18 +2726,14 @@ pub fn epsiode() -> Html {
                                                         </div>
                                                     }
                                                 },
-                                                EpisodeTab::Transcript => {
-                                                    if let Some(transcript) = &audio_state.episode_page_transcript {
-                                                        html! {
-                                                            <div class="ep-pane">
-                                                                <TranscriptInline
-                                                                    transcripts={transcript.clone()}
-                                                                    server_name={server_name.clone().unwrap_or_default()}
-                                                                    api_key={api_key.clone().unwrap_or_default().unwrap_or_default()}
-                                                                />
-                                                            </div>
-                                                        }
-                                                    } else { html! {} }
+                                                EpisodeTab::Transcript => html! {
+                                                    <TranscriptTab
+                                                        episode_id={episode.episodeid}
+                                                        feed_transcripts={audio_state.episode_page_transcript.clone().unwrap_or_default()}
+                                                        server_name={server_name.clone().unwrap_or_default()}
+                                                        api_key={api_key.clone().unwrap_or_default().unwrap_or_default()}
+                                                        ai_available={*ai_available}
+                                                    />
                                                 },
                                                 EpisodeTab::People => {
                                                     if let Some(people) = &audio_state.episode_page_people {

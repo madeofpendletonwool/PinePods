@@ -39,6 +39,12 @@ class Episode {
   /// The filename of the downloaded episode; or null.
   String? filename;
 
+  /// Transient override for the URL the download manager should fetch bytes from.
+  /// When set (e.g. the server's downloaded copy), it is preferred over
+  /// [contentUrl] for the actual download, while [contentUrl] is still used to
+  /// derive the on-disk filename and for playback/matching. Not persisted.
+  String? downloadUrl;
+
   /// The current downloading state of the episode.
   DownloadState downloadState = DownloadState.none;
 

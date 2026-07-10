@@ -6,6 +6,7 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
@@ -62,6 +63,10 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
   HistorySortDirection _sortDirection = HistorySortDirection.newestFirst;
   HistoryFilter _activeFilter = HistoryFilter.all;
   static const String _sortPreferenceKey = 'history_sort_direction';
+
+  // Favorites-only filter (podcast-level favorite state from return_pods).
+  bool _favoritesOnly = false;
+  Set<int> _favoritePodcastIds = {};
 
   @override
   void initState() {
@@ -145,7 +150,45 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
                episode.episodeDescription.toLowerCase().contains(_searchQuery.toLowerCase());
       }).toList();
     }
+    if (_favoritesOnly) {
+      filtered = filtered
+          .where((e) =>
+              e.podcastId != null && _favoritePodcastIds.contains(e.podcastId))
+          .toList();
+    }
     _filteredEpisodes = filtered;
+  }
+
+  Future<void> _loadFavoritePodcastIds(int userId) async {
+    try {
+      final podcasts = await _pinepodsService.getUserPodcasts(userId);
+      if (!mounted) return;
+      setState(() {
+        _favoritePodcastIds = podcasts
+            .where((p) => p.isFavorite && p.id != null)
+            .map((p) => p.id!)
+            .toSet();
+        _filterEpisodes();
+      });
+    } catch (e) {
+      // Non-fatal: favorites filter just won't have data.
+    }
+  }
+
+  void _toggleFavoritesFilter() {
+    setState(() {
+      _favoritesOnly = !_favoritesOnly;
+      _filterEpisodes();
+    });
+    if (_favoritesOnly) {
+      final userId =
+          Provider.of<SettingsBloc>(context, listen: false)
+              .currentSettings
+              .pinepodsUserId;
+      if (userId != null) {
+        _loadFavoritePodcastIds(userId);
+      }
+    }
   }
 
   String _sortByParam(HistorySortDirection direction) {
@@ -206,6 +249,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
   void _clearAllFilters() {
     setState(() {
       _activeFilter = HistoryFilter.all;
+      _favoritesOnly = false;
       _searchController.clear();
       _searchQuery = '';
       _episodes = [];
@@ -271,6 +315,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       });
 
       await LocalDownloadUtils.loadLocalDownloadStatuses(context, enrichedEpisodes);
+      await _loadFavoritePodcastIds(userId);
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to load listening history: ${e.toString()}';
@@ -361,9 +406,10 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
   Future<void> _showContextMenu(int episodeIndex) async {
     final episode = _episodes[episodeIndex];
     final isDownloadedLocally = await LocalDownloadUtils.isEpisodeDownloadedLocally(context, episode);
-    
+
     if (!mounted) return;
-    
+
+    final pageContext = context;
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.3),
@@ -405,6 +451,15 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
         },
         onDismiss: () {
           Navigator.of(context).pop();
+        },
+        onPodcastTap: () {
+          Navigator.of(context).pop();
+          navigateToPodcastById(
+            pageContext,
+            episode.podcastId,
+            fallbackTitle: episode.podcastName,
+            fallbackArtwork: episode.episodeArtwork,
+          );
         },
       ),
     );
@@ -979,7 +1034,9 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
 
   Widget _buildEpisodesList() {
     final hasActiveSearch = _searchQuery.isNotEmpty;
-    if (_filteredEpisodes.isEmpty && !_isLoadingMore && hasActiveSearch) {
+    if (_filteredEpisodes.isEmpty &&
+        !_isLoadingMore &&
+        (hasActiveSearch || _favoritesOnly)) {
       return SliverFillRemaining(
         child: Center(
           child: Column(
@@ -1032,9 +1089,26 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
-                    onPressed: _refresh,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          _favoritesOnly ? Icons.star : Icons.star_border,
+                          color: _favoritesOnly
+                              ? Colors.amber
+                              : Theme.of(context).iconTheme.color,
+                        ),
+                        tooltip: _favoritesOnly
+                            ? 'Show all podcasts'
+                            : 'Show favorites only',
+                        onPressed: _toggleFavoritesFilter,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _refresh,
+                      ),
+                    ],
                   ),
                 ],
               ),

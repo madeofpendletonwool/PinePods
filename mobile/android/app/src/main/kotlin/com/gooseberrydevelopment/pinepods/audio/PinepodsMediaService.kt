@@ -17,15 +17,19 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.upstream.DefaultAllocator
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
 import androidx.media3.ui.PlayerNotificationManager
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.gooseberrydevelopment.pinepods.MainActivity
+import com.gooseberrydevelopment.pinepods.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.guava.future
@@ -35,6 +39,11 @@ class PinepodsMediaService : MediaLibraryService() {
     private var mediaSession: MediaLibrarySession? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main)
     private var player: ExoPlayer? = null
+    // Configurable skip intervals (ms) used by the media session's rewind /
+    // fast-forward buttons in Android Auto and the notification. Kept in sync
+    // with the in-app setting via setSkipIntervals().
+    private var seekForwardMs: Long = 30000
+    private var seekBackMs: Long = 10000
     private var eventStreamHandler: AudioEventStreamHandler? = null
     private var sessionCallback: PinepodsLibrarySessionCallback? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
@@ -42,6 +51,10 @@ class PinepodsMediaService : MediaLibraryService() {
     private val binder = LocalBinder()
     private val handler = Handler(Looper.getMainLooper())
     private var positionUpdateRunnable: Runnable? = null
+    // Ad-skip ranges (#790), in SECONDS. ExoPlayer's skipSilenceEnabled DSP can
+    // only remove silence, not ads (which are content), so ads are skipped by
+    // seeking past these ranges from the 1s position poll. Cleared per-episode.
+    private var adSkipSegments: List<Pair<Double, Double>> = emptyList()
 
     inner class LocalBinder : Binder() {
         fun getService(): PinepodsMediaService = this@PinepodsMediaService
@@ -67,8 +80,35 @@ class PinepodsMediaService : MediaLibraryService() {
             notificationManager.createNotificationChannel(channel)
         }
 
-        initializePlayer()
-        initializeMediaLibrarySessionEarly()
+        // Wrap init so a failure here can never leave the service without a
+        // valid media session. Android Auto drops apps whose onGetSession
+        // returns null, which is a likely cause of the app intermittently
+        // disappearing from the car's app list.
+        try {
+            initializePlayer()
+            initializeMediaLibrarySessionEarly()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during media service initialization", e)
+            AudioPlayerPlugin.logToFlutter("ERROR", TAG, "Error during media service initialization: ${e.message}")
+        }
+    }
+
+    /**
+     * Best-effort (re)initialization used to guarantee a non-null session for
+     * onGetSession. Safe to call repeatedly.
+     */
+    private fun ensureInitialized() {
+        try {
+            if (player == null) {
+                initializePlayer()
+            }
+            if (mediaSession == null) {
+                initializeMediaLibrarySessionEarly()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "ensureInitialized failed", e)
+            AudioPlayerPlugin.logToFlutter("ERROR", TAG, "ensureInitialized failed: ${e.message}")
+        }
     }
 
     /**
@@ -97,12 +137,26 @@ class PinepodsMediaService : MediaLibraryService() {
         // Create minimal callback for early initialization
         sessionCallback = PinepodsLibrarySessionCallback(this, null, eventStreamHandler)
 
-        // Build media library session
-        val builder = MediaLibrarySession.Builder(this, player!!, sessionCallback!!)
+        // Build media library session using a ForwardingPlayer that hides the
+        // "skip to next/previous track" commands so Android Auto / bluetooth /
+        // the notification render REWIND and FAST-FORWARD buttons instead. With
+        // a single-item podcast timeline the default next/prev buttons either do
+        // nothing or seek to the very start of the episode ("back to start"),
+        // which is what users were hitting. Rewind / fast-forward honor the
+        // configurable increments below.
+        val builder = MediaLibrarySession.Builder(this, createSeekOnlyPlayer(player!!), sessionCallback!!)
             .setId("pinepods_media_library_session")
             .also { sessionActivityIntent?.let { intent -> it.setSessionActivity(intent) } }
 
         mediaSession = builder.build()
+
+        // Because we hide the skip-to-next/previous commands (see
+        // createSeekOnlyPlayer), Media3's default transport UI would only leave
+        // play/pause. Add explicit rewind / fast-forward buttons to the custom
+        // layout so Android Auto and the notification show them and they trigger
+        // the player's seekBack() / seekForward() (which honor the configurable
+        // interval).
+        applyCustomLayout()
 
         Log.d(TAG, "MediaLibrarySession built successfully - sessionId: ${mediaSession?.id}, token: ${mediaSession?.sessionCompatToken}")
 
@@ -211,6 +265,12 @@ class PinepodsMediaService : MediaLibraryService() {
         Log.d(TAG, "onGetSession called - package: ${controllerInfo.packageName}, uid: ${controllerInfo.uid}, session exists: ${mediaSession != null}")
         AudioPlayerPlugin.logToFlutter("INFO", TAG, "onGetSession called by ${controllerInfo.packageName}, session=${if (mediaSession != null) "initialized" else "NULL"}")
 
+        // Guarantee a session exists before returning; a null return makes
+        // Android Auto drop the app from its list.
+        if (mediaSession == null) {
+            ensureInitialized()
+        }
+
         if (mediaSession != null) {
             Log.d(TAG, "Returning MediaLibrarySession - id: ${mediaSession?.id}")
             AudioPlayerPlugin.logToFlutter("INFO", TAG, "Returning valid MediaLibrarySession to ${controllerInfo.packageName}")
@@ -237,8 +297,39 @@ class PinepodsMediaService : MediaLibraryService() {
         // Update the callback with the real helper
         sessionCallback?.updateMediaBrowserHelper(mediaBrowserHelper!!)
 
+        // Now that Flutter can supply real data, invalidate any empty results
+        // Android Auto cached while the helper was null (cold start). This makes
+        // Auto re-query these nodes and replace the "no episodes" placeholders.
+        notifyBrowseContentChanged()
+
         Log.d(TAG, "Media library session connected to Flutter - Android Auto browsing now fully functional")
         AudioPlayerPlugin.logToFlutter("INFO", TAG, "Flutter connected - MediaBrowserHelper ready, Android Auto should now have data")
+    }
+
+    /**
+     * Ask any connected browsers (Android Auto) to re-fetch the content nodes.
+     * Called once Flutter connects so stale empty results are refreshed.
+     */
+    private fun notifyBrowseContentChanged() {
+        val session = mediaSession ?: return
+        val contentIds = listOf(
+            MediaBrowserHelper.ROOT_ID,
+            MediaBrowserHelper.CURRENT_ID,
+            MediaBrowserHelper.QUEUE_ID,
+            MediaBrowserHelper.DOWNLOADS_ID,
+            MediaBrowserHelper.MORE_ID,
+            MediaBrowserHelper.SAVED_ID,
+            MediaBrowserHelper.HISTORY_ID,
+            MediaBrowserHelper.PODCASTS_ID,
+            MediaBrowserHelper.PLAYLISTS_ID
+        )
+        for (id in contentIds) {
+            try {
+                session.notifyChildrenChanged(id, Int.MAX_VALUE, null)
+            } catch (e: Exception) {
+                Log.w(TAG, "notifyChildrenChanged failed for $id", e)
+            }
+        }
     }
 
     /**
@@ -336,6 +427,7 @@ class PinepodsMediaService : MediaLibraryService() {
         stopPositionUpdates()
         positionUpdateRunnable = object : Runnable {
             override fun run() {
+                applyAdSkipIfNeeded()
                 sendPlaybackStateEvent()
                 handler.postDelayed(this, 1000)  // Update every 1s (battery: halves channel/UI work)
             }
@@ -393,6 +485,10 @@ class PinepodsMediaService : MediaLibraryService() {
                 Log.d(TAG, "Playing: ${builtMetadata.title} by ${builtMetadata.artist}")
                 Log.d(TAG, "Media item URI: $uri, startPosition: $startPosition")
 
+                // New episode: drop the previous episode's ad-skip ranges. The
+                // Dart layer re-supplies them via setAdSkipSegments after load.
+                adSkipSegments = emptyList()
+
                 p.setMediaItem(mediaItem)
                 p.prepare()
 
@@ -428,6 +524,7 @@ class PinepodsMediaService : MediaLibraryService() {
         Log.d(TAG, "stop")
         player?.stop()
         player?.clearMediaItems()
+        adSkipSegments = emptyList()
     }
 
     fun seek(positionMs: Int) {
@@ -451,6 +548,73 @@ class PinepodsMediaService : MediaLibraryService() {
         }
     }
 
+    /**
+     * Update the skip intervals used by the media session's rewind /
+     * fast-forward buttons (Android Auto, bluetooth, notification) so they
+     * match the user's in-app setting.
+     */
+    fun setSkipIntervals(forwardMs: Long, backwardMs: Long) {
+        seekForwardMs = if (forwardMs > 0) forwardMs else seekForwardMs
+        seekBackMs = if (backwardMs > 0) backwardMs else seekBackMs
+        Log.d(TAG, "setSkipIntervals: forward=${seekForwardMs}ms back=${seekBackMs}ms")
+    }
+
+    /**
+     * Publishes rewind / fast-forward buttons to the media session's custom
+     * layout so Android Auto and the media notification render them. They use
+     * the built-in seek player commands, which the ForwardingPlayer maps to the
+     * configurable increments.
+     */
+    private fun applyCustomLayout() {
+        val session = mediaSession ?: return
+        val rewindButton = CommandButton.Builder()
+            .setSessionCommand(SessionCommand(PinepodsLibrarySessionCallback.ACTION_REWIND, android.os.Bundle.EMPTY))
+            .setIconResId(R.drawable.ic_car_rewind)
+            .setDisplayName("Rewind")
+            .build()
+        val fastForwardButton = CommandButton.Builder()
+            .setSessionCommand(SessionCommand(PinepodsLibrarySessionCallback.ACTION_FAST_FORWARD, android.os.Bundle.EMPTY))
+            .setIconResId(R.drawable.ic_car_fast_forward)
+            .setDisplayName("Fast forward")
+            .build()
+        session.setCustomLayout(listOf(rewindButton, fastForwardButton))
+    }
+
+    /**
+     * Wraps the ExoPlayer for use by the MediaLibrarySession so that only
+     * time-based seeking (rewind / fast-forward) is exposed to Android Auto and
+     * media controllers — not episode-level skip-to-next/previous. Increments
+     * are read live from [seekForwardMs] / [seekBackMs] so the configurable
+     * setting is honored without rebuilding the session.
+     */
+    private fun createSeekOnlyPlayer(base: Player): Player {
+        return object : ForwardingPlayer(base) {
+            override fun getAvailableCommands(): Player.Commands {
+                return super.getAvailableCommands().buildUpon()
+                    .remove(Player.COMMAND_SEEK_TO_NEXT)
+                    .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+                    .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    .add(Player.COMMAND_SEEK_BACK)
+                    .add(Player.COMMAND_SEEK_FORWARD)
+                    .build()
+            }
+
+            override fun getSeekForwardIncrement(): Long = seekForwardMs
+
+            override fun getSeekBackIncrement(): Long = seekBackMs
+
+            override fun seekForward() {
+                val max = if (duration == C.TIME_UNSET) Long.MAX_VALUE else duration
+                seekTo((currentPosition + seekForwardMs).coerceAtMost(max))
+            }
+
+            override fun seekBack() {
+                seekTo((currentPosition - seekBackMs).coerceAtLeast(0))
+            }
+        }
+    }
+
     fun setPlaybackSpeed(speed: Float) {
         Log.d(TAG, "setPlaybackSpeed: $speed")
         player?.setPlaybackSpeed(speed)
@@ -459,6 +623,32 @@ class PinepodsMediaService : MediaLibraryService() {
     fun setTrimSilence(enabled: Boolean) {
         Log.d(TAG, "setTrimSilence: $enabled")
         player?.skipSilenceEnabled = enabled
+    }
+
+    // Ad-skip (#790): replace the active ad ranges (seconds). Empty list clears.
+    // The 1s position poll seeks past any range the playhead enters.
+    fun setAdSkipSegments(segments: List<Pair<Double, Double>>) {
+        Log.d(TAG, "setAdSkipSegments: ${segments.size} range(s)")
+        adSkipSegments = segments.sortedBy { it.first }
+    }
+
+    // Called every ~1s from the position poll. If the playhead is inside an
+    // active ad range, seek to its end. Times are seconds; ExoPlayer is ms.
+    // Uses a 0.25s tail tolerance (matching iOS) to avoid boundary seek-loops.
+    private fun applyAdSkipIfNeeded() {
+        if (adSkipSegments.isEmpty()) return
+        val p = player ?: return
+        val posMs = p.currentPosition
+        if (posMs < 0) return
+        for ((start, end) in adSkipSegments) {
+            val startMs = (start * 1000).toLong()
+            val endMs = (end * 1000).toLong()
+            if (posMs >= startMs && posMs < endMs - 250) {
+                Log.d(TAG, "Ad-skip: seeking from ${posMs}ms past ad ending ${endMs}ms")
+                p.seekTo(endMs)
+                break
+            }
+        }
     }
 
     fun setVolumeBoost(enabled: Boolean) {

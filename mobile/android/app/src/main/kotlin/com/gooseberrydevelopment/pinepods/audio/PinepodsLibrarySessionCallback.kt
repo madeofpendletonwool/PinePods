@@ -40,13 +40,21 @@ class PinepodsLibrarySessionCallback(
         Log.d(TAG, "onConnect called by ${controller.packageName}")
         AudioPlayerPlugin.logToFlutter("INFO", TAG, "onConnect: accepting connection from ${controller.packageName}")
 
-        // Accept all connections (including Android Auto) with default permissions
-        // The default includes browsing permissions for MediaLibrarySession
-        val connectionResult = super.onConnect(session, controller)
+        // Accept all connections (including Android Auto) and additionally expose
+        // our custom rewind / fast-forward session commands so the custom-layout
+        // buttons (added in PinepodsMediaService.applyCustomLayout) are enabled.
+        val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+            .buildUpon()
+            .add(SessionCommand(ACTION_REWIND, Bundle.EMPTY))
+            .add(SessionCommand(ACTION_FAST_FORWARD, Bundle.EMPTY))
+            .build()
 
-        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Connection accepted for ${controller.packageName} with default permissions")
+        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Connection accepted for ${controller.packageName} with seek commands")
 
-        return connectionResult
+        return MediaSession.ConnectionResult.accept(
+            sessionCommands,
+            MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+        )
     }
 
     override fun onGetLibraryRoot(
@@ -91,7 +99,18 @@ class PinepodsLibrarySessionCallback(
         Log.d(TAG, "onGetChildren: $parentId")
         AudioPlayerPlugin.logToFlutter("INFO", TAG, "onGetChildren called for parentId=$parentId, helper=${if (mediaBrowserHelper != null) "ready" else "NULL"}")
 
-        // If Flutter hasn't connected yet, return empty list
+        // The top-level menu (root + "More") is static and needs no Flutter, so
+        // always serve it directly. This keeps the Android Auto front page from
+        // showing "no episodes" when the car connects before the Flutter engine
+        // has bound the service (cold start with the phone app closed).
+        buildStaticMenu(parentId)?.let { staticItems ->
+            AudioPlayerPlugin.logToFlutter("INFO", TAG, "onGetChildren returning ${staticItems.size} static items for parentId=$parentId")
+            return Futures.immediateFuture(LibraryResult.ofItemList(staticItems, params))
+        }
+
+        // For dynamic content, if Flutter hasn't connected yet, return empty
+        // list. Once Flutter connects, notifyChildrenChanged() (in the service)
+        // invalidates Android Auto's cache so it re-queries these ids.
         if (mediaBrowserHelper == null) {
             Log.w(TAG, "MediaBrowserHelper not ready yet, returning empty list")
             AudioPlayerPlugin.logToFlutter("WARN", TAG, "MediaBrowserHelper not ready yet, returning empty list for parentId=$parentId")
@@ -134,6 +153,47 @@ class PinepodsLibrarySessionCallback(
                 LibraryResult.ofError(LibraryResult.RESULT_ERROR_UNKNOWN)
             }
         }
+    }
+
+    /**
+     * Builds the static, Flutter-independent browse menus (the root list and the
+     * "More" submenu). Returns null for any other parent id (which requires
+     * live data from Flutter). These mirror MediaBrowserHelper.getRootMenuItems /
+     * getMoreMenuItems but produce Media3 items so they can be served even
+     * before Flutter has connected.
+     */
+    private fun buildStaticMenu(parentId: String): ImmutableList<MediaItem>? {
+        val items: List<MediaItem> = when (parentId) {
+            MediaBrowserHelper.ROOT_ID -> listOf(
+                browsableFolder(MediaBrowserHelper.CURRENT_ID, "Current", "Currently listening"),
+                browsableFolder(MediaBrowserHelper.QUEUE_ID, "Queue", "Queued episodes"),
+                browsableFolder(MediaBrowserHelper.DOWNLOADS_ID, "Downloads", "Downloaded episodes"),
+                browsableFolder(MediaBrowserHelper.MORE_ID, "More", "More options")
+            )
+            MediaBrowserHelper.MORE_ID -> listOf(
+                browsableFolder(MediaBrowserHelper.SAVED_ID, "Saved", "Saved episodes"),
+                browsableFolder(MediaBrowserHelper.HISTORY_ID, "History", "Recently played"),
+                browsableFolder(MediaBrowserHelper.PODCASTS_ID, "Podcasts", "Your subscriptions"),
+                browsableFolder(MediaBrowserHelper.PLAYLISTS_ID, "Playlists", "Your playlists")
+            )
+            else -> return null
+        }
+        return ImmutableList.copyOf(items)
+    }
+
+    private fun browsableFolder(mediaId: String, title: String, subtitle: String): MediaItem {
+        return MediaItem.Builder()
+            .setMediaId(mediaId)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setIsPlayable(false)
+                    .setIsBrowsable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                    .setTitle(title)
+                    .setSubtitle(subtitle)
+                    .build()
+            )
+            .build()
     }
 
     override fun onGetItem(
@@ -249,6 +309,16 @@ class PinepodsLibrarySessionCallback(
         Log.d(TAG, "onCustomCommand: ${customCommand.customAction}")
 
         when (customCommand.customAction) {
+            ACTION_REWIND -> {
+                // Delegate to the session player (the ForwardingPlayer), whose
+                // seekBack() honors the configurable rewind interval.
+                session.player.seekBack()
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            ACTION_FAST_FORWARD -> {
+                session.player.seekForward()
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
             "setPlaybackSpeed" -> {
                 val speed = args.getFloat("speed", 1.0f)
                 service.setPlaybackSpeed(speed)
@@ -271,5 +341,10 @@ class PinepodsLibrarySessionCallback(
 
     companion object {
         private const val TAG = "LibrarySessionCallback"
+
+        // Custom session commands backing the rewind / fast-forward buttons in
+        // the media session custom layout (Android Auto + notification).
+        const val ACTION_REWIND = "com.gooseberrydevelopment.pinepods.REWIND"
+        const val ACTION_FAST_FORWARD = "com.gooseberrydevelopment.pinepods.FAST_FORWARD"
     }
 }

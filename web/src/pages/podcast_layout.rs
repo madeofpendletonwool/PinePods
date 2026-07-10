@@ -10,7 +10,6 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::UnifiedPodcast;
 use crate::components::app_drawer::App_drawer;
-use gloo::events::EventListener;
 use i18nrs::yew::use_translation;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -65,50 +64,6 @@ pub fn pod_layout() -> Html {
     let (search_state, _) = use_store::<SearchState>();
     let search_results = search_state.search_results.clone();
 
-    // Track window width to apply responsive columns
-    let columns = use_state(|| 2); // Default to 2 columns
-
-    {
-        let columns = columns.clone();
-
-        use_effect_with((), move |_| {
-            let update_columns = {
-                let columns = columns.clone();
-
-                Callback::from(move |_| {
-                    if let Some(window) = web_sys::window() {
-                        let width = window.inner_width().unwrap().as_f64().unwrap();
-
-                        // Progressive breakpoints for different screen sizes
-                        let new_columns = if width < 640.0 {
-                            2 // Extra small screens: 2 columns
-                        } else if width < 1024.0 {
-                            2 // Small to medium screens: 2 columns
-                        } else if width < 1280.0 {
-                            3 // Large screens: 3 columns
-                        } else {
-                            4 // Extra large screens: 4 columns
-                        };
-
-                        columns.set(new_columns);
-                    }
-                })
-            };
-
-            // Initial update
-            update_columns.emit(());
-
-            // Add resize listener
-            let window = web_sys::window().unwrap();
-            let listener = EventListener::new(&window, "resize", move |_| {
-                update_columns.emit(());
-            });
-
-            // Cleanup
-            move || drop(listener)
-        });
-    }
-
     html! {
         <>
             <div class="main-container">
@@ -125,14 +80,10 @@ pub fn pod_layout() -> Html {
 
                         if let Some(podcasts) = podcasts {
                             if !podcasts.is_empty() {
-                                let column_width = format!("calc({}% - {}px)", 100.0 / *columns as f32, 16);
-
                                 html! {
-                                    <div class="podcast-flex-container" style="display: flex; flex-wrap: wrap; gap: 16px; padding: 0 12px 24px; width: 100%;">
+                                    <div class="podcast-search-grid">
                                         { for podcasts.iter().map(|podcast| html! {
-                                            <div style={format!("width: {}; margin-bottom: 16px;", column_width)}>
-                                                <PodcastItem podcast={podcast.clone()} />
-                                            </div>
+                                            <PodcastItem podcast={podcast.clone()} />
                                         })}
                                     </div>
                                 }
@@ -205,19 +156,14 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let history = BrowserHistory::new();
 
-    // State to track loading and description expansion
+    // State to track loading
     let is_loading = use_state(|| false);
-    let is_description_expanded = use_state(|| false);
 
     // Pre-capture translation strings for async blocks
     let podcast_removed_msg = i18n.t("podcast_layout.podcast_removed");
     let remove_error_msg = i18n.t("podcast_layout.remove_error");
     let podcast_added_msg = i18n.t("podcast_layout.podcast_added");
     let add_error_msg = i18n.t("podcast_layout.add_error");
-
-    // Pre-capture UI strings
-    let show_less_text = i18n.t("podcast_layout.show_less");
-    let show_more_text = i18n.t("podcast_layout.show_more");
 
     // Check if podcast is already added
     let eff_server_name = server_name.clone();
@@ -423,107 +369,74 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         }
     };
 
-    // Toggle description expansion
-    let toggle_description = {
-        let is_description_expanded = is_description_expanded.clone();
-
-        Callback::from(move |_: MouseEvent| {
-            is_description_expanded.set(!*is_description_expanded);
-        })
-    };
-
-    // Determine button text based on podcast state
+    // Determine button icon based on podcast state
     let is_added = podcast_state.added_podcast_urls.contains(&podcast.url);
     let button_icon = if *is_loading {
         "ph-spinner-gap animate-spin"
     } else if is_added {
-        "ph-trash"
+        "ph-check"
     } else {
-        "ph-plus-circle"
+        "ph-plus"
+    };
+    let action_title = if is_added {
+        i18n.t("podcast_layout.remove")
+    } else {
+        i18n.t("podcast_layout.add")
     };
 
     html! {
-        <div class="search-item-container border-solid border rounded-lg overflow-hidden shadow-md flex flex-col h-full">
-            <div class="relative w-full search-podcast-image-container" style="aspect-ratio: 1/1; padding-bottom: 100%;">
+        <div class="podcast-card">
+            <div class="podcast-card__cover">
                 <FallbackImage
                     src={podcast.image.clone()}
                     alt={format!("Cover for {}", podcast.title)}
-                    class="absolute inset-0 w-full h-full object-cover transition-transform duration-200 hover:scale-105 cursor-pointer"
+                    class="podcast-card__img"
                     onclick={on_title_click.clone()}
                 />
+                {
+                    if podcast.explicit {
+                        html! {
+                            <span class="podcast-card__explicit" title={i18n.t("podcast_layout.explicit")}>{"E"}</span>
+                        }
+                    } else {
+                        html! {}
+                    }
+                }
+                <button
+                    class="podcast-card__action"
+                    onclick={toggle_podcast}
+                    disabled={*is_loading}
+                    title={action_title.clone()}
+                    aria-label={action_title}
+                >
+                    <i class={format!("ph {}", button_icon)}></i>
+                </button>
             </div>
 
-            <div class="p-4 flex flex-col flex-grow">
-                <div class="flex justify-between items-start mb-2">
-                    <h3
-                        class="item_container-text text-xl font-semibold cursor-pointer line-clamp-2 hover:text-opacity-80 transition-colors"
-                        onclick={on_title_click}
-                    >
-                        {&podcast.title}
-                    </h3>
-
-                    <button
-                        class="item-container-button selector-button flex items-center justify-center rounded-full ml-3 flex-shrink-0 transition-all duration-200 ease-in-out hover:bg-opacity-80"
-                        style="width: 40px; height: 40px;"
-                        onclick={toggle_podcast}
-                        disabled={*is_loading}
-                    >
-                        <i class={format!("ph {} text-2xl", button_icon)}></i>
-                    </button>
-                </div>
+            <div class="podcast-card__meta">
+                <h3 class="podcast-card__title" onclick={on_title_click} title={podcast.title.clone()}>
+                    {&podcast.title}
+                </h3>
 
                 {
                     if !podcast.author.is_empty() {
                         html! {
-                            <p class="item_container-text text-sm mb-2 opacity-80">{&i18n.t("podcast_layout.by")} {&podcast.author}</p>
+                            <p class="podcast-card__author">{format!("{} {}", i18n.t("podcast_layout.by"), podcast.author)}</p>
                         }
                     } else {
                         html! {}
                     }
                 }
 
-                <div
-                    class={if *is_description_expanded { "item_container-text text-sm mb-3" } else { "item_container-text text-sm mb-3 line-clamp-3" }}
-                    onclick={toggle_description.clone()}
-                >
+                <div class="podcast-card__desc">
                     <SafeHtml html={podcast.description.clone()} />
                 </div>
 
-                {
-                    if podcast.description.len() > 150 {
-                        html! {
-                            <button
-                                class="text-sm font-medium mb-3 text-left hover:underline item_container-text opacity-80"
-                                onclick={toggle_description}
-                            >
-                                {if *is_description_expanded { &show_less_text } else { &show_more_text }}
-                            </button>
-                        }
-                    } else {
-                        html! {}
-                    }
-                }
-
-                <div class="mt-auto">
-                    <div class="flex items-center">
-                        <i class="ph ph-microphone text-lg mr-2 item_container-text"></i>
-                        <span class="item_container-text text-sm">
-                            {format!("{} {}", podcast.episodeCount, if podcast.episodeCount == 1 { i18n.t("podcast_layout.episode") } else { i18n.t("podcast_layout.episodes") })}
-                        </span>
-                    </div>
-
-                    {
-                        if podcast.explicit {
-                            html! {
-                                <div class="flex items-center mt-1">
-                                    <span class="bg-red-600 text-white text-xs px-1.5 py-0.5 rounded">{"E"}</span>
-                                    <span class="item_container-text text-sm ml-2">{&i18n.t("podcast_layout.explicit")}</span>
-                                </div>
-                            }
-                        } else {
-                            html! {}
-                        }
-                    }
+                <div class="podcast-card__footer">
+                    <i class="ph ph-microphone"></i>
+                    <span>
+                        {format!("{} {}", podcast.episodeCount, if podcast.episodeCount == 1 { i18n.t("podcast_layout.episode") } else { i18n.t("podcast_layout.episodes") })}
+                    </span>
                 </div>
             </div>
         </div>

@@ -13,12 +13,15 @@ use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_silence_trim, call_adjust_skip_times,
     call_get_silence_trim, SilenceTrimRequest,
+    call_adjust_auto_transcribe, call_get_ai_status, call_get_auto_transcribe, AutoTranscribeRequest,
+    call_get_auto_ad_detect, call_adjust_auto_ad_detect, AutoAdDetectRequest,
+    call_get_ad_skip_auto_activate, call_adjust_ad_skip_auto_activate,
     call_bulk_download_episodes,
     call_bulk_mark_episodes_completed, call_bulk_queue_episodes, call_bulk_save_episodes,
     call_check_podcast, call_clear_playback_speed, call_download_all_podcast,
-    call_enable_auto_download, call_enable_auto_play_next,
+    call_enable_auto_download, call_enable_auto_play_next, call_enable_auto_queue,
     call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
-    call_get_auto_play_next_status,
+    call_get_auto_play_next_status, call_get_auto_queue_status,
     call_get_feed_cutoff_days, call_get_merged_podcasts, call_get_play_episode_details,
     call_get_podcast_details, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
     call_get_podcast_favorite_status, call_get_podcast_notifications_status, call_get_podcasts,
@@ -26,9 +29,11 @@ use crate::requests::pod_req::{
     call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_favorite,
     call_toggle_podcast_notifications,
     call_unmerge_podcast, call_update_feed_cutoff_days, call_update_podcast_info,
+    call_get_podcast_auto_delete_days, call_set_podcast_auto_delete_days,
+    call_clear_podcast_auto_delete_days,
     AddCategoryRequest, AutoDownloadRequest, BulkEpisodeActionRequest, ClearPlaybackSpeedRequest,
-    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, AutoPlayNextRequest,
-    PlaybackSpeedRequest,
+    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, AutoPlayNextRequest, AutoQueueRequest,
+    PlaybackSpeedRequest, SetAutoDeleteDaysRequest, ClearAutoDeleteDaysRequest,
     PodcastDetails, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
     RemoveYouTubeChannelValues, SkipTimesRequest, UpdateFeedCutoffDaysRequest,
 };
@@ -400,17 +405,33 @@ pub fn episode_layout() -> Html {
     let i18n_playback_speed_global_badge = i18n
         .t("episodes_layout.playback_speed_global_badge")
         .to_string();
+    let i18n_auto_delete_label = i18n.t("episodes_layout.auto_delete_label").to_string();
+    let i18n_auto_delete_days_unit = i18n.t("episodes_layout.auto_delete_days_unit").to_string();
+    let i18n_auto_delete_description = i18n
+        .t("episodes_layout.auto_delete_description")
+        .to_string();
+    let i18n_auto_delete_updated = i18n.t("episodes_layout.auto_delete_updated").to_string();
+    let i18n_error_updating_auto_delete = i18n
+        .t("episodes_layout.error_updating_auto_delete")
+        .to_string();
+    let i18n_auto_delete_reset_default = i18n
+        .t("episodes_layout.auto_delete_reset_default")
+        .to_string();
+    let i18n_error_resetting_auto_delete = i18n
+        .t("episodes_layout.error_resetting_auto_delete")
+        .to_string();
+    let i18n_auto_delete_custom_badge = i18n
+        .t("episodes_layout.auto_delete_custom_badge")
+        .to_string();
+    let i18n_auto_delete_global_badge = i18n
+        .t("episodes_layout.auto_delete_global_badge")
+        .to_string();
     let i18n_auto_skip_intros_outros = i18n
         .t("episodes_layout.auto_skip_intros_outros")
         .to_string();
     let i18n_start_skip_seconds = i18n.t("episodes_layout.start_skip_seconds").to_string();
     let i18n_end_skip_seconds = i18n.t("episodes_layout.end_skip_seconds").to_string();
     let i18n_youtube_download_limit = i18n.t("episodes_layout.youtube_download_limit").to_string();
-    let i18n_trim_silence = i18n.t("episodes_layout.trim_silence").to_string();
-    let i18n_trim_silence_description = i18n
-        .t("episodes_layout.trim_silence_description")
-        .to_string();
-    let i18n_aggressiveness = i18n.t("episodes_layout.aggressiveness").to_string();
     let i18n_youtube_limit_description = i18n
         .t("episodes_layout.youtube_limit_description")
         .to_string();
@@ -479,6 +500,7 @@ pub fn episode_layout() -> Html {
         .t("episodes_layout.error_resetting_playback_speed")
         .to_string();
     let i18n_auto_play_next_episode = i18n.t("episodes_layout.auto_play_next_episode").to_string();
+    let i18n_auto_queue_new_episodes = i18n.t("episodes_layout.auto_queue_new_episodes").to_string();
     let i18n_favorite_podcast = i18n.t("episodes_layout.favorite_podcast").to_string();
     let i18n_use_podcast_covers = i18n.t("episodes_layout.use_podcast_covers").to_string();
     let i18n_podcast_cover_hint = i18n.t("episodes_layout.podcast_cover_hint").to_string();
@@ -513,12 +535,16 @@ pub fn episode_layout() -> Html {
     let favorite_status = use_state(|| false);
     let feed_cutoff_days = use_state(|| 0);
     let feed_cutoff_days_input = use_state(|| "0".to_string());
+    let auto_delete_days = use_state(|| 0);
+    let auto_delete_days_input = use_state(|| "0".to_string());
+    let auto_delete_customized = use_state(|| false);
     let playback_speed = use_state(|| 1.0);
     let playback_speed_customized = use_state(|| false);
     let use_podcast_covers = use_state(|| false);
     let playback_speed_input = playback_speed.clone();
     let playback_speed_clone = playback_speed.clone();
     let playback_speed_customized_render = playback_speed_customized.clone();
+    let auto_delete_customized_render = auto_delete_customized.clone();
     let rss_key_state = use_state(|| None::<String>);
 
     // Bulk selection state
@@ -850,12 +876,19 @@ pub fn episode_layout() -> Html {
 
     let download_status = use_state(|| false);
     let auto_play_next_status = use_state(|| false);
+    let auto_queue_status = use_state(|| false);
     let podcast_id = use_state(|| 0);
     let start_skip = use_state(|| 0);
     let end_skip = use_state(|| 0);
     // Silence-trim (#727) per-podcast settings
     let trim_silence = use_state(|| false);
     let silence_threshold = use_state(|| 2i32);
+    // Transcription (#726): per-podcast auto-transcribe + whether the AI sidecar is up
+    let auto_transcribe = use_state(|| false);
+    let ai_available = use_state(|| false);
+    // Ad detection (#790): per-podcast auto-detect + skip immediately vs. confirm-first
+    let auto_ad_detect = use_state(|| false);
+    let ad_skip_auto_activate = use_state(|| true);
 
     // Load merge-related data when edit modal opens
     {
@@ -1010,6 +1043,7 @@ pub fn episode_layout() -> Html {
         let podcast_id = podcast_id.clone();
         let download_status = download_status.clone();
         let auto_play_next_status = auto_play_next_status.clone();
+        let auto_queue_status = auto_queue_status.clone();
         let notification_effect = notification_status.clone();
         let favorite_effect = favorite_status.clone();
         // let episode_name = episode_name_pre.clone();
@@ -1022,6 +1056,9 @@ pub fn episode_layout() -> Html {
         let effect_added = is_added.clone();
         let feed_cutoff_days = feed_cutoff_days.clone();
         let feed_cutoff_days_input = feed_cutoff_days_input.clone();
+        let effect_auto_delete_days = auto_delete_days.clone();
+        let effect_auto_delete_days_input = auto_delete_days_input.clone();
+        let effect_auto_delete_customized = auto_delete_customized.clone();
         let audio_dispatch = _dispatch.clone();
         let click_feed_results = search_data.podcast_feed_results.clone();
         let clicked_podcast_info_effect = podcast_state.clicked_podcast_info.clone();
@@ -1050,6 +1087,7 @@ pub fn episode_layout() -> Html {
                     let podcast_id = podcast_id.clone();
                     let download_status = download_status.clone();
                     let auto_play_next_status = auto_play_next_status.clone();
+                    let auto_queue_status = auto_queue_status.clone();
                     let episode_name = episode_name;
                     let episode_url = episode_url;
                     let user_id = user_id.unwrap();
@@ -1106,7 +1144,7 @@ pub fn episode_layout() -> Html {
                                         let key_opt = Some(api_key.clone().unwrap());
                                         let key_str = api_key.clone().unwrap();
                                         let server = server_name.clone();
-                                        let (auto_dl_result, auto_play_result, cutoff_result, notif_result, fav_result, play_details_result) = futures::join!(
+                                        let (auto_dl_result, auto_play_result, auto_queue_result, cutoff_result, notif_result, fav_result, play_details_result, auto_delete_result) = futures::join!(
                                             call_get_auto_download_status(
                                                 &server,
                                                 user_id,
@@ -1114,6 +1152,12 @@ pub fn episode_layout() -> Html {
                                                 id,
                                             ),
                                             call_get_auto_play_next_status(
+                                                &server,
+                                                user_id,
+                                                &key_opt,
+                                                id,
+                                            ),
+                                            call_get_auto_queue_status(
                                                 &server,
                                                 user_id,
                                                 &key_opt,
@@ -1144,6 +1188,12 @@ pub fn episode_layout() -> Html {
                                                 id,
                                                 false,
                                             ),
+                                            call_get_podcast_auto_delete_days(
+                                                &server,
+                                                &key_opt,
+                                                id,
+                                                user_id,
+                                            ),
                                         );
                                         match auto_dl_result {
                                             Ok(status) => { download_status.set(status); }
@@ -1152,6 +1202,10 @@ pub fn episode_layout() -> Html {
                                         match auto_play_result {
                                             Ok(status) => { auto_play_next_status.set(status); }
                                             Err(e) => { web_sys::console::log_1(&format!("Error getting auto-play-next status: {}", e).into()); }
+                                        }
+                                        match auto_queue_result {
+                                            Ok(status) => { auto_queue_status.set(status); }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting auto-queue status: {}", e).into()); }
                                         }
                                         match cutoff_result {
                                             Ok(days) => {
@@ -1176,6 +1230,14 @@ pub fn episode_layout() -> Html {
                                                 effect_playback_speed_customized.set(customized);
                                             }
                                             Err(e) => { web_sys::console::log_1(&format!("Error getting auto-skip times: {}", e).into()); }
+                                        }
+                                        match auto_delete_result {
+                                            Ok((days, customized)) => {
+                                                effect_auto_delete_days.set(days);
+                                                effect_auto_delete_days_input.set(days.to_string());
+                                                effect_auto_delete_customized.set(customized);
+                                            }
+                                            Err(e) => { web_sys::console::log_1(&format!("Error getting auto-delete days: {}", e).into()); }
                                         }
                                         let chap_request = FetchPodcasting2PodDataRequest {
                                             podcast_id: id,
@@ -1684,6 +1746,51 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let toggle_auto_queue = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let auto_queue_status = auto_queue_status.clone();
+        let podcast_id = podcast_id.clone();
+        let user_id = user_id.clone();
+
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let auto_queue_status = auto_queue_status.clone();
+            let auto_queue = !*auto_queue_status;
+            let pod_id_deref = *podcast_id.clone();
+            let user_id = user_id.clone().unwrap();
+
+            let request_data = AutoQueueRequest {
+                podcast_id: pod_id_deref,
+                user_id,
+                auto_queue,
+            };
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_enable_auto_queue(
+                        &server_name,
+                        &api_key.clone().unwrap(),
+                        &request_data,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            auto_queue_status.set(auto_queue);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error enabling/disabling auto-queue: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
     let playback_speed_input_handler = Callback::from(move |e: InputEvent| {
         if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
             let value = input.value().parse::<f64>().unwrap_or(1.0);
@@ -1807,6 +1914,135 @@ pub fn episode_layout() -> Html {
                     }
                 }
             });
+        })
+    };
+
+    // --- Per-podcast auto-delete-downloads override (#655) ---
+    let auto_delete_days_input_handler = {
+        let auto_delete_days_input = auto_delete_days_input.clone();
+        Callback::from(move |e: InputEvent| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                auto_delete_days_input.set(input.value());
+            }
+        })
+    };
+
+    let save_auto_delete_days = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let podcast_id = podcast_id.clone();
+        let auto_delete_days_input = auto_delete_days_input.clone();
+        let auto_delete_days = auto_delete_days.clone();
+        let auto_delete_customized = auto_delete_customized.clone();
+        let user_id = user_id.clone();
+        let i18n_auto_delete_updated = i18n_auto_delete_updated.clone();
+        let i18n_error_updating_auto_delete = i18n_error_updating_auto_delete.clone();
+
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let i18n_auto_delete_updated = i18n_auto_delete_updated.clone();
+            let i18n_error_updating_auto_delete = i18n_error_updating_auto_delete.clone();
+
+            if let (Some(server_val), Some(key_val), Some(user_val)) = (
+                server_name.as_ref(),
+                api_key.as_ref().and_then(|k| k.as_ref()),
+                user_id,
+            ) {
+                let pod_id = *podcast_id;
+                let days = (*auto_delete_days_input).parse::<i32>().unwrap_or(0).max(0);
+                let request_data = SetAutoDeleteDaysRequest {
+                    podcast_id: pod_id,
+                    user_id: user_val,
+                    days,
+                };
+                let server_val = server_val.clone();
+                let key_val = key_val.clone();
+                let auto_delete_days = auto_delete_days.clone();
+                let auto_delete_customized = auto_delete_customized.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_set_podcast_auto_delete_days(&server_val, &Some(key_val), &request_data).await {
+                        Ok(_) => {
+                            auto_delete_days.set(days);
+                            auto_delete_customized.set(true);
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                state.info_message = Option::from(i18n_auto_delete_updated)
+                            });
+                        }
+                        Err(err) => {
+                            web_sys::console::log_1(&format!("Error updating auto-delete days: {}", err).into());
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                state.error_message = Option::from(i18n_error_updating_auto_delete)
+                            });
+                        }
+                    }
+                });
+            }
+        })
+    };
+
+    let clear_auto_delete_days = {
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let podcast_id = podcast_id.clone();
+        let auto_delete_days = auto_delete_days.clone();
+        let auto_delete_days_input = auto_delete_days_input.clone();
+        let auto_delete_customized = auto_delete_customized.clone();
+        let user_id = user_id.clone();
+        let i18n_auto_delete_reset_default = i18n_auto_delete_reset_default.clone();
+        let i18n_error_resetting_auto_delete = i18n_error_resetting_auto_delete.clone();
+
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let i18n_auto_delete_reset_default = i18n_auto_delete_reset_default.clone();
+            let i18n_error_resetting_auto_delete = i18n_error_resetting_auto_delete.clone();
+
+            if let (Some(server_val), Some(key_val), Some(user_val)) = (
+                server_name.as_ref(),
+                api_key.as_ref().and_then(|k| k.as_ref()),
+                user_id,
+            ) {
+                let pod_id = *podcast_id;
+                let request_data = ClearAutoDeleteDaysRequest {
+                    podcast_id: pod_id,
+                    user_id: user_val,
+                };
+                let server_val = server_val.clone();
+                let key_val = key_val.clone();
+                let auto_delete_days = auto_delete_days.clone();
+                let auto_delete_days_input = auto_delete_days_input.clone();
+                let auto_delete_customized = auto_delete_customized.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_clear_podcast_auto_delete_days(&server_val, &Some(key_val.clone()), &request_data).await {
+                        Ok(_) => {
+                            auto_delete_customized.set(false);
+                            // Re-fetch so the displayed value reflects the global default now in effect
+                            if let Ok((days, customized)) = call_get_podcast_auto_delete_days(
+                                &server_val,
+                                &Some(key_val),
+                                pod_id,
+                                user_val,
+                            )
+                            .await
+                            {
+                                auto_delete_days.set(days);
+                                auto_delete_days_input.set(days.to_string());
+                                auto_delete_customized.set(customized);
+                            }
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                state.info_message = Option::from(i18n_auto_delete_reset_default)
+                            });
+                        }
+                        Err(err) => {
+                            web_sys::console::log_1(&format!("Error resetting auto-delete days: {}", err).into());
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                state.error_message = Option::from(i18n_error_resetting_auto_delete)
+                            });
+                        }
+                    }
+                });
+            }
         })
     };
 
@@ -2077,6 +2313,10 @@ pub fn episode_layout() -> Html {
     {
         let trim_silence = trim_silence.clone();
         let silence_threshold = silence_threshold.clone();
+        let auto_transcribe = auto_transcribe.clone();
+        let ai_available = ai_available.clone();
+        let auto_ad_detect = auto_ad_detect.clone();
+        let ad_skip_auto_activate = ad_skip_auto_activate.clone();
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let user_id = user_id.clone();
@@ -2087,6 +2327,12 @@ pub fn episode_layout() -> Html {
                 if let (Some(api_key), Some(server_name), Some(user_id)) =
                     (api_key.clone(), server_name.clone(), user_id.clone())
                 {
+                    let at_api_key = api_key.clone();
+                    let at_server_name = server_name.clone();
+                    let auto_transcribe = auto_transcribe.clone();
+                    let ai_available = ai_available.clone();
+                    let auto_ad_detect = auto_ad_detect.clone();
+                    let ad_skip_auto_activate = ad_skip_auto_activate.clone();
                     wasm_bindgen_futures::spawn_local(async move {
                         if let Ok(settings) = call_get_silence_trim(
                             &server_name,
@@ -2098,6 +2344,27 @@ pub fn episode_layout() -> Html {
                         {
                             trim_silence.set(settings.enabled);
                             silence_threshold.set(settings.threshold);
+                        }
+                    });
+                    // Transcription (#726) + ad detection (#790): AI availability + per-podcast opt-ins.
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(up) = call_get_ai_status(&at_server_name, &at_api_key).await {
+                            ai_available.set(up);
+                        }
+                        if let Ok(enabled) =
+                            call_get_auto_transcribe(&at_server_name, &at_api_key, user_id, pid).await
+                        {
+                            auto_transcribe.set(enabled);
+                        }
+                        if let Ok(enabled) =
+                            call_get_auto_ad_detect(&at_server_name, &at_api_key, user_id, pid).await
+                        {
+                            auto_ad_detect.set(enabled);
+                        }
+                        if let Ok(enabled) =
+                            call_get_ad_skip_auto_activate(&at_server_name, &at_api_key, user_id, pid).await
+                        {
+                            ad_skip_auto_activate.set(enabled);
                         }
                     });
                 }
@@ -2114,6 +2381,8 @@ pub fn episode_layout() -> Html {
         let user_id = user_id.clone();
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
+        let silence_updated_msg = i18n.t("episodes_layout.silence_trim_updated").to_string();
+        let silence_error_msg = i18n.t("episodes_layout.silence_trim_error").to_string();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
@@ -2123,6 +2392,8 @@ pub fn episode_layout() -> Html {
             let user_id = user_id.clone().unwrap();
             let server_name = server_name.clone();
             let podcast_id = *podcast_id;
+            let silence_updated_msg = silence_updated_msg.clone();
+            let silence_error_msg = silence_error_msg.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
@@ -2138,8 +2409,7 @@ pub fn episode_layout() -> Html {
                     {
                         Ok(_) => {
                             Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                state.info_message =
-                                    Option::from("Silence trim settings updated.".to_string())
+                                state.info_message = Option::from(silence_updated_msg.clone())
                             });
                         }
                         Err(e) => {
@@ -2147,8 +2417,7 @@ pub fn episode_layout() -> Html {
                                 &format!("Error updating silence trim: {}", e).into(),
                             );
                             Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                state.error_message =
-                                    Option::from("Error updating silence trim.".to_string())
+                                state.error_message = Option::from(silence_error_msg.clone())
                             });
                         }
                     }
@@ -2162,10 +2431,8 @@ pub fn episode_layout() -> Html {
     let threshold_val = *silence_threshold;
     let trim_toggle = {
         let trim_silence = trim_silence.clone();
-        Callback::from(move |e: Event| {
-            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
-                trim_silence.set(input.checked());
-            }
+        Callback::from(move |_: MouseEvent| {
+            trim_silence.set(!*trim_silence);
         })
     };
     let threshold_change = {
@@ -2174,6 +2441,85 @@ pub fn episode_layout() -> Html {
             if let Some(sel) = e.target_dyn_into::<web_sys::HtmlSelectElement>() {
                 silence_threshold.set(sel.value().parse::<i32>().unwrap_or(2));
             }
+        })
+    };
+
+    // Auto-transcribe (#726): toggle immediately persists (no separate save button).
+    let ai_available_val = *ai_available;
+    let auto_transcribe_checked = *auto_transcribe;
+    let auto_transcribe_toggle = {
+        let auto_transcribe = auto_transcribe.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+        let podcast_id = podcast_id.clone();
+        Callback::from(move |_: MouseEvent| {
+            let enabled = !*auto_transcribe;
+            auto_transcribe.set(enabled);
+            let api_key = api_key.clone();
+            let user_id = user_id.clone().unwrap_or(0);
+            let server_name = server_name.clone();
+            let podcast_id = *podcast_id;
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                    let request = AutoTranscribeRequest { podcast_id, user_id, enabled };
+                    if let Err(e) =
+                        call_adjust_auto_transcribe(&server_name, &api_key, &request).await
+                    {
+                        web_sys::console::log_1(&format!("Error updating auto-transcribe: {}", e).into());
+                    }
+                }
+            });
+        })
+    };
+
+    // Auto ad-detect (#790): only enabled when auto-transcribe is on (ads need the transcript).
+    let auto_ad_detect_checked = *auto_ad_detect;
+    let ad_skip_auto_activate_checked = *ad_skip_auto_activate;
+    let auto_ad_detect_toggle = {
+        let auto_ad_detect = auto_ad_detect.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+        let podcast_id = podcast_id.clone();
+        Callback::from(move |_: MouseEvent| {
+            let enabled = !*auto_ad_detect;
+            auto_ad_detect.set(enabled);
+            let api_key = api_key.clone();
+            let user_id = user_id.clone().unwrap_or(0);
+            let server_name = server_name.clone();
+            let podcast_id = *podcast_id;
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                    let request = AutoAdDetectRequest { podcast_id, user_id, enabled };
+                    if let Err(e) = call_adjust_auto_ad_detect(&server_name, &api_key, &request).await {
+                        web_sys::console::log_1(&format!("Error updating auto ad-detect: {}", e).into());
+                    }
+                }
+            });
+        })
+    };
+    let ad_skip_auto_activate_toggle = {
+        let ad_skip_auto_activate = ad_skip_auto_activate.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+        let podcast_id = podcast_id.clone();
+        Callback::from(move |_: MouseEvent| {
+            let enabled = !*ad_skip_auto_activate;
+            ad_skip_auto_activate.set(enabled);
+            let api_key = api_key.clone();
+            let user_id = user_id.clone().unwrap_or(0);
+            let server_name = server_name.clone();
+            let podcast_id = *podcast_id;
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                    let request = AutoAdDetectRequest { podcast_id, user_id, enabled };
+                    if let Err(e) = call_adjust_ad_skip_auto_activate(&server_name, &api_key, &request).await {
+                        web_sys::console::log_1(&format!("Error updating ad-skip auto-activate: {}", e).into());
+                    }
+                }
+            });
         })
     };
 
@@ -2441,6 +2787,13 @@ pub fn episode_layout() -> Html {
                                 </label>
                             </div>
                             <div>
+                                <label for="auto_queue" class="block mb-2 text-sm font-medium">{ &i18n_auto_queue_new_episodes }</label>
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input type="checkbox" checked={*auto_queue_status} class="sr-only peer" onclick={toggle_auto_queue} />
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div>
                                 <label for="notification_settings" class="block mb-2 text-sm font-medium">{&i18n_get_notifications_new_episodes}</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input
@@ -2509,6 +2862,49 @@ pub fn episode_layout() -> Html {
                             </div>
 
                             <div class="mt-4">
+                                <label for="auto-delete-days" class="block mb-2 text-sm font-medium">{&i18n_auto_delete_label}</label>
+                                <div class="flex items-center space-x-2">
+                                    <input
+                                        type="number"
+                                        id="auto-delete-days"
+                                        value={(*auto_delete_days_input).clone()}
+                                        class="email-input border text-sm rounded-lg p-2.5 w-20"
+                                        oninput={auto_delete_days_input_handler}
+                                        min="0"
+                                        max="3650"
+                                        step="1"
+                                    />
+                                    <span class="text-sm">{&i18n_auto_delete_days_unit}</span>
+                                    <button
+                                        class="save-button font-bold py-2 px-4 rounded"
+                                        onclick={save_auto_delete_days}
+                                    >
+                                        {&i18n.t("episodes_layout.save")}
+                                    </button>
+                                    <button
+                                        class="clear-button bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
+                                        onclick={clear_auto_delete_days}
+                                    >
+                                        {&i18n.t("episodes_layout.reset")}
+                                    </button>
+                                </div>
+                                <div class="mt-2">
+                                    if *auto_delete_customized_render {
+                                        <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                            <i class="ph ph-pencil-simple"></i>
+                                            {&i18n_auto_delete_custom_badge}
+                                        </span>
+                                    } else {
+                                        <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                            <i class="ph ph-globe"></i>
+                                            {&i18n_auto_delete_global_badge}
+                                        </span>
+                                    }
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">{&i18n_auto_delete_description}</p>
+                            </div>
+
+                            <div class="mt-4">
                                 <label class="block mb-2 text-sm font-medium">{ &i18n_use_podcast_covers }</label>
                                 <div class="flex items-center space-x-2">
                                     <label class="relative inline-flex items-center cursor-pointer">
@@ -2567,25 +2963,29 @@ pub fn episode_layout() -> Html {
                             </div>
 
                             <div class="mt-4">
-                                <label for="trim-silence" class="block mb-2 text-sm font-medium">{&i18n_trim_silence}</label>
-                                <div class="flex items-center space-x-2">
+                                <label for="trim-silence" class="block mb-2 text-sm font-medium">{ &i18n.t("episodes_layout.trim_silence") }</label>
+                                <label class="inline-flex relative items-center cursor-pointer">
                                     <input
                                         type="checkbox"
                                         id="trim-silence"
-                                        class="w-4 h-4"
                                         checked={trim_checked}
-                                        onchange={trim_toggle}
+                                        class="sr-only peer"
+                                        onclick={trim_toggle}
                                     />
-                                    <span class="text-sm">{&i18n_trim_silence_description}</span>
-                                    <label for="silence-threshold" class="block text-sm font-medium">{&i18n_aggressiveness}</label>
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                    <span class="ms-3 text-sm">{ &i18n.t("episodes_layout.trim_silence_desc") }</span>
+                                </label>
+                                // Aggressiveness on its own line.
+                                <div class="flex items-center space-x-2 mt-3">
+                                    <label for="silence-threshold" class="block text-sm font-medium">{ &i18n.t("episodes_layout.aggressiveness") }</label>
                                     <select
                                         id="silence-threshold"
                                         class="email-input border text-sm rounded-lg p-2.5"
                                         onchange={threshold_change}
                                     >
-                                        <option value="1" selected={threshold_val == 1}>{"Low"}</option>
-                                        <option value="2" selected={threshold_val == 2}>{"Medium"}</option>
-                                        <option value="3" selected={threshold_val == 3}>{"High"}</option>
+                                        <option value="1" selected={threshold_val == 1}>{ &i18n.t("episodes_layout.silence_low") }</option>
+                                        <option value="2" selected={threshold_val == 2}>{ &i18n.t("episodes_layout.silence_medium") }</option>
+                                        <option value="3" selected={threshold_val == 3}>{ &i18n.t("episodes_layout.silence_high") }</option>
                                     </select>
                                     <button
                                         class="download-button font-bold py-2 px-4 rounded"
@@ -2595,6 +2995,75 @@ pub fn episode_layout() -> Html {
                                     </button>
                                 </div>
                             </div>
+
+                            {
+                                // Auto-transcribe control — only meaningful when the AI sidecar is up.
+                                if ai_available_val {
+                                    html! {
+                                        <div class="mt-4">
+                                            <label for="auto-transcribe" class="block mb-2 text-sm font-medium">{ &i18n.t("episodes_layout.auto_transcribe") }</label>
+                                            <label class="inline-flex relative items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    id="auto-transcribe"
+                                                    checked={auto_transcribe_checked}
+                                                    class="sr-only peer"
+                                                    onclick={auto_transcribe_toggle}
+                                                />
+                                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                                <span class="ms-3 text-sm">{ &i18n.t("episodes_layout.auto_transcribe_desc") }</span>
+                                            </label>
+                                        </div>
+                                    }
+                                } else {
+                                    html! {}
+                                }
+                            }
+
+                            {
+                                // Auto ad-detect (#790) — enabled only when auto-transcribe is on.
+                                if ai_available_val {
+                                    html! {
+                                        <div class="mt-4">
+                                            <label for="auto-ad-detect" class="block mb-2 text-sm font-medium">{ &i18n.t("episodes_layout.auto_ad_detect") }</label>
+                                            <label class={ if auto_transcribe_checked { "inline-flex relative items-center cursor-pointer" } else { "inline-flex relative items-center cursor-not-allowed opacity-50" } }>
+                                                <input
+                                                    type="checkbox"
+                                                    id="auto-ad-detect"
+                                                    checked={auto_ad_detect_checked}
+                                                    disabled={!auto_transcribe_checked}
+                                                    class="sr-only peer"
+                                                    onclick={auto_ad_detect_toggle}
+                                                />
+                                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                                <span class="ms-3 text-sm">{ &i18n.t("episodes_layout.auto_ad_detect_desc") }</span>
+                                            </label>
+                                            {
+                                                // Skip-immediately vs. confirm-first — only when auto-detect is on.
+                                                if auto_transcribe_checked && auto_ad_detect_checked {
+                                                    html! {
+                                                        <label class="inline-flex relative items-center cursor-pointer mt-3">
+                                                            <input
+                                                                type="checkbox"
+                                                                id="ad-skip-auto-activate"
+                                                                checked={ad_skip_auto_activate_checked}
+                                                                class="sr-only peer"
+                                                                onclick={ad_skip_auto_activate_toggle}
+                                                            />
+                                                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                                            <span class="ms-3 text-sm">{ &i18n.t("episodes_layout.ad_skip_auto_activate_desc") }</span>
+                                                        </label>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                } else {
+                                    html! {}
+                                }
+                            }
 
                             {
                                 if let Some(info) = &podcast_info {

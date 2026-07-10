@@ -6,6 +6,7 @@ use crate::components::gen_funcs::format_time_rm_hour;
 #[cfg(not(feature = "server_build"))]
 use crate::pages::downloads_tauri::start_local_file_server;
 use crate::requests::episode::Episode;
+use crate::requests::setting_reqs::call_get_default_volume;
 use crate::requests::pod_req::call_get_episode_id;
 use crate::requests::pod_req::FetchPodcasting2DataRequest;
 use crate::requests::pod_req::{
@@ -302,6 +303,40 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+    // Seed this player session's volume from the user's saved default, once per app session
+    // (#828/#775). `default_volume` being None marks "not yet seeded"; it survives page
+    // navigation (UIState is global) but resets on a full reload when the player is truly gone,
+    // so returning to a fresh player re-applies the default. Manual volume changes made during
+    // the session update `audio_volume` directly and are NOT reset on episode switch.
+    {
+        let audio_dispatch = _audio_dispatch.clone();
+        let needs_seed = audio_state.default_volume.is_none();
+        use_effect_with(
+            (api_key.clone(), server_name.clone(), user_id, needs_seed),
+            move |(api_key, server_name, user_id, needs_seed)| {
+                if *needs_seed {
+                    if let (Some(api_key), Some(server_name), Some(user_id)) =
+                        (api_key.clone(), server_name.clone(), *user_id)
+                    {
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let volume = call_get_default_volume(server_name, api_key.unwrap(), user_id)
+                                .await
+                                .unwrap_or(100);
+                            audio_dispatch.reduce_mut(|state| {
+                                if state.default_volume.is_none() {
+                                    state.default_volume = Some(volume as f64);
+                                    state.audio_volume = volume as f64;
+                                }
+                            });
+                        });
+                    }
+                }
+                || ()
+            },
+        );
+    }
+
     let episode_id = audio_state
         .currently_playing
         .as_ref()
@@ -710,18 +745,30 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         0.0
                     };
 
-                    // Auto-skip: if the playhead is inside a detected silence range, jump to its end.
-                    // Segments are pre-computed server-side (#727); a small tolerance avoids
-                    // skipping when we're already essentially at the range's end.
-                    if let Some(segments) = &state_clone.skip_segments {
+                    // Auto-skip: if the playhead is inside a detected silence range (#727) or an
+                    // active detected ad range (#790), jump to its end. Segments are pre-computed
+                    // server-side; a small tolerance avoids skipping when we're already at the end.
+                    // Ads only skip when the user's effective status is active/confirmed (the server
+                    // resolves per-user auto-activate vs. confirm-first + confirm/deny overrides).
+                    // Read the freshest state from the store, not the captured `state_clone`
+                    // snapshot: this handler is created at episode load, but skip segments are
+                    // fetched asynchronously afterward (and ad reviews can change them), so the
+                    // snapshot would be stale and nothing would ever skip.
+                    let live_state = audio_dispatch.get();
+                    if let Some(segments) = &live_state.skip_segments {
                         if let Some(seg) = segments.iter().find(|s| {
-                            s.kind == "silence"
+                            let applies = match s.kind.as_str() {
+                                "silence" => true,
+                                "ad" => matches!(s.status.as_deref(), Some("active") | Some("confirmed")),
+                                _ => false,
+                            };
+                            applies
                                 && time_in_seconds >= s.start_time
                                 && time_in_seconds < s.end_time - 0.25
                         }) {
-                            if let Some(media_element) = state_clone.media_element.as_ref() {
+                            if let Some(media_element) = live_state.media_element.as_ref() {
                                 media_element.set_current_time(seg.end_time);
-                            } else if let Some(audio_element) = state_clone.audio_element.as_ref() {
+                            } else if let Some(audio_element) = live_state.audio_element.as_ref() {
                                 audio_element.set_current_time(seg.end_time);
                             }
                         }
@@ -2379,7 +2426,8 @@ pub fn on_play_click(
                                     audio_state.audio_playing = Some(true);
                                     // Use the returned playback speed instead of hardcoded 1.0
                                     audio_state.playback_speed = playback_speed as f64;
-                                    audio_state.audio_volume = 100.0;
+                                    // Keep the live session volume (seeded from the user's default);
+                                    // do NOT reset it, so a manual change carries to the next episode (#775).
                                     audio_state.offline = Some(false);
                                     audio_state.current_playlist_id = playlist_id;
                                     audio_state.currently_playing = Some(AudioPlayerProps {
@@ -2400,10 +2448,13 @@ pub fn on_play_click(
                                     });
                                     // Use new media_element that supports both audio and video
                                     audio_state.set_media_source(src.to_string(), episode.is_video, dispatch_for_media);
+                                    let session_vol = audio_state.audio_volume;
                                     if let Some(media) = &audio_state.media_element {
                                         media.set_current_time(start_pos_sec);
                                         // Set the playback speed on the media element as well
                                         media.set_playback_rate(playback_speed as f64);
+                                        // Apply the live session volume to the new element (#828/#775)
+                                        media.set_volume(session_vol / 100.0);
                                         let _ = media.play();
                                     }
                                     audio_state.audio_playing = Some(true);
@@ -2433,7 +2484,7 @@ pub fn on_play_click(
                 audio_dispatch_for_duration.reduce_mut(move |audio_state| {
                     audio_state.audio_playing = Some(true);
                     audio_state.playback_speed = 1.0;
-                    audio_state.audio_volume = 100.0;
+                    // Keep the live session volume; do NOT reset on episode switch (#775).
                     audio_state.offline = Some(false);
                     audio_state.current_playlist_id = playlist_id;
                     audio_state.currently_playing = Some(AudioPlayerProps {
@@ -2454,7 +2505,10 @@ pub fn on_play_click(
                     });
                     // Use new media_element that supports both audio and video
                     audio_state.set_media_source(src.to_string(), episode.is_video, dispatch_for_media);
+                    let session_vol = audio_state.audio_volume;
                     if let Some(media) = &audio_state.media_element {
+                        // Apply the live session volume to the new element (#828/#775)
+                        media.set_volume(session_vol / 100.0);
                         let _ = media.play();
                     }
                     audio_state.audio_playing = Some(true);
@@ -2631,7 +2685,7 @@ pub fn on_play_click_offline(
                     audio_dispatch_for_duration.reduce_mut(move |audio_state| {
                         audio_state.audio_playing = Some(true);
                         audio_state.playback_speed = 1.0;
-                        audio_state.audio_volume = 100.0;
+                        // Keep the live session volume; do NOT reset on episode switch (#775).
                         audio_state.offline = Some(true);
                         audio_state.currently_playing = Some(AudioPlayerProps {
                             episode: episode.clone(),
@@ -2651,8 +2705,11 @@ pub fn on_play_click_offline(
                         });
                         // Use new media_element that supports both audio and video
                         audio_state.set_media_source(src.to_string(), episode.is_video, dispatch_for_media);
+                        let session_vol = audio_state.audio_volume;
                         if let Some(media) = &audio_state.media_element {
                             media.set_current_time(listen_duration_for_closure as f64);
+                            // Apply the live session volume to the new element (#828/#775)
+                            media.set_volume(session_vol / 100.0);
                             let _ = media.play();
                         }
                         audio_state.audio_playing = Some(true);
@@ -2774,7 +2831,7 @@ pub fn on_play_click_shared(
             audio_dispatch_for_duration.reduce_mut(move |audio_state| {
                 audio_state.audio_playing = Some(true);
                 audio_state.playback_speed = 1.0;
-                audio_state.audio_volume = 100.0;
+                // Keep the live session volume; do NOT reset on episode switch (#775).
                 audio_state.offline = Some(false);
                 audio_state.currently_playing = Some(AudioPlayerProps {
                     episode: episode.clone(),
@@ -2793,10 +2850,14 @@ pub fn on_play_click_shared(
                     is_video: false, // Local playback assumed to be audio for now
                 });
                 audio_state.set_audio_source(episode_url.clone());
+                let session_vol = audio_state.audio_volume;
                 // Support both media_element and legacy audio_element
                 if let Some(media) = &audio_state.media_element {
+                    // Apply the live session volume to the new element (#828/#775)
+                    media.set_volume(session_vol / 100.0);
                     let _ = media.play();
                 } else if let Some(audio) = &audio_state.audio_element {
+                    audio.set_volume(session_vol / 100.0);
                     let _ = audio.play();
                 }
                 audio_state.audio_playing = Some(true);

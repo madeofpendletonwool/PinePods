@@ -179,6 +179,14 @@ pub struct CollectionModalState {
     pub episode: Option<Episode>,
 }
 
+/// Coordinates which episode "more options" context menu is currently open so
+/// that opening one closes any other. Holds the unique instance id of the open
+/// menu, or None when all are closed.
+#[derive(Default, Clone, PartialEq, Store, Debug)]
+pub struct ContextMenuState {
+    pub open_id: Option<u64>,
+}
+
 /// Episode-specific status state kept separate from AppState so that the
 /// ~50+ components subscribing to AppState do NOT re-render on every
 /// save/download/queue/complete action.
@@ -418,6 +426,11 @@ pub struct UIState {
     pub episode_in_db: Option<bool>,
     pub playback_speed: f64,
     pub audio_volume: f64,
+    // The user's saved default volume (0-100), fetched once per app session (#828/#775).
+    // Doubles as the "session volume seeded" marker: None means not-yet-seeded, so a fresh
+    // player (after a full reload) re-applies the default. `audio_volume` holds the live
+    // session volume and is seeded from this on first load, then only changed by the user.
+    pub default_volume: Option<f64>,
     pub start_skip_sec: f64,
     pub end_skip_sec: f64,
     pub offline: Option<bool>,

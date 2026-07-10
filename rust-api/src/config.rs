@@ -353,32 +353,6 @@ impl Config {
         })
     }
 
-    pub fn database_url(&self) -> String {
-        // URL encode username and password to handle special characters
-        let encoded_username = urlencoding::encode(&self.database.username);
-        let encoded_password = urlencoding::encode(&self.database.password);
-        
-        let url = match self.database.db_type.as_str() {
-            "postgresql" => format!(
-                "postgresql://{}:{}@{}:{}/{}",
-                encoded_username,
-                encoded_password,
-                self.database.host,
-                self.database.port,
-                self.database.name
-            ),
-            _ => format!(
-                "mysql://{}:{}@{}:{}/{}",
-                encoded_username,
-                encoded_password,
-                self.database.host,
-                self.database.port,
-                self.database.name
-            ),
-        };
-        url
-    }
-
     pub fn redis_url(&self) -> String {
         let mut url = String::from("redis://");
         

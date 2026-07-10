@@ -96,7 +96,7 @@ fn parse_silencedetect(stderr: &str) -> Vec<(f64, f64)> {
 }
 
 /// Look up a locally downloaded file path for an episode (any user — the file content is the same).
-async fn downloaded_location(db_pool: &DatabasePool, episode_id: i32) -> Result<Option<String>, String> {
+pub async fn downloaded_location(db_pool: &DatabasePool, episode_id: i32) -> Result<Option<String>, String> {
     let loc = match db_pool {
         DatabasePool::Postgres(pool) => {
             sqlx::query(r#"SELECT downloadedlocation FROM "DownloadedEpisodes" WHERE episodeid = $1 LIMIT 1"#)
@@ -281,65 +281,6 @@ pub async fn analyze_episode_silence(
     let count = store_silence_segments(db_pool, episode_id, &segments).await?;
     debug!("Stored {} silence segment(s) for episode {}", count, episode_id);
     Ok(count)
-}
-
-/// A single skip range for an episode, as served to clients.
-#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
-pub struct SkipSegment {
-    pub kind: String,
-    pub start_time: f64,
-    pub end_time: f64,
-    pub source: String,
-}
-
-/// Read all skip segments for an episode, ordered by start time.
-pub async fn get_episode_skip_segments(
-    db_pool: &DatabasePool,
-    episode_id: i32,
-) -> Result<Vec<SkipSegment>, String> {
-    let segments = match db_pool {
-        DatabasePool::Postgres(pool) => {
-            let rows = sqlx::query(r#"
-                SELECT kind, starttime, endtime, source
-                FROM "EpisodeSkipSegments"
-                WHERE episodeid = $1
-                ORDER BY starttime
-            "#)
-            .bind(episode_id)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| e.to_string())?;
-            rows.into_iter()
-                .map(|r| SkipSegment {
-                    kind: r.try_get("kind").unwrap_or_default(),
-                    start_time: r.try_get("starttime").unwrap_or(0.0),
-                    end_time: r.try_get("endtime").unwrap_or(0.0),
-                    source: r.try_get("source").unwrap_or_default(),
-                })
-                .collect()
-        }
-        DatabasePool::MySQL(pool) => {
-            let rows = sqlx::query("
-                SELECT Kind, StartTime, EndTime, Source
-                FROM EpisodeSkipSegments
-                WHERE EpisodeID = ?
-                ORDER BY StartTime
-            ")
-            .bind(episode_id)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| e.to_string())?;
-            rows.into_iter()
-                .map(|r| SkipSegment {
-                    kind: r.try_get("Kind").unwrap_or_default(),
-                    start_time: r.try_get("StartTime").unwrap_or(0.0),
-                    end_time: r.try_get("EndTime").unwrap_or(0.0),
-                    source: r.try_get("Source").unwrap_or_default(),
-                })
-                .collect()
-        }
-    };
-    Ok(segments)
 }
 
 /// Read a podcast's silence-trim settings by podcast id. Returns `(enabled, threshold)`.

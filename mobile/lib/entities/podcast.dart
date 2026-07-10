@@ -85,6 +85,10 @@ class Podcast {
   bool newEpisodes;
   bool updatedEpisodes = false;
 
+  /// Whether the podcast is marked as a favorite by the user. Server-derived
+  /// (from the PinePods `isfavorite` column); not persisted to local disk.
+  bool isFavorite;
+
   Podcast({
     required this.guid,
     required String url,
@@ -102,6 +106,7 @@ class Podcast {
     this.episodes = const <Episode>[],
     this.newEpisodes = false,
     this.persons,
+    this.isFavorite = false,
     DateTime? lastUpdated,
   })  : url = url.forceHttps,
         imageUrl = imageUrl?.forceHttps,

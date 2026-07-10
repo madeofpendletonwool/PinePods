@@ -187,6 +187,8 @@ pub fn collection_picker_modal() -> Html {
                     name,
                     description: None,
                     icon: Some("ph-bookmark-simple".to_string()),
+                    auto_add_categories: None,
+                    backfill: None,
                 };
                 match pod_req::call_create_collection(&server, &api_key, req).await {
                     Ok(resp) => {

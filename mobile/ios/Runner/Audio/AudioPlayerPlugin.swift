@@ -138,6 +138,13 @@ public class AudioPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                 result(FlutterError(code: "INVALID_ARGS", message: "Speed required", details: nil))
             }
 
+        case "setSkipIntervals":
+            let args = call.arguments as? [String: Any]
+            let forwardMs = (args?["forwardMs"] as? Int) ?? 30000
+            let backwardMs = (args?["backwardMs"] as? Int) ?? 10000
+            player.setSkipIntervals(forwardMs: forwardMs, backwardMs: backwardMs)
+            result(nil)
+
         case "setSkipSegments":
             let args = call.arguments as? [String: Any]
             let enabled = (args?["enabled"] as? Bool) ?? false

@@ -1,0 +1,69 @@
+# pinepods-ai.yml — OPTIONAL AI (transcription) sidecar (#726).
+#
+# Apply this ONLY if you want AI features (transcript generation). Without it, PinePods
+# simply hides/disables those features. To enable, also uncomment PINEPODS_AI_URL in
+# env-configmap.yml so the main app knows where to reach this service.
+#
+# IMPORTANT: this container must READ the same downloads volume the main app writes to,
+# mounted at the SAME path (/opt/pinepods/downloads), because the app passes absolute
+# container paths. Adjust the volume below to point at the same storage your pinepods
+# deployment uses. With hostPath, keep the AI pod on the same node as the writer; for
+# multi-node use a ReadWriteMany PVC instead.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pinepods-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pinepods-ai
+  template:
+    metadata:
+      labels:
+        app: pinepods-ai
+    spec:
+      containers:
+      - name: pinepods-ai
+        image: madeofpendletonwool/pinepods-ai:latest
+        ports:
+        - containerPort: 8100
+        env:
+        - name: WHISPER_MODEL
+          value: "base"          # tiny|base|small|medium|large-v3
+        - name: WHISPER_DEVICE
+          value: "cpu"
+        - name: WHISPER_COMPUTE_TYPE
+          value: "int8"
+        volumeMounts:
+        - name: downloads
+          mountPath: /opt/pinepods/downloads
+          readOnly: true
+        - name: models
+          mountPath: /models
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8100
+          initialDelaySeconds: 20
+          periodSeconds: 15
+      volumes:
+      - name: downloads
+        hostPath:
+          # Must match the host path your pinepods deployment mounts as downloads.
+          path: /home/collinp/wait/downloads
+      - name: models
+        emptyDir: {}           # replace with a PVC to cache Whisper weights across restarts
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pinepods-ai
+spec:
+  selector:
+    app: pinepods-ai
+  ports:
+  - protocol: TCP
+    port: 8100
+    targetPort: 8100

@@ -747,6 +747,8 @@ pub async fn call_queue_episode(
         .await?;
 
     if response.ok() {
+        // Invalidate the cached queue listing so refetches reflect the new item.
+        cache::invalidate_prefix(&format!("{}/api/data/get_queued_episodes", server_name));
         let response_body: QueueResponse =
             response.json().await.map_err(|e| anyhow::Error::new(e))?;
         Ok(response_body.data)
@@ -786,6 +788,8 @@ pub async fn call_remove_queued_episode(
         .send()
         .await?;
     if response.ok() {
+        // Invalidate the cached queue listing so refetches reflect the removal.
+        cache::invalidate_prefix(&format!("{}/api/data/get_queued_episodes", server_name));
         // Use the same QueueResponse struct to deserialize the response
         let response_body: QueueResponse =
             response.json().await.map_err(|e| anyhow::Error::new(e))?;
@@ -825,6 +829,8 @@ pub async fn call_clear_queue(
         .send()
         .await?;
     if response.ok() {
+        // Invalidate the cached queue listing so refetches reflect the cleared queue.
+        cache::invalidate_prefix(&format!("{}/api/data/get_queued_episodes", server_name));
         let response_body: QueueResponse =
             response.json().await.map_err(|e| anyhow::Error::new(e))?;
         Ok(response_body.data)
@@ -929,6 +935,9 @@ pub async fn call_reorder_queue(
             response.status_text()
         )));
     }
+
+    // Invalidate the cached queue listing so refetches reflect the new ordering.
+    cache::invalidate_prefix(&format!("{}/api/data/get_queued_episodes", server_name));
 
     Ok(())
 }
@@ -2630,6 +2639,107 @@ pub async fn call_get_auto_download_status(
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct AutoQueueRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub auto_queue: bool,
+}
+
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct AutoQueueResponse {
+    detail: String,
+}
+
+#[allow(dead_code)]
+pub async fn call_enable_auto_queue(
+    server_name: &String,
+    api_key: &String,
+    request_data: &AutoQueueRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/enable_auto_queue", server_name);
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: AutoQueueResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to enable auto-queue: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AutoQueueStatusRequest {
+    pub podcast_id: i32,
+    user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AutoQueueStatusResponse {
+    pub auto_queue: bool,
+}
+
+#[allow(dead_code)]
+pub async fn call_get_auto_queue_status(
+    server_name: &str,
+    user_id: i32,
+    api_key: &Option<String>,
+    podcast_id: i32,
+) -> Result<bool, anyhow::Error> {
+    let url = format!("{}/api/data/get_auto_queue_status", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(&AutoQueueStatusRequest {
+        podcast_id,
+        user_id,
+    })
+    .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: AutoQueueStatusResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.auto_queue)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get auto-queue status: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct AutoPlayNextRequest {
     pub podcast_id: i32,
     pub user_id: i32,
@@ -2979,6 +3089,159 @@ pub async fn call_get_podcast_playback_speed(
     }
 }
 
+// --- Per-podcast auto-delete-downloads override (#655) ---
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetAutoDeleteDaysRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub days: i32,
+}
+
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct AutoDeleteDaysSetResponse {
+    detail: String,
+}
+
+pub async fn call_set_podcast_auto_delete_days(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &SetAutoDeleteDaysRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/podcast/set_auto_download_delete_days", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+    if response.ok() {
+        let response_body: AutoDeleteDaysSetResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to set auto-delete days: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ClearAutoDeleteDaysRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct AutoDeleteDaysClearResponse {
+    message: String,
+}
+
+pub async fn call_clear_podcast_auto_delete_days(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &ClearAutoDeleteDaysRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/clear_podcast_auto_download_delete_days", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+    if response.ok() {
+        let response_body: AutoDeleteDaysClearResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.message)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to clear auto-delete days: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetAutoDeleteDaysRequest {
+    pub user_id: i32,
+    pub podcast_id: Option<i32>,
+}
+
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+struct AutoDeleteDaysGetResponse {
+    days: i32,
+    #[serde(default)]
+    customized: bool,
+}
+
+/// Returns (days, customized) for a podcast's auto-delete override.
+pub async fn call_get_podcast_auto_delete_days(
+    server_name: &String,
+    api_key: &Option<String>,
+    podcast_id: i32,
+    user_id: i32,
+) -> Result<(i32, bool), Error> {
+    let url = format!("{}/api/data/get_auto_download_delete_days", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_data = GetAutoDeleteDaysRequest {
+        user_id,
+        podcast_id: Some(podcast_id),
+    };
+
+    let request_body = serde_json::to_string(&request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: AutoDeleteDaysGetResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok((response_body.days, response_body.customized))
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get auto-delete days: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SkipTimesRequest {
     pub podcast_id: i32,
@@ -3082,13 +3345,19 @@ pub async fn call_get_auto_skip_times(
     }
 }
 
-// ---- Auto-skip segments (silence trim #727; later ads #790) ----
+// ---- Auto-skip segments (silence trim #727; ads #790) ----
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct SkipSegment {
+    #[serde(default)]
+    pub segment_id: i32,
     pub kind: String,
     pub start_time: f64,
     pub end_time: f64,
     pub source: String,
+    /// For `kind == "ad"`: the requesting user's effective status
+    /// (`active`/`confirmed` = skip, `pending`/`rejected` = don't skip). `None` for silence.
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -3196,6 +3465,509 @@ pub async fn call_adjust_silence_trim(
             .await
             .unwrap_or_else(|_| "Failed to read error message".to_string());
         Err(Error::msg(format!("Failed to update silence trim: {}", error_text)))
+    }
+}
+
+// ---- Transcription (#726) ----
+pub async fn call_get_ai_status(server_name: &str, api_key: &Option<String>) -> Result<bool, Error> {
+    let url = format!("{}/api/data/ai_status", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url).header("Api-Key", api_key_ref).send().await?;
+    if response.ok() {
+        let data: serde_json::Value = response.json().await?;
+        Ok(data.get("available").and_then(|v| v.as_bool()).unwrap_or(false))
+    } else {
+        Ok(false)
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct TranscribeEpisodeRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    pub force: bool,
+}
+
+pub async fn call_transcribe_episode(
+    server_name: &str,
+    api_key: &Option<String>,
+    episode_id: i32,
+    user_id: i32,
+    force: bool,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/transcribe_episode", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let body = serde_json::to_string(&TranscribeEpisodeRequest { episode_id, user_id, force })?;
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(body)?
+        .send()
+        .await?;
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to start transcription: {}", error_text)))
+    }
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub struct StoredTranscript {
+    pub source: String,
+    pub language: Option<String>,
+    pub model: Option<String>,
+    pub status: String,
+    pub full_text: Option<String>,
+    /// Raw JSON string of `[{start,end,text}]`, or null.
+    pub segments: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct EpisodeTranscriptResponse {
+    transcript: Option<StoredTranscript>,
+}
+
+pub async fn call_get_episode_transcript(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    episode_id: i32,
+) -> Result<Option<StoredTranscript>, Error> {
+    let url = format!(
+        "{}/api/data/episode_transcript?episode_id={}&user_id={}",
+        server_name, episode_id, user_id
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url).header("Api-Key", api_key_ref).send().await?;
+    if response.ok() {
+        let data: EpisodeTranscriptResponse = response.json().await?;
+        Ok(data.transcript)
+    } else {
+        Ok(None)
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct AutoTranscribeRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub enabled: bool,
+}
+
+pub async fn call_get_auto_transcribe(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+) -> Result<bool, Error> {
+    let url = format!(
+        "{}/api/data/get_auto_transcribe?podcast_id={}&user_id={}",
+        server_name, podcast_id, user_id
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url).header("Api-Key", api_key_ref).send().await?;
+    if response.ok() {
+        let data: serde_json::Value = response.json().await?;
+        Ok(data.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false))
+    } else {
+        Ok(false)
+    }
+}
+
+pub async fn call_adjust_auto_transcribe(
+    server_name: &str,
+    api_key: &Option<String>,
+    request: &AutoTranscribeRequest,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/adjust_auto_transcribe", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(serde_json::to_string(request)?)?
+        .send()
+        .await?;
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to update auto-transcribe: {}", error_text)))
+    }
+}
+
+// ---- Ad detection (#790) ----
+
+/// Per-capability AI readiness for the AI Settings page.
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct AiStatus {
+    #[serde(default)]
+    pub available: bool,
+    #[serde(default)]
+    pub transcription_ready: bool,
+    #[serde(default)]
+    pub ad_removal_ready: bool,
+}
+
+pub async fn call_get_ai_status_full(
+    server_name: &str,
+    api_key: &Option<String>,
+) -> Result<AiStatus, Error> {
+    let url = format!("{}/api/data/ai_status", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url).header("Api-Key", api_key_ref).send().await?;
+    if response.ok() {
+        Ok(response.json().await?)
+    } else {
+        Ok(AiStatus::default())
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct DetectAdsRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    pub force: bool,
+}
+
+pub async fn call_detect_ads(
+    server_name: &str,
+    api_key: &Option<String>,
+    episode_id: i32,
+    user_id: i32,
+    force: bool,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/detect_ads", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let body = serde_json::to_string(&DetectAdsRequest { episode_id, user_id, force })?;
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(body)?
+        .send()
+        .await?;
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to start ad detection: {}", error_text)))
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct AdSegmentReviewRequest {
+    pub segment_id: i32,
+    pub user_id: i32,
+    pub status: String,
+}
+
+pub async fn call_adjust_ad_segment_review(
+    server_name: &str,
+    api_key: &Option<String>,
+    request: &AdSegmentReviewRequest,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/adjust_ad_segment_review", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(serde_json::to_string(request)?)?
+        .send()
+        .await?;
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to update ad review: {}", error_text)))
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct AutoAdDetectRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub enabled: bool,
+}
+
+pub async fn call_get_auto_ad_detect(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+) -> Result<bool, Error> {
+    let url = format!(
+        "{}/api/data/get_auto_ad_detect?podcast_id={}&user_id={}",
+        server_name, podcast_id, user_id
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url).header("Api-Key", api_key_ref).send().await?;
+    if response.ok() {
+        let data: serde_json::Value = response.json().await?;
+        Ok(data.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false))
+    } else {
+        Ok(false)
+    }
+}
+
+pub async fn call_adjust_auto_ad_detect(
+    server_name: &str,
+    api_key: &Option<String>,
+    request: &AutoAdDetectRequest,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/adjust_auto_ad_detect", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(serde_json::to_string(request)?)?
+        .send()
+        .await?;
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to update auto ad-detect: {}", error_text)))
+    }
+}
+
+pub async fn call_get_ad_skip_auto_activate(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+) -> Result<bool, Error> {
+    let url = format!(
+        "{}/api/data/get_ad_skip_auto_activate?podcast_id={}&user_id={}",
+        server_name, podcast_id, user_id
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url).header("Api-Key", api_key_ref).send().await?;
+    if response.ok() {
+        let data: serde_json::Value = response.json().await?;
+        // Default TRUE, matching the server-side default.
+        Ok(data.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true))
+    } else {
+        Ok(true)
+    }
+}
+
+pub async fn call_adjust_ad_skip_auto_activate(
+    server_name: &str,
+    api_key: &Option<String>,
+    request: &AutoAdDetectRequest,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/adjust_ad_skip_auto_activate", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(serde_json::to_string(request)?)?
+        .send()
+        .await?;
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to update ad-skip auto-activate: {}", error_text)))
+    }
+}
+
+// ---- AI settings + model management (admin) ----
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct AiSettings {
+    pub transcription_model: String,
+    pub llm_backend: String,
+    pub llm_model: Option<String>,
+    pub llm_url: Option<String>,
+    #[serde(default)]
+    pub has_api_key: bool,
+    #[serde(default)]
+    pub whisper_device: String,
+    #[serde(default)]
+    pub whisper_compute_type: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct AiSettingsResponse {
+    settings: AiSettings,
+}
+
+pub async fn call_get_ai_settings(
+    server_name: &str,
+    api_key: &Option<String>,
+) -> Result<AiSettings, Error> {
+    let url = format!("{}/api/data/ai_settings", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url).header("Api-Key", api_key_ref).send().await?;
+    if response.ok() {
+        let data: AiSettingsResponse = response.json().await?;
+        Ok(data.settings)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to get AI settings: {}", error_text)))
+    }
+}
+
+#[derive(Serialize, Debug, Default)]
+pub struct AiSettingsUpdate {
+    pub transcription_model: String,
+    pub llm_backend: String,
+    pub llm_model: Option<String>,
+    pub llm_url: Option<String>,
+    pub llm_api_key: Option<String>,
+    pub clear_api_key: bool,
+    pub whisper_device: Option<String>,
+    pub whisper_compute_type: Option<String>,
+}
+
+pub async fn call_update_ai_settings(
+    server_name: &str,
+    api_key: &Option<String>,
+    update: &AiSettingsUpdate,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/ai_settings", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(serde_json::to_string(update)?)?
+        .send()
+        .await?;
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to update AI settings: {}", error_text)))
+    }
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct AiModels {
+    #[serde(default)]
+    pub whisper: Vec<String>,
+    #[serde(default)]
+    pub llm_local: Vec<String>,
+    #[serde(default)]
+    pub llm_remote: Vec<String>,
+    #[serde(default)]
+    pub models_dir: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct AiModelsResponse {
+    models: AiModels,
+}
+
+pub async fn call_get_ai_models(
+    server_name: &str,
+    api_key: &Option<String>,
+    remote_url: Option<&str>,
+) -> Result<AiModels, Error> {
+    let mut url = format!("{}/api/data/ai_models", server_name);
+    if let Some(r) = remote_url.filter(|r| !r.is_empty()) {
+        url = format!("{}?remote_url={}", url, urlencoding::encode(r));
+    }
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::get(&url).header("Api-Key", api_key_ref).send().await?;
+    if response.ok() {
+        let data: AiModelsResponse = response.json().await?;
+        Ok(data.models)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to list AI models: {}", error_text)))
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct AiPullModelRequest {
+    pub kind: String,
+    pub model: String,
+    pub repo: Option<String>,
+    pub filename: Option<String>,
+    pub url: Option<String>,
+}
+
+pub async fn call_ai_pull_model(
+    server_name: &str,
+    api_key: &Option<String>,
+    request: &AiPullModelRequest,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/ai_pull_model", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(serde_json::to_string(request)?)?
+        .send()
+        .await?;
+    if response.ok() {
+        Ok(())
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!("Failed to pull model: {}", error_text)))
     }
 }
 
@@ -4843,11 +5615,18 @@ pub struct Collection {
     pub created_at: String,
     pub last_updated: String,
     pub episode_count: i64,
+    #[serde(default)]
+    pub auto_add_categories: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct CollectionsResponse {
     pub collections: Vec<Collection>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UserCategoriesResponse {
+    pub categories: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -4856,6 +5635,8 @@ pub struct CreateCollectionRequest {
     pub name: String,
     pub description: Option<String>,
     pub icon: Option<String>,
+    pub auto_add_categories: Option<Vec<String>>,
+    pub backfill: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -4870,6 +5651,8 @@ pub struct UpdateCollectionRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub icon: Option<String>,
+    pub auto_add_categories: Option<Vec<String>>,
+    pub backfill: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -4898,6 +5681,25 @@ pub async fn call_get_collections(
     if response.ok() {
         let parsed = response.json::<CollectionsResponse>().await?;
         Ok(parsed.collections)
+    } else {
+        Err(anyhow::anyhow!("Server returned error: {}", response.status()))
+    }
+}
+
+pub async fn call_get_user_categories(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<Vec<String>, Error> {
+    let endpoint = format!("{}/api/data/collections/categories/{}", server, user_id);
+    let response = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+    if response.ok() {
+        let parsed = response.json::<UserCategoriesResponse>().await?;
+        Ok(parsed.categories)
     } else {
         Err(anyhow::anyhow!("Server returned error: {}", response.status()))
     }

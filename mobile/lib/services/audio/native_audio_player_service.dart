@@ -40,6 +40,18 @@ class NativeAudioPlayerService extends AudioPlayerService {
   var _sleep = Sleep(type: SleepType.none);
   var _sleepEpisodesRemaining = 0;
 
+  /// True from the moment native reports the track ended until the next
+  /// episode is actually underway (or we give up and stop). While set, the
+  /// transient `stopped`/`none` states that ExoPlayer/AVPlayer emit around
+  /// end-of-track and while switching media are suppressed, so the mini/floating
+  /// player stays visible (as a loading state) during the hand-off instead of
+  /// vanishing and popping back.
+  bool _handlingCompletion = false;
+
+  /// Re-entry guard so a double-fired native `completed` event can't launch two
+  /// concurrent auto-advances.
+  bool _advanceInProgress = false;
+
   Episode? _currentEpisode;
   Transcript? _currentTranscript;
 
@@ -83,6 +95,15 @@ class NativeAudioPlayerService extends AudioPlayerService {
     // plugin) runs on the native thread and may not finish before Dart starts.
     // Retry with increasing delays until the plugin is ready (max ~5s total).
     _subscribeToEventChannelWithRetry();
+
+    // Re-push skip intervals to the native media session whenever the user
+    // changes them, so car/notification rewind & fast-forward buttons stay in
+    // sync without needing to restart playback.
+    settingsService.settingsListener.listen((key) {
+      if (key == 'fastForwardInterval' || key == 'rewindInterval') {
+        _applySkipIntervals();
+      }
+    });
 
     _loadQueue();
   }
@@ -198,7 +219,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
         _handleErrorEvent(event);
         break;
       case 'completed':
-        _handleCompletedEvent();
+        unawaited(_handleCompletedEvent());
         break;
       case 'mediaButtonAction':
         _handleMediaButtonAction(event);
@@ -214,7 +235,29 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
     // Update playing state
     if (state != null) {
+      // ExoPlayer reports STATE_ENDED as a 'completed' playback state (and keeps
+      // re-reporting it via onIsPlayingChanged). Ignore it: the separate
+      // {type:'completed'} event is what drives the advance and shows the
+      // loading state. Emitting a real state for 'completed' maps to `none` and
+      // would hide the player mid hand-off.
+      if (state == 'completed') {
+        return;
+      }
+
       final audioState = _parseState(state);
+
+      // The next episode is underway (or the user resumed) — end the hand-off.
+      if (audioState == AudioState.playing || audioState == AudioState.buffering) {
+        _handlingCompletion = false;
+      }
+
+      // Suppress the brief stopped/idle states emitted while tearing down the
+      // finished track and loading the next one.
+      if (_handlingCompletion &&
+          (audioState == AudioState.stopped || audioState == AudioState.none)) {
+        return;
+      }
+
       _playingState.add(audioState);
     }
 
@@ -266,31 +309,74 @@ class NativeAudioPlayerService extends AudioPlayerService {
     _playingState.add(AudioState.error);
   }
 
-  void _handleCompletedEvent() {
+  Future<void> _handleCompletedEvent() async {
     log.info('Episode completed');
-    if (_currentEpisode != null) {
-      _currentEpisode!.played = true;
-      _currentEpisode!.position = 0;
-      repository.saveEpisode(_currentEpisode!);
+    if (_advanceInProgress) {
+      log.info('Already handling completion - ignoring duplicate event');
+      return;
     }
+    _advanceInProgress = true;
+    // Enter the hand-off: keep the player visible (loading) and suppress the
+    // transient stopped/idle states native emits while switching episodes, until
+    // the next one is actually underway (cleared in _handlePlaybackStateEvent).
+    _handlingCompletion = true;
+    try {
+      final completedEpisode = _currentEpisode;
+      if (completedEpisode != null) {
+        completedEpisode.played = true;
+        completedEpisode.position = 0;
+        repository.saveEpisode(completedEpisode);
+      }
 
-    // Check sleep timer
-    if (_sleep.type == SleepType.episode) {
-      _sleepEpisodesRemaining--;
-      if (_sleepEpisodesRemaining <= 0) {
-        log.info('Sleep timer triggered - episode count reached');
-        stop();
+      // Check sleep timer
+      if (_sleep.type == SleepType.episode) {
+        _sleepEpisodesRemaining--;
+        if (_sleepEpisodesRemaining <= 0) {
+          log.info('Sleep timer triggered - episode count reached');
+          // Don't suppress the stop that follows — we intend to hide the player.
+          _handlingCompletion = false;
+          stop();
+          return;
+        }
+      }
+
+      // Legacy Anytime "Up Next" queue (never populated by PinePods playback,
+      // but kept for the non-PinePods path).
+      if (_queue.isNotEmpty) {
+        final nextEpisode = _queue.removeAt(0);
+        _updateQueueState();
+        await playEpisode(episode: nextEpisode, resume: false);
         return;
       }
-    }
 
-    // Play next episode from queue
-    if (_queue.isNotEmpty) {
-      final nextEpisode = _queue.removeAt(0);
-      _updateQueueState();
-      playEpisode(episode: nextEpisode, resume: false);
-    } else {
-      _playingState.add(AudioState.stopped);
+      // PinePods auto-advance: continue the playlist / auto-play-next / server
+      // queue. Keep the player on screen (buffering) during the network round
+      // trip so it doesn't flicker to "stopped"; the next episode's playEpisode
+      // emits its own buffering/playing, and if nothing is queued we stop.
+      //
+      // NOTE: we deliberately do NOT gate on the Episode.guid here — PinePods
+      // episodes are played with guid == episode URL (see
+      // PinepodsAudioService._convertToEpisode), not "pinepods_<id>". The
+      // PinepodsAudioService knows whether it is tracking an episode and returns
+      // false (→ stop) when it is not.
+      if (_pinepodsAudioService != null) {
+        _playingState.add(AudioState.buffering);
+        final advanced = await _pinepodsAudioService!.handleEpisodeCompleted();
+        if (advanced) {
+          // Leave _handlingCompletion set: the next episode's native
+          // playing/buffering event clears it (see _handlePlaybackStateEvent),
+          // which keeps the player visible across the media switch.
+        } else {
+          // Nothing left to play — allow the hide and stop.
+          _handlingCompletion = false;
+          _playingState.add(AudioState.stopped);
+        }
+      } else {
+        _handlingCompletion = false;
+        _playingState.add(AudioState.stopped);
+      }
+    } finally {
+      _advanceInProgress = false;
     }
   }
 
@@ -378,6 +464,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
         await platform.invokeMethod('setTrimSilence', {'enabled': _trimSilence});
         await platform.invokeMethod('setVolumeBoost', {'enabled': _volumeBoost});
       }
+      await _applySkipIntervals();
 
       // Start tracking
       _episodeStartTime = DateTime.now();
@@ -460,7 +547,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
   Future<void> rewind() async {
     log.info('rewind');
     try {
-      await platform.invokeMethod('rewind', {'milliseconds': 10000});
+      await platform.invokeMethod('rewind', {'milliseconds': settingsService.rewindInterval * 1000});
     } catch (e) {
       log.severe('Error rewinding: $e');
     }
@@ -470,9 +557,23 @@ class NativeAudioPlayerService extends AudioPlayerService {
   Future<void> fastForward() async {
     log.info('fastForward');
     try {
-      await platform.invokeMethod('fastForward', {'milliseconds': 30000});
+      await platform.invokeMethod('fastForward', {'milliseconds': settingsService.fastForwardInterval * 1000});
     } catch (e) {
       log.severe('Error fast forwarding: $e');
+    }
+  }
+
+  /// Push the user-configured skip intervals down to the native media
+  /// session so the car/notification rewind & fast-forward buttons honor
+  /// the same values as the in-app controls.
+  Future<void> _applySkipIntervals() async {
+    try {
+      await platform.invokeMethod('setSkipIntervals', {
+        'forwardMs': settingsService.fastForwardInterval * 1000,
+        'backwardMs': settingsService.rewindInterval * 1000,
+      });
+    } catch (e) {
+      log.warning('Error setting skip intervals: $e');
     }
   }
 
@@ -520,30 +621,45 @@ class NativeAudioPlayerService extends AudioPlayerService {
   }
 
   @override
-  Future<void> applyEpisodeSilenceTrim(
-    bool enabled,
-    List<Map<String, double>> segments,
-  ) async {
-    log.info('applyEpisodeSilenceTrim: enabled=$enabled, segments=${segments.length}');
+  Future<void> applyEpisodeSkipSegments({
+    required bool silenceEnabled,
+    required List<Map<String, double>> silenceRanges,
+    required List<Map<String, double>> adRanges,
+  }) async {
+    log.info('applyEpisodeSkipSegments: silenceEnabled=$silenceEnabled, '
+        'silence=${silenceRanges.length}, ads=${adRanges.length}');
     // Session-only: unlike trimSilence(), this does NOT persist to the global
     // settingsService, so a per-podcast value never overwrites the user default.
     if (Platform.isAndroid) {
-      // Android uses ExoPlayer's native real-time skip-silence DSP. Effective
+      // Silence stays on ExoPlayer's real-time skip-silence DSP. Effective
       // enablement is the per-podcast flag OR the user's global preference.
-      final effective = enabled || settingsService.trimSilence;
+      final effective = silenceEnabled || settingsService.trimSilence;
       try {
         await platform.invokeMethod('setTrimSilence', {'enabled': effective});
       } catch (e) {
         log.severe('Error applying episode trim silence (Android): $e');
       }
+      // Ads (#790) can't ride the DSP (they're content, not silence): send the
+      // ranges to the native position-poll seeker. Empty list clears them.
+      try {
+        await platform.invokeMethod('setAdSkipSegments', {
+          'segments':
+              adRanges.map((s) => {'start': s['start'], 'end': s['end']}).toList(),
+        });
+      } catch (e) {
+        log.severe('Error applying episode ad-skip segments (Android): $e');
+      }
     } else if (Platform.isIOS) {
-      // iOS (AVPlayer has no DSP skip-silence): apply pre-computed silence ranges.
+      // iOS (AVPlayer has no DSP skip-silence): the native seek observer is
+      // kind-agnostic, so send the union of silence + active-ad ranges and let
+      // it seek past any of them. Enabled whenever there's anything to skip.
+      final combined = [...silenceRanges, ...adRanges]
+          .map((s) => {'start': s['start'], 'end': s['end']})
+          .toList();
       try {
         await platform.invokeMethod('setSkipSegments', {
-          'enabled': enabled,
-          'segments': segments
-              .map((s) => {'start': s['start'], 'end': s['end']})
-              .toList(),
+          'enabled': combined.isNotEmpty,
+          'segments': combined,
         });
       } catch (e) {
         log.severe('Error applying episode skip segments (iOS): $e');

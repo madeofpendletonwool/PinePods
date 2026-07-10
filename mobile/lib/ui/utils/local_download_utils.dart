@@ -10,6 +10,8 @@ import 'package:pinepods_mobile/entities/downloadable.dart';
 import 'package:pinepods_mobile/repository/repository.dart';
 import 'package:pinepods_mobile/services/logging/app_logger.dart';
 import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
+import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:provider/provider.dart';
 
 /// Utility class for managing local downloads of PinePods episodes
@@ -99,6 +101,28 @@ class LocalDownloadUtils {
       logger.error('LocalDownload', 'Error checking local download status for episode: ${episode.episodeTitle}', e.toString());
       return false;
     }
+  }
+
+  /// Build the URL to download an episode's bytes from. When the user prefers
+  /// server copies and the server already has this episode downloaded, this
+  /// returns the server's stream endpoint so we mirror the server copy instead
+  /// of re-fetching from the original feed. Returns null to fall back to the
+  /// episode's original content URL.
+  static String? resolveServerDownloadUrl(AppSettings settings, PinepodsEpisode episode) {
+    if (!settings.preferServerDownloadSource) return null;
+    if (!episode.downloaded) return null;
+    if (episode.episodeId <= 0) return null;
+
+    final server = settings.pinepodsServer;
+    final apiKey = settings.pinepodsApiKey;
+    final userId = settings.pinepodsUserId;
+    if (server == null || server.isEmpty || apiKey == null || apiKey.isEmpty || userId == null) {
+      return null;
+    }
+
+    final type = episode.isYoutube ? 'youtube' : 'episode';
+    return '$server/api/data/stream/${episode.episodeId}'
+        '?api_key=$apiKey&user_id=$userId&type=$type';
   }
 
   /// Checks each row in [matchingEpisodes] that's marked downloaded against
@@ -229,9 +253,23 @@ class LocalDownloadUtils {
       logger.debug('LocalDownload', 'Created local episode with GUID: ${localEpisode.guid}');
       logger.debug('LocalDownload', 'Episode title: ${localEpisode.title}');
       logger.debug('LocalDownload', 'Episode URL: ${localEpisode.contentUrl}');
-      
+
+      // Prefer the server's downloaded copy as the byte source when enabled and
+      // available. contentUrl stays the original feed URL (used for filename
+      // derivation, playback and now-playing matching); downloadUrl is a
+      // transient override consumed only by the download manager.
+      try {
+        final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+        localEpisode.downloadUrl = resolveServerDownloadUrl(settings, episode);
+        if (localEpisode.downloadUrl != null) {
+          logger.debug('LocalDownload', 'Using server download source for ${localEpisode.guid}');
+        }
+      } catch (e) {
+        logger.debug('LocalDownload', 'Could not resolve server download URL: $e');
+      }
+
       final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
-      
+
       // First save the episode to the repository so it can be tracked
       await podcastBloc.podcastService.saveEpisode(localEpisode);
       logger.debug('LocalDownload', 'Episode saved to repository');
@@ -286,6 +324,40 @@ class LocalDownloadUtils {
       }
     } catch (e) {
       logger.error('LocalDownload', 'Error deleting local download for episode: ${episode.episodeTitle}', e.toString());
+      return 0;
+    }
+  }
+
+  /// Delete local download(s) for a raw local-download [guid] (`pinepods_<id>`),
+  /// including legacy `pinepods_<id>_<ts>` duplicates. Used by automatic
+  /// download managers (queue/mirror) that only have the guid, not a full
+  /// [PinepodsEpisode]. Returns the number of episode records deleted.
+  static Future<int> deleteLocalDownloadByGuid(
+    BuildContext context,
+    String guid,
+  ) async {
+    final logger = AppLogger();
+
+    try {
+      final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
+
+      final allEpisodes = await podcastBloc.podcastService.repository.findAllEpisodes();
+      final matchingEpisodes = allEpisodes.where((ep) =>
+        ep.guid == guid || ep.guid.startsWith('${guid}_')
+      ).toList();
+
+      if (matchingEpisodes.isEmpty) {
+        _localDownloadStatusCache[guid] = false;
+        return 0;
+      }
+
+      for (final localEpisode in matchingEpisodes) {
+        await podcastBloc.podcastService.repository.deleteEpisode(localEpisode);
+      }
+      _localDownloadStatusCache[guid] = false;
+      return matchingEpisodes.length;
+    } catch (e) {
+      logger.error('LocalDownload', 'Error deleting local download for guid: $guid', e.toString());
       return 0;
     }
   }

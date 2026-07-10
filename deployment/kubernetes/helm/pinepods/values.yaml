@@ -269,8 +269,17 @@ podpeople:
   auth:
     adminUsername: "admin"
     adminPassword: "password"
-  # Change this only if you aren't hosting the backend. If you aren't you probably want it to be https://search.pinepods.online
-  searchApiUrl: "http://pinepods-backend:{{ .Values.backend.service.port }}" # Only used if backend.enabled is false
+  # -- PodPeople container environment. Referenced by the deployment template.
+  environment:
+    # -- ntfy server URL for new-host notifications (optional; leave empty to disable)
+    ntfyUrl: ""
+    # -- ntfy topic (optional)
+    ntfyTopic: ""
+    # -- Public base URL of the PodPeople instance
+    baseurl: "https://podpeople.mydomain.com"
+    # -- Search API URL. Only used when backend.enabled is false; if you aren't hosting
+    #    the backend you probably want https://search.pinepods.online
+    searchApiUrl: "https://search.pinepods.online"
   ingress:
     enabled: true
     className: ""
@@ -281,3 +290,55 @@ podpeople:
           - path: /
             pathType: Prefix
     tls: []
+
+## AI sidecar configuration (OPTIONAL — disabled by default)
+## Provides AI features such as transcript generation (#726) via faster-whisper.
+## When disabled, PinePods simply hides/disables the AI features — nothing else changes.
+## When enabled, the app is pointed at this service via PINEPODS_AI_URL automatically.
+##
+## IMPORTANT: the AI container must be able to READ the same downloads volume the main app
+## writes to. It mounts the downloads PVC read-only at the SAME path (/opt/pinepods/downloads),
+## since the app passes absolute container paths. With the default ReadWriteOnce downloads PVC,
+## the AI pod must be scheduled on the same node as the main pod (or set
+## persistence.downloads.accessMode: ReadWriteMany with an RWX-capable storage class).
+ai:
+  # -- Enable the optional AI (transcription) sidecar
+  enabled: false
+  image:
+    # -- Repository for the AI sidecar image
+    repository: madeofpendletonwool/pinepods-ai
+    # -- Tag of the AI sidecar image
+    tag: latest
+    # -- Image pull policy
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    # -- Port the AI sidecar listens on
+    port: 8100
+  # -- Whisper model + runtime settings (see the pinepods-ai README)
+  whisper:
+    model: "base"          # tiny|base|small|medium|large-v3
+    device: "cpu"          # cuda if using a GPU-enabled image/node
+    computeType: "int8"
+  # -- Ad-detection LLM (#790) initial defaults. Models are best managed at runtime from
+  #    Settings → AI in the web UI; these only seed the sidecar's defaults.
+  llm:
+    model: ""              # local GGUF filename under /models (bundled backend)
+    url: ""                # OpenAI-compatible endpoint, e.g. http://ollama:11434/v1
+    modelName: ""          # remote model id, e.g. qwen2.5:3b
+    apiKey: ""             # remote API key (optional)
+  # -- Persistent cache for downloaded Whisper model weights (optional but recommended)
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 5Gi
+    accessMode: ReadWriteOnce
+    existingClaim: ""
+  # -- Resource requests/limits — transcription is CPU-heavy; tune for your hardware
+  resources: {}
+    # requests:
+    #   memory: 2Gi
+    #   cpu: "1"
+    # limits:
+    #   memory: 4Gi
+    #   cpu: "2"

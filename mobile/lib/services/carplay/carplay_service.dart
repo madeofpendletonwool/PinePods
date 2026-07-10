@@ -27,6 +27,11 @@ class CarPlayService {
   final FlutterCarplay _flutterCarplay = FlutterCarplay();
   bool _isConnected = false;
   bool _isSettingUp = false;  // Guard against concurrent setup
+  Timer? _refreshRetryTimer;  // Retries the initial load until credentials hydrate
+
+  /// True once we have everything needed to fetch content from the server.
+  bool get _isReady =>
+      pinepodsService != null && settingsService.pinepodsUserId != null;
 
   // Note: We use FlutterCarplay.showSharedNowPlaying() instead of a custom method channel
   // because flutter_carplay manages its own template stack and interface controller
@@ -34,6 +39,7 @@ class CarPlayService {
   // Store tab templates for updating
   CPListTemplate? _currentTab;
   CPListTemplate? _savedTab;
+  CPListTemplate? _nowPlayingTab;
   CPTabBarTemplate? _rootTemplate;
 
   // Playback state tracking
@@ -78,9 +84,11 @@ class CarPlayService {
         _setupNowPlayingTemplate();
         // Refresh dynamic tab content now that we have a live connection
         await _refreshDynamicTabs();
+        await _refreshNowPlayingTab();
       } else if (status == ConnectionStatusTypes.disconnected) {
         _isConnected = false;
         _isSettingUp = false;
+        _refreshRetryTimer?.cancel();
         // Don't clear _rootTemplate — native side keeps it and re-applies on reconnect
       }
     });
@@ -105,9 +113,11 @@ class CarPlayService {
       emptyViewSubtitleVariants: ['Saved episodes loading'],
     );
 
+    _nowPlayingTab = _createNowPlayingTab();
+
     _rootTemplate = CPTabBarTemplate(
       templates: [
-        _createNowPlayingTab(),
+        _nowPlayingTab!,
         _currentTab!,
         _savedTab!,
         _createMoreTab(),
@@ -120,7 +130,19 @@ class CarPlayService {
 
   Future<void> _refreshDynamicTabs() async {
     if (_isSettingUp) return;
+
+    // If credentials/services aren't ready yet, leave the tabs showing their
+    // "Loading…" empty view (rather than overwriting them with a genuinely-empty
+    // section) and retry shortly. This avoids the "no episodes" flash when the
+    // car connects before login/settings have hydrated.
+    if (!_isReady) {
+      log.info('CarPlay not ready to load content yet, will retry');
+      _scheduleRefreshRetry();
+      return;
+    }
+
     _isSettingUp = true;
+    _refreshRetryTimer?.cancel();
     log.info('Refreshing CarPlay dynamic tab content');
 
     try {
@@ -148,6 +170,22 @@ class CarPlayService {
     }
   }
 
+  /// Retry loading the tabs once credentials/services become available. Only
+  /// runs while connected; stops itself once ready or on disconnect.
+  void _scheduleRefreshRetry() {
+    _refreshRetryTimer?.cancel();
+    _refreshRetryTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (!_isConnected) {
+        timer.cancel();
+        return;
+      }
+      if (_isReady) {
+        timer.cancel();
+        _refreshDynamicTabs();
+      }
+    });
+  }
+
   void _setupPlaybackListener() {
     // Listen to playback state changes - only log on actual changes
     _playbackSubscription = audioPlayerService.playingState?.listen((state) {
@@ -156,7 +194,9 @@ class CarPlayService {
         if (_isConnected) {
           log.info('Playback state changed to $state');
           // The native audio player handles updating MPNowPlayingInfoCenter
-          // which CarPlay uses to display now playing info
+          // which CarPlay uses to display now playing info. Refresh the Now
+          // Playing tab so it reflects the current episode / play state.
+          _refreshNowPlayingTab();
         }
       }
     });
@@ -270,7 +310,7 @@ class CarPlayService {
             ),
             // Rewind
             CPListItem(
-              text: '⏪  Rewind 15 seconds',
+              text: '⏪  Rewind ${settingsService.rewindInterval} seconds',
               onPress: (complete, item) async {
                 await audioPlayerService.rewind();
                 complete();
@@ -278,7 +318,7 @@ class CarPlayService {
             ),
             // Fast forward
             CPListItem(
-              text: '⏩  Forward 30 seconds',
+              text: '⏩  Forward ${settingsService.fastForwardInterval} seconds',
               onPress: (complete, item) async {
                 await audioPlayerService.fastForward();
                 complete();
@@ -300,57 +340,55 @@ class CarPlayService {
   CPListTemplate _createNowPlayingTab() {
     log.info('Creating Now Playing tab');
 
-    // Create a tab that shows Now Playing info and navigates to the Now Playing screen
-    final nowPlaying = audioPlayerService.nowPlaying;
-    final items = <CPListItem>[];
-
-    if (nowPlaying != null) {
-      items.add(CPListItem(
-        text: nowPlaying.title ?? 'Unknown Episode',
-        detailText: nowPlaying.podcast ?? 'Unknown Podcast',
-        image: nowPlaying.imageUrl,
-        onPress: (complete, item) async {
-          log.info('Now Playing tab item pressed');
-          _showNowPlayingGrid();
-          complete();
-        },
-        playingIndicatorLocation: CPListItemPlayingIndicatorLocation.trailing,
-        isPlaying: true,
-      ));
-    }
-
-    // Add playback controls
-    items.add(CPListItem(
-      text: 'Open Now Playing',
-      detailText: nowPlaying != null ? 'View full playback controls' : 'Nothing playing',
-      onPress: (complete, item) async {
-        if (audioPlayerService.nowPlaying != null) {
-          _showNowPlayingGrid();
-        } else {
-          FlutterCarplay.showAlert(
-            template: CPAlertTemplate(
-              titleVariants: ['Nothing Playing'],
-              actions: [
-                CPAlertAction(
-                  title: 'OK',
-                  onPress: () => FlutterCarplay.popModal(animated: true),
-                ),
-              ],
-            ),
-            animated: true,
-          );
-        }
-        complete();
-      },
-    ));
-
     return CPListTemplate(
-      sections: [CPListSection(items: items)],
+      sections: _buildNowPlayingSections(),
       title: 'Now Playing',
       systemIcon: 'play.circle.fill',
       emptyViewTitleVariants: ['Nothing Playing'],
       emptyViewSubtitleVariants: ['Start playing an episode'],
     );
+  }
+
+  /// The Now Playing tab shows the current episode directly (no intermediate
+  /// "Open Now Playing" button). Tapping the episode opens the full CarPlay
+  /// player. When nothing is playing the tab shows its empty view.
+  List<CPListSection> _buildNowPlayingSections() {
+    final nowPlaying = audioPlayerService.nowPlaying;
+    if (nowPlaying == null) {
+      return [];
+    }
+
+    return [
+      CPListSection(
+        items: [
+          CPListItem(
+            text: nowPlaying.title ?? 'Unknown Episode',
+            detailText: nowPlaying.podcast ?? 'Unknown Podcast',
+            image: nowPlaying.imageUrl,
+            onPress: (complete, item) async {
+              log.info('Now Playing tab item pressed - opening player');
+              _showNowPlayingGrid();
+              complete();
+            },
+            playingIndicatorLocation: CPListItemPlayingIndicatorLocation.trailing,
+            isPlaying: _isPlaying,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  /// Refresh the Now Playing tab so it reflects the currently-playing episode.
+  Future<void> _refreshNowPlayingTab() async {
+    if (_nowPlayingTab == null) return;
+    try {
+      await _flutterCarplay.updateListTemplateSections(
+        elementId: _nowPlayingTab!.uniqueId,
+        sections: _buildNowPlayingSections(),
+      );
+    } catch (e) {
+      log.warning('Failed to refresh Now Playing tab: $e');
+    }
   }
 
   CPListTemplate _createMoreTab() {
@@ -913,6 +951,7 @@ class CarPlayService {
 
   void dispose() {
     _playbackSubscription?.cancel();
+    _refreshRetryTimer?.cancel();
     _flutterCarplay.removeListenerOnConnectionChange();
   }
 }

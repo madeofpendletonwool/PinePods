@@ -12,6 +12,7 @@ use crate::{
         BulkAddCollectionRequest, CollectionDetailResponse, CollectionEpisodeRequest,
         CollectionsResponse, CreateCollectionRequest, CreateCollectionResponse,
         EpisodeCollectionsResponse, SavedEpisodesResponse, UpdateCollectionRequest,
+        UserCategoriesResponse,
     },
     AppState,
 };
@@ -54,6 +55,12 @@ pub async fn create_collection(
     }
 
     let collection_id = state.db_pool.create_collection(&req).await?;
+    // Backfill existing matching episodes when requested (categories present + toggle on).
+    if req.backfill.unwrap_or(false) {
+        if let Err(e) = state.db_pool.auto_add_category_episodes(collection_id).await {
+            tracing::warn!("Backfill for new collection {} failed: {}", collection_id, e);
+        }
+    }
     Ok(Json(CreateCollectionResponse {
         detail: "Collection created successfully".to_string(),
         collection_id,
@@ -86,6 +93,34 @@ pub async fn list_collections(
 
     let collections = state.db_pool.get_collections(user_id).await?;
     Ok(Json(CollectionsResponse { collections }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/collections/categories/{user_id}",
+    tag = "collections",
+    summary = "List the distinct podcast categories across a user's subscriptions",
+    params(("user_id" = i32, Path)),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Categories", body = UserCategoriesResponse),
+        (status = 401, description = "Invalid API key"),
+        (status = 403, description = "Cannot list another user's categories"),
+    ),
+)]
+pub async fn get_user_categories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<i32>,
+) -> AppResult<Json<UserCategoriesResponse>> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    if !check_user_access(&state, &api_key, user_id).await? {
+        return Err(AppError::forbidden("You can only list your own categories!"));
+    }
+
+    let categories = state.db_pool.get_user_categories(user_id).await?;
+    Ok(Json(UserCategoriesResponse { categories }))
 }
 
 #[utoipa::path(
@@ -137,7 +172,14 @@ pub async fn update_collection(
     Json(req): Json<UpdateCollectionRequest>,
 ) -> AppResult<Json<CollectionDetailResponse>> {
     let (_key, user_id, _is_web_key) = auth_user(&state, &headers).await?;
+    let backfill = req.backfill.unwrap_or(false);
     state.db_pool.update_collection(user_id, collection_id, &req).await?;
+    // Backfill existing matching episodes when requested (categories present + toggle on).
+    if backfill {
+        if let Err(e) = state.db_pool.auto_add_category_episodes(collection_id).await {
+            tracing::warn!("Backfill for collection {} failed: {}", collection_id, e);
+        }
+    }
     Ok(Json(CollectionDetailResponse {
         detail: "Collection updated successfully".to_string(),
     }))

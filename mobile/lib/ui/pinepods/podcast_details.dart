@@ -65,6 +65,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   bool _isLoading = false;
   bool _isFollowing = false;
   bool _isFollowButtonLoading = false;
+  bool _isFavorite = false;
+  bool _isFavoriteLoading = false;
   String? _errorMessage;
   List<PinepodsEpisode> _episodes = [];
   List<PinepodsEpisode> _filteredEpisodes = [];
@@ -81,6 +83,13 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   bool _isAutoDownloadEnabled = false;
   bool _isAutoPlayNextEnabled = false;
 
+  // AI features (#726/#790) per-podcast settings. Only surfaced when the server
+  // reports the AI sidecar as available.
+  bool _aiAvailable = false;
+  bool _autoTranscribe = false;
+  bool _autoAdDetect = false;
+  bool _adSkipAutoActivate = true; // server default is true
+
   // Tracks episode being loaded for ghost mini player
   PinepodsEpisode? _pendingEpisode;
 
@@ -92,7 +101,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _loadSortPreference();
     _loadAutoDownloadPreference();
     _loadAutoPlayNextPreference();
+    _loadAiPreferences();
     _checkFollowStatus();
+    _checkFavoriteStatus();
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -226,6 +237,150 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     } catch (e) {
       debugPrint('Error toggling auto-play-next: $e');
     }
+  }
+
+  // Load AI availability + the three per-podcast AI toggles (#726/#790).
+  Future<void> _loadAiPreferences() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0) return;
+    try {
+      final settings =
+          Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+      if (settings.pinepodsServer == null ||
+          settings.pinepodsApiKey == null ||
+          settings.pinepodsUserId == null) {
+        return;
+      }
+      _pinepodsService.setCredentials(
+          settings.pinepodsServer!, settings.pinepodsApiKey!);
+      final userId = settings.pinepodsUserId!;
+
+      final status = await _pinepodsService.getAiStatus();
+      if (!status.available) {
+        if (mounted) setState(() => _aiAvailable = false);
+        return;
+      }
+
+      final results = await Future.wait([
+        _pinepodsService.getAutoTranscribe(userId, podcastId),
+        _pinepodsService.getAutoAdDetect(userId, podcastId),
+        _pinepodsService.getAdSkipAutoActivate(userId, podcastId),
+      ]);
+      if (mounted) {
+        setState(() {
+          _aiAvailable = true;
+          _autoTranscribe = results[0];
+          _autoAdDetect = results[1];
+          _adSkipAutoActivate = results[2];
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading AI preferences: $e');
+    }
+  }
+
+  // Persist one AI toggle; returns whether it succeeded. Updates widget state
+  // so the bottom sheet and header reflect the new value after it closes.
+  Future<bool> _setAiToggle(String which, bool value) async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0) return false;
+    try {
+      final settings =
+          Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+      if (settings.pinepodsUserId == null) return false;
+      final userId = settings.pinepodsUserId!;
+      _pinepodsService.setCredentials(
+          settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+      bool ok;
+      switch (which) {
+        case 'transcribe':
+          ok = await _pinepodsService.adjustAutoTranscribe(userId, podcastId, value);
+          if (ok) {
+            _autoTranscribe = value;
+            // Auto-detect requires auto-transcribe; keep state consistent.
+            if (!value) _autoAdDetect = false;
+          }
+          break;
+        case 'ad_detect':
+          ok = await _pinepodsService.adjustAutoAdDetect(userId, podcastId, value);
+          if (ok) _autoAdDetect = value;
+          break;
+        case 'ad_skip_auto':
+          ok = await _pinepodsService.adjustAdSkipAutoActivate(userId, podcastId, value);
+          if (ok) _adSkipAutoActivate = value;
+          break;
+        default:
+          ok = false;
+      }
+      if (ok && mounted) setState(() {});
+      return ok;
+    } catch (e) {
+      debugPrint('Error setting AI toggle $which: $e');
+      return false;
+    }
+  }
+
+  void _showAiSettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> toggle(String which, bool value) async {
+              final ok = await _setAiToggle(which, value);
+              if (ok) setSheetState(() {});
+            }
+
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Text(
+                      'AI Features',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleLarge!
+                          .copyWith(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  SwitchListTile(
+                    title: const Text('Auto-transcribe'),
+                    subtitle: const Text(
+                        'Transcribe new episodes automatically as they arrive.'),
+                    value: _autoTranscribe,
+                    onChanged: (v) => toggle('transcribe', v),
+                  ),
+                  SwitchListTile(
+                    title: const Text('Auto-detect ads'),
+                    subtitle: Text(_autoTranscribe
+                        ? 'Scan transcripts for ad segments to skip.'
+                        : 'Enable auto-transcribe first.'),
+                    value: _autoAdDetect,
+                    onChanged:
+                        _autoTranscribe ? (v) => toggle('ad_detect', v) : null,
+                  ),
+                  if (_autoTranscribe && _autoAdDetect)
+                    SwitchListTile(
+                      title: const Text('Auto-skip detected ads'),
+                      subtitle: Text(_adSkipAutoActivate
+                          ? 'Skip detected ads automatically.'
+                          : 'Require confirmation before skipping.'),
+                      value: _adSkipAutoActivate,
+                      onChanged: (v) => toggle('ad_skip_auto', v),
+                    ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _saveSortPreference() async {
@@ -387,6 +542,80 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       print('Error checking follow status: $e');
       // Use the passed value as fallback
       _loadPodcastFeed();
+    }
+  }
+
+  Future<void> _checkFavoriteStatus() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0) return;
+
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+    if (userId == null ||
+        settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null) {
+      return;
+    }
+
+    _pinepodsService.setCredentials(
+        settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+    try {
+      final isFavorite =
+          await _pinepodsService.getPodcastFavoriteStatus(podcastId, userId);
+      if (mounted) {
+        setState(() {
+          _isFavorite = isFavorite;
+        });
+      }
+    } catch (e) {
+      print('Error checking favorite status: $e');
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0 || _isFavoriteLoading) return;
+
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+    if (userId == null ||
+        settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
+    }
+
+    _pinepodsService.setCredentials(
+        settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+    // Optimistically flip, revert on failure.
+    final newValue = !_isFavorite;
+    setState(() {
+      _isFavorite = newValue;
+      _isFavoriteLoading = true;
+    });
+
+    final success = await _pinepodsService.togglePodcastFavorite(
+        podcastId, userId, newValue);
+
+    if (!mounted) return;
+    setState(() {
+      _isFavoriteLoading = false;
+      if (!success) {
+        _isFavorite = !newValue;
+      }
+    });
+
+    if (!success) {
+      _showSnackBar('Failed to update favorite', Colors.red);
+    } else {
+      _showSnackBar(
+        newValue ? 'Added to favorites' : 'Removed from favorites',
+        Colors.green,
+      );
     }
   }
 
@@ -1135,6 +1364,27 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
               ),
             ),
             actions: [
+              if (widget.podcast.id > 0)
+                IconButton(
+                  onPressed: _isFavoriteLoading ? null : _toggleFavorite,
+                  icon: _isFavoriteLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.0,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Icon(
+                          _isFavorite ? Icons.star : Icons.star_border,
+                          color: _isFavorite ? Colors.amber : Colors.white,
+                        ),
+                  tooltip: _isFavorite
+                      ? 'Remove from favorites'
+                      : 'Add to favorites',
+                ),
               if (_isFollowing && widget.podcast.id > 0)
                 IconButton(
                   onPressed: _toggleAutoDownload,
@@ -1156,6 +1406,12 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     color: _isAutoPlayNextEnabled ? Colors.green[300] : Colors.white,
                   ),
                   tooltip: _isAutoPlayNextEnabled ? 'Disable auto-play next' : 'Enable auto-play next',
+                ),
+              if (_isFollowing && widget.podcast.id > 0 && _aiAvailable)
+                IconButton(
+                  onPressed: _showAiSettingsSheet,
+                  icon: const Icon(Icons.auto_awesome, color: Colors.white),
+                  tooltip: 'AI features',
                 ),
               IconButton(
                 onPressed: _isFollowButtonLoading ? null : _toggleFollow,

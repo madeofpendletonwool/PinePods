@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
+import 'package:pinepods_mobile/services/auto_download/queue_download_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/draggable_queue_episode_card.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
@@ -94,6 +96,17 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     await _loadQueuedEpisodes();
   }
 
+  /// Fire-and-forget re-sync of the auto-download queue after the queue changes.
+  void _syncQueueDownloads() {
+    final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    if (settings.pinepodsUserId == null) return;
+    QueueDownloadService.syncQueueDownloads(
+      context: context,
+      pinepodsService: _pinepodsService,
+      userId: settings.pinepodsUserId!,
+    );
+  }
+
   Future<void> _reorderEpisodes(int oldIndex, int newIndex) async {
     // Adjust indices if moving down the list
     if (newIndex > oldIndex) {
@@ -129,6 +142,8 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
         _showSnackBar('Failed to update queue order', Colors.red);
         // Reload to restore original order if API call fails
         await _loadQueuedEpisodes();
+      } else {
+        _syncQueueDownloads();
       }
     } catch (e) {
       _showSnackBar('Error updating queue order: $e', Colors.red);
@@ -168,9 +183,10 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
   Future<void> _showContextMenu(int episodeIndex) async {
     final episode = _episodes[episodeIndex];
     final isDownloadedLocally = await LocalDownloadUtils.isEpisodeDownloadedLocally(context, episode);
-    
+
     if (!mounted) return;
-    
+
+    final pageContext = context;
     showDialog(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.3),
@@ -213,10 +229,19 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
         onDismiss: () {
           Navigator.of(context).pop();
         },
+        onPodcastTap: () {
+          Navigator.of(context).pop();
+          navigateToPodcastById(
+            pageContext,
+            episode.podcastId,
+            fallbackTitle: episode.podcastName,
+            fallbackArtwork: episode.episodeArtwork,
+          );
+        },
       ),
     );
   }
-  
+
   Future<void> _localDownloadEpisode(int episodeIndex) async {
     final episode = _episodes[episodeIndex];
     
@@ -418,6 +443,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
             _episodes.removeAt(episodeIndex);
           });
           _showSnackBar('Removed from queue', Colors.orange);
+          _syncQueueDownloads();
         }
       } else {
         // This shouldn't happen since all episodes here are already queued
@@ -432,6 +458,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: true);
           });
           _showSnackBar('Added to queue!', Colors.green);
+          _syncQueueDownloads();
         }
       }
 

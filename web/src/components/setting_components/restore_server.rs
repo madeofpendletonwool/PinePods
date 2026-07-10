@@ -167,6 +167,15 @@ pub fn restore_server() -> Html {
                             state.info_message =
                                 Some(format!("Server restore started successfully: {}", message));
                         });
+                        // Persist a flag so RestoreOverlay knows to poll/show. The restore
+                        // truncates the Sessions table and we redirect to /sign_out, so
+                        // in-memory state is wiped -- localStorage survives both.
+                        if let Some(window) = web_sys::window() {
+                            if let Ok(Some(storage)) = window.local_storage() {
+                                let _ = storage.set_item("pinepods_restore_active", "1");
+                                let _ = storage.set_item("pinepods_restore_server", &server_name);
+                            }
+                        }
                         history.push("/sign_out");
                     }
                     Err(e) => {
@@ -217,6 +226,16 @@ pub fn restore_server() -> Html {
                                     "Restore from backup file started successfully".to_string(),
                                 );
                             });
+                            // Persist a flag so RestoreOverlay knows to poll/show. The restore
+                            // truncates the Sessions table and we redirect to /sign_out, so
+                            // in-memory state is wiped -- localStorage survives both.
+                            if let Some(window) = web_sys::window() {
+                                if let Ok(Some(storage)) = window.local_storage() {
+                                    let _ = storage.set_item("pinepods_restore_active", "1");
+                                    let _ =
+                                        storage.set_item("pinepods_restore_server", &server_name);
+                                }
+                            }
                             history.push("/sign_out");
                         }
                         Err(e) => {

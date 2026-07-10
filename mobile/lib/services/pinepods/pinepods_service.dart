@@ -189,6 +189,7 @@ class PinepodsService {
               link: podData['websiteurl'] ?? '',
               copyright: podData['author'] ?? '',
               guid: podData['feedurl'] ?? '',
+              isFavorite: podData['is_favorite'] ?? false,
               // Empty episodes list - episodes are loaded separately when needed
               episodes: [],
               // Store episode count for display (if Podcast model supports it)
@@ -258,6 +259,7 @@ class PinepodsService {
               link: podData['websiteurl'] ?? '',
               copyright: podData['author'] ?? '',
               guid: podData['feedurl'] ?? '',
+              isFavorite: podData['is_favorite'] ?? false,
               episodes: [],
             ),
           );
@@ -490,6 +492,65 @@ class PinepodsService {
     }
   }
 
+  // Toggle a podcast's favorite status (podcast-level favorite, matching web).
+  Future<bool> togglePodcastFavorite(
+    int podcastId,
+    int userId,
+    bool isFavorite,
+  ) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/podcast/toggle_favorite');
+    final requestBody = jsonEncode({
+      'user_id': userId,
+      'podcast_id': podcastId,
+      'is_favorite': isFavorite,
+    });
+
+    try {
+      final response = await http.put(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: requestBody,
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      _devLog('Error toggling podcast favorite: $e');
+      return false;
+    }
+  }
+
+  // Get a podcast's favorite status.
+  Future<bool> getPodcastFavoriteStatus(int podcastId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/podcast/favorite_status');
+    final requestBody = jsonEncode({
+      'user_id': userId,
+      'podcast_id': podcastId,
+    });
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: requestBody,
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['is_favorite'] ?? false;
+      }
+      return false;
+    } catch (e) {
+      _devLog('Error getting podcast favorite status: $e');
+      return false;
+    }
+  }
+
   // Get podcast ID from episode
   Future<int> getPodcastIdFromEpisode(
     int episodeId,
@@ -603,9 +664,12 @@ class PinepodsService {
         final segments = (data['segments'] as List?) ?? [];
         return segments
             .map((s) => SkipSegment(
+                  segmentId: (s['segment_id'] as num?)?.toInt() ?? 0,
                   kind: s['kind'] ?? '',
                   startTime: (s['start_time'] as num?)?.toDouble() ?? 0.0,
                   endTime: (s['end_time'] as num?)?.toDouble() ?? 0.0,
+                  source: s['source'] as String?,
+                  status: s['status'] as String?,
                 ))
             .toList();
       }
@@ -614,6 +678,199 @@ class PinepodsService {
     }
     return const [];
   }
+
+  // --- AI features (#726 transcripts / #790 ad-block) --------------------
+  // All endpoints live under /api/data and use the Api-Key header. The server
+  // resolves per-user ad status; mobile just trusts it (never re-derives it).
+
+  // GET /api/data/ai_status — gate all AI UI on `available`.
+  Future<AiStatus> getAiStatus() async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/ai_status');
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return AiStatus(
+          available: data['available'] == true,
+          transcriptionReady: data['transcription_ready'] == true,
+          adRemovalReady: data['ad_removal_ready'] == true,
+        );
+      }
+    } catch (e) {
+      _devLog('Error getting AI status: $e');
+    }
+    return const AiStatus();
+  }
+
+  // POST /api/data/detect_ads — trigger ad detection (async background job).
+  // Returns true if the request was accepted (503 => AI unavailable).
+  Future<bool> detectAds(int episodeId, int userId, {bool force = false}) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/detect_ads');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'episode_id': episodeId,
+          'user_id': userId,
+          'force': force,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      _devLog('Error detecting ads: $e');
+      return false;
+    }
+  }
+
+  // POST /api/data/adjust_ad_segment_review — per-user confirm/deny of an ad.
+  // `status` is "confirmed" or "rejected".
+  Future<bool> adjustAdSegmentReview(
+      int segmentId, int userId, String status) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/adjust_ad_segment_review');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'segment_id': segmentId,
+          'user_id': userId,
+          'status': status,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      _devLog('Error adjusting ad segment review: $e');
+      return false;
+    }
+  }
+
+  // GET /api/data/episode_transcript — stored AI transcript (with cue segments).
+  Future<StoredTranscript?> getEpisodeTranscript(
+      int episodeId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse(
+      '$_server/api/data/episode_transcript?episode_id=$episodeId&user_id=$userId',
+    );
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final t = data['transcript'];
+        if (t == null) return null;
+        return StoredTranscript(
+          source: t['source'] ?? '',
+          language: t['language'] as String?,
+          model: t['model'] as String?,
+          status: t['status'] ?? '',
+          fullText: t['full_text'] as String?,
+          segments: t['segments'] as String?,
+        );
+      }
+    } catch (e) {
+      _devLog('Error getting episode transcript: $e');
+    }
+    return null;
+  }
+
+  // POST /api/data/transcribe_episode — trigger transcription (async).
+  Future<bool> transcribeEpisode(int episodeId, int userId,
+      {bool force = false}) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/transcribe_episode');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'episode_id': episodeId,
+          'user_id': userId,
+          'force': force,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      _devLog('Error transcribing episode: $e');
+      return false;
+    }
+  }
+
+  // --- Per-podcast AI toggles -------------------------------------------
+  // Shared GET helper: /api/data/<path>?podcast_id=&user_id= => {enabled}.
+  Future<bool> _getPodcastEnabled(
+      String path, int userId, int podcastId, bool fallback) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse(
+      '$_server/api/data/$path?podcast_id=$podcastId&user_id=$userId',
+    );
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['enabled'] == true;
+      }
+    } catch (e) {
+      _devLog('Error getting $path: $e');
+    }
+    return fallback;
+  }
+
+  // Shared POST helper: /api/data/<path> with {podcast_id,user_id,enabled}.
+  Future<bool> _setPodcastEnabled(
+      String path, int userId, int podcastId, bool enabled) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/$path');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'podcast_id': podcastId,
+          'user_id': userId,
+          'enabled': enabled,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      _devLog('Error setting $path: $e');
+      return false;
+    }
+  }
+
+  Future<bool> getAutoTranscribe(int userId, int podcastId) =>
+      _getPodcastEnabled('get_auto_transcribe', userId, podcastId, false);
+  Future<bool> adjustAutoTranscribe(int userId, int podcastId, bool enabled) =>
+      _setPodcastEnabled('adjust_auto_transcribe', userId, podcastId, enabled);
+
+  Future<bool> getAutoAdDetect(int userId, int podcastId) =>
+      _getPodcastEnabled('get_auto_ad_detect', userId, podcastId, false);
+  Future<bool> adjustAutoAdDetect(int userId, int podcastId, bool enabled) =>
+      _setPodcastEnabled('adjust_auto_ad_detect', userId, podcastId, enabled);
+
+  // Server default is TRUE (auto-activate ad-skip).
+  Future<bool> getAdSkipAutoActivate(int userId, int podcastId) =>
+      _getPodcastEnabled('get_ad_skip_auto_activate', userId, podcastId, true);
+  Future<bool> adjustAdSkipAutoActivate(
+          int userId, int podcastId, bool enabled) =>
+      _setPodcastEnabled(
+          'adjust_ad_skip_auto_activate', userId, podcastId, enabled);
 
   // Record listen duration for episode
   Future<bool> recordListenDuration(
@@ -812,6 +1069,33 @@ class PinepodsService {
     } catch (e) {
       _devLog('Error downloading episode: $e');
       return false;
+    }
+  }
+
+  /// Create a public share link for an episode. Returns the share `url_key`
+  /// (append to `<server>/shared_episode/<url_key>` for the shareable URL).
+  Future<String> createShareLink(int episodeId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/share_episode/$episodeId');
+    _devLog('Making API call to: $url');
+
+    final response = await http.post(
+      url,
+      headers: {'Api-Key': _apiKey!},
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final urlKey = data['url_key'];
+      if (urlKey == null || (urlKey is String && urlKey.isEmpty)) {
+        throw Exception('Server did not return a share link');
+      }
+      return urlKey.toString();
+    } else {
+      throw Exception('Failed to create share link: ${response.statusCode}');
     }
   }
 
@@ -2474,16 +2758,61 @@ class SilenceTrimSettings {
   const SilenceTrimSettings({required this.enabled, required this.threshold});
 }
 
-// A single auto-skip range (silence #727; later ads #790), times in seconds
+// A single auto-skip range (silence #727; ads #790), times in seconds.
+// `status` is the requesting user's effective state for ad segments:
+// "active"/"confirmed" => skip, "pending"/"rejected" => don't skip; null for silence.
 class SkipSegment {
+  final int segmentId;
   final String kind;
   final double startTime;
   final double endTime;
+  final String? source;
+  final String? status;
 
   const SkipSegment({
+    this.segmentId = 0,
     required this.kind,
     required this.startTime,
     required this.endTime,
+    this.source,
+    this.status,
+  });
+
+  // True only for ad segments the server has resolved as skippable for this user.
+  bool get isActiveAd =>
+      kind == 'ad' && (status == 'active' || status == 'confirmed');
+}
+
+// AI capability status from GET /api/data/ai_status; gates all AI UI.
+class AiStatus {
+  final bool available;
+  final bool transcriptionReady;
+  final bool adRemovalReady;
+
+  const AiStatus({
+    this.available = false,
+    this.transcriptionReady = false,
+    this.adRemovalReady = false,
+  });
+}
+
+// Stored AI transcript from GET /api/data/episode_transcript.
+// `segments` is the raw JSON string of [{start,end,text}] (seconds), or null.
+class StoredTranscript {
+  final String source;
+  final String? language;
+  final String? model;
+  final String status;
+  final String? fullText;
+  final String? segments;
+
+  const StoredTranscript({
+    required this.source,
+    this.language,
+    this.model,
+    required this.status,
+    this.fullText,
+    this.segments,
   });
 }
 
@@ -2758,6 +3087,7 @@ class SearchEpisodeResult {
       queued: queued,
       downloaded: downloaded,
       isYoutube: isYoutube,
+      podcastId: podcastId,
     );
   }
 

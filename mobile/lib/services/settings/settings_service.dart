@@ -61,9 +61,38 @@ abstract class SettingsService {
 
   bool get volumeBoost;
 
+  set fastForwardInterval(int seconds);
+
+  int get fastForwardInterval;
+
+  set rewindInterval(int seconds);
+
+  int get rewindInterval;
+
   set layoutMode(int mode);
 
   int get layoutMode;
+
+  /// Only run automatic downloads (per-podcast auto-download, queue auto-download
+  /// and server mirror) while connected to WiFi. Manual downloads are unaffected.
+  bool get autoDownloadWifiOnly;
+  set autoDownloadWifiOnly(bool value);
+
+  /// When an episode already exists as a server download, pull the bytes from the
+  /// server's copy instead of the original feed URL. Falls back to the source URL
+  /// when the server does not have it.
+  bool get preferServerDownloadSource;
+  set preferServerDownloadSource(bool value);
+
+  /// Number of leading queue episodes to keep downloaded locally. 0 disables the
+  /// feature.
+  int get autoDownloadQueueCount;
+  set autoDownloadQueueCount(int value);
+
+  /// Keep the device's local downloads mirrored to the server's downloaded
+  /// episodes (two-way: add new, prune removed).
+  bool get mirrorServerDownloads;
+  set mirrorServerDownloads(bool value);
 
   Stream<String> get settingsListener;
 
