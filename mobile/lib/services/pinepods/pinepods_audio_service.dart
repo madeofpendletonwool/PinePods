@@ -466,12 +466,15 @@ class PinepodsAudioService {
 
     // Mark the finished episode completed on the server. On natural completion
     // nothing else records the final state (periodic sync can be up to 15s
-    // stale), so do it explicitly to keep history/queue correct.
-    try {
-      await _pinepodsService.markEpisodeCompleted(episodeId, userId, _isYoutube);
-    } catch (e) {
-      log.fine('Could not mark episode completed (continuing): $e');
-    }
+    // stale), so do it explicitly to keep history/queue correct. Fire-and-forget
+    // — it doesn't influence which episode plays next, so don't make the user
+    // wait on it before playback resumes.
+    unawaited(
+      _pinepodsService.markEpisodeCompleted(episodeId, userId, _isYoutube).catchError((e) {
+        log.fine('Could not mark episode completed (continuing): $e');
+        return false;
+      }),
+    );
 
     // PRIORITY 1: Playlist continuation.
     final playlistId = _currentPlaylistId;
@@ -533,31 +536,36 @@ class PinepodsAudioService {
       final queued = await _pinepodsService.getQueuedEpisodes(userId);
       log.info('Found ${queued.length} episodes in queue');
 
-      // Remove the just-finished episode and any completed leftovers so the
-      // queue stays clean and we don't replay something already listened to.
+      // Backend returns episodes ORDER BY queueposition ASC, so the first entry
+      // that isn't the just-finished episode (and isn't already completed) is
+      // next. Pick it locally so we don't need a second round-trip.
+      PinepodsEpisode? next;
       for (final ep in queued) {
-        if (ep.episodeId == episodeId || ep.completed) {
-          try {
-            await _pinepodsService.removeQueuedEpisode(
-              ep.episodeId,
-              userId,
-              ep.isYoutube,
-            );
-          } catch (e) {
-            log.fine('Could not remove queued episode ${ep.episodeId}: $e');
-          }
+        if (ep.episodeId != episodeId && !ep.completed) {
+          next = ep;
+          break;
         }
       }
 
-      // Re-fetch to get the queue in its updated order. The backend returns
-      // episodes ORDER BY queueposition ASC, so the first entry is next.
-      final updated = await _pinepodsService.getQueuedEpisodes(userId);
-      if (updated.isEmpty) {
+      // Drop the finished episode and any completed leftovers from the queue in
+      // the background so we don't block playback of the next episode on these
+      // round-trips.
+      for (final ep in queued) {
+        if (ep.episodeId == episodeId || ep.completed) {
+          unawaited(
+            _pinepodsService.removeQueuedEpisode(ep.episodeId, userId, ep.isYoutube).catchError((e) {
+              log.fine('Could not remove queued episode ${ep.episodeId}: $e');
+              return false;
+            }),
+          );
+        }
+      }
+
+      if (next == null) {
         log.info('Queue empty after cleanup - stopping playback');
         return false;
       }
 
-      final next = updated.first;
       log.info('Auto-advancing to next queued episode: ${next.episodeTitle}');
       await playPinepodsEpisode(pinepodsEpisode: next, resume: false);
       return true;

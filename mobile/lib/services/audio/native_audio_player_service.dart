@@ -40,9 +40,17 @@ class NativeAudioPlayerService extends AudioPlayerService {
   var _sleep = Sleep(type: SleepType.none);
   var _sleepEpisodesRemaining = 0;
 
-  /// Guards against a double-fired native `completed` event launching two
-  /// concurrent auto-advances.
+  /// True from the moment native reports the track ended until the next
+  /// episode is actually underway (or we give up and stop). While set, the
+  /// transient `stopped`/`none` states that ExoPlayer/AVPlayer emit around
+  /// end-of-track and while switching media are suppressed, so the mini/floating
+  /// player stays visible (as a loading state) during the hand-off instead of
+  /// vanishing and popping back.
   bool _handlingCompletion = false;
+
+  /// Re-entry guard so a double-fired native `completed` event can't launch two
+  /// concurrent auto-advances.
+  bool _advanceInProgress = false;
 
   Episode? _currentEpisode;
   Transcript? _currentTranscript;
@@ -227,7 +235,29 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
     // Update playing state
     if (state != null) {
+      // ExoPlayer reports STATE_ENDED as a 'completed' playback state (and keeps
+      // re-reporting it via onIsPlayingChanged). Ignore it: the separate
+      // {type:'completed'} event is what drives the advance and shows the
+      // loading state. Emitting a real state for 'completed' maps to `none` and
+      // would hide the player mid hand-off.
+      if (state == 'completed') {
+        return;
+      }
+
       final audioState = _parseState(state);
+
+      // The next episode is underway (or the user resumed) — end the hand-off.
+      if (audioState == AudioState.playing || audioState == AudioState.buffering) {
+        _handlingCompletion = false;
+      }
+
+      // Suppress the brief stopped/idle states emitted while tearing down the
+      // finished track and loading the next one.
+      if (_handlingCompletion &&
+          (audioState == AudioState.stopped || audioState == AudioState.none)) {
+        return;
+      }
+
       _playingState.add(audioState);
     }
 
@@ -281,10 +311,14 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
   Future<void> _handleCompletedEvent() async {
     log.info('Episode completed');
-    if (_handlingCompletion) {
+    if (_advanceInProgress) {
       log.info('Already handling completion - ignoring duplicate event');
       return;
     }
+    _advanceInProgress = true;
+    // Enter the hand-off: keep the player visible (loading) and suppress the
+    // transient stopped/idle states native emits while switching episodes, until
+    // the next one is actually underway (cleared in _handlePlaybackStateEvent).
     _handlingCompletion = true;
     try {
       final completedEpisode = _currentEpisode;
@@ -299,6 +333,8 @@ class NativeAudioPlayerService extends AudioPlayerService {
         _sleepEpisodesRemaining--;
         if (_sleepEpisodesRemaining <= 0) {
           log.info('Sleep timer triggered - episode count reached');
+          // Don't suppress the stop that follows — we intend to hide the player.
+          _handlingCompletion = false;
           stop();
           return;
         }
@@ -326,14 +362,21 @@ class NativeAudioPlayerService extends AudioPlayerService {
       if (_pinepodsAudioService != null) {
         _playingState.add(AudioState.buffering);
         final advanced = await _pinepodsAudioService!.handleEpisodeCompleted();
-        if (!advanced) {
+        if (advanced) {
+          // Leave _handlingCompletion set: the next episode's native
+          // playing/buffering event clears it (see _handlePlaybackStateEvent),
+          // which keeps the player visible across the media switch.
+        } else {
+          // Nothing left to play — allow the hide and stop.
+          _handlingCompletion = false;
           _playingState.add(AudioState.stopped);
         }
       } else {
+        _handlingCompletion = false;
         _playingState.add(AudioState.stopped);
       }
     } finally {
-      _handlingCompletion = false;
+      _advanceInProgress = false;
     }
   }
 
