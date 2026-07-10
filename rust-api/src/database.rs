@@ -28368,20 +28368,76 @@ impl DatabasePool {
                     ));
                 }
                 
-                // Continue with all other MySQL filters...
+                // Podcast filter - handle JSON array of podcast IDs (MySQL/MariaDB).
+                // MariaDB reports the JSON column as a binary BLOB charset, so decode as
+                // raw bytes first and only fall back to a direct String decode (see #773).
+                let podcast_ids_json_owned: Option<String> = match playlist.try_get::<Option<Vec<u8>>, _>("PodcastIDs") {
+                    Ok(bytes_opt) => bytes_opt.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+                    Err(_) => playlist.try_get::<Option<String>, _>("PodcastIDs")?,
+                };
+                if let Some(podcast_ids_json) = podcast_ids_json_owned.as_ref() {
+                    if !podcast_ids_json.is_empty() && podcast_ids_json != "[]" && podcast_ids_json != "null" {
+                        match serde_json::from_str::<Vec<i32>>(podcast_ids_json) {
+                            Ok(podcast_ids) if !podcast_ids.is_empty() && !podcast_ids.contains(&-1) => {
+                                let podcast_ids_str = podcast_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
+                                where_conditions.push(format!("p.PodcastID IN ({})", podcast_ids_str));
+                            }
+                            Ok(_) => {}
+                            Err(e) => warn!("⚠️ Failed to parse MySQL podcast IDs JSON '{}': {}", podcast_ids_json, e),
+                        }
+                    }
+                }
+
+                // Play state filters - must mirror get_playlist_episodes_dynamic exactly
+                // so the cached count matches what the detail view returns
+                let mut play_state_conditions = Vec::new();
+                if playlist.try_get::<bool, _>("IncludeUnplayed")? {
+                    play_state_conditions.push("(e.completed IS NOT TRUE AND (h.ListenDuration IS NULL OR h.ListenDuration = 0))".to_string());
+                }
+                if playlist.try_get::<bool, _>("IncludePartiallyPlayed")? {
+                    play_state_conditions.push(
+                        "(h.ListenDuration > 0 AND h.ListenDuration < e.EpisodeDuration * 0.9 AND (e.EpisodeDuration - h.ListenDuration) > 30)".to_string()
+                    );
+                }
+                if playlist.try_get::<bool, _>("IncludePlayed")? {
+                    play_state_conditions.push(
+                        "(e.completed IS TRUE OR (h.ListenDuration IS NOT NULL AND (h.ListenDuration >= e.EpisodeDuration * 0.9 OR (e.EpisodeDuration - h.ListenDuration) <= 30)))".to_string()
+                    );
+                }
+
+                if !play_state_conditions.is_empty() {
+                    where_conditions.push(format!("({})", play_state_conditions.join(" OR ")));
+                } else {
+                    where_conditions.push("FALSE".to_string());
+                }
+
+                // Progress percentage filters
+                if let Some(min_progress) = playlist.try_get::<Option<f64>, _>("PlayProgressMin")? {
+                    where_conditions.push(format!(
+                        "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) >= {}",
+                        min_progress / 100.0
+                    ));
+                }
+                if let Some(max_progress) = playlist.try_get::<Option<f64>, _>("PlayProgressMax")? {
+                    where_conditions.push(format!(
+                        "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) <= {}",
+                        max_progress / 100.0
+                    ));
+                }
+
                 let where_clause = if where_conditions.is_empty() {
                     String::new()
                 } else {
                     format!(" WHERE {}", where_conditions.join(" AND "))
                 };
-                
+
                 let final_query = format!("{}{}", query_parts.join(" "), where_clause);
-                
+
                 let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(final_query.as_str()))
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
-                
+
                 let final_count = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("MaxEpisodes")? {
                     if max_eps > 0 {
                         std::cmp::min(count as i32, max_eps)
