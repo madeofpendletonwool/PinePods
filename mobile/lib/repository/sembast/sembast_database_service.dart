@@ -19,10 +19,17 @@ class DatabaseService {
   int? version = 1;
   DatabaseUpgrade? upgraderCallback;
 
+  /// Injectable database factory. When null the default disk-backed
+  /// [databaseFactoryIo] is used (with a path resolved via path_provider);
+  /// tests pass an in-memory factory (`newDatabaseFactoryMemory()`) to avoid
+  /// disk and platform-channel access.
+  final DatabaseFactory? databaseFactory;
+
   DatabaseService(
     this.databaseName, {
     this.version,
     this.upgraderCallback,
+    this.databaseFactory,
   });
 
   Future<Database> get database async {
@@ -35,17 +42,29 @@ class DatabaseService {
   }
 
   Future _openDatabase() async {
-    final appDocumentDir = await getApplicationDocumentsDirectory();
-    final dbPath = join(appDocumentDir.path, databaseName);
-    final database = await databaseFactoryIo.openDatabase(
-      dbPath,
-      version: version,
-      onVersionChanged: (db, oldVersion, newVersion) async {
-        if (upgraderCallback != null) {
-          await upgraderCallback!(db, oldVersion, newVersion);
-        }
-      },
-    );
+    Future<void> onVersionChanged(Database db, int oldVersion, int newVersion) async {
+      if (upgraderCallback != null) {
+        await upgraderCallback!(db, oldVersion, newVersion);
+      }
+    }
+
+    final Database database;
+    if (databaseFactory != null) {
+      // In-memory factories key on the name rather than a filesystem path.
+      database = await databaseFactory!.openDatabase(
+        databaseName,
+        version: version,
+        onVersionChanged: onVersionChanged,
+      );
+    } else {
+      final appDocumentDir = await getApplicationDocumentsDirectory();
+      final dbPath = join(appDocumentDir.path, databaseName);
+      database = await databaseFactoryIo.openDatabase(
+        dbPath,
+        version: version,
+        onVersionChanged: onVersionChanged,
+      );
+    }
 
     _databaseCompleter!.complete(database);
   }

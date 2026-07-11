@@ -62,6 +62,9 @@ dependencies:
 
 dev_dependencies:
   mockito: ^5.7.0
+  # mocktail needs no codegen/build_runner - preferred for new tests. mockito is
+  # kept for the existing hand-written-mock tests until they're migrated.
+  mocktail: ^1.0.4
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter

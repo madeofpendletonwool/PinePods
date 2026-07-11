@@ -35,12 +35,18 @@ class PinepodsLoginService {
   /// Check whether [serverUrl] is a reachable PinePods instance, surfacing the
   /// specific failure reason (TLS/certificate, DNS/connection, timeout, or a
   /// reachable-but-not-PinePods host).
-  static Future<ServerCheckResult> checkServer(String serverUrl) async {
+  ///
+  /// [client] is injectable so this can be unit-tested against canned responses
+  /// and failures without touching the network; when omitted a short-lived
+  /// [http.Client] is created and closed for the single request.
+  static Future<ServerCheckResult> checkServer(String serverUrl,
+      {http.Client? client}) async {
     final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
     final url = Uri.parse('$normalizedUrl/api/pinepods_check');
+    final httpClient = client ?? http.Client();
 
     try {
-      final response = await http
+      final response = await httpClient
           .get(url, headers: {'User-Agent': userAgent})
           .timeout(_requestTimeout);
 
@@ -76,6 +82,8 @@ class PinepodsLoginService {
           "That doesn't look like a valid server address.");
     } catch (e) {
       return ServerCheckResult.error('Could not connect: $e');
+    } finally {
+      if (client == null) httpClient.close();
     }
   }
 

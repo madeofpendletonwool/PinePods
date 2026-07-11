@@ -1,0 +1,53 @@
+name: Mobile Tests
+
+permissions:
+  contents: read
+
+# Runs the Flutter mobile app's analyzer and unit tests. Scoped with a path
+# filter so it only fires when the mobile app (or this workflow) changes -
+# unrelated backend/web/docs PRs don't pay for a Flutter toolchain spin-up.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Analyze & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.1"
+          channel: "stable"
+          cache: true
+
+      # Also runs l10n codegen (pubspec has generate: true + l10n.yaml), so this
+      # must precede analyze/test.
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Blocks only on real analyzer *errors* (compile-level breakage). The app
+      # currently carries ~500 pre-existing style infos/warnings; failing the
+      # gate on those would make it useless noise. Tighten to fatal warnings once
+      # that backlog is cleared.
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Test
+        run: flutter test
