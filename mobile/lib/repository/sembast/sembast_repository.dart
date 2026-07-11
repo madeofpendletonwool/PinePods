@@ -403,10 +403,14 @@ class SembastRepository extends Repository {
 
   @override
   Future<void> saveQueue(List<Episode> episodes) async {
-    /// Check to see if we have any ad-hoc episodes and save them first
+    /// Check to see if we have any ad-hoc episodes and save them first. These
+    /// must be awaited: the queue record we write below only stores guids, so if
+    /// the episodes aren't persisted before saveQueue returns, a subsequent
+    /// loadQueue (or an app restart) finds the queue referencing episodes that
+    /// don't exist yet.
     for (var e in episodes) {
       if (e.pguid == null || e.pguid!.isEmpty) {
-        _saveEpisode(e, false);
+        await _saveEpisode(e, false);
       }
     }
 
