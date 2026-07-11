@@ -205,8 +205,20 @@ class Episode {
       'tid': transcriptId ?? 0,
       'transcriptUrls': (transcriptUrls).map((tu) => tu.toMap()).toList(growable: false),
       'persons': (persons).map((person) => person.toMap()).toList(growable: false),
-      'lastUpdated': lastUpdated?.millisecondsSinceEpoch.toString() ?? '',
+      'lastUpdated': lastUpdated?.millisecondsSinceEpoch.toString(),
     };
+  }
+
+  /// Parses an epoch-milliseconds value that was stored as a string, tolerating
+  /// the several ways "absent" has been serialized over time (a real null, the
+  /// literal string 'null', or an empty string - the last of which older
+  /// [toMap] output produced for a null date and which [int.parse] would throw
+  /// a FormatException on). Falls back to [DateTime.now] when absent.
+  static DateTime _parseStoredDate(Object? value) {
+    if (value == null || value == 'null' || value == '') {
+      return DateTime.now();
+    }
+    return DateTime.fromMillisecondsSinceEpoch(int.parse(value as String));
   }
 
   static Episode fromMap(int? key, Map<String, dynamic> episode) {
@@ -255,9 +267,7 @@ class Episode {
       link: episode['link'] as String?,
       imageUrl: episode['imageUrl'] as String?,
       thumbImageUrl: episode['thumbImageUrl'] as String?,
-      publicationDate: episode['publicationDate'] == null || episode['publicationDate'] == 'null'
-          ? DateTime.now()
-          : DateTime.fromMillisecondsSinceEpoch(int.parse(episode['publicationDate'] as String)),
+      publicationDate: _parseStoredDate(episode['publicationDate']),
       contentUrl: episode['contentUrl'] as String?,
       author: episode['author'] as String?,
       season: int.parse(episode['season'] as String? ?? '0'),
@@ -271,9 +281,7 @@ class Episode {
       transcriptUrls: transcriptUrls,
       persons: persons,
       transcriptId: episode['tid'] == null ? 0 : episode['tid'] as int?,
-      lastUpdated: episode['lastUpdated'] == null || episode['lastUpdated'] == 'null'
-          ? DateTime.now()
-          : DateTime.fromMillisecondsSinceEpoch(int.parse(episode['lastUpdated'] as String)),
+      lastUpdated: _parseStoredDate(episode['lastUpdated']),
     );
   }
 
@@ -331,35 +339,40 @@ class Episode {
             listEquals(chapters, other.chapters);
   }
 
+  // Mirrors the fields compared in `==` exactly, so the equals/hashCode
+  // contract holds: `id` and `lastUpdated` are deliberately excluded (as in
+  // `==`), publicationDate is hashed by its epoch-millis (as `==` compares it),
+  // and `persons`/`chapters` are content-hashed to match their `listEquals`
+  // comparison rather than hashed by list identity.
   @override
-  int get hashCode =>
-      id.hashCode ^
-      guid.hashCode ^
-      pguid.hashCode ^
-      downloadTaskId.hashCode ^
-      filepath.hashCode ^
-      filename.hashCode ^
-      downloadState.hashCode ^
-      podcast.hashCode ^
-      title.hashCode ^
-      description.hashCode ^
-      content.hashCode ^
-      link.hashCode ^
-      imageUrl.hashCode ^
-      thumbImageUrl.hashCode ^
-      publicationDate.hashCode ^
-      contentUrl.hashCode ^
-      author.hashCode ^
-      season.hashCode ^
-      episode.hashCode ^
-      duration.hashCode ^
-      position.hashCode ^
-      downloadPercentage.hashCode ^
-      played.hashCode ^
-      chaptersUrl.hashCode ^
-      chapters.hashCode ^
-      transcriptId.hashCode ^
-      lastUpdated.hashCode;
+  int get hashCode => Object.hashAll([
+        guid,
+        pguid,
+        downloadTaskId,
+        filepath,
+        filename,
+        downloadState,
+        podcast,
+        title,
+        description,
+        content,
+        link,
+        imageUrl,
+        thumbImageUrl,
+        publicationDate?.millisecondsSinceEpoch,
+        contentUrl,
+        author,
+        season,
+        episode,
+        duration,
+        position,
+        downloadPercentage,
+        played,
+        chaptersUrl,
+        transcriptId,
+        Object.hashAll(persons),
+        Object.hashAll(chapters),
+      ]);
 
   @override
   String toString() {
