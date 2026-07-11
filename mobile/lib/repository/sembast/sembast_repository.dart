@@ -41,8 +41,10 @@ class SembastRepository extends Repository {
   SembastRepository({
     bool cleanup = true,
     String databaseName = 'pinepods.db',
+    DatabaseFactory? databaseFactory,
   }) {
-    _databaseService = DatabaseService(databaseName, version: 2, upgraderCallback: dbUpgrader);
+    _databaseService = DatabaseService(databaseName,
+        version: 2, upgraderCallback: dbUpgrader, databaseFactory: databaseFactory);
 
     if (cleanup) {
       _cleanupEpisodes().then((value) {

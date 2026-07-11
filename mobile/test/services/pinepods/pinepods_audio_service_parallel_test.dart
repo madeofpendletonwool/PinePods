@@ -2,8 +2,16 @@
 // 2.0 data in parallel instead of sequentially - before this fix, starting
 // playback paid the cost of both round trips back-to-back.
 //
+// Proves concurrency deterministically (rather than via a wall-clock stopwatch,
+// which is flaky on a loaded CI runner): each mocked call announces it has
+// started, then blocks until the *other* call has also started. If playback ran
+// them sequentially the second call would never start, the first would block
+// forever, and the guard timeout would fail the test fast.
+//
 // Hand-written ("manual") mocks rather than @GenerateMocks-based ones, since
 // this project has no build_runner setup yet.
+
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
@@ -70,8 +78,6 @@ class MockSettingsBloc extends Mock implements SettingsBloc {
       );
 }
 
-const _perCallDelay = Duration(milliseconds: 100);
-
 void main() {
   test(
     'playPinepodsEpisode fetches podcast id and podcast 2.0 data in parallel, not sequentially',
@@ -91,15 +97,29 @@ void main() {
       when(pinepodsService.getPlayEpisodeDetails(any, any, any)).thenAnswer(
         (_) async => PlayEpisodeDetails(playbackSpeed: 1.0, startSkip: 0, endSkip: 0),
       );
-      // Each of these takes _perCallDelay on its own - if they ran
-      // sequentially the whole call would take roughly 2x that.
+
+      // Each call signals that it has started, then waits for the other to
+      // start before returning. This only resolves if both are in flight at
+      // once; if they were awaited sequentially the second would never begin
+      // and the 5s guard would throw, failing the test rather than hanging.
+      final getPodcastIdStarted = Completer<void>();
+      final fetchData2Started = Completer<void>();
+
+      Future<T> awaitConcurrent<T>(Completer<void> other, String label, T value) async {
+        await other.future.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => throw StateError('$label did not run concurrently'),
+        );
+        return value;
+      }
+
       when(pinepodsService.getPodcastIdFromEpisode(any, any, any)).thenAnswer((_) async {
-        await Future.delayed(_perCallDelay);
-        return 7;
+        if (!getPodcastIdStarted.isCompleted) getPodcastIdStarted.complete();
+        return awaitConcurrent(fetchData2Started, 'fetchPodcasting2Data', 7);
       });
       when(pinepodsService.fetchPodcasting2Data(any, any)).thenAnswer((_) async {
-        await Future.delayed(_perCallDelay);
-        return <String, dynamic>{};
+        if (!fetchData2Started.isCompleted) fetchData2Started.complete();
+        return awaitConcurrent(getPodcastIdStarted, 'getPodcastIdFromEpisode', <String, dynamic>{});
       });
 
       final episode = PinepodsEpisode(
@@ -118,13 +138,14 @@ void main() {
         isYoutube: false,
       );
 
-      final stopwatch = Stopwatch()..start();
-      await service.playPinepodsEpisode(pinepodsEpisode: episode, resume: false);
-      stopwatch.stop();
+      // Completes only if both fetches overlapped; a sequential regression makes
+      // the guard above throw well within this bound.
+      await service
+          .playPinepodsEpisode(pinepodsEpisode: episode, resume: false)
+          .timeout(const Duration(seconds: 10));
 
-      // Comfortably above the ~100ms parallel case and well below the ~200ms
-      // it would take if the two calls ran one after another.
-      expect(stopwatch.elapsed, lessThan(const Duration(milliseconds: 180)));
+      expect(getPodcastIdStarted.isCompleted, isTrue);
+      expect(fetchData2Started.isCompleted, isTrue);
     },
   );
 }
