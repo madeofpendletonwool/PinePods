@@ -52,3 +52,24 @@ fn test_route_variants() {
         _ => panic!("Wrong route type"),
     }
 }
+
+#[wasm_bindgen_test]
+fn test_pkce_code_challenge_s256_rfc7636_vector() {
+    // Test vector from RFC 7636 Appendix B.
+    let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+    let expected_challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+    assert_eq!(
+        crate::requests::login_requests::pkce_code_challenge_s256(verifier),
+        expected_challenge
+    );
+}
+
+#[wasm_bindgen_test]
+fn test_pkce_code_challenge_s256_is_url_safe_unpadded() {
+    let challenge = crate::requests::login_requests::pkce_code_challenge_s256("some-code-verifier");
+    // base64url of a 32-byte digest: 43 chars, unpadded, no '+' or '/'
+    assert_eq!(challenge.len(), 43);
+    assert!(!challenge.contains('='));
+    assert!(!challenge.contains('+'));
+    assert!(!challenge.contains('/'));
+}
