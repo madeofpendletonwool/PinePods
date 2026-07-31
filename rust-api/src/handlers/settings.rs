@@ -3042,7 +3042,7 @@ pub async fn add_oidc_provider(
         request.icon_svg.as_deref().unwrap_or(""),
         request.name_claim.as_deref().unwrap_or("name"),
         request.email_claim.as_deref().unwrap_or("email"),
-        request.username_claim.as_deref().unwrap_or("username"),
+        request.username_claim.as_deref().unwrap_or("preferred_username"),
         request.roles_claim.as_deref().unwrap_or(""),
         request.user_role.as_deref().unwrap_or(""),
         request.admin_role.as_deref().unwrap_or(""),
@@ -3104,7 +3104,7 @@ pub async fn update_oidc_provider(
         request.icon_svg.as_deref().unwrap_or(""),
         request.name_claim.as_deref().unwrap_or("name"),
         request.email_claim.as_deref().unwrap_or("email"),
-        request.username_claim.as_deref().unwrap_or("username"),
+        request.username_claim.as_deref().unwrap_or("preferred_username"),
         request.roles_claim.as_deref().unwrap_or(""),
         request.user_role.as_deref().unwrap_or(""),
         request.admin_role.as_deref().unwrap_or("")
