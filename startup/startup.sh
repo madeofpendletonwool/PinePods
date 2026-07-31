@@ -182,6 +182,34 @@ cp /pinepods/startup/services/*.toml /etc/horust/services/
 # Horust creates a unix-domain-socket folder at /var/run/horust; nginx needs its own dirs.
 mkdir -p /run/nginx /var/lib/nginx/tmp /var/log/nginx /var/run/horust
 
+# nginx's own directories belong to whoever its worker processes end up running
+# as, which is not always PUID. This image replaces the packaged nginx.conf,
+# and ours carries no 'user' directive, so nginx falls back to its compile-time
+# default (--user=nginx): a master started as root drops its workers to the
+# 'nginx' user. Handing /var/lib/nginx/tmp to anyone else (mode 0700) leaves
+# those workers unable to create proxy temp files, and nginx then truncates any
+# upstream response too large for its in-memory buffers instead of failing.
+# The client just gets malformed JSON; the only trace is a
+# "[crit] ... (13: Permission denied) while reading upstream" line in
+# /var/log/nginx/error.log, which nothing surfaces because horust captures only
+# nginx's stdout/stderr (startup/services/nginx.toml).
+#
+# The condition mirrors the privilege-drop guard below on purpose: privileges
+# are only dropped when BOTH PUID and PGID are set, so PUID alone still leaves
+# a root master whose workers are 'nginx'. Testing PUID by itself here would
+# hand the dirs to PUID while nginx ran as 'nginx' — the same bug, reintroduced.
+# The zero test matches any all-zero spelling, not just the string "0":
+# chown and su-exec both parse "00" and "000" as uid 0, so a plain string
+# compare would hand the dirs to root while the master stayed root and its
+# workers dropped to 'nginx' -- the same bug, in the one case this guard exists
+# to catch.
+if [[ -n "$PUID" && -n "$PGID" && ! "$PUID" =~ ^0+$ ]]; then
+    nginx_owner="${PUID}:${PGID}"
+else
+    nginx_owner="nginx:nginx"
+fi
+chown -R "$nginx_owner" /run/nginx /var/lib/nginx /var/log/nginx 2>/dev/null || true
+
 # When PUID/PGID are set, drop privileges and run the whole stack as that user so files
 # are created with correct ownership natively (no per-file chown needed). Otherwise run as root.
 if [[ -n "$PUID" && -n "$PGID" ]]; then
@@ -195,10 +223,11 @@ if [[ -n "$PUID" && -n "$PGID" ]]; then
     # Cheap, non-recursive ownership of the dirs the app writes to.
     # Note: local-media is intentionally chowned non-recursively — it's often a large
     # pre-existing library; the app only needs to write artwork into a subdir.
+    # nginx's dirs are deliberately absent here — they are set above to the user
+    # nginx actually runs its workers as, which is not PUID when the master is root.
     chown "${PUID}:${PGID}" /pinepods/cache /var/log/pinepods /opt/pinepods/certs \
                             /opt/pinepods/downloads /opt/pinepods/backups \
                             /opt/pinepods/local-media \
-                            /run/nginx /var/lib/nginx /var/lib/nginx/tmp /var/log/nginx \
                             /var/run/horust 2>/dev/null || true
 
     # One-time recursive migration of pre-existing root-owned content, gated by a marker
