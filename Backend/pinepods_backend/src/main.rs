@@ -5,7 +5,7 @@ use std::env;
 use dotenvy::dotenv;
 use std::time::{SystemTime, UNIX_EPOCH};
 use sha1::{Digest, Sha1};
-use log::error;
+use log::{error, warn};
 use actix_cors::Cors;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -228,6 +228,7 @@ async fn search_youtube_channels(search_term: &str) -> HttpResponse {
         .args(&[
             "--quiet",
             "--no-warnings",
+            "--ignore-errors",
             "--flat-playlist",
             "--skip-download",
             "--dump-json",
@@ -244,10 +245,11 @@ async fn search_youtube_channels(search_term: &str) -> HttpResponse {
         }
     };
 
+    // See youtube_channel_handler for why a non-zero exit isn't a hard failure
+    // on its own once --ignore-errors is in play.
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        error!("yt-dlp search failed: {}", stderr);
-        return HttpResponse::InternalServerError().body("yt-dlp search failed");
+        warn!("yt-dlp reported errors during search (continuing with any results that succeeded): {}", stderr);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -449,6 +451,7 @@ async fn youtube_channel_handler(
         .args(&[
             "--quiet",
             "--no-warnings",
+            "--ignore-errors",
             "--skip-download",
             "--dump-json",
             "--playlist-end", "15",
@@ -465,10 +468,14 @@ async fn youtube_channel_handler(
         }
     };
 
+    // --ignore-errors lets yt-dlp skip individual videos it can't extract (e.g.
+    // members-only uploads mixed into an otherwise-public channel) instead of
+    // aborting the whole fetch. Exit status is still non-zero whenever ANY
+    // video failed, even if others succeeded, so we log it for diagnostics but
+    // only treat this as a hard failure below if literally nothing came back.
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        error!("yt-dlp channel fetch failed: {}", stderr);
-        return HttpResponse::InternalServerError().body("yt-dlp channel fetch failed");
+        warn!("yt-dlp reported errors (continuing with any videos that succeeded): {}", stderr);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
