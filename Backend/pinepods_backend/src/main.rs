@@ -156,6 +156,18 @@ fn upload_date_to_rfc3339(upload_date: &str) -> String {
     }
 }
 
+// Parses yt-dlp's --dump-json stdout (one JSON object per line) into entries,
+// silently skipping any line that isn't valid JSON. With --ignore-errors, a
+// failed video doesn't print a JSON line for that video at all (its error goes
+// to stderr instead), so this alone is what lets partial results through --
+// callers only need to treat an empty result as a hard failure.
+fn parse_jsonl_entries(stdout: &str) -> Vec<serde_json::Value> {
+    stdout
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .collect()
+}
+
 async fn search_handler(
     query: web::Query<SearchQuery>,
     hit_counters: web::Data<HitCounters>,
@@ -253,12 +265,7 @@ async fn search_youtube_channels(search_term: &str) -> HttpResponse {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut entries: Vec<serde_json::Value> = Vec::new();
-    for line in stdout.lines() {
-        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
-            entries.push(entry);
-        }
-    }
+    let entries = parse_jsonl_entries(&stdout);
 
     // First pass: collect up to 3 videos per channel
     let mut channel_videos: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
@@ -479,12 +486,7 @@ async fn youtube_channel_handler(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut entries: Vec<serde_json::Value> = Vec::new();
-    for line in stdout.lines() {
-        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
-            entries.push(entry);
-        }
-    }
+    let entries = parse_jsonl_entries(&stdout);
 
     if entries.is_empty() {
         return HttpResponse::NotFound().body("Channel not found or has no videos");
@@ -675,4 +677,46 @@ async fn main() -> std::io::Result<()> {
     .bind("0.0.0.0:5000")?
     .run()
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_jsonl_entries_skips_invalid_lines_but_keeps_valid_ones() {
+        // Simulates --ignore-errors output: yt-dlp only emits a JSON line for
+        // videos it successfully extracted; failed ones produce no stdout line
+        // at all (their error goes to stderr, which this function never sees).
+        // A stray blank line or partial line should also be skipped, not panic.
+        let stdout = concat!(
+            "{\"id\":\"abc123\",\"title\":\"Public video\"}\n",
+            "\n",
+            "not json at all\n",
+            "{\"id\":\"def456\",\"title\":\"Another public video\"}\n",
+        );
+
+        let entries = parse_jsonl_entries(stdout);
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["id"], "abc123");
+        assert_eq!(entries[1]["id"], "def456");
+    }
+
+    #[test]
+    fn parse_jsonl_entries_empty_when_every_video_failed() {
+        // The exact scenario this fix targets: a channel where every recent
+        // upload is members-only. yt-dlp's stdout is empty (all errors went to
+        // stderr), and the caller is expected to treat that as "not found"
+        // rather than as a hard 500 -- but that decision happens at the call
+        // site, not here, so this just confirms empty input yields no entries.
+        assert_eq!(parse_jsonl_entries(""), Vec::<serde_json::Value>::new());
+    }
+
+    #[test]
+    fn parse_jsonl_entries_ignores_trailing_blank_lines() {
+        let stdout = "{\"id\":\"only-one\"}\n\n\n";
+        let entries = parse_jsonl_entries(stdout);
+        assert_eq!(entries.len(), 1);
+    }
 }
