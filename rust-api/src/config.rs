@@ -29,6 +29,10 @@ pub struct DatabaseConfig {
     pub name: String,
     pub max_connections: u32,
     pub min_connections: u32,
+    pub ssl_mode: Option<String>,
+    pub ssl_root_cert: Option<String>,
+    pub ssl_client_cert: Option<String>,
+    pub ssl_client_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,6 +214,10 @@ impl Config {
             name: env::var("DB_NAME").unwrap(),
             max_connections: 32,
             min_connections: 1,
+            ssl_mode: env::var("DB_SSL_MODE").ok(),
+            ssl_root_cert: env::var("DB_SSL_ROOT_CERT").ok(),
+            ssl_client_cert: env::var("DB_SSL_CLIENT_CERT").ok(),
+            ssl_client_key: env::var("DB_SSL_CLIENT_KEY").ok(),
         };
 
         let redis = if let Some(url) = env::var("VALKEY_URL").ok().or_else(|| env::var("REDIS_URL").ok()) {
