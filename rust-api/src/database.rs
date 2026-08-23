@@ -12327,18 +12327,48 @@ impl DatabasePool {
     ) -> AppResult<(Vec<crate::handlers::podcasts::PodcastEpisode>, i64)> {
         // Validate sort column/direction to prevent SQL injection (only fixed string literals
         // are ever spliced into the query — the actual user input is bound as a parameter).
-        let pg_order_col = match sort_by {
-            "duration" => "\"Episodeduration\"",
-            "title"    => "\"Episodetitle\"",
-            _          => "\"Episodepubdate\"", // "date" or unknown
+        //
+        // Each per-branch subquery below sorts by the same logical column as the outer query —
+        // the per-branch LIMIT only yields a correct top-K merge when every branch is pre-sorted
+        // the way the outer sort will read it back. Mapping sort_by -> columns once here, shared
+        // by both DB backends' per-branch and outer clauses, keeps a future new sort option from
+        // reintroducing the "per-branch always sorted by pubdate DESC regardless of the request"
+        // divergence that caused episode pagination to loop/duplicate for non-default sorts.
+        let (pg_order_col, pg_ep_order_col, pg_yt_order_col) = match sort_by {
+            "duration" => ("\"Episodeduration\"", "\"Episodes\".episodeduration", "\"YouTubeVideos\".duration"),
+            "title"    => ("\"Episodetitle\"", "\"Episodes\".episodetitle", "\"YouTubeVideos\".videotitle"),
+            _          => ("\"Episodepubdate\"", "\"Episodes\".episodepubdate", "\"YouTubeVideos\".publishedat"), // "date" or unknown
         };
-        let my_order_col = match sort_by {
-            "duration" => "Episodeduration",
-            "title"    => "Episodetitle",
-            _          => "Episodepubdate",
+        let (my_order_col, my_ep_order_col, my_yt_order_col) = match sort_by {
+            "duration" => ("Episodeduration", "Episodes.EpisodeDuration", "YouTubeVideos.Duration"),
+            "title"    => ("Episodetitle", "Episodes.EpisodeTitle", "YouTubeVideos.VideoTitle"),
+            _          => ("Episodepubdate", "Episodes.EpisodePubDate", "YouTubeVideos.PublishedAt"),
         };
         let order_dir = if sort_order == "asc" { "ASC" } else { "DESC" };
         let has_search = !search.is_empty();
+
+        // Per-branch filter: pushed into each branch's WHERE, before the per-branch LIMIT, so a
+        // match outside the "top N by sort" window isn't discarded before the filter ever sees
+        // it (see the pagination-loop comment above — same root cause, same fix shape). Every
+        // row that reaches `combined` already satisfies this, so no outer-level filter is needed.
+        let (pg_ep_filter_clause, pg_yt_filter_clause) = match filter {
+            "completed"   => (" AND \"Episodes\".completed = TRUE", " AND \"YouTubeVideos\".completed = TRUE"),
+            "in_progress" => (
+                " AND \"Episodes\".completed = FALSE AND \"UserEpisodeHistory\".listenduration IS NOT NULL AND \"UserEpisodeHistory\".listenduration > 0",
+                " AND \"YouTubeVideos\".completed = FALSE AND \"YouTubeVideos\".listenposition IS NOT NULL AND \"YouTubeVideos\".listenposition > 0",
+            ),
+            "incomplete"  => (" AND \"Episodes\".completed = FALSE", " AND \"YouTubeVideos\".completed = FALSE"),
+            _             => ("", ""),
+        };
+        let (my_ep_filter_clause, my_yt_filter_clause) = match filter {
+            "completed"   => (" AND Episodes.Completed = 1", " AND YouTubeVideos.Completed = 1"),
+            "in_progress" => (
+                " AND Episodes.Completed = 0 AND UserEpisodeHistory.ListenDuration IS NOT NULL AND UserEpisodeHistory.ListenDuration > 0",
+                " AND YouTubeVideos.Completed = 0 AND YouTubeVideos.ListenPosition IS NOT NULL AND YouTubeVideos.ListenPosition > 0",
+            ),
+            "incomplete"  => (" AND Episodes.Completed = 0", " AND YouTubeVideos.Completed = 0"),
+            _             => ("", ""),
+        };
         match self {
             DatabasePool::Postgres(pool) => {
                 let lim: i64 = limit.unwrap_or(i64::MAX);
@@ -12371,12 +12401,6 @@ impl DatabasePool {
                     }
                 }
 
-                let filter_clause = match filter {
-                    "completed"   => " WHERE \"Completed\" = TRUE",
-                    "in_progress" => " WHERE \"Completed\" = FALSE AND \"Listenduration\" IS NOT NULL AND \"Listenduration\" > 0",
-                    "incomplete"  => " WHERE \"Completed\" = FALSE",
-                    _             => "",
-                };
                 let ep_search_clause = if has_search {
                     " AND (\"Episodes\".episodetitle ILIKE $3 OR \"Episodes\".episodedescription ILIKE $3)"
                 } else { "" };
@@ -12386,6 +12410,16 @@ impl DatabasePool {
                 let search_pattern = if has_search {
                     format!("%{}%", search)
                 } else { String::new() };
+                let (ep_order_col, yt_order_col) = (pg_ep_order_col, pg_yt_order_col);
+                let (ep_filter_clause, yt_filter_clause) = (pg_ep_filter_clause, pg_yt_filter_clause);
+                // Used only by the separate count_sql below, which has no per-branch LIMIT to
+                // push the filter ahead of — it filters its own (unrestricted) combined result.
+                let filter_clause = match filter {
+                    "completed"   => " WHERE \"Completed\" = TRUE",
+                    "in_progress" => " WHERE \"Completed\" = FALSE AND \"Listenduration\" IS NOT NULL AND \"Listenduration\" > 0",
+                    "incomplete"  => " WHERE \"Completed\" = FALSE",
+                    _             => "",
+                };
 
                 // Bind positions shift when a search pattern is present (it takes $3).
                 let (pb_lim_pos, outer_lim_pos, outer_off_pos) = if has_search {
@@ -12432,8 +12466,8 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedEpisodes" ON
                             "Episodes".episodeid = "DownloadedEpisodes".episodeid
                             AND "DownloadedEpisodes".userid = $1
-                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){ep_search_clause}
-                        ORDER BY "Episodes".episodepubdate DESC
+                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){ep_search_clause}{ep_filter_clause}
+                        ORDER BY {ep_order_col} {order_dir} NULLS LAST, "Episodes".episodeid ASC
                         LIMIT {pb_lim_pos})
 
                         UNION ALL
@@ -12471,18 +12505,21 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedVideos" ON
                             "YouTubeVideos".videoid = "DownloadedVideos".videoid
                             AND "DownloadedVideos".userid = $1
-                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){yt_search_clause}
-                        ORDER BY "YouTubeVideos".publishedat DESC
+                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){yt_search_clause}{yt_filter_clause}
+                        ORDER BY {yt_order_col} {order_dir} NULLS LAST, "YouTubeVideos".videoid ASC
                         LIMIT {pb_lim_pos})
-                    ) combined{filter_clause}
-                    ORDER BY {pg_order_col} {order_dir} NULLS LAST
+                    ) combined
+                    ORDER BY {pg_order_col} {order_dir} NULLS LAST, is_youtube ASC, "Episodeid" ASC
                     LIMIT {outer_lim_pos} OFFSET {outer_off_pos}"#,
                     ep_search_clause = ep_search_clause,
                     yt_search_clause = yt_search_clause,
+                    ep_filter_clause = ep_filter_clause,
+                    yt_filter_clause = yt_filter_clause,
+                    ep_order_col = ep_order_col,
+                    yt_order_col = yt_order_col,
                     pb_lim_pos = pb_lim_pos,
                     pg_order_col = pg_order_col,
                     order_dir = order_dir,
-                    filter_clause = filter_clause,
                     outer_lim_pos = outer_lim_pos,
                     outer_off_pos = outer_off_pos,
                 );
@@ -12599,12 +12636,6 @@ impl DatabasePool {
                 // string sized to the resolved list and bind each ID below.
                 let id_placeholders = vec!["?"; podcast_ids.len()].join(",");
 
-                let mysql_filter = match filter {
-                    "completed"   => " WHERE Completed = 1",
-                    "in_progress" => " WHERE Completed = 0 AND Listenduration IS NOT NULL AND Listenduration > 0",
-                    "incomplete"  => " WHERE Completed = 0",
-                    _             => "",
-                };
                 let ep_search_clause = if has_search {
                     " AND (Episodes.EpisodeTitle LIKE ? OR Episodes.EpisodeDescription LIKE ?)"
                 } else { "" };
@@ -12614,6 +12645,16 @@ impl DatabasePool {
                 let search_pattern = if has_search {
                     format!("%{}%", search)
                 } else { String::new() };
+                let (ep_order_col, yt_order_col) = (my_ep_order_col, my_yt_order_col);
+                let (ep_mysql_filter, yt_mysql_filter) = (my_ep_filter_clause, my_yt_filter_clause);
+                // Used only by the separate count_sql below, which has no per-branch LIMIT to
+                // push the filter ahead of — it filters its own (unrestricted) combined result.
+                let mysql_filter = match filter {
+                    "completed"   => " WHERE Completed = 1",
+                    "in_progress" => " WHERE Completed = 0 AND Listenduration IS NOT NULL AND Listenduration > 0",
+                    "incomplete"  => " WHERE Completed = 0",
+                    _             => "",
+                };
 
                 // Main query: LIMIT pushed inside each branch so joins only fire on the rows
                 // that can possibly contribute to the final page. The outer ORDER BY merges
@@ -12657,8 +12698,8 @@ impl DatabasePool {
                         LEFT JOIN DownloadedEpisodes ON
                             Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                             AND DownloadedEpisodes.UserID = ?
-                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){ep_search_clause}
-                        ORDER BY Episodes.EpisodePubDate DESC
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){ep_search_clause}{ep_mysql_filter}
+                        ORDER BY {ep_order_col} {order_dir}, Episodes.EpisodeID ASC
                         LIMIT ?)
 
                         UNION ALL
@@ -12696,16 +12737,19 @@ impl DatabasePool {
                         LEFT JOIN DownloadedVideos ON
                             YouTubeVideos.VideoID = DownloadedVideos.VideoID
                             AND DownloadedVideos.UserID = ?
-                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){yt_search_clause}
-                        ORDER BY YouTubeVideos.PublishedAt DESC
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){yt_search_clause}{yt_mysql_filter}
+                        ORDER BY {yt_order_col} {order_dir}, YouTubeVideos.VideoID ASC
                         LIMIT ?)
-                    ) combined{mysql_filter}
-                    ORDER BY {my_order_col} {order_dir}
+                    ) combined
+                    ORDER BY {my_order_col} {order_dir}, is_youtube ASC, Episodeid ASC
                     LIMIT ? OFFSET ?",
                     ph = id_placeholders,
                     ep_search_clause = ep_search_clause,
                     yt_search_clause = yt_search_clause,
-                    mysql_filter = mysql_filter,
+                    ep_mysql_filter = ep_mysql_filter,
+                    yt_mysql_filter = yt_mysql_filter,
+                    ep_order_col = ep_order_col,
+                    yt_order_col = yt_order_col,
                     my_order_col = my_order_col,
                     order_dir = order_dir,
                 );
@@ -31480,5 +31524,398 @@ mod restore_filter_tests {
         assert!(out.contains("INSERT INTO `Episodes`"));
         assert!(!out.contains("INSERT INTO `Sessions`"));
         assert!(!out.contains("LOCK TABLES `Sessions`"));
+    }
+}
+
+/// Regression coverage for the per-branch pagination bug in
+/// `return_podcast_episodes_capitalized`: each UNION branch's candidate-row LIMIT used to be
+/// ordered by `pubdate DESC` unconditionally, regardless of the requested sort. That made any
+/// non-default sort (e.g. "oldest first") re-serve the same newest-page-size episodes forever
+/// instead of ever advancing to older ones, and made filters silently drop matches that weren't
+/// among the newest N raw rows. `rust-api` has no library target, so these live as in-binary
+/// `#[cfg(test)]` tests (same pattern as `restore_filter_tests` above) rather than under
+/// `tests/`. They need a real Postgres, so they're `#[ignore]`d by default — run them with:
+///
+/// ```sh
+/// cargo test episode_pagination -- --ignored --test-threads=1
+/// ```
+///
+/// against a Postgres reachable via the `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`
+/// env vars (defaults below match the CI service in `.github/workflows/ci.yaml` and the
+/// `docker run` command in `run-tests.sh`). `--test-threads=1` isn't load-bearing (each test
+/// uses its own sentinel id range) but keeps things simple to reason about.
+#[cfg(test)]
+mod episode_pagination_tests {
+    use super::DatabasePool;
+    use sqlx::postgres::PgPoolOptions;
+    use sqlx::{Pool, Postgres};
+
+    async fn test_pool() -> Pool<Postgres> {
+        let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".into());
+        let port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".into());
+        let user = std::env::var("DB_USER").unwrap_or_else(|_| "test_user".into());
+        let password = std::env::var("DB_PASSWORD").unwrap_or_else(|_| "test_password".into());
+        let name = std::env::var("DB_NAME").unwrap_or_else(|_| "test_db".into());
+        let url = format!("postgres://{user}:{password}@{host}:{port}/{name}");
+        PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&url)
+            .await
+            .unwrap_or_else(|e| {
+                panic!("connect to test Postgres at {host}:{port}/{name} failed: {e}")
+            })
+    }
+
+    /// Creates only the columns `return_podcast_episodes_capitalized` actually touches.
+    /// `IF NOT EXISTS` so this is a no-op against an already fully-migrated DB.
+    async fn ensure_schema(pool: &Pool<Postgres>) {
+        let statements = [
+            r#"CREATE TABLE IF NOT EXISTS "Users" (
+                userid SERIAL PRIMARY KEY,
+                usepodcastcovers BOOLEAN DEFAULT FALSE
+            )"#,
+            r#"CREATE TABLE IF NOT EXISTS "Podcasts" (
+                podcastid SERIAL PRIMARY KEY,
+                userid INT,
+                podcastname TEXT,
+                artworkurl TEXT,
+                usepodcastcovers BOOLEAN DEFAULT FALSE,
+                usepodcastcoverscustomized BOOLEAN DEFAULT FALSE,
+                mergedpodcastids TEXT
+            )"#,
+            r#"CREATE TABLE IF NOT EXISTS "Episodes" (
+                episodeid SERIAL PRIMARY KEY,
+                podcastid INT,
+                episodetitle TEXT,
+                episodepubdate TIMESTAMP,
+                episodedescription TEXT,
+                episodeartwork TEXT,
+                episodeurl TEXT,
+                episodeduration INT,
+                completed BOOLEAN DEFAULT FALSE,
+                is_video BOOLEAN DEFAULT FALSE
+            )"#,
+            r#"CREATE TABLE IF NOT EXISTS "UserEpisodeHistory" (
+                userid INT,
+                episodeid INT,
+                listenduration INT
+            )"#,
+            r#"CREATE TABLE IF NOT EXISTS "SavedEpisodes" (
+                userid INT,
+                episodeid INT
+            )"#,
+            r#"CREATE TABLE IF NOT EXISTS "EpisodeQueue" (
+                userid INT,
+                episodeid INT,
+                is_youtube BOOLEAN DEFAULT FALSE
+            )"#,
+            r#"CREATE TABLE IF NOT EXISTS "DownloadedEpisodes" (
+                userid INT,
+                episodeid INT
+            )"#,
+            r#"CREATE TABLE IF NOT EXISTS "YouTubeVideos" (
+                videoid SERIAL PRIMARY KEY,
+                podcastid INT,
+                videotitle TEXT,
+                publishedat TIMESTAMP,
+                videodescription TEXT,
+                thumbnailurl TEXT,
+                videourl TEXT,
+                duration INT,
+                listenposition INT,
+                completed BOOLEAN DEFAULT FALSE
+            )"#,
+            r#"CREATE TABLE IF NOT EXISTS "SavedVideos" (
+                userid INT,
+                videoid INT
+            )"#,
+            r#"CREATE TABLE IF NOT EXISTS "DownloadedVideos" (
+                userid INT,
+                videoid INT
+            )"#,
+        ];
+        for stmt in statements {
+            sqlx::query(stmt)
+                .execute(pool)
+                .await
+                .unwrap_or_else(|e| panic!("create test schema failed for `{stmt}`: {e}"));
+        }
+    }
+
+    /// Deletes any rows for a sentinel user/podcast id, so a test is safely re-runnable and
+    /// distinct sentinel ranges across tests can't collide.
+    async fn cleanup(pool: &Pool<Postgres>, user_id: i32, podcast_id: i32) {
+        for (sql, id) in [
+            (r#"DELETE FROM "UserEpisodeHistory" WHERE userid = $1"#, user_id),
+            (r#"DELETE FROM "SavedEpisodes" WHERE userid = $1"#, user_id),
+            (r#"DELETE FROM "EpisodeQueue" WHERE userid = $1"#, user_id),
+            (r#"DELETE FROM "DownloadedEpisodes" WHERE userid = $1"#, user_id),
+            (r#"DELETE FROM "Episodes" WHERE podcastid = $1"#, podcast_id),
+            (r#"DELETE FROM "Podcasts" WHERE podcastid = $1"#, podcast_id),
+            (r#"DELETE FROM "Users" WHERE userid = $1"#, user_id),
+        ] {
+            let _ = sqlx::query(sql).bind(id).execute(pool).await;
+        }
+    }
+
+    async fn seed_podcast(pool: &Pool<Postgres>, user_id: i32, podcast_id: i32) {
+        sqlx::query(r#"INSERT INTO "Users" (userid) VALUES ($1)"#)
+            .bind(user_id)
+            .execute(pool)
+            .await
+            .unwrap_or_else(|e| panic!("insert test user failed: {e}"));
+        sqlx::query(
+            r#"INSERT INTO "Podcasts" (podcastid, userid, podcastname) VALUES ($1, $2, 'Test Show')"#,
+        )
+        .bind(podcast_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap_or_else(|e| panic!("insert test podcast failed: {e}"));
+    }
+
+    async fn insert_episode(
+        pool: &Pool<Postgres>,
+        episode_id: i32,
+        podcast_id: i32,
+        title: &str,
+        pubdate: &str,
+        duration: i32,
+        completed: bool,
+    ) {
+        sqlx::query(
+            r#"INSERT INTO "Episodes"
+                (episodeid, podcastid, episodetitle, episodepubdate, episodedescription, episodeartwork, episodeurl, episodeduration, completed)
+               VALUES ($1, $2, $3, $4::timestamp, '', 'https://example.test/art.png', 'https://example.test/ep.mp3', $5, $6)"#,
+        )
+        .bind(episode_id)
+        .bind(podcast_id)
+        .bind(title)
+        .bind(pubdate)
+        .bind(duration)
+        .bind(completed)
+        .execute(pool)
+        .await
+        .unwrap_or_else(|e| panic!("insert test episode failed: {e}"));
+    }
+
+    /// The exact bug reported: sorting "oldest first" on a show with more episodes than the
+    /// page size used to re-serve the same newest-page-size episodes forever, because the
+    /// per-branch LIMIT was ordered by pubdate DESC regardless of the requested sort. With 5
+    /// episodes and a page size of 2, paginating with sort=date/asc must walk through all 5
+    /// distinct episodes, oldest to newest, with no repeats.
+    #[tokio::test]
+    #[ignore = "requires a live Postgres; see module docs"]
+    async fn oldest_first_pagination_visits_every_episode_without_duplicates() {
+        let pool = test_pool().await;
+        ensure_schema(&pool).await;
+        let user_id = 900_001;
+        let podcast_id = 900_001;
+        cleanup(&pool, user_id, podcast_id).await;
+        seed_podcast(&pool, user_id, podcast_id).await;
+
+        let episode_ids = [900_001, 900_002, 900_003, 900_004, 900_005];
+        for (i, &eid) in episode_ids.iter().enumerate() {
+            insert_episode(
+                &pool,
+                eid,
+                podcast_id,
+                &format!("Episode {i}"),
+                &format!("2020-01-{:02}T00:00:00", i + 1),
+                600,
+                false,
+            )
+            .await;
+        }
+
+        let db = DatabasePool::Postgres(pool.clone());
+        let page_size = 2i64;
+        let mut offset = 0i64;
+        let mut seen: Vec<i32> = Vec::new();
+        loop {
+            let (episodes, total) = db
+                .return_podcast_episodes_capitalized(
+                    user_id,
+                    podcast_id,
+                    Some(page_size),
+                    Some(offset),
+                    "date",
+                    "asc",
+                    "",
+                    "all",
+                )
+                .await
+                .unwrap_or_else(|e| panic!("query episodes failed: {e}"));
+            assert_eq!(total, episode_ids.len() as i64);
+            if episodes.is_empty() {
+                break;
+            }
+            for ep in &episodes {
+                assert!(
+                    !seen.contains(&ep.episodeid),
+                    "episode {} was returned twice across pages — pagination is looping \
+                     instead of advancing (offset={offset})",
+                    ep.episodeid
+                );
+                seen.push(ep.episodeid);
+            }
+            offset += page_size;
+            if offset >= total {
+                break;
+            }
+        }
+
+        assert_eq!(
+            seen.len(),
+            episode_ids.len(),
+            "expected every episode to be visited exactly once across pages, got {seen:?}"
+        );
+        let mut sorted_seen = seen.clone();
+        sorted_seen.sort();
+        let mut expected = episode_ids.to_vec();
+        expected.sort();
+        assert_eq!(sorted_seen, expected, "wrong set of episodes returned overall");
+
+        cleanup(&pool, user_id, podcast_id).await;
+    }
+
+    /// The filter push-down bug: filtering to "completed" used to run *after* the per-branch
+    /// LIMIT had already discarded everything but the newest N raw episodes, so a completed
+    /// episode outside that window was silently dropped even though the (correctly
+    /// unrestricted) total count said it existed. Here the two *oldest* episodes are the
+    /// completed ones, while a page size of 2 means the old per-branch cap would only ever
+    /// have seen the 2 *newest* (both incomplete) — reproducing the exact failure mode.
+    #[tokio::test]
+    #[ignore = "requires a live Postgres; see module docs"]
+    async fn completed_filter_finds_matches_outside_the_newest_page() {
+        let pool = test_pool().await;
+        ensure_schema(&pool).await;
+        let user_id = 900_002;
+        let podcast_id = 900_002;
+        cleanup(&pool, user_id, podcast_id).await;
+        seed_podcast(&pool, user_id, podcast_id).await;
+
+        for i in 0..6 {
+            let eid = 900_010 + i;
+            let completed = i < 2; // the two OLDEST episodes are completed
+            insert_episode(
+                &pool,
+                eid,
+                podcast_id,
+                &format!("Episode {i}"),
+                &format!("2020-01-{:02}T00:00:00", i + 1),
+                600,
+                completed,
+            )
+            .await;
+        }
+
+        let db = DatabasePool::Postgres(pool.clone());
+        let (episodes, total) = db
+            .return_podcast_episodes_capitalized(
+                user_id,
+                podcast_id,
+                Some(2),
+                Some(0),
+                "date",
+                "desc",
+                "",
+                "completed",
+            )
+            .await
+            .unwrap_or_else(|e| panic!("query completed episodes failed: {e}"));
+
+        assert_eq!(total, 2, "count query should find both completed episodes");
+        assert_eq!(
+            episodes.len(),
+            2,
+            "rows query should also find both completed episodes, not just whichever \
+             episodes happened to be in the newest page"
+        );
+        assert!(episodes.iter().all(|e| e.completed));
+
+        cleanup(&pool, user_id, podcast_id).await;
+    }
+
+    /// Tie-breaking: when every episode shares the same value in the requested sort column
+    /// (all durations equal here), SQL gives no ordering guarantee among ties on repeated
+    /// queries — and `per_branch_limit` grows on every page, which can change the query plan
+    /// (e.g. a top-N heap sort vs. a full sort) and thus which tie order comes back. Without an
+    /// explicit deterministic tiebreaker (added alongside `episodeid`/`videoid` per branch and
+    /// `is_youtube, Episodeid` at the outer level), that reordering can duplicate or skip
+    /// episodes across pages exactly like the original bug, just triggered by ties instead of
+    /// a wrong per-branch order. This asserts full, duplicate-free coverage when paginating a
+    /// fully-tied sort column.
+    #[tokio::test]
+    #[ignore = "requires a live Postgres; see module docs"]
+    async fn tied_sort_value_pagination_is_complete_without_duplicates() {
+        let pool = test_pool().await;
+        ensure_schema(&pool).await;
+        let user_id = 900_003;
+        let podcast_id = 900_003;
+        cleanup(&pool, user_id, podcast_id).await;
+        seed_podcast(&pool, user_id, podcast_id).await;
+
+        let episode_ids = [900_020, 900_021, 900_022, 900_023, 900_024, 900_025];
+        for (i, &eid) in episode_ids.iter().enumerate() {
+            insert_episode(
+                &pool,
+                eid,
+                podcast_id,
+                &format!("Episode {i}"),
+                &format!("2020-01-{:02}T00:00:00", i + 1),
+                600, // identical duration for every episode: a full tie on the sort column
+                false,
+            )
+            .await;
+        }
+
+        let db = DatabasePool::Postgres(pool.clone());
+        let page_size = 2i64;
+        let mut offset = 0i64;
+        let mut seen: Vec<i32> = Vec::new();
+        loop {
+            let (episodes, total) = db
+                .return_podcast_episodes_capitalized(
+                    user_id,
+                    podcast_id,
+                    Some(page_size),
+                    Some(offset),
+                    "duration",
+                    "asc",
+                    "",
+                    "all",
+                )
+                .await
+                .unwrap_or_else(|e| panic!("query tied-duration episodes failed: {e}"));
+            assert_eq!(total, episode_ids.len() as i64);
+            if episodes.is_empty() {
+                break;
+            }
+            for ep in &episodes {
+                assert!(
+                    !seen.contains(&ep.episodeid),
+                    "episode {} was returned twice across pages of a fully-tied sort — \
+                     missing a deterministic tiebreaker (offset={offset})",
+                    ep.episodeid
+                );
+                seen.push(ep.episodeid);
+            }
+            offset += page_size;
+            if offset >= total {
+                break;
+            }
+        }
+
+        let mut sorted_seen = seen.clone();
+        sorted_seen.sort();
+        let mut expected = episode_ids.to_vec();
+        expected.sort();
+        assert_eq!(
+            sorted_seen, expected,
+            "expected every tied-duration episode to be visited exactly once, got {seen:?}"
+        );
+
+        cleanup(&pool, user_id, podcast_id).await;
     }
 }
