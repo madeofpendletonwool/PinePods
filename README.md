@@ -120,6 +120,10 @@ accounts there are wiped periodically, so run your own server for real use.
 
 ## Quick Start :rocket:
 
+PinePods requires a database (PostgreSQL or MySQL/MariaDB) and a reachable Valkey
+or Redis server. The API connects to Valkey/Redis before it starts listening.
+Keep the `valkey` service below unless you configure an external server.
+
 The fastest way to run PinePods is Docker Compose with PostgreSQL. Create a
 `docker-compose.yml`:
 
@@ -174,6 +178,16 @@ services:
       - db
       - valkey
 ```
+
+For an external Valkey/Redis server, set `VALKEY_HOST` and `VALKEY_PORT` on the
+`pinepods` service to an address it can reach. Set `VALKEY_PASSWORD` if the server
+requires password authentication, and `VALKEY_USERNAME` if it uses a named user.
+Remove the local `valkey` service and its `depends_on` entry when using an
+external server.
+
+If Valkey/Redis is unavailable at startup, the API cannot serve `/api/health`.
+Nginx can return `502` for that endpoint while the web page still loads. Check
+the Valkey/Redis service and its connection settings if you encounter this.
 
 Then start it:
 
