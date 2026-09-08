@@ -185,8 +185,8 @@ requires password authentication, and `VALKEY_USERNAME` if it uses a named user.
 Remove the local `valkey` service and its `depends_on` entry when using an
 external server.
 
-If Valkey/Redis is unavailable at startup, the API cannot serve `/api/health`.
-Nginx can return `502` for that endpoint while the web page still loads. Check
+If Valkey/Redis is unavailable at startup, the API cannot start. Nginx can return
+`502` for API requests, including `/api/health`, while the web page still loads. Check
 the Valkey/Redis service and its connection settings if you encounter this.
 
 Then start it:
