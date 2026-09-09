@@ -1468,20 +1468,57 @@ pub async fn oidc_callback(
         .unwrap_or("")
         .to_string();
 
-    // Username claim validation - EXACT match to Python
-    if let Some(username_claim) = username_claim.as_ref().filter(|s| !s.is_empty()) {
-        if !userinfo_response.get(username_claim).is_some() {
-            return Ok(create_oidc_response(&frontend_base, "error=user_creation_failed&details=username_claim_missing"));
-        }
-    }
-
-    let username_field = username_claim
+    // Resolve the username claim, falling back instead of refusing the login.
+    //
+    // A provider saved without an explicit username claim is stored with the
+    // literal "username" (see settings.rs), which standard OIDC providers do
+    // not emit -- Authentik and others use preferred_username. The previous
+    // strict lookup therefore rejected every first login against such an IdP
+    // with user_creation_failed/username_claim_missing, even though the
+    // account-creation path below already knows how to cope with no username
+    // at all: it derives one from the email local part and de-duplicates it.
+    //
+    // The operator's own claim, resolved on its own. This is deliberately kept
+    // separate from the fallback below: renaming an existing account must only
+    // ever follow the claim the operator actually configured. A username here
+    // is a credential, not a display name -- password login matches on it
+    // (get_user_by_username) and every gpodder route is keyed by /:username --
+    // so renaming someone because their IdP happens to send preferred_username
+    // would silently break both for an account that was working.
+    let configured_username = username_claim
         .as_deref()
         .filter(|s| !s.is_empty())
-        .unwrap_or("preferred_username");
-    let username = userinfo_response.get(username_field)
-        .and_then(|v| v.as_str())
+        .and_then(|claim| userinfo_response.get(claim).and_then(|v| v.as_str()))
+        .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
+
+    // For choosing a name for a brand new account, the conventional spellings
+    // are reasonable fallbacks. Empty strings are rejected at each step: the
+    // creation path does not validate, so "" would otherwise be stored as-is
+    // instead of falling through to the email-derived name.
+    // Warn whenever the operator's claim was configured but did not resolve,
+    // whether or not a fallback covered for it. A typo'd claim name, or one
+    // holding a non-string or empty value, otherwise produces a login that
+    // works while the configuration is quietly dead -- and renames, which
+    // follow the configured claim alone, would silently never fire again.
+    if username_claim.as_deref().is_some_and(|c| !c.is_empty()) && configured_username.is_none() {
+        tracing::warn!(
+            "OIDC: configured username claim '{}' is missing, empty, or not a string in the userinfo response; falling back",
+            username_claim.as_deref().unwrap_or("")
+        );
+    }
+
+    let username = configured_username.clone().or_else(|| {
+        ["preferred_username", "username"]
+            .iter()
+            .find_map(|claim| {
+                userinfo_response
+                    .get(*claim)
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+            })
+            .map(|s| s.to_string())
+    });
 
     let user_id = if let Some((user_id, _email, current_username, _fullname, _is_admin)) = existing_user {
         // Existing user - EXACT match to Python
@@ -1493,8 +1530,9 @@ pub async fn oidc_callback(
         // Update user info - EXACT match to Python
         state.db_pool.set_fullname(user_id, &fullname).await?;
 
-        // Update username if changed - EXACT match to Python
-        if let (Some(_username_claim), Some(new_username)) = (username_claim.as_ref().filter(|s| !s.is_empty()), username.as_ref()) {
+        // Update username if changed - only from the configured claim, never
+        // from a fallback (see the resolution above).
+        if let Some(new_username) = configured_username.as_ref() {
             if Some(new_username) != current_username.as_ref() {
                 if !state.db_pool.check_usernames(new_username).await? {
                     state.db_pool.set_username(user_id, new_username).await?;
@@ -1514,8 +1552,23 @@ pub async fn oidc_callback(
         return Ok(create_oidc_response(&frontend_base, &format!("api_key={}", api_key)));
     } else {
         // Create new user - EXACT match to Python
+        if username.is_none() {
+            tracing::warn!(
+                "OIDC: no username claim found in userinfo (configured claim: {}); deriving the username from the email address",
+                username_claim.as_deref().unwrap_or("<unset>")
+            );
+        }
         let mut final_username = username.unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_lowercase());
-        
+
+        // An email of "" or "@example.com" derives an empty username, and
+        // create_oidc_user does not validate. An empty username is not merely
+        // untidy: it is what password login matches on and what every gpodder
+        // route is keyed by. Refuse rather than create an unusable account.
+        if final_username.trim().is_empty() {
+            tracing::error!("OIDC: could not resolve a username from any claim or from the email address");
+            return Ok(create_oidc_response(&frontend_base, "error=user_creation_failed&details=username_unresolvable"));
+        }
+
         // Username conflict resolution - EXACT match to Python
         if state.db_pool.check_usernames(&final_username).await? {
             let base_username = final_username.clone();
