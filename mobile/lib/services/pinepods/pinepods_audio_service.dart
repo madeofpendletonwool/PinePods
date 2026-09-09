@@ -236,8 +236,10 @@ class PinepodsAudioService {
       // Start playing with the existing audio service
       await _audioPlayerService.playEpisode(episode: episode, resume: resume);
 
-      // Apply server-side speed after episode starts — overrides any locally stored speed
-      await _audioPlayerService.setPlaybackSpeed(playDetails.playbackSpeed);
+      // Only apply the server speed if it's a real per-podcast override, not the echoed-back default (#882, #963).
+      if (playDetails.playbackSpeedCustomized) {
+        await _audioPlayerService.setPlaybackSpeed(playDetails.playbackSpeed);
+      }
 
       // Handle skip intro if enabled and episode just started
       if (playDetails.startSkip > 0 && !resume) {
@@ -323,7 +325,9 @@ class PinepodsAudioService {
           .getPlayEpisodeDetails(userId, podcastId, pinepodsEpisode.isYoutube);
 
       if (_currentEpisodeId == episodeId) {
-        await _audioPlayerService.setPlaybackSpeed(playDetails.playbackSpeed);
+        if (playDetails.playbackSpeedCustomized) {
+          await _audioPlayerService.setPlaybackSpeed(playDetails.playbackSpeed);
+        }
 
         if (playDetails.startSkip > 0 && !resume) {
           await _audioPlayerService.seek(position: playDetails.startSkip);

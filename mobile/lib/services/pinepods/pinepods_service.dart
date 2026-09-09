@@ -658,6 +658,7 @@ class PinepodsService {
           playbackSpeed: (data['playback_speed'] as num?)?.toDouble() ?? 1.0,
           startSkip: data['start_skip'] ?? 0,
           endSkip: data['end_skip'] ?? 0,
+          playbackSpeedCustomized: data['playback_speed_customized'] as bool? ?? false,
         );
       }
       return PlayEpisodeDetails(playbackSpeed: 1.0, startSkip: 0, endSkip: 0);
@@ -2792,11 +2793,14 @@ class PlayEpisodeDetails {
   final double playbackSpeed;
   final int startSkip;
   final int endSkip;
+  // True only for a genuine per-podcast override, not the echoed-back account default.
+  final bool playbackSpeedCustomized;
 
   PlayEpisodeDetails({
     required this.playbackSpeed,
     required this.startSkip,
     required this.endSkip,
+    this.playbackSpeedCustomized = false,
   });
 }
 
