@@ -3886,7 +3886,11 @@ pub fn episode_layout() -> Html {
                 let pod_title_og = pod_values.clone().unwrap().podcastname.clone();
                 let pod_artwork_og = pod_values.clone().unwrap().artworkurl.clone();
                 let pod_author_og = pod_values.clone().unwrap().author.clone();
-                let categories_og = pod_values.clone().unwrap().categories.unwrap().clone();
+                let categories_og = pod_values
+                    .clone()
+                    .unwrap()
+                    .categories
+                    .unwrap_or_default();
                 let pod_description_og = pod_values.clone().unwrap().description.clone();
                 let pod_episode_count_og = pod_values.clone().unwrap().episodecount.clone();
                 let pod_feed_url_og = pod_values.clone().unwrap().feedurl.clone();
