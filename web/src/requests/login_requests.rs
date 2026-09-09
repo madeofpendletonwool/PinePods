@@ -1,9 +1,10 @@
 use crate::components::gen_components::AdminSetupData;
 use crate::components::gen_funcs::encode_password;
-use base64::engine::general_purpose::STANDARD;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use yew_router::history::{BrowserHistory, History};
 use yewdux::Dispatch;
@@ -957,6 +958,12 @@ pub async fn call_get_public_oidc_providers(
     }
 }
 
+// PKCE S256 code_challenge = base64url(sha256(verifier)), unpadded (RFC 7636)
+pub fn pkce_code_challenge_s256(code_verifier: &str) -> String {
+    let digest = Sha256::digest(code_verifier.as_bytes());
+    URL_SAFE_NO_PAD.encode(digest)
+}
+
 // First, create the request struct
 #[derive(Serialize)]
 #[allow(dead_code)]
@@ -964,6 +971,8 @@ pub struct StoreStateRequest {
     pub state: String,
     pub client_id: String,
     pub origin_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_verifier: Option<String>,
 }
 
 // Then create the function to make the request
@@ -973,12 +982,14 @@ pub async fn call_store_oidc_state(
     state: String,
     client_id: String,
     origin_url: Option<String>,
+    code_verifier: Option<String>,
 ) -> Result<(), Error> {
     let url = format!("{}/api/auth/store_state", server_name);
     let request_body = StoreStateRequest {
         state,
         client_id,
         origin_url,
+        code_verifier,
     };
 
     let response = Request::post(&url).json(&request_body)?.send().await?;

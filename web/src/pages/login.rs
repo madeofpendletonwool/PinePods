@@ -16,6 +16,7 @@ use crate::requests::setting_reqs::{
     call_get_available_languages, call_get_startpage, call_get_theme, call_update_user_language,
     AvailableLanguage,
 };
+use base64::Engine;
 use chrono_tz::{Tz, TZ_VARIANTS};
 use i18nrs::yew::use_translation;
 use md5;
@@ -1953,6 +1954,12 @@ pub fn login() -> Html {
                                                                         .map(|b| format!("{:02x}", b))
                                                                         .collect::<String>();
 
+                                                                    // Generate PKCE (S256); always sent so PKCE-enforcing IdPs accept the flow
+                                                                    let mut verifier_bytes = [0u8; 32];
+                                                                    crypto.get_random_values_with_u8_array(&mut verifier_bytes).unwrap();
+                                                                    let code_verifier = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(verifier_bytes);
+                                                                    let code_challenge = login_requests::pkce_code_challenge_s256(&code_verifier);
+
                                                                     let auth_url_clone = auth_url.clone();
                                                                     let client_id_clone = client_id.clone();
                                                                     let scope_clone = scope.clone();
@@ -1966,12 +1973,13 @@ pub fn login() -> Html {
                                                                             state_clone.clone(),
                                                                             client_id_clone.clone(),
                                                                             Some(origin.clone()),
+                                                                            Some(code_verifier.clone()),
                                                                         ).await {
                                                                             Ok(_) => {
                                                                                 let redirect_uri = format!("{}/api/auth/callback", origin);
                                                                                 let auth_url = format!(
-                                                                                    "{}?client_id={}&redirect_uri={}&scope={}&response_type=code&state={}",
-                                                                                    auth_url_clone, client_id_clone, redirect_uri, scope_clone, state_clone
+                                                                                    "{}?client_id={}&redirect_uri={}&scope={}&response_type=code&state={}&code_challenge={}&code_challenge_method=S256",
+                                                                                    auth_url_clone, client_id_clone, redirect_uri, scope_clone, state_clone, code_challenge
                                                                                 );
                                                                                 window.location().set_href(&auth_url).unwrap();
                                                                             },
