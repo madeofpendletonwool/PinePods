@@ -233,16 +233,15 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                 .as_ref()
                 .map_or(false, |cp| cp.episode_id == episode.episodeid);
             if is_current {
+                // Toggle the ACTIVE media element. The previous code only handled the legacy
+                // `audio_element`, which is `None` for streamed playback; both RSS audio and
+                // YouTube video play through `media_element`. As a result the click flipped
+                // `audio_playing` without ever pausing/resuming the media, leaving the row's
+                // play/pause button out of sync with playback (issue #449). `toggle_playback`
+                // prefers `media_element` and falls back to `audio_element`, and the media
+                // element's play/pause event listeners keep `audio_playing` in sync afterwards.
                 audio_dispatch.reduce_mut(|state| {
-                    let currently_playing = state.audio_playing.unwrap_or(false);
-                    state.audio_playing = Some(!currently_playing);
-                    if let Some(audio) = &state.audio_element {
-                        if currently_playing {
-                            let _ = audio.pause();
-                        } else {
-                            let _ = audio.play();
-                        }
-                    }
+                    state.toggle_playback();
                 });
             } else {
                 let episode_id = episode.episodeid;
