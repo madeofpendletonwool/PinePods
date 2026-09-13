@@ -3259,8 +3259,25 @@ pub async fn update_startpage(
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct PersonSubscribeRequest {
     pub person_name: String,
-    pub person_img: String,
+    pub person_img: Option<String>,
     pub podcast_id: i32,
+}
+
+#[cfg(test)]
+mod person_subscribe_request_tests {
+    use super::PersonSubscribeRequest;
+
+    #[test]
+    fn accepts_missing_person_image() {
+        let request: PersonSubscribeRequest = serde_json::from_value(serde_json::json!({
+            "person_name": "Host Without Artwork",
+            "person_img": null,
+            "podcast_id": 1
+        }))
+        .expect("null host artwork should deserialize");
+
+        assert_eq!(request.person_img, None);
+    }
 }
 
 // Request struct for person unsubscribe
@@ -3304,7 +3321,7 @@ pub async fn subscribe_to_person(
         user_id,
         person_id,
         &request.person_name,
-        &request.person_img,
+        request.person_img.as_deref().unwrap_or(""),
         request.podcast_id,
     ).await?;
 
@@ -6304,4 +6321,3 @@ pub async fn delete_custom_theme(
     state.db_pool.delete_custom_theme(request.theme_id, request.user_id).await?;
     Ok(Json(serde_json::json!({ "message": "Custom theme deleted successfully" })))
 }
-
