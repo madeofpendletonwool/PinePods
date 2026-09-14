@@ -56,6 +56,40 @@ jobs:
           chmod +x ./run-tests.sh
           ./run-tests.sh postgresql
 
+  rust-backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hecrj/setup-rust-action@v2
+        with:
+          rust-version: 1.95
+
+      - name: Run episode pagination/sort/filter regression tests
+        working-directory: ./rust-api
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: test_user
+          DB_PASSWORD: test_password
+          DB_NAME: test_db
+        run: cargo test episode_pagination -- --ignored --test-threads=1
+
   frontend-tests:
     runs-on: ubuntu-latest
     steps:
