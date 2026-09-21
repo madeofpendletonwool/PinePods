@@ -179,6 +179,25 @@ services:
       - valkey
 ```
 
+If an external PostgreSQL server requires a TLS client certificate, mount the
+certificate files into the PinePods container and add these optional settings:
+
+```yaml
+services:
+  pinepods:
+    environment:
+      DB_SSL_MODE: verify-full
+      DB_SSL_ROOT_CERT: /run/secrets/postgresql/ca.crt
+      DB_SSL_CLIENT_CERT: /run/secrets/postgresql/client.crt
+      DB_SSL_CLIENT_KEY: /run/secrets/postgresql/client.key
+    volumes:
+      - /home/user/pinepods/postgresql-certs:/run/secrets/postgresql:ro
+```
+
+`DB_SSL_CLIENT_CERT` and `DB_SSL_CLIENT_KEY` must be set together. `DB_SSL_MODE`
+accepts `disable`, `allow`, `prefer`, `require`, `verify-ca`, or `verify-full`;
+the default remains `prefer`.
+
 For an external Valkey/Redis server, set `VALKEY_HOST` and `VALKEY_PORT` on the
 `pinepods` service to an address it can reach. Set `VALKEY_PASSWORD` if the server
 requires password authentication, and `VALKEY_USERNAME` if it uses a named user.

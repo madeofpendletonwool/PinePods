@@ -1,6 +1,7 @@
 use sqlx::{MySql, Pool, Postgres, Row};
+use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use std::time::Duration;
-use crate::{config::{Config, OIDCConfig}, error::{AppError, AppResult}};
+use crate::{config::{Config, DatabaseConfig, OIDCConfig}, error::{AppError, AppResult}};
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use std::collections::HashMap;
@@ -52,6 +53,126 @@ pub struct ScheduledBackupRow {
     pub last_run: Option<DateTime<Utc>>,
 }
 
+fn postgres_connect_options(db: &DatabaseConfig) -> AppResult<PgConnectOptions> {
+    let mut options = PgConnectOptions::new()
+        .username(&db.username)
+        .password(&db.password)
+        .database(&db.name)
+        // Port is still relevant for sockets: PG names the socket
+        // file `.s.PGSQL.<port>`.
+        .port(db.port);
+
+    options = if db.host.starts_with('/') {
+        options.socket(&db.host)
+    } else {
+        options.host(&db.host)
+    };
+
+    if let Some(mode) = &db.ssl_mode {
+        let mode = mode.parse::<PgSslMode>().map_err(|_| {
+            AppError::Config(format!(
+                "Invalid DB_SSL_MODE '{mode}'. Expected disable, allow, prefer, require, verify-ca, or verify-full"
+            ))
+        })?;
+        options = options.ssl_mode(mode);
+    }
+
+    if let Some(root_cert) = &db.ssl_root_cert {
+        options = options.ssl_root_cert(root_cert);
+    }
+
+    match (&db.ssl_client_cert, &db.ssl_client_key) {
+        (Some(cert), Some(key)) => {
+            options = options
+                .ssl_client_cert(cert)
+                .ssl_client_key(key);
+        }
+        (None, None) => {}
+        _ => {
+            return Err(AppError::Config(
+                "DB_SSL_CLIENT_CERT and DB_SSL_CLIENT_KEY must be set together".to_string(),
+            ));
+        }
+    }
+
+    Ok(options)
+}
+
+#[cfg(test)]
+mod postgres_connect_options_tests {
+    use super::postgres_connect_options;
+    use crate::config::DatabaseConfig;
+    use sqlx::ConnectOptions;
+    use std::collections::HashMap;
+
+    fn database_config() -> DatabaseConfig {
+        DatabaseConfig {
+            db_type: "postgresql".to_string(),
+            host: "database.example.com".to_string(),
+            port: 5432,
+            username: "pinepods".to_string(),
+            password: "secret".to_string(),
+            name: "pinepods".to_string(),
+            max_connections: 32,
+            min_connections: 1,
+            ssl_mode: Some("verify-full".to_string()),
+            ssl_root_cert: Some("/certs/ca.crt".to_string()),
+            ssl_client_cert: Some("/certs/client.crt".to_string()),
+            ssl_client_key: Some("/certs/client.key".to_string()),
+        }
+    }
+
+    #[test]
+    fn includes_postgres_tls_credentials() {
+        let url = postgres_connect_options(&database_config())
+            .expect("PostgreSQL TLS options should be valid")
+            .to_url_lossy();
+        let query: HashMap<_, _> = url.query_pairs().into_owned().collect();
+
+        assert_eq!(query.get("sslmode").map(String::as_str), Some("verify-full"));
+        assert_eq!(
+            query.get("sslrootcert").map(String::as_str),
+            Some("file: /certs/ca.crt")
+        );
+        assert_eq!(
+            query.get("sslcert").map(String::as_str),
+            Some("file: /certs/client.crt")
+        );
+        assert_eq!(
+            query.get("sslkey").map(String::as_str),
+            Some("file: /certs/client.key")
+        );
+    }
+
+    #[test]
+    fn rejects_client_certificate_without_private_key() {
+        let mut config = database_config();
+        config.ssl_client_key = None;
+
+        let error = postgres_connect_options(&config)
+            .expect_err("a client certificate without its key must be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "Configuration error: DB_SSL_CLIENT_CERT and DB_SSL_CLIENT_KEY must be set together"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_ssl_mode() {
+        let mut config = database_config();
+        config.ssl_mode = Some("sometimes".to_string());
+
+        let error =
+            postgres_connect_options(&config).expect_err("an invalid SSL mode must be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            "Configuration error: Invalid DB_SSL_MODE 'sometimes'. Expected disable, allow, prefer, require, verify-ca, or verify-full"
+        );
+    }
+}
+
 impl DatabasePool {
     pub async fn new(config: &Config) -> AppResult<Self> {
         let db = &config.database;
@@ -61,19 +182,7 @@ impl DatabasePool {
 
         match db.db_type.as_str() {
             "postgresql" => {
-                let mut options = sqlx::postgres::PgConnectOptions::new()
-                    .username(&db.username)
-                    .password(&db.password)
-                    .database(&db.name)
-                    // Port is still relevant for sockets: PG names the socket
-                    // file `.s.PGSQL.<port>`.
-                    .port(db.port);
-                options = if host_is_socket {
-                    options.socket(&db.host)
-                } else {
-                    options.host(&db.host)
-                };
-
+                let options = postgres_connect_options(db)?;
                 let pool = sqlx::postgres::PgPoolOptions::new()
                     .max_connections(db.max_connections)
                     .min_connections(db.min_connections)
