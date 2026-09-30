@@ -223,6 +223,10 @@ search API, timezone tuning, PUID/PGID, and OIDC are all covered in the docs:
 - :mag: **[Self-hosting the search API](https://www.pinepods.online/docs/API/search_api)**
 - :closed_lock_with_key: **[OIDC / SSO setup](https://www.pinepods.online/docs/tutorial-extras/OIDC-setup)**
 
+## ☁️ One-Click Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/PinePods/)
+
 ## Clients
 
 Run the server, then connect any client by pointing it at your server URL and signing
