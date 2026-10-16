@@ -50,7 +50,7 @@ COPY ./gpodder-api/internal ./internal
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o gpodder-api ./cmd/server/
 
 # Python builder stage for database setup
-FROM python:3.11-alpine AS python-builder
+FROM python:3.14-alpine AS python-builder
 WORKDIR /build
 
 # Install build dependencies for PyInstaller and MariaDB connector
@@ -71,9 +71,6 @@ RUN pyinstaller --onefile \
     --hidden-import mysql.connector \
     --hidden-import cryptography \
     --hidden-import cryptography.fernet \
-    --hidden-import passlib \
-    --hidden-import passlib.hash \
-    --hidden-import passlib.hash.argon2 \
     --hidden-import argon2 \
     --hidden-import argon2.exceptions \
     --hidden-import argon2.profiles \
