@@ -1,0 +1,10 @@
+/Users/collin_pendleton/Documents/github/PinePods/Backend/pinepods_backend/target/debug/deps/actix_codec-719ea75f764e4e55.d: /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/lib.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/bcodec.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/framed.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/lines.rs
+
+/Users/collin_pendleton/Documents/github/PinePods/Backend/pinepods_backend/target/debug/deps/libactix_codec-719ea75f764e4e55.rlib: /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/lib.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/bcodec.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/framed.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/lines.rs
+
+/Users/collin_pendleton/Documents/github/PinePods/Backend/pinepods_backend/target/debug/deps/libactix_codec-719ea75f764e4e55.rmeta: /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/lib.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/bcodec.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/framed.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/lines.rs
+
+/Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/lib.rs:
+/Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/bcodec.rs:
+/Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/framed.rs:
+/Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-codec-0.5.4/src/lines.rs:

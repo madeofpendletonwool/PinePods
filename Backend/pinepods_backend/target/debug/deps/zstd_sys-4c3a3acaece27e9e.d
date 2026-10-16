@@ -1,0 +1,9 @@
+/Users/collin_pendleton/Documents/github/PinePods/Backend/pinepods_backend/target/debug/deps/zstd_sys-4c3a3acaece27e9e.d: /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/lib.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/bindings_zstd.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/bindings_zdict.rs
+
+/Users/collin_pendleton/Documents/github/PinePods/Backend/pinepods_backend/target/debug/deps/libzstd_sys-4c3a3acaece27e9e.rlib: /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/lib.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/bindings_zstd.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/bindings_zdict.rs
+
+/Users/collin_pendleton/Documents/github/PinePods/Backend/pinepods_backend/target/debug/deps/libzstd_sys-4c3a3acaece27e9e.rmeta: /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/lib.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/bindings_zstd.rs /Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/bindings_zdict.rs
+
+/Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/lib.rs:
+/Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/bindings_zstd.rs:
+/Users/collin_pendleton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/zstd-sys-2.1.2+zstd.1.5.7/src/bindings_zdict.rs:
