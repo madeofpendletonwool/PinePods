@@ -584,13 +584,18 @@ fn get_api_credentials() -> Result<(String, String), HttpResponse> {
     Ok((api_key, api_secret))
 }
 
+// Lowercase hex SHA-1, as PodcastIndex expects for the Authorization header.
+fn sha1_hex(input: &str) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(input.as_bytes());
+    hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect()
+}
+
 fn create_auth_headers(api_key: &str, api_secret: &str) -> Result<HeaderMap, HttpResponse> {
     let epoch_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs().to_string();
     let data_to_hash = format!("{}{}{}", api_key, api_secret, epoch_time);
 
-    let mut hasher = Sha1::new();
-    hasher.update(data_to_hash.as_bytes());
-    let sha_1 = format!("{:x}", hasher.finalize());
+    let sha_1 = sha1_hex(&data_to_hash);
 
     let mut headers = HeaderMap::new();
     headers.insert("X-Auth-Date", HeaderValue::from_str(&epoch_time).unwrap_or_else(|e| {
@@ -668,4 +673,14 @@ async fn main() -> std::io::Result<()> {
     .bind("0.0.0.0:5000")?
     .run()
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sha1_hex;
+
+    #[test]
+    fn sha1_hex_matches_known_digest() {
+        assert_eq!(sha1_hex("abc"), "a9993e364706816aba3e25717850c26c9cd0d89d");
+    }
 }
