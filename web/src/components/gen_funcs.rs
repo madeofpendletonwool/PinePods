@@ -1,8 +1,5 @@
 use ammonia::Builder;
-use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
-    Argon2,
-};
+use argon2::{password_hash::PasswordHasher, Argon2};
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use gloo_timers::callback::Timeout;
@@ -143,12 +140,9 @@ pub fn sanitize_html_with_blank_target(html: &str) -> String {
 }
 
 pub fn encode_password(password: &str) -> Result<String, argon2::password_hash::Error> {
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let password_hash = argon2
-        .hash_password(password.as_bytes(), &salt)?
-        .to_string();
-    Ok(password_hash)
+    // Argon2id with default params; the salt is generated internally via getrandom.
+    let password_hash: argon2::PasswordHash = Argon2::default().hash_password(password.as_bytes())?;
+    Ok(password_hash.to_string())
 }
 
 #[derive(Debug, PartialEq)]
