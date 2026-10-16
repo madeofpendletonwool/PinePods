@@ -76,7 +76,7 @@ jobs:
 
       - uses: hecrj/setup-rust-action@v2
         with:
-          rust-version: 1.95
+          rust-version: 1.99
           targets: wasm32-unknown-unknown
 
       # Install cargo-binstall for Linux/Windows
