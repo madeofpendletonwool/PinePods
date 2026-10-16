@@ -23,6 +23,22 @@ String _fmtTime(double secs) {
 /// App-bar action showing a broadcast icon with a badge for the number of other
 /// online devices; tapping opens the device panel. Renders nothing (a zero-size
 /// box) when the now-playing service isn't available.
+/// Icon for a device row, from the free-form `device_type`.
+IconData _deviceIcon(String deviceType) {
+  switch (deviceType.toLowerCase()) {
+    case 'web':
+      return Icons.web;
+    case 'ios':
+    case 'android':
+    case 'mobile':
+      return Icons.smartphone;
+    case 'firewood':
+      return Icons.terminal;
+    default:
+      return Icons.devices_other;
+  }
+}
+
 class RemoteDevicesButton extends StatelessWidget {
   const RemoteDevicesButton({super.key, this.color});
 
@@ -51,7 +67,10 @@ class RemoteDevicesButton extends StatelessWidget {
                 right: 8,
                 child: Container(
                   padding: const EdgeInsets.all(2),
-                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primary,
                     borderRadius: BorderRadius.circular(8),
@@ -112,7 +131,21 @@ class _RemoteDevicesSheet extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 8),
+            ValueListenableBuilder<String?>(
+              valueListenable: service.lastCommandError,
+              builder: (context, error, _) {
+                if (error == null) return const SizedBox(height: 8);
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Text(
+                    error,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                );
+              },
+            ),
             Flexible(
               child: ValueListenableBuilder<List<NowPlayingDevice>>(
                 valueListenable: service.devices,
@@ -171,7 +204,7 @@ class _DeviceRow extends StatelessWidget {
               Expanded(
                 child: Row(
                   children: [
-                    const Icon(Icons.smartphone, size: 18),
+                    Icon(_deviceIcon(device.deviceType), size: 18),
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
@@ -184,7 +217,9 @@ class _DeviceRow extends StatelessWidget {
                 ),
               ),
               Text(
-                device.playing ? '▶ playing' : '⏸ paused',
+                !hasEpisode
+                    ? 'idle'
+                    : (device.playing ? '▶ playing' : '⏸ paused'),
                 style: TextStyle(
                   fontSize: 12,
                   color: Theme.of(context).textTheme.bodySmall?.color,
@@ -194,54 +229,57 @@ class _DeviceRow extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(track, maxLines: 1, overflow: TextOverflow.ellipsis),
-          Text(
-            progress,
-            style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).textTheme.bodySmall?.color,
+          // Idle devices (connected, nothing loaded) are listed so they can be
+          // targeted, but there's nothing to transport-control or take over.
+          if (hasEpisode) ...[
+            Text(
+              progress,
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).textTheme.bodySmall?.color,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              IconButton(
-                tooltip: 'Skip back 15s',
-                icon: const Icon(Icons.replay_10),
-                onPressed: () => service.sendCommand(
-                  device.deviceId,
-                  'skip_back',
-                  const {'seconds': 15},
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                IconButton(
+                  tooltip: 'Skip back 15s',
+                  icon: const Icon(Icons.replay),
+                  onPressed: () => service.sendCommand(
+                    device.deviceId,
+                    'skip_back',
+                    const {'seconds': 15},
+                  ),
                 ),
-              ),
-              IconButton(
-                tooltip: device.playing ? 'Pause' : 'Play',
-                icon: Icon(device.playing ? Icons.pause : Icons.play_arrow),
-                onPressed: () => service.sendCommand(
-                  device.deviceId,
-                  device.playing ? 'pause' : 'play',
+                IconButton(
+                  tooltip: device.playing ? 'Pause' : 'Play',
+                  icon: Icon(device.playing ? Icons.pause : Icons.play_arrow),
+                  onPressed: () => service.sendCommand(
+                    device.deviceId,
+                    device.playing ? 'pause' : 'play',
+                  ),
                 ),
-              ),
-              IconButton(
-                tooltip: 'Skip forward 30s',
-                icon: const Icon(Icons.forward_30),
-                onPressed: () => service.sendCommand(
-                  device.deviceId,
-                  'skip_forward',
-                  const {'seconds': 30},
+                IconButton(
+                  tooltip: 'Skip forward 30s',
+                  icon: const Icon(Icons.forward_30),
+                  onPressed: () => service.sendCommand(
+                    device.deviceId,
+                    'skip_forward',
+                    const {'seconds': 30},
+                  ),
                 ),
-              ),
-              const Spacer(),
-              if (hasEpisode)
+                const Spacer(),
                 TextButton.icon(
                   icon: const Icon(Icons.play_circle_outline, size: 18),
                   label: const Text('Play here'),
                   onPressed: () {
-                    service.playEpisodeLocally(device.episodeId, device.isYoutube);
+                    service.playHere(device);
                     Navigator.of(context).pop();
                   },
                 ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );

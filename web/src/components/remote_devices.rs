@@ -30,6 +30,16 @@ fn fmt_time(secs: f64) -> String {
     }
 }
 
+/// Phosphor icon for a device row, from the free-form `device_type`.
+fn device_icon(device_type: &str) -> &'static str {
+    match device_type.to_ascii_lowercase().as_str() {
+        "web" => "ph ph-browser",
+        "ios" | "android" | "mobile" => "ph ph-device-mobile",
+        "firewood" => "ph ph-terminal-window",
+        _ => "ph ph-monitor",
+    }
+}
+
 #[function_component(RemoteDevices)]
 pub fn remote_devices() -> Html {
     let (np_state, np_dispatch) = use_store::<NowPlayingState>();
@@ -138,6 +148,9 @@ pub fn remote_devices() -> Html {
         move |device: &NowPlayingDevice| -> Html {
             let id = device.device_id.clone();
             let is_playing = device.playing;
+            // Connected but nothing loaded (episode_id 0): listed so it can be a
+            // target, but there's nothing to transport-control or take over.
+            let is_idle = device.episode_id == 0;
 
             let on_play_pause = {
                 let id = id.clone();
@@ -204,13 +217,14 @@ pub fn remote_devices() -> Html {
                 <div class="rd-row">
                     <div class="rd-row-top">
                         <span class="rd-name">
-                            <i class="ph ph-monitor"></i>{ label }
+                            <i class={ device_icon(&device.device_type) }></i>{ label }
                         </span>
                         <span class={classes!("rd-state", is_playing.then_some("is-playing"))}>
-                            { if is_playing { "▶ playing" } else { "⏸ paused" } }
+                            { if is_idle { "idle" } else if is_playing { "▶ playing" } else { "⏸ paused" } }
                         </span>
                     </div>
                     <span class="rd-track">{ track }</span>
+                    if !is_idle {
                     <span class="rd-progress">{ progress }</span>
                     <div class="rd-controls">
                         // type="button" on every one: this drawer renders inside the
@@ -230,6 +244,7 @@ pub fn remote_devices() -> Html {
                             <i class="ph ph-monitor-play mr-1"></i>{ &i18n_play_here }
                         </button>
                     </div>
+                    }
                 </div>
             }
         }

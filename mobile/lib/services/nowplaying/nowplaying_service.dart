@@ -102,6 +102,16 @@ class NowPlayingService {
   /// Whether the socket is currently open.
   final ValueNotifier<bool> connected = ValueNotifier<bool>(false);
 
+  /// Last command the server couldn't deliver (target offline), for the UI to
+  /// surface; null when there's nothing to report.
+  final ValueNotifier<String?> lastCommandError = ValueNotifier<String?>(null);
+
+  /// Close code the server sends when a newer connection took over our
+  /// device_id (rust-api handlers/nowplaying.rs `CLOSE_REPLACED`).
+  static const _closeReplaced = 4000;
+
+  int _cmdSeq = 0;
+
   WebSocketChannel? _channel;
   StreamSubscription? _channelSub;
   Timer? _reconnectTimer;
@@ -144,6 +154,19 @@ class NowPlayingService {
     }
     _deviceId = generated;
     return generated;
+  }
+
+  /// Take a fresh device id. Used when the server says another live connection
+  /// holds ours (e.g. secure storage restored onto a second phone), so the two
+  /// installs stop evicting each other.
+  Future<void> _rotateDeviceId() async {
+    final generated = _generateId();
+    try {
+      await _storage.write(key: _deviceIdKey, value: generated);
+    } catch (e) {
+      log.fine('Could not persist rotated device id (continuing): $e');
+    }
+    _deviceId = generated;
   }
 
   String _generateId() {
@@ -224,7 +247,7 @@ class NowPlayingService {
           log.fine('Now-playing socket error: $e');
           _onDisconnected();
         },
-        onDone: _onDisconnected,
+        onDone: () => _onDisconnected(closeCode: channel.closeCode),
         cancelOnError: true,
       );
       connected.value = true;
@@ -235,21 +258,25 @@ class NowPlayingService {
     }
   }
 
-  void _onDisconnected() {
+  void _onDisconnected({int? closeCode}) {
     connected.value = false;
     devices.value = const [];
     _channelSub?.cancel();
     _channelSub = null;
     _channel = null;
     if (_closing) return;
-    // Best-effort reconnect with a fixed backoff.
     _reconnectTimer?.cancel();
     final server = _server;
     final apiKey = _apiKey;
     final userId = _userId;
     if (server == null || apiKey == null || userId == null) return;
-    _reconnectTimer = Timer(const Duration(seconds: 10), () {
+    // Another live connection took over our id: rotate it and reconnect promptly,
+    // rather than reclaiming the old id and evicting the other one in a loop.
+    final replaced = closeCode == _closeReplaced;
+    if (replaced) log.info('Now-playing device id taken over elsewhere; rotating');
+    _reconnectTimer = Timer(Duration(seconds: replaced ? 1 : 10), () async {
       if (_closing) return;
+      if (replaced) await _rotateDeviceId();
       connect(server: server, apiKey: apiKey, userId: userId);
     });
   }
@@ -317,14 +344,17 @@ class NowPlayingService {
 
   void sendHeartbeat() => _send({'type': 'heartbeat'});
 
-  /// Send an advisory remote-control command to another device.
+  /// Send an advisory remote-control command to another device. If the server
+  /// reports the target offline, [lastCommandError] is set.
   void sendCommand(String targetDeviceId, String action,
       [Map<String, dynamic> args = const {}]) {
+    lastCommandError.value = null;
     _send({
       'type': 'command',
       'target_device_id': targetDeviceId,
       'action': action,
       'args': args,
+      'cmd_id': '${++_cmdSeq}',
     });
   }
 
@@ -358,6 +388,14 @@ class NowPlayingService {
         unawaited(_applyCommand(action, args));
         break;
       case 'ack':
+        if (msg['ok'] == false) {
+          final targetId = msg['target_device_id'] as String?;
+          final match = devices.value.where((d) => d.deviceId == targetId);
+          final name = match.isNotEmpty && match.first.deviceName.isNotEmpty
+              ? match.first.deviceName
+              : 'That device';
+          lastCommandError.value = '$name is offline — command not delivered';
+        }
         break;
     }
   }
@@ -394,7 +432,13 @@ class NowPlayingService {
         case 'play_episode':
           final id = (args['episode_id'] as num?)?.toInt();
           if (id != null) {
-            await _playEpisodeById(id, args['is_youtube'] == true);
+            // A handoff carries the sender's live position; otherwise resume
+            // from the server-stored one.
+            await _playEpisodeById(
+              id,
+              args['is_youtube'] == true,
+              positionSec: (args['position_sec'] as num?)?.toDouble(),
+            );
           }
           break;
         default:
@@ -414,11 +458,21 @@ class NowPlayingService {
     await _audioPlayerService.seek(position: target.round());
   }
 
-  /// Start a device's episode on *this* device ("Play here" in the UI).
-  Future<void> playEpisodeLocally(int episodeId, bool isYoutube) =>
-      _playEpisodeById(episodeId, isYoutube);
+  /// Take over another device's episode on *this* device ("Play here" in the
+  /// UI): pause the source if it's playing (advisory) so it doesn't keep going in
+  /// two places, and resume at its live position rather than the staler
+  /// server-stored one. Mirrors web remote_devices.rs.
+  Future<void> playHere(NowPlayingDevice source) async {
+    if (source.playing) sendCommand(source.deviceId, 'pause');
+    await _playEpisodeById(
+      source.episodeId,
+      source.isYoutube,
+      positionSec: source.positionSec,
+    );
+  }
 
-  Future<void> _playEpisodeById(int episodeId, bool isYoutube) async {
+  Future<void> _playEpisodeById(int episodeId, bool isYoutube,
+      {double? positionSec}) async {
     final server = _server;
     final apiKey = _apiKey;
     final userId = _userId;
@@ -434,8 +488,11 @@ class NowPlayingService {
       log.fine('Remote play_episode: metadata not found for $episodeId');
       return;
     }
+    final resumeAt = (positionSec != null && positionSec.isFinite && positionSec > 0)
+        ? episode.withListenDuration(positionSec.round())
+        : episode;
     await _pinepodsAudioService.playPinepodsEpisode(
-      pinepodsEpisode: episode,
+      pinepodsEpisode: resumeAt,
       resume: true,
     );
   }
@@ -444,5 +501,6 @@ class NowPlayingService {
     disconnect();
     devices.dispose();
     connected.dispose();
+    lastCommandError.dispose();
   }
 }
