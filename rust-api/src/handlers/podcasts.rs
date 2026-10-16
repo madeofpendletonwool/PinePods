@@ -3265,6 +3265,7 @@ pub async fn stream_episode(
     State(state): State<crate::AppState>,
     Path(episode_id): Path<i32>,
     Query(query): Query<StreamQuery>,
+    headers: HeaderMap,
 ) -> Result<axum::response::Response, AppError> {
     let api_key = &query.api_key;
     info!("Stream request for episode {} with api_key {} and user_id {}", episode_id, api_key, query.user_id);
@@ -3355,9 +3356,23 @@ pub async fn stream_episode(
         use tower::ServiceExt;
         
         let service = ServeFile::new(&path);
-        let request = axum::http::Request::builder()
-            .method("GET")
-            .uri("/")
+        // Forward the range/conditional headers ServeFile needs so it can answer with
+        // 206 Partial Content. Without them it always returns the full file with 200, and
+        // iOS AVPlayer re-fetches from byte 0 on every buffer refill (the "stream keeps
+        // restarting" loop). Only these headers are copied — auth stays in the query string.
+        let mut builder = axum::http::Request::builder().method("GET").uri("/");
+        for name in [
+            axum::http::header::RANGE,
+            axum::http::header::IF_RANGE,
+            axum::http::header::IF_MODIFIED_SINCE,
+            axum::http::header::IF_NONE_MATCH,
+            axum::http::header::IF_UNMODIFIED_SINCE,
+        ] {
+            if let Some(value) = headers.get(&name) {
+                builder = builder.header(name, value);
+            }
+        }
+        let request = builder
             .body(axum::body::Body::empty())
             .map_err(|e| AppError::external_error(&format!("Failed to build request: {}", e)))?;
             
