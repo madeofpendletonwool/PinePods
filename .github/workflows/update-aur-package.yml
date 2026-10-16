@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set version
         run: |
@@ -83,7 +83,7 @@ jobs:
           EOF
 
       - name: Test PKGBUILD
-        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
         with:
           pkgname: pinepods
           pkgbuild: ./PKGBUILD
@@ -96,7 +96,7 @@ jobs:
 
       - name: Publish AUR package
         if: success()
-        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
         with:
           pkgname: pinepods
           pkgbuild: ./PKGBUILD

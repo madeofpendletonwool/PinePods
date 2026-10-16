@@ -72,7 +72,7 @@ jobs:
         if: ${{ matrix.os == 'windows-latest' }}
 
       - name: Setup | Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - uses: hecrj/setup-rust-action@v2
         with:
@@ -124,7 +124,7 @@ jobs:
 
       - name: Setup Python
         if: ${{ matrix.os == 'windows-latest' }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v7
         with:
           python-version: "3.x"
 
@@ -163,7 +163,7 @@ jobs:
 
       # Ubuntu (x86_64) builds
       - name: Archive builds (Ubuntu)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ubuntu-latest-builds
           path: |
@@ -174,7 +174,7 @@ jobs:
 
       # Ubuntu ARM64 builds
       - name: Archive builds (Ubuntu ARM)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ubuntu-arm64-builds
           path: |
@@ -185,7 +185,7 @@ jobs:
 
       # macOS builds - with distinct names
       - name: Archive build (macOS ARM)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-arm64-builds
           path: |
@@ -194,7 +194,7 @@ jobs:
         if: ${{ matrix.os == 'macOS-latest' }}
 
       - name: Archive build (Windows)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.os }}-build
           path: |
@@ -204,7 +204,7 @@ jobs:
 
       - name: Upload release assets (Linux x86_64)
         if: github.event_name == 'release' && matrix.os == 'ubuntu-latest'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.event.release.tag_name }}
@@ -215,7 +215,7 @@ jobs:
 
       - name: Upload release assets (Linux ARM64)
         if: github.event_name == 'release' && matrix.os == 'ubuntu-arm64'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.event.release.tag_name }}
@@ -226,7 +226,7 @@ jobs:
 
       - name: Upload release assets (macOS)
         if: github.event_name == 'release' && matrix.os == 'macOS-latest'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.event.release.tag_name }}
@@ -235,7 +235,7 @@ jobs:
 
       - name: Upload release assets (Windows)
         if: github.event_name == 'release' && matrix.os == 'windows-latest'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.event.release.tag_name }}
@@ -248,20 +248,20 @@ jobs:
   #   runs-on: ubuntu-latest
   #   steps:
   #     - name: Checkout code
-  #       uses: actions/checkout@v2
+  #       uses: actions/checkout@v7
 
   #     - name: Download artifacts
-  #       uses: actions/download-artifact@v2
+  #       uses: actions/download-artifact@v8
   #       with:
   #         name: ubuntu-latest-build
   #         path: artifacts/ubuntu-latest
   #     - name: Download artifacts
-  #       uses: actions/download-artifact@v2
+  #       uses: actions/download-artifact@v8
   #       with:
   #         name: macOS-latest-build
   #         path: artifacts/macOS-latest
   #     - name: Download artifacts
-  #       uses: actions/download-artifact@v2
+  #       uses: actions/download-artifact@v8
   #       with:
   #         name: windows-latest-build
   #         path: artifacts/windows-latest
