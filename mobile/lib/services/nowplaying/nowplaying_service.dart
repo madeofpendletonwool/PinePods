@@ -110,6 +110,15 @@ class NowPlayingService {
   /// device_id (rust-api handlers/nowplaying.rs `CLOSE_REPLACED`).
   static const _closeReplaced = 4000;
 
+  // What this device last reported, so "Send to" can hand it off.
+  int? _reportedEpisodeId;
+  bool _reportedIsYoutube = false;
+  double _reportedPositionSec = 0;
+
+  // cmd_id of an in-flight "Send to" handoff; we pause locally only once the
+  // server acks delivery, so an offline target doesn't strand playback.
+  String? _pendingHandoffCmdId;
+
   int _cmdSeq = 0;
 
   WebSocketChannel? _channel;
@@ -329,6 +338,9 @@ class NowPlayingService {
     required bool playing,
     required double speed,
   }) {
+    _reportedEpisodeId = episodeId;
+    _reportedIsYoutube = isYoutube;
+    _reportedPositionSec = positionSec;
     _send({
       'type': 'report',
       'episode_id': episodeId,
@@ -346,16 +358,49 @@ class NowPlayingService {
 
   /// Send an advisory remote-control command to another device. If the server
   /// reports the target offline, [lastCommandError] is set.
-  void sendCommand(String targetDeviceId, String action,
+  /// Returns the correlation id the server echoes back in its `ack`.
+  String sendCommand(String targetDeviceId, String action,
       [Map<String, dynamic> args = const {}]) {
     lastCommandError.value = null;
+    final cmdId = '${++_cmdSeq}';
     _send({
       'type': 'command',
       'target_device_id': targetDeviceId,
       'action': action,
       'args': args,
-      'cmd_id': '${++_cmdSeq}',
+      'cmd_id': cmdId,
     });
+    return cmdId;
+  }
+
+  /// "Play on ▸": start an episode on another device. With no position the
+  /// target resumes from the server-stored listen position.
+  void playOnDevice(String targetDeviceId, int episodeId, bool isYoutube) {
+    sendCommand(targetDeviceId, 'play_episode', {
+      'episode_id': episodeId,
+      'is_youtube': isYoutube,
+    });
+  }
+
+  /// Whether something is loaded here that [sendPlaybackTo] could hand off.
+  bool get hasLocalPlayback =>
+      _reportedEpisodeId != null && _audioPlayerService.nowPlaying != null;
+
+  /// "Send to ▸": hand off what this device is playing to another device at the
+  /// live position — the push mirror of [playHere]. The local player pauses once
+  /// the server acks delivery. Returns false when nothing is playing here.
+  bool sendPlaybackTo(String targetDeviceId) {
+    final episodeId = _reportedEpisodeId;
+    if (episodeId == null || _audioPlayerService.nowPlaying == null) return false;
+    final live = _audioPlayerService.playPosition?.valueOrNull;
+    final positionSec =
+        live?.position.inSeconds.toDouble() ?? _reportedPositionSec;
+    _pendingHandoffCmdId = sendCommand(targetDeviceId, 'play_episode', {
+      'episode_id': episodeId,
+      'is_youtube': _reportedIsYoutube,
+      'position_sec': positionSec,
+    });
+    return true;
   }
 
   void _handleInbound(dynamic raw) {
@@ -388,6 +433,12 @@ class NowPlayingService {
         unawaited(_applyCommand(action, args));
         break;
       case 'ack':
+        final cmdId = msg['cmd_id'] as String?;
+        final handoff = cmdId != null && cmdId == _pendingHandoffCmdId;
+        if (handoff) _pendingHandoffCmdId = null;
+        if (msg['ok'] == true && handoff) {
+          unawaited(_applyCommand('pause', const {}));
+        }
         if (msg['ok'] == false) {
           final targetId = msg['target_device_id'] as String?;
           final match = devices.value.where((d) => d.deviceId == targetId);

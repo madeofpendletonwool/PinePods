@@ -4,7 +4,7 @@ use i18nrs::yew::use_translation;
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::format_time;
 use crate::components::notification_center::{NotificationCenter, ToastNotification};
-use crate::components::remote_devices::RemoteDevices;
+use crate::components::remote_devices::{RemoteDevices, RemoteDevicesPanel};
 use crate::components::safehtml::SafeHtml;
 use crate::requests::search_pods::{
     call_get_podcast_info, call_youtube_search, YouTubeSearchResults,
@@ -591,6 +591,7 @@ pub fn search_bar() -> Html {
                                 <span class="topbar-queue-badge">{ queue_count }</span>
                             }
                         </button>
+                        <RemoteDevices />
                         <button type="button" class="iconbtn search-trigger"
                                 onclick={on_expand.clone()}
                                 title="Search" aria-label="Open search">
@@ -665,6 +666,7 @@ pub fn search_bar() -> Html {
                     </form>
                 }
             </div>
+            <RemoteDevicesPanel />
             <ToastNotification />
         </div>
     }

@@ -1,6 +1,7 @@
 // Remote-devices control: an app-bar button that surfaces the user's other
-// active devices and what each is playing, with advisory transport controls +
-// "Play here". Commands are sent over the now-playing WebSocket; the target
+// active devices and what each is playing, with advisory transport controls,
+// "Play here" (pull) and "Send here" (push this device's playback), plus the
+// "Play on device" picker used by the episode context menu. Commands are sent over the now-playing WebSocket; the target
 // device applies them to its own local, authoritative player. Mirrors the web
 // remote_devices.rs panel.
 
@@ -20,9 +21,6 @@ String _fmtTime(double secs) {
   return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
 }
 
-/// App-bar action showing a broadcast icon with a badge for the number of other
-/// online devices; tapping opens the device panel. Renders nothing (a zero-size
-/// box) when the now-playing service isn't available.
 /// Icon for a device row, from the free-form `device_type`.
 IconData _deviceIcon(String deviceType) {
   switch (deviceType.toLowerCase()) {
@@ -39,10 +37,78 @@ IconData _deviceIcon(String deviceType) {
   }
 }
 
+String _deviceLabel(NowPlayingDevice device) => device.deviceName.isNotEmpty
+    ? device.deviceName
+    : (device.deviceType.isNotEmpty ? device.deviceType : 'Device');
+
+/// "Play on ▸": pick another device and start [episodeId] there (it resumes
+/// from the server-stored position). No-op when the service isn't available.
+Future<void> showPlayOnDevicePicker(
+  BuildContext context, {
+  required int episodeId,
+  required bool isYoutube,
+}) async {
+  final service = GlobalServices.nowPlayingService;
+  if (service == null) return;
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final target = await showModalBottomSheet<NowPlayingDevice>(
+    context: context,
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (context) => SafeArea(
+      child: ValueListenableBuilder<List<NowPlayingDevice>>(
+        valueListenable: service.devices,
+        builder: (context, deviceList, _) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.cast),
+                  const SizedBox(width: 8),
+                  Text('Play on…',
+                      style: Theme.of(context).textTheme.titleLarge),
+                ],
+              ),
+            ),
+            if (deviceList.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('No other devices are online.'),
+              ),
+            for (final d in deviceList)
+              ListTile(
+                leading: Icon(_deviceIcon(d.deviceType)),
+                title: Text(_deviceLabel(d)),
+                subtitle: Text(d.episodeId == 0
+                    ? 'idle'
+                    : (d.playing ? 'playing ${d.title}' : 'paused')),
+                onTap: () => Navigator.of(context).pop(d),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+  if (target == null) return;
+  service.playOnDevice(target.deviceId, episodeId, isYoutube);
+  messenger?.showSnackBar(
+    SnackBar(content: Text('Playing on ${_deviceLabel(target)}')),
+  );
+}
+
+/// App-bar action showing a devices icon with a badge for the number of other
+/// online devices; tapping opens the device panel. Renders nothing (a zero-size
+/// box) when the now-playing service isn't available, or — with
+/// [hideWhenEmpty] — while no other device is online.
 class RemoteDevicesButton extends StatelessWidget {
-  const RemoteDevicesButton({super.key, this.color});
+  const RemoteDevicesButton({super.key, this.color, this.hideWhenEmpty = false});
 
   final Color? color;
+  final bool hideWhenEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +118,7 @@ class RemoteDevicesButton extends StatelessWidget {
     return ValueListenableBuilder<List<NowPlayingDevice>>(
       valueListenable: service.devices,
       builder: (context, deviceList, _) {
+        if (hideWhenEmpty && deviceList.isEmpty) return const SizedBox.shrink();
         final iconColor = color ?? Theme.of(context).primaryIconTheme.color;
         return Stack(
           alignment: Alignment.center,
@@ -185,9 +252,8 @@ class _DeviceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = device.deviceName.isNotEmpty
-        ? device.deviceName
-        : (device.deviceType.isNotEmpty ? device.deviceType : 'Device');
+    final label = _deviceLabel(device);
+    final canSend = service.hasLocalPlayback;
     final track = device.title.isEmpty ? 'Idle' : device.title;
     final progress = device.durationSec > 0
         ? '${_fmtTime(device.positionSec)} / ${_fmtTime(device.durationSec)}'
@@ -231,6 +297,11 @@ class _DeviceRow extends StatelessWidget {
           Text(track, maxLines: 1, overflow: TextOverflow.ellipsis),
           // Idle devices (connected, nothing loaded) are listed so they can be
           // targeted, but there's nothing to transport-control or take over.
+          if (!hasEpisode && canSend)
+            Align(
+              alignment: Alignment.centerRight,
+              child: _sendHereButton(context, label),
+            ),
           if (hasEpisode) ...[
             Text(
               progress,
@@ -269,6 +340,7 @@ class _DeviceRow extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
+                if (canSend) _sendHereButton(context, label),
                 TextButton.icon(
                   icon: const Icon(Icons.play_circle_outline, size: 18),
                   label: const Text('Play here'),
@@ -282,6 +354,22 @@ class _DeviceRow extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+
+  /// Push this device's playback to [device] at the live position; the local
+  /// player pauses once the server confirms delivery.
+  Widget _sendHereButton(BuildContext context, String label) {
+    return TextButton.icon(
+      icon: const Icon(Icons.cast, size: 18),
+      label: const Text('Send here'),
+      onPressed: () {
+        if (service.sendPlaybackTo(device.deviceId)) {
+          final messenger = ScaffoldMessenger.maybeOf(context);
+          Navigator.of(context).pop();
+          messenger?.showSnackBar(SnackBar(content: Text('Sent to $label')));
+        }
+      },
     );
   }
 }

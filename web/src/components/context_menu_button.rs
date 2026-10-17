@@ -9,6 +9,9 @@ use crate::pages::downloads_tauri::{
 use crate::requests::episode::Episode;
 
 use crate::components::gen_funcs::format_error_message;
+use crate::components::remote_devices::device_label;
+use crate::requests::notify::toast_info;
+use crate::requests::now_playing::{play_on_device, NowPlayingState};
 use crate::requests::pod_req::{
     call_add_episode_to_collection, call_download_episode, call_get_collection_add_ui,
     call_get_collections, call_get_episode_collections, call_get_queued_episodes,
@@ -119,6 +122,17 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let i18n_mark_episode_incomplete = i18n.t("context_menu_button.mark_episode_incomplete").to_string();
     let i18n_mark_episode_complete = i18n.t("context_menu_button.mark_episode_complete").to_string();
     let i18n_add_to_collection = i18n.t("collections.add_to_collection").to_string();
+    let i18n_play_on = i18n.t("remote_devices.play_on").to_string();
+    let i18n_playing_on = i18n.t("remote_devices.playing_on").to_string();
+    // Other devices as (id, label, type). Selecting just these keeps the many
+    // context-menu instances on a page from re-rendering on every position report.
+    let play_on_targets = use_selector(|s: &NowPlayingState| {
+        s.devices
+            .iter()
+            .map(|d| (d.device_id.clone(), device_label(d), d.device_type.clone()))
+            .collect::<Vec<_>>()
+    });
+    let play_on_open = use_state(|| false);
     // None = closed; Some((top, right_edge)) = open at this fixed viewport position.
     // Single state ensures the dropdown never renders at a stale position.
     let dropdown_state = use_state(|| Option::<(i32, i32)>::None);
@@ -1252,9 +1266,50 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         </>
     };
 
+    // "Play on ▸ <device>": start this episode on another device (it resumes from
+    // the server-stored position). Hidden when no other device is connected.
+    let play_on_section = if play_on_targets.is_empty() {
+        html! {}
+    } else {
+        let toggle = {
+            let play_on_open = play_on_open.clone();
+            Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                play_on_open.set(!*play_on_open);
+            })
+        };
+        html! {
+            <>
+                <li class="dropdown-option" onclick={toggle}>
+                    { &i18n_play_on }
+                    <i class="ph ph-caret-right" style="float:right"></i>
+                </li>
+                if *play_on_open {
+                    { for play_on_targets.iter().map(|(id, label, device_type)| {
+                        let id = id.clone();
+                        let ep_id = props.episode.episodeid;
+                        let is_yt = props.episode.is_youtube;
+                        let toast = i18n_playing_on.replace("{name}", label);
+                        let onclick = wrap_action(Callback::from(move |_: MouseEvent| {
+                            play_on_device(&id, ep_id, is_yt);
+                            toast_info(&Dispatch::<NotificationState>::global(), toast.clone());
+                        }));
+                        html! {
+                            <li class="dropdown-option flex items-center gap-2" style="padding-left:1.5rem;" {onclick}>
+                                <i class={crate::components::remote_devices::device_icon(device_type)}></i>
+                                <span>{ label.clone() }</span>
+                            </li>
+                        }
+                    }) }
+                }
+            </>
+        }
+    };
+
     let action_buttons = match props.page_type {
         PageType::Saved => html! {
             <>
+                { play_on_section.clone() }
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
                     { if is_queued { &i18n_remove_from_queue } else { &i18n_queue_episode } }
                 </li>
@@ -1272,6 +1327,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         },
         PageType::Queue => html! {
             <>
+                { play_on_section.clone() }
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
                     { if is_saved { &i18n_remove_from_saved_episodes } else { &i18n_save_episode } }
                 </li>
@@ -1286,6 +1342,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         },
         PageType::Downloads => html! {
             <>
+                { play_on_section.clone() }
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
                     { if is_queued { &i18n_remove_from_queue } else { &i18n_queue_episode } }
                 </li>
@@ -1307,6 +1364,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         },
         PageType::Default => html! {
             <>
+                { play_on_section.clone() }
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_queue.clone())}>
                     { if is_queued { &i18n_remove_from_queue } else { &i18n_queue_episode } }
                 </li>

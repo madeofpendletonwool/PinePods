@@ -73,6 +73,9 @@ pub struct NowPlayingState {
     /// Set when an episode should start on this device (local "Play here" or an
     /// inbound command); the audio component observes this, plays, and clears it.
     pub pending_remote_play: Option<PendingRemotePlay>,
+    /// Whether the devices drawer is open. Lives in the store (not component
+    /// state) so the full-screen player can open it too.
+    pub panel_open: bool,
 }
 
 #[derive(Deserialize)]
@@ -93,6 +96,8 @@ enum ServerMsg {
         #[allow(dead_code)]
         detail: String,
         #[serde(default)]
+        cmd_id: Option<String>,
+        #[serde(default)]
         target_device_id: String,
     },
 }
@@ -105,6 +110,9 @@ thread_local! {
     static NP_RUNNING: RefCell<bool> = const { RefCell::new(false) };
     // Monotonic per-tab counter for command correlation ids.
     static NP_CMD_SEQ: RefCell<u64> = const { RefCell::new(0) };
+    // cmd_id of an in-flight "Send to" handoff; we pause locally only once the
+    // server acks delivery, so an offline target doesn't strand playback.
+    static NP_PENDING_HANDOFF: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 const DEVICE_ID_KEY: &str = "pinepods_device_id";
@@ -318,7 +326,9 @@ pub fn send_heartbeat() {
 
 /// Send an advisory remote-control command to another device. If the server
 /// reports the target offline, the ack surfaces as an error toast.
-pub fn send_command(target_device_id: &str, action: &str, args: Value) {
+/// Send an advisory command to another device. Returns the correlation id the
+/// server echoes back in its `ack`.
+pub fn send_command(target_device_id: &str, action: &str, args: Value) -> String {
     let cmd_id = NP_CMD_SEQ.with(|c| {
         let mut c = c.borrow_mut();
         *c += 1;
@@ -334,6 +344,56 @@ pub fn send_command(target_device_id: &str, action: &str, args: Value) {
         })
         .to_string(),
     );
+    cmd_id
+}
+
+/// "Play on ▸": start an episode on another device. With no position the target
+/// resumes from the server-stored listen position.
+pub fn play_on_device(target_device_id: &str, episode_id: i32, is_youtube: bool) {
+    send_command(
+        target_device_id,
+        "play_episode",
+        json!({ "episode_id": episode_id, "is_youtube": is_youtube }),
+    );
+}
+
+/// "Send to ▸": hand off what this tab is playing to another device at our live
+/// position — the push mirror of "Play here". The local player pauses once the
+/// server acks delivery. Returns false when nothing is playing here.
+pub fn send_playback_to(target_device_id: &str) -> bool {
+    let state = Dispatch::<UIState>::global().get();
+    let Some(cp) = state.currently_playing.as_ref() else {
+        return false;
+    };
+    let position = state
+        .media_element
+        .as_ref()
+        .map(|m| m.current_time())
+        .unwrap_or(state.current_time_seconds);
+    let cmd_id = send_command(
+        target_device_id,
+        "play_episode",
+        json!({
+            "episode_id": cp.episode_id,
+            "is_youtube": cp.is_youtube,
+            "position_sec": position,
+        }),
+    );
+    NP_PENDING_HANDOFF.with(|h| *h.borrow_mut() = Some(cmd_id));
+    true
+}
+
+/// Take (and clear) the pending handoff if `cmd_id` is the one it's waiting on.
+fn take_handoff(cmd_id: &Option<String>) -> bool {
+    NP_PENDING_HANDOFF.with(|h| {
+        let mut h = h.borrow_mut();
+        if cmd_id.is_some() && *h == *cmd_id {
+            *h = None;
+            true
+        } else {
+            false
+        }
+    })
 }
 
 fn handle_inbound(text: &str) {
@@ -350,9 +410,12 @@ fn handle_inbound(text: &str) {
         Ok(ServerMsg::Command { action, args, .. }) => apply_command(&action, &args),
         Ok(ServerMsg::Ack {
             ok: false,
+            cmd_id,
             target_device_id,
             ..
         }) => {
+            // A failed handoff leaves local playback running.
+            take_handoff(&cmd_id);
             let name = Dispatch::<NowPlayingState>::global()
                 .get()
                 .devices
@@ -366,7 +429,13 @@ fn handle_inbound(text: &str) {
                 format!("{} is offline — command not delivered", name),
             );
         }
-        Ok(ServerMsg::Ack { .. }) => {}
+        Ok(ServerMsg::Ack {
+            ok: true, cmd_id, ..
+        }) => {
+            if take_handoff(&cmd_id) {
+                apply_command("pause", &Value::Null);
+            }
+        }
         Err(_) => {}
     }
 }

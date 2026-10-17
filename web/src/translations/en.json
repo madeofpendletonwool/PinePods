@@ -1505,7 +1505,12 @@
     "no_devices_description": "Devices playing on your account will show up here to view and control.",
     "pause": "Pause",
     "play": "Play",
-    "play_here": "Play here"
+    "play_here": "Play here",
+    "send_here": "Send here",
+    "sent_to": "Sent to {name}",
+    "play_on": "Play on",
+    "playing_on": "Playing on {name}",
+    "devices": "Devices"
   },
   "user_self_service": {
     "enable_user_self_service": "Enable User Self Service",
