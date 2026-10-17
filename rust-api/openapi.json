@@ -14345,6 +14345,13 @@
             "type": "integer",
             "format": "int64",
             "description": "Unix seconds when this snapshot was last updated (server-stamped on write)."
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Actions the device says it applies (from its `capabilities` connect\nparameter). Empty means it didn't say: assume the original action set."
           }
         }
       },
