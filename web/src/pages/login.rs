@@ -1909,12 +1909,16 @@ pub fn login() -> Html {
                             if !oidc_providers.is_empty() {
                                 html! {
                                     <>
-                                        <div class="oidc-divider">
-                                            <div class="oidc-divider-line"></div>
-                                            <div class="relative flex justify-center">
-                                                <span class="oidc-divider-text item_container-text">{&i18n_or_continue_with}</span>
+                                        // The divider separates the OIDC buttons from the
+                                        // standard login form, so skip it when that form is hidden.
+                                        if !*disable_standard_login {
+                                            <div class="oidc-divider">
+                                                <div class="oidc-divider-line"></div>
+                                                <div class="relative flex justify-center">
+                                                    <span class="oidc-divider-text item_container-text">{&i18n_or_continue_with}</span>
+                                                </div>
                                             </div>
-                                        </div>
+                                        }
 
                                         <div class="flex flex-col space-y-2">
                                             {
