@@ -29,6 +29,9 @@ class PinepodsAudioPlayer: NSObject {
     private var skipSilenceEnabled = false
     private var skipSegments: [(start: Double, end: Double)] = []
 
+    // AVPlayer.play() always resets rate to 1.0, so we track the desired rate here and reassert it after play().
+    private var currentPlaybackRate: Float = 1.0
+
     init(eventSink: FlutterEventSink?) {
         self.eventSink = eventSink
         super.init()
@@ -282,8 +285,16 @@ class PinepodsAudioPlayer: NSObject {
             }
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             if options.contains(.shouldResume) {
-                NSLog("[PinepodsAudioPlayer] Audio interruption ended - should resume available")
-                // Don't auto-resume for podcasts - let user decide
+                // shouldResume only fires for transient interruptions (e.g. Siri), not phone calls.
+                NSLog("[PinepodsAudioPlayer] Audio interruption ended - resuming playback")
+                do {
+                    try AVAudioSession.sharedInstance().setActive(true)
+                } catch {
+                    NSLog("[PinepodsAudioPlayer] Failed to reactivate audio session after interruption: \(error)")
+                }
+                play()
+            } else {
+                NSLog("[PinepodsAudioPlayer] Audio interruption ended - resume not recommended by system")
             }
 
         @unknown default:
@@ -495,22 +506,20 @@ class PinepodsAudioPlayer: NSObject {
                 if finished {
                     NSLog("[PinepodsAudioPlayer] Seeked to start position: \(startPosition)ms")
                 }
-                self?.player?.play()
-                // Update now playing info again after playback starts
-                self?.updateNowPlayingPlaybackInfo()
+                self?.play()
             }
         } else {
-            player?.play()
-            // Update now playing info after playback starts
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.updateNowPlayingPlaybackInfo()
-            }
+            play()
         }
     }
 
     func play() {
-        NSLog("[PinepodsAudioPlayer] play")
+        NSLog("[PinepodsAudioPlayer] play, reasserting rate \(currentPlaybackRate)")
         player?.play()
+        // play() resets rate to 1.0, so reassert the desired rate.
+        if currentPlaybackRate != 1.0 {
+            player?.rate = currentPlaybackRate
+        }
         // Slight delay to allow rate to update before refreshing Now Playing
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.updateNowPlayingPlaybackInfo()
@@ -562,7 +571,11 @@ class PinepodsAudioPlayer: NSObject {
 
     func setPlaybackSpeed(_ speed: Float) {
         NSLog("[PinepodsAudioPlayer] setPlaybackSpeed: \(speed)")
-        player?.rate = speed
+        currentPlaybackRate = speed
+        // Setting a nonzero rate while paused would start playback, so only apply it if already playing.
+        if player?.rate != 0 {
+            player?.rate = speed
+        }
         updateNowPlayingPlaybackInfo()
     }
 
