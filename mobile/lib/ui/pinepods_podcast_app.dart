@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:pinepods_mobile/ui/podcast/remote_devices_button.dart';
 import 'package:pinepods_mobile/api/podcast/mobile_podcast_api.dart';
 import 'package:pinepods_mobile/api/podcast/podcast_api.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
@@ -682,6 +683,8 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                       pinned: true,
                       snap: false,
                       actions: <Widget>[
+                        // Only takes space once another device is online.
+                        const RemoteDevicesButton(hideWhenEmpty: true),
                         IconButton(
                           tooltip: 'Queue',
                           icon: const Icon(Icons.queue_music),

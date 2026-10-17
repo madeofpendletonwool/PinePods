@@ -1,6 +1,12 @@
 // Remote-devices panel: shows the user's other active devices and what they're
-// playing, with advisory transport controls + "play here". Sends commands over the
-// now-playing WebSocket; the target device applies them to its local player.
+// playing, with advisory transport controls, "Play here" (pull) and "Send here"
+// (push this tab's playback). Sends commands over the now-playing WebSocket; the
+// target device applies them to its local player.
+//
+// Split in two: `RemoteDevices` is just the topbar button (desktop layout only),
+// while `RemoteDevicesPanel` — the drawer plus the inbound remote-play observer —
+// is mounted once regardless of layout, so narrow screens still receive beams and
+// the full-screen player can open the drawer via `NowPlayingState::panel_open`.
 
 use serde_json::json;
 use wasm_bindgen_futures::spawn_local;
@@ -10,8 +16,10 @@ use yewdux::prelude::*;
 use crate::components::audio::on_play_click;
 use crate::components::context::{AppState, UIState};
 use crate::requests::now_playing::{
-    send_command, NowPlayingDevice, NowPlayingState, PendingRemotePlay,
+    send_command, send_playback_to, NowPlayingDevice, NowPlayingState, PendingRemotePlay,
 };
+use crate::requests::notify::toast_info;
+use crate::components::context::NotificationState;
 use crate::requests::pod_req::{call_get_episode_metadata, EpisodeRequest};
 use i18nrs::yew::use_translation;
 
@@ -30,17 +38,71 @@ fn fmt_time(secs: f64) -> String {
     }
 }
 
+/// Phosphor icon for a device row, from the free-form `device_type`.
+pub fn device_icon(device_type: &str) -> &'static str {
+    match device_type.to_ascii_lowercase().as_str() {
+        "web" => "ph ph-browser",
+        "ios" | "android" | "mobile" => "ph ph-device-mobile",
+        "firewood" => "ph ph-terminal-window",
+        _ => "ph ph-monitor",
+    }
+}
+
+/// Display label for a device row / menu entry.
+pub fn device_label(device: &NowPlayingDevice) -> String {
+    if device.device_name.is_empty() {
+        device.device_type.clone()
+    } else {
+        device.device_name.clone()
+    }
+}
+
+/// Topbar button that toggles the devices drawer.
 #[function_component(RemoteDevices)]
 pub fn remote_devices() -> Html {
     let (np_state, np_dispatch) = use_store::<NowPlayingState>();
+    let toggle = Callback::from(move |e: MouseEvent| {
+        e.stop_propagation();
+        np_dispatch.reduce_mut(|s| s.panel_open = !s.panel_open);
+    });
+    let device_count = np_state.devices.len();
+    html! {
+        <div class="remote-devices">
+            <button
+                type="button"
+                class="iconbtn"
+                title="Other devices"
+                onclick={toggle}
+            >
+                <i class="ph ph-broadcast text-2xl"></i>
+                if device_count > 0 {
+                    <span class="nc-bell-badge">
+                        { if device_count > 9 { "9+".to_string() } else { device_count.to_string() } }
+                    </span>
+                }
+            </button>
+        </div>
+    }
+}
+
+/// The devices drawer + the observer that starts inbound remote plays on this
+/// device. Mount exactly once, outside any responsive branch.
+#[function_component(RemoteDevicesPanel)]
+pub fn remote_devices_panel() -> Html {
+    let (np_state, np_dispatch) = use_store::<NowPlayingState>();
     let (app_state, _) = use_store::<AppState>();
     let (ui_state, ui_dispatch) = use_store::<UIState>();
-    let open = use_state(|| false);
+    let notif_dispatch = Dispatch::<NotificationState>::global();
+    let open = np_state.panel_open;
+    // Only the fact that something is playing here matters for "Send here".
+    let local_playing = ui_state.currently_playing.is_some();
 
     let (i18n, _) = use_translation();
     let i18n_pause = i18n.t("remote_devices.pause").to_string();
     let i18n_play = i18n.t("remote_devices.play").to_string();
     let i18n_play_here = i18n.t("remote_devices.play_here").to_string();
+    let i18n_send_here = i18n.t("remote_devices.send_here").to_string();
+    let i18n_sent_to = i18n.t("remote_devices.sent_to").to_string();
     let i18n_other_devices = i18n.t("remote_devices.other_devices").to_string();
     let i18n_no_other_devices = i18n.t("remote_devices.no_other_devices").to_string();
     let i18n_no_devices_description = i18n.t("remote_devices.no_devices_description").to_string();
@@ -114,30 +176,27 @@ pub fn remote_devices() -> Html {
         });
     }
 
-    let toggle = {
-        let open = open.clone();
-        Callback::from(move |e: MouseEvent| {
-            e.stop_propagation();
-            open.set(!*open);
-        })
-    };
     let close = {
-        let open = open.clone();
-        Callback::from(move |_: MouseEvent| open.set(false))
+        let np_dispatch = np_dispatch.clone();
+        Callback::from(move |_: MouseEvent| np_dispatch.reduce_mut(|s| s.panel_open = false))
     };
     // Stop clicks inside the panel from bubbling to the topbar / closing it.
     let stop = Callback::from(|e: MouseEvent| e.stop_propagation());
-
-    let device_count = np_state.devices.len();
 
     let render_device = {
         let np_dispatch = np_dispatch.clone();
         let i18n_pause = i18n_pause.clone();
         let i18n_play = i18n_play.clone();
         let i18n_play_here = i18n_play_here.clone();
+        let i18n_send_here = i18n_send_here.clone();
+        let i18n_sent_to = i18n_sent_to.clone();
+        let notif_dispatch = notif_dispatch.clone();
         move |device: &NowPlayingDevice| -> Html {
             let id = device.device_id.clone();
             let is_playing = device.playing;
+            // Connected but nothing loaded (episode_id 0): listed so it can be a
+            // target, but there's nothing to transport-control or take over.
+            let is_idle = device.episode_id == 0;
 
             let on_play_pause = {
                 let id = id.clone();
@@ -184,6 +243,20 @@ pub fn remote_devices() -> Html {
                 })
             };
 
+            let label = device_label(device);
+            let on_send_here = {
+                let id = id.clone();
+                let np_dispatch = np_dispatch.clone();
+                let notif_dispatch = notif_dispatch.clone();
+                let toast = i18n_sent_to.replace("{name}", &label);
+                Callback::from(move |_: MouseEvent| {
+                    if send_playback_to(&id) {
+                        toast_info(&notif_dispatch, toast.clone());
+                        np_dispatch.reduce_mut(|s| s.panel_open = false);
+                    }
+                })
+            };
+
             let track = if device.title.is_empty() {
                 "Idle".to_string()
             } else {
@@ -194,29 +267,27 @@ pub fn remote_devices() -> Html {
             } else {
                 fmt_time(device.position_sec)
             };
-            let label = if device.device_name.is_empty() {
-                device.device_type.clone()
-            } else {
-                device.device_name.clone()
-            };
 
             html! {
                 <div class="rd-row">
                     <div class="rd-row-top">
                         <span class="rd-name">
-                            <i class="ph ph-monitor"></i>{ label }
+                            <i class={ device_icon(&device.device_type) }></i>{ label }
                         </span>
                         <span class={classes!("rd-state", is_playing.then_some("is-playing"))}>
-                            { if is_playing { "▶ playing" } else { "⏸ paused" } }
+                            { if is_idle { "idle" } else if is_playing { "▶ playing" } else { "⏸ paused" } }
                         </span>
                     </div>
                     <span class="rd-track">{ track }</span>
-                    <span class="rd-progress">{ progress }</span>
+                    if !is_idle {
+                        <span class="rd-progress">{ progress }</span>
+                    }
+                    if !is_idle || local_playing {
                     <div class="rd-controls">
-                        // type="button" on every one: this drawer renders inside the
-                        // topbar search <form>, and a bare <button> defaults to submit —
-                        // which fired an empty-query search (proxy_search 500) and ate the
-                        // click so "Play here" never actually played.
+                        // type="button" on every one: a bare <button> defaults to
+                        // submit, and this drawer used to render inside the topbar
+                        // search <form> (an empty-query search ate the click).
+                        if !is_idle {
                         <button type="button" class="iconbtn" title="Skip back 15s" onclick={on_back}>
                             <i class="ph ph-skip-back"></i>
                         </button>
@@ -226,35 +297,32 @@ pub fn remote_devices() -> Html {
                         <button type="button" class="iconbtn" title="Skip forward 30s" onclick={on_fwd}>
                             <i class="ph ph-skip-forward"></i>
                         </button>
-                        <button type="button" class="rd-play-here ml-auto" title="Play this here" onclick={on_play_here}>
-                            <i class="ph ph-monitor-play mr-1"></i>{ &i18n_play_here }
-                        </button>
+                        }
+                        <div class="rd-actions">
+                            if local_playing {
+                                <button type="button" class="rd-play-here" title="Move what's playing here to this device" onclick={on_send_here}>
+                                    <i class="ph ph-arrow-square-out mr-1"></i>{ &i18n_send_here }
+                                </button>
+                            }
+                            if !is_idle {
+                                <button type="button" class="rd-play-here" title="Play this here" onclick={on_play_here}>
+                                    <i class="ph ph-monitor-play mr-1"></i>{ &i18n_play_here }
+                                </button>
+                            }
+                        </div>
                     </div>
+                    }
                 </div>
             }
         }
     };
 
     html! {
-        <div class="remote-devices">
-            <button
-                type="button"
-                class="iconbtn"
-                title="Other devices"
-                onclick={toggle}
-            >
-                <i class="ph ph-broadcast text-2xl"></i>
-                if device_count > 0 {
-                    <span class="nc-bell-badge">
-                        { if device_count > 9 { "9+".to_string() } else { device_count.to_string() } }
-                    </span>
-                }
-            </button>
-
+        <>
             // Scrim + panel stay mounted; `.is-open` drives the two-way CSS
             // transition (mirrors the Activity drawer) so closing animates too.
-            <div class={classes!("nc-scrim", (*open).then_some("is-open"))} onclick={close.clone()}></div>
-            <div class={classes!("nc-panel", "nc-form-drawer", (*open).then_some("is-open"))}
+            <div class={classes!("nc-scrim", open.then_some("is-open"))} onclick={close.clone()}></div>
+            <div class={classes!("nc-panel", "nc-form-drawer", open.then_some("is-open"))}
                  data-density="compact" onclick={stop}>
                 <div class="nc-header">
                     <h3 class="nc-h-title">{ &i18n_other_devices }</h3>
@@ -275,6 +343,6 @@ pub fn remote_devices() -> Html {
                     }
                 </div>
             </div>
-        </div>
+        </>
     }
 }

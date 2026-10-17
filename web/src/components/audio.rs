@@ -1745,14 +1745,23 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             <i class="ph ph-caret-down" style="font-size:24px;"></i>
                         </button>
                         <span class="player-fs-eyebrow">{ &i18n_now_playing }</span>
-                        <button onclick={Callback::from({
-                            let audio_dispatch = _audio_dispatch.clone();
-                            move |_: MouseEvent| {
-                                audio_dispatch.reduce_mut(|s| s.queue_panel_open = !s.queue_panel_open);
-                            }
-                        })} class="player-btn" title="Queue">
-                            <i class="ph ph-queue" style="font-size:22px;"></i>
-                        </button>
+                        <div class="player-fs-topbar-right">
+                            // Opens the devices drawer ("Send here" lives on each row).
+                            <button onclick={Callback::from(|_: MouseEvent| {
+                                Dispatch::<crate::requests::now_playing::NowPlayingState>::global()
+                                    .reduce_mut(|s| s.panel_open = true);
+                            })} class="player-btn" title={ i18n.t("remote_devices.devices").to_string() }>
+                                <i class="ph ph-broadcast" style="font-size:22px;"></i>
+                            </button>
+                            <button onclick={Callback::from({
+                                let audio_dispatch = _audio_dispatch.clone();
+                                move |_: MouseEvent| {
+                                    audio_dispatch.reduce_mut(|s| s.queue_panel_open = !s.queue_panel_open);
+                                }
+                            })} class="player-btn" title="Queue">
+                                <i class="ph ph-queue" style="font-size:22px;"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="player-fs-main">

@@ -6499,6 +6499,8 @@ input:checked + .notification-toggle-slider:before {
 }
 .rd-play-here:hover { background: color-mix(in srgb, var(--accent-color) 26%, transparent); }
 .rd-play-here i { font-size: 15px; }
+.rd-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.player-fs-topbar-right { display: flex; align-items: center; gap: 4px; }
 
 @keyframes spinner-rotate {
     0% {
