@@ -9,10 +9,19 @@ services:
       PGDATA: /var/lib/pgdata/pgdata
     volumes:
       - /home/user/pinepods/pgdata:/var/lib/pgdata
+    ports:
+      - "5432:5432"
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pinepods_database"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   valkey:
     image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
     restart: always
 
   pinepods:
@@ -21,9 +30,14 @@ services:
       - "8040:8040"
     environment:
       # Basic Server Info
-      SEARCH_API_URL: "https://search.pinepods.online/api/search"
-      PEOPLE_API_URL: "https://people.pinepods.online"
-      HOSTNAME: "http://localhost:8040"
+      SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+      PEOPLE_API_URL: 'https://people.pinepods.online'
+      HOSTNAME: 'http://localhost:8040'
+      # Default Admin User Information
+      USERNAME: myadminuser01
+      PASSWORD: myS3curepass
+      FULLNAME: Pinepods Admin
+      EMAIL: user@pinepods.online
       # Database Vars
       DB_TYPE: postgresql
       DB_HOST: db
@@ -40,24 +54,19 @@ services:
       PGID: ${GID:-911}
       # Add timezone configuration
       TZ: "America/New_York"
-      # Language Configuration
-      DEFAULT_LANGUAGE: "en"
-      # Optional AI features (#726 transcripts, #790 ad detection). Uncomment + run the
-      # pinepods-ai service below to enable; leave unset to keep AI features disabled.
-      # PINEPODS_AI_URL: "http://pinepods-ai:8100"
     volumes:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
-      # Mount local media files to use the Add Local Podcast feature (optional)
-      - /home/user/pinepods/local-media:/opt/pinepods/local-media
       # Timezone volumes, HIGHLY optional. Read the timezone notes below
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    restart: always
     depends_on:
-      - db
-      - valkey
+      db:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+    restart: always
 
   # Optional AI sidecar for transcription (#726) + ad detection (#790). Disabled by
   # default — uncomment this whole service AND the PINEPODS_AI_URL var above to enable.
