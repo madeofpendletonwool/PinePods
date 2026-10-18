@@ -23,6 +23,10 @@ pub(super) async fn serve_episode_file(
         header::IF_UNMODIFIED_SINCE,
         header::IF_MATCH,
     ] {
+        // RFC 9110 defines Range only for GET, including when HEAD probes a file.
+        if method != Method::GET && (name == header::RANGE || name == header::IF_RANGE) {
+            continue;
+        }
         for value in headers.get_all(&name) {
             request = request.header(name.clone(), value);
         }
@@ -118,6 +122,81 @@ mod tests {
             assert_eq!(response.headers()[header::CONTENT_RANGE], content_range);
             assert_eq!(to_bytes(response.into_body(), 10).await.unwrap(), expected);
         }
+    }
+
+    #[tokio::test]
+    async fn head_ignores_bounded_and_unsatisfiable_ranges() {
+        let file = EpisodeFile::new().await;
+        for range in ["bytes=2-5", "bytes=20-"] {
+            let response = file.request(Method::HEAD, &[("range", range)]).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(response.headers()[header::CONTENT_LENGTH], "10");
+            assert!(!response.headers().contains_key(header::CONTENT_RANGE));
+            assert!(to_bytes(response.into_body(), 10).await.unwrap().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn if_range_requires_a_matching_strong_etag() {
+        let file = EpisodeFile::new().await;
+        let full = file.request(Method::HEAD, &[]).await;
+        let etag = full.headers()[header::ETAG].to_str().unwrap();
+        let weak = format!("W/{etag}");
+        for (validator, expected) in [
+            (etag, StatusCode::PARTIAL_CONTENT),
+            (weak.as_str(), StatusCode::OK),
+            ("\"stale\"", StatusCode::OK),
+        ] {
+            let response = file
+                .request(
+                    Method::GET,
+                    &[("range", "bytes=2-5"), ("if-range", validator)],
+                )
+                .await;
+            assert_eq!(response.status(), expected);
+            let expected_body = if expected == StatusCode::PARTIAL_CONTENT {
+                "2345"
+            } else {
+                "0123456789"
+            };
+            assert_eq!(
+                to_bytes(response.into_body(), 10).await.unwrap(),
+                expected_body
+            );
+        }
+        for (validator, expected) in [
+            (etag, StatusCode::RANGE_NOT_SATISFIABLE),
+            ("\"stale\"", StatusCode::OK),
+        ] {
+            let response = file
+                .request(
+                    Method::GET,
+                    &[("range", "bytes=20-"), ("if-range", validator)],
+                )
+                .await;
+            assert_eq!(response.status(), expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn cache_preconditions_take_precedence_over_ranges() {
+        let file = EpisodeFile::new().await;
+        let full = file.request(Method::HEAD, &[]).await;
+        let etag = full.headers()[header::ETAG].to_str().unwrap();
+        let cached = file
+            .request(
+                Method::GET,
+                &[("range", "bytes=2-5"), ("if-none-match", etag)],
+            )
+            .await;
+        assert_eq!(cached.status(), StatusCode::NOT_MODIFIED);
+        let failed = file
+            .request(
+                Method::GET,
+                &[("range", "bytes=2-5"), ("if-match", "\"stale\"")],
+            )
+            .await;
+        assert_eq!(failed.status(), StatusCode::PRECONDITION_FAILED);
     }
 
     #[tokio::test]
