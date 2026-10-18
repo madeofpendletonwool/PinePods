@@ -443,8 +443,7 @@ class PinepodsAudioPlayer: NSObject {
 
         player?.replaceCurrentItem(with: playerItem)
 
-        // Set up now playing info BEFORE starting playback
-        // Use playbackRate 1.0 to indicate we're about to play (not 0 which indicates paused)
+        // Report the actual rate while the initial seek or a user pause is pending.
         if let meta = metadata {
             let title = meta["title"] as? String ?? "Unknown"
             let artist = meta["artist"] as? String ?? "Unknown"
@@ -469,7 +468,7 @@ class PinepodsAudioPlayer: NSObject {
                     artist: artist,
                     artworkUrl: artworkUrl,
                     duration: duration,
-                    playbackRate: 1.0,  // Set to 1.0 since we're about to play
+                    playbackRate: player?.rate ?? 0,
                     elapsedTime: elapsed
                 )
                 NSLog("[PinepodsAudioPlayer] Now Playing info set successfully")
@@ -499,12 +498,15 @@ class PinepodsAudioPlayer: NSObject {
             let time = CMTime(value: CMTimeValue(startPosition), timescale: 1000)
             player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
                 DispatchQueue.main.async {
-                    guard let self = self, finished,
-                          self.playbackIntent.canStart(generation: generation) else { return }
-                    self.resumeRequestedPlayback()
+                    guard let self = self else { return }
+                    self.playbackIntent.completeLoad(generation: generation)
+                    if finished && self.playbackIntent.canStart(generation: generation) {
+                        self.resumeRequestedPlayback()
+                    }
                 }
             }
         } else {
+            playbackIntent.completeLoad(generation: generation)
             resumeRequestedPlayback()
         }
     }
@@ -515,7 +517,7 @@ class PinepodsAudioPlayer: NSObject {
     }
 
     private func resumeRequestedPlayback() {
-        guard playbackIntent.canPlay else { return }
+        guard playbackIntent.canResumeLoadedEpisode else { return }
         player?.play()
         // AVPlayer.play() resets rate to 1.0, including lock-screen resume.
         if playbackIntent.rate != 1 { player?.rate = playbackIntent.rate }

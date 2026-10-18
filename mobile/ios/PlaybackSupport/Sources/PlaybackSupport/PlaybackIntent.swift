@@ -3,8 +3,15 @@ struct PlaybackIntent {
     private(set) var generation: UInt64 = 0
     private var requested = false
     private var interrupted = false
+    private var loadedGeneration: UInt64?
 
     var canPlay: Bool { requested && !interrupted }
+    var canResumeLoadedEpisode: Bool { canPlay && loadedGeneration == generation }
+
+    mutating func completeLoad(generation: UInt64) {
+        guard self.generation == generation else { return }
+        loadedGeneration = generation
+    }
 
     mutating func beginEpisode() -> UInt64 {
         generation &+= 1

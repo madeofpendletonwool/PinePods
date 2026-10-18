@@ -238,7 +238,7 @@ class PinepodsAudioService {
 
       // Only apply the server speed if it's a real per-podcast override, not the echoed-back default (#882, #963).
       if (playDetails.playbackSpeedCustomized) {
-        await _audioPlayerService.setPlaybackSpeed(playDetails.playbackSpeed);
+        await _audioPlayerService.setPlaybackSpeed(playDetails.playbackSpeed, persist: false);
       }
 
       // Handle skip intro if enabled and episode just started
@@ -326,7 +326,7 @@ class PinepodsAudioService {
 
       if (_currentEpisodeId == episodeId) {
         if (playDetails.playbackSpeedCustomized) {
-          await _audioPlayerService.setPlaybackSpeed(playDetails.playbackSpeed);
+          await _audioPlayerService.setPlaybackSpeed(playDetails.playbackSpeed, persist: false);
         }
 
         if (playDetails.startSkip > 0 && !resume) {
