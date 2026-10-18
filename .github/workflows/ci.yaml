@@ -73,14 +73,24 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: test_password
+          MARIADB_DATABASE: test_db
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: hecrj/setup-rust-action@v2
         with:
-          rust-version: 1.95
+          rust-version: "1.99.0"
 
-      - name: Run episode pagination/sort/filter regression tests
+      - name: Run API and pagination regressions on PostgreSQL and MariaDB
         working-directory: ./rust-api
         env:
           DB_HOST: localhost
@@ -88,7 +98,9 @@ jobs:
           DB_USER: test_user
           DB_PASSWORD: test_password
           DB_NAME: test_db
-        run: cargo test episode_pagination -- --ignored --test-threads=1
+          PINEPODS_TEST_POSTGRES_URL: postgres://test_user:test_password@localhost:5432/test_db
+          PINEPODS_TEST_MYSQL_URL: mysql://root:test_password@127.0.0.1:3306/test_db
+        run: cargo test --locked -- --include-ignored --test-threads=1
 
   frontend-tests:
     runs-on: ubuntu-latest

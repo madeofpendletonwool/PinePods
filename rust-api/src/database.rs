@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod pagination_backend_tests;
+
 use sqlx::{MySql, Pool, Postgres, Row};
 use std::time::Duration;
 use crate::{config::{Config, OIDCConfig}, error::{AppError, AppResult}};
