@@ -30,13 +30,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.PUSH_PAT }}
           persist-credentials: true
 
       - name: Setup Helm
-        uses: Azure/setup-helm@v4.2.0
+        uses: Azure/setup-helm@v5
 
       - name: Install yq
         run: |
@@ -79,7 +79,7 @@ jobs:
       - name: Checkout main branch
         run: git checkout main
 
-      - uses: EndBug/add-and-commit@v9
+      - uses: EndBug/add-and-commit@v11
         with:
           github_token: ${{ secrets.PUSH_PAT }}
           committer_name: GitHub Actions

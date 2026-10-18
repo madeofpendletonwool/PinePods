@@ -5039,20 +5039,9 @@ pub async fn verify_mfa(
     
     if let Some(secret_str) = secret {
         // Verify the TOTP code
-        use totp_rs::{Algorithm, TOTP, Secret};
+        let totp = crate::database::build_totp(&secret_str, "login")?;
         
-        let totp = TOTP::new(
-            Algorithm::SHA1,
-            6,
-            1,
-            30,
-            Secret::Encoded(secret_str.clone()).to_bytes().unwrap(),
-            Some("Pinepods".to_string()),
-            "login".to_string(),
-        ).map_err(|e| AppError::internal(&format!("Failed to create TOTP: {}", e)))?;
-        
-        let is_valid = totp.check_current(&request.mfa_code)
-            .map_err(|e| AppError::internal(&format!("Failed to verify TOTP: {}", e)))?;
+        let is_valid = totp.check_current(&request.mfa_code).is_some();
         
         Ok(Json(serde_json::json!({ "verified": is_valid })))
     } else {
