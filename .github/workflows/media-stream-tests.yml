@@ -1,0 +1,16 @@
+name: Media Stream Tests
+permissions:
+  contents: read
+on:
+  pull_request:
+    paths: ["rust-api/**", ".github/workflows/media-stream-tests.yml"]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hecrj/setup-rust-action@v2
+        with:
+          rust-version: "1.99.0"
+      - run: cargo test --locked --manifest-path rust-api/Cargo.toml handlers::media_stream
