@@ -1,6 +1,3 @@
-#[cfg(test)]
-mod playback_settings_tests;
-
 use sqlx::{MySql, Pool, Postgres, Row};
 use std::time::Duration;
 use crate::{config::{Config, OIDCConfig}, error::{AppError, AppResult}};
@@ -31477,3 +31474,6 @@ mod totp_tests {
         assert!(url.contains(&format!("secret={SECRET}")));
     }
 }
+
+#[cfg(test)]
+mod playback_settings_tests;

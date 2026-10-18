@@ -42,6 +42,11 @@ jobs:
           rust-version: "1.99.0"
       - name: Unit and database regressions
         env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: pinepods_test
+          DB_PASSWORD: pinepods_test
+          DB_NAME: pinepods_test
           PINEPODS_TEST_POSTGRES_URL: postgres://pinepods_test:pinepods_test@localhost:5432/pinepods_test
           PINEPODS_TEST_MYSQL_URL: mysql://root:pinepods_test@127.0.0.1:3306/pinepods_test
-        run: cargo test --locked --manifest-path rust-api/Cargo.toml -- --include-ignored
+        run: cargo test --locked --manifest-path rust-api/Cargo.toml -- --include-ignored --test-threads=1
