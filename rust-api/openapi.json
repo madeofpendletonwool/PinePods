@@ -14471,7 +14471,6 @@
         "type": "object",
         "required": [
           "person_name",
-          "person_img",
           "podcast_id"
         ],
         "properties": {
@@ -14479,7 +14478,10 @@
             "type": "string"
           },
           "person_img": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "podcast_id": {
             "type": "integer",
