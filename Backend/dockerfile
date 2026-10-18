@@ -1,5 +1,5 @@
 # Builder stage for compiling the Actix web application
-FROM rust:bookworm AS builder
+FROM rust:trixie AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get upgrade -y && \
@@ -17,7 +17,7 @@ COPY ./pinepods_backend/src ./src
 RUN cargo build --release
 
 # Final stage for setting up the runtime environment
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
@@ -50,8 +50,8 @@ WORKDIR /
 # Set environment variables if needed
 ENV RUST_LOG=info
 
-# Expose the port that Actix will run on
-EXPOSE 8080
+# Expose the port that Actix listens on (bound in main.rs)
+EXPOSE 5000
 
 # Start the Actix web server
 CMD ["/startup.sh"]

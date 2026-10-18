@@ -21,7 +21,6 @@ from database_functions.migrations import Migration, get_migration_manager, regi
 
 # Import password hashing utilities
 try:
-    from passlib.hash import argon2
     from argon2 import PasswordHasher
     from argon2.exceptions import HashingError
 except ImportError:

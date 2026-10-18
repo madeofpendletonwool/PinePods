@@ -207,3 +207,6 @@ pubspec.lock
 # C/C++ build files
 **/android/app/.cxx/
 **/android/**/.cxx/
+
+# Cargo build output for every Rust crate in the repo
+**/target/

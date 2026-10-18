@@ -3042,7 +3042,7 @@ pub async fn add_oidc_provider(
         request.icon_svg.as_deref().unwrap_or(""),
         request.name_claim.as_deref().unwrap_or("name"),
         request.email_claim.as_deref().unwrap_or("email"),
-        request.username_claim.as_deref().unwrap_or("username"),
+        request.username_claim.as_deref().unwrap_or("preferred_username"),
         request.roles_claim.as_deref().unwrap_or(""),
         request.user_role.as_deref().unwrap_or(""),
         request.admin_role.as_deref().unwrap_or(""),
@@ -3104,7 +3104,7 @@ pub async fn update_oidc_provider(
         request.icon_svg.as_deref().unwrap_or(""),
         request.name_claim.as_deref().unwrap_or("name"),
         request.email_claim.as_deref().unwrap_or("email"),
-        request.username_claim.as_deref().unwrap_or("username"),
+        request.username_claim.as_deref().unwrap_or("preferred_username"),
         request.roles_claim.as_deref().unwrap_or(""),
         request.user_role.as_deref().unwrap_or(""),
         request.admin_role.as_deref().unwrap_or("")
@@ -5039,20 +5039,9 @@ pub async fn verify_mfa(
     
     if let Some(secret_str) = secret {
         // Verify the TOTP code
-        use totp_rs::{Algorithm, TOTP, Secret};
+        let totp = crate::database::build_totp(&secret_str, "login")?;
         
-        let totp = TOTP::new(
-            Algorithm::SHA1,
-            6,
-            1,
-            30,
-            Secret::Encoded(secret_str.clone()).to_bytes().unwrap(),
-            Some("Pinepods".to_string()),
-            "login".to_string(),
-        ).map_err(|e| AppError::internal(&format!("Failed to create TOTP: {}", e)))?;
-        
-        let is_valid = totp.check_current(&request.mfa_code)
-            .map_err(|e| AppError::internal(&format!("Failed to verify TOTP: {}", e)))?;
+        let is_valid = totp.check_current(&request.mfa_code).is_some();
         
         Ok(Json(serde_json::json!({ "verified": is_valid })))
     } else {

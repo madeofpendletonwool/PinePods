@@ -2,7 +2,7 @@
 name = "web"
 version = "0.9.0"
 edition = "2021"
-rust-version = "1.95"
+rust-version = "1.99"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,7 +11,7 @@ rust-version = "1.95"
 #yew = { git = "https://github.com/yewstack/yew/", features = ["csr"] }
 yew = { version = "0.23.0", features = ["csr"] }
 #yew = { "0.21.0", features = ["csr"] }
-web-sys = { version = "0.3.102", features = [
+web-sys = { version = "0.3.106", features = [
     "CssStyleDeclaration",
     "DomTokenList",
     "HtmlSelectElement",
@@ -59,46 +59,41 @@ web-sys = { version = "0.3.102", features = [
     "IntersectionObserverEntry",
     "ResizeObserver",
 ] }
-log = "0.4.32"
-wasm-bindgen = "0.2.125"
+log = "0.4.34"
+wasm-bindgen = "0.2.129"
 yew-router = { version = "0.20.0" }
-serde = { version = "1.0.225", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
 gloo-net = { version = "0.7.0", features = ["websocket"] }
 gloo = "0.12.0"
-anyhow = { version = "1.0.102", features = [] }
-wasm-bindgen-futures = "0.4.75"
+anyhow = { version = "1.0.104", features = [] }
+wasm-bindgen-futures = "0.4.79"
 gloo-timers = { version = "0.4.0", features = ["futures"] }
-base64 = "0.22.1"
+base64 = "0.23.1"
 yewdux = "0.13"
-rss = "2.0.13"
 chrono = "0.4.45"
-serde_json = "1.0.150"
+serde_json = "1.0.154"
 gloo-utils = "0.3.0"
 gloo-events = "0.3.0"
-md5 = "0.8.0"
-ammonia = "4.1.1"
-pulldown-cmark = "0.13.4"
+md5 = "0.8.1"
+sha2 = "0.11.1"
+ammonia = "4.2.3"
 async-std = "1.13.2"
-argon2 = { version = "0.5.3", features = ["std", "password-hash"] }
-getrandom = { version = "0.4.2", features = ["wasm_js"] }
-rand = "0.10.1"
-regex = "1.12.4"
-js-sys = "0.3.102"
+argon2 = "0.6.0"
+getrandom = { version = "0.4.3", features = ["wasm_js"] }
+rand = "0.10.3"
+regex = "1.13.1"
+js-sys = "0.3.106"
 percent-encoding = "2.3.2"
-data-encoding = "2.11.0"
 url = "2.5.8"
 serde-wasm-bindgen = "0.6.5"
 chrono-tz = "0.10.4"
-futures = "0.3.32"
-futures-util = "0.3.32"
-gloo-file = "0.4.0"
+futures = "0.3.34"
 urlencoding = "2.1.3"
-serde_with = "3.21.0"
 htmlentity = "1.3.2"
 i18nrs = { git = "https://github.com/madeofpendletonwool/i18n-rs", features = ["yew"] }
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3.75"
+wasm-bindgen-test = "0.3.79"
 
 [features]
 default = []

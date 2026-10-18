@@ -211,7 +211,13 @@ impl BackgroundScheduler {
 
         let now = Utc::now();
         // Seconds::Optional accepts both 5-field and 6-field (with seconds) cron expressions.
-        let parser = CronParser::builder().seconds(Seconds::Optional).build();
+        // sloppy_ranges keeps croner 3.x's shorthand steps ("5/5 * * * *") valid: the settings
+        // endpoint validates schedules via tokio-cron-scheduler, which still uses croner 3.x,
+        // and existing saved schedules may use that form.
+        let parser = CronParser::builder()
+            .seconds(Seconds::Optional)
+            .sloppy_ranges(true)
+            .build();
 
         // Establish a baseline for any schedule that has never run, so we never fire a backlog
         // of missed backups the moment a schedule is first enabled.

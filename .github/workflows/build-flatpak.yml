@@ -24,7 +24,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Flatpak
         run: |
@@ -121,7 +121,7 @@ jobs:
           tar -czvf flatpak_files.tar.gz flatpak_output
 
       - name: Upload Flatpak archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flatpak-files
           path: flatpak_files.tar.gz

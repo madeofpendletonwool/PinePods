@@ -1,6 +1,6 @@
 # Optional PinePods AI sidecar (transcription #726 + ad detection #790).
 # Build/run only if you want the AI-based features.
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # ffmpeg: required by faster-whisper to decode audio.
 # build-essential + cmake: required to build llama-cpp-python (local LLM backend) from source.
