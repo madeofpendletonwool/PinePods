@@ -1003,9 +1003,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, saved: true);
-          _filteredEpisodes = _episodes.where((e) => 
-            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-          ).toList();
+          _filterEpisodes();
         });
         _showSnackBar('Episode saved!', Colors.green);
       } else {
@@ -1041,9 +1039,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, saved: false);
-          _filteredEpisodes = _episodes.where((e) => 
-            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-          ).toList();
+          _filterEpisodes();
         });
         _showSnackBar('Removed from saved episodes', Colors.orange);
       } else {
@@ -1079,9 +1075,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: true);
-          _filteredEpisodes = _episodes.where((e) => 
-            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-          ).toList();
+          _filterEpisodes();
         });
         _showSnackBar('Episode download started!', Colors.green);
       } else {
@@ -1117,9 +1111,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: false);
-          _filteredEpisodes = _episodes.where((e) => 
-            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-          ).toList();
+          _filterEpisodes();
         });
         _showSnackBar('Episode deleted from server', Colors.orange);
       } else {
@@ -1156,9 +1148,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: false);
-            _filteredEpisodes = _episodes.where((e) => 
-              e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-            ).toList();
+            _filterEpisodes();
           });
           _showSnackBar('Removed from queue', Colors.orange);
         }
@@ -1171,9 +1161,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: true);
-            _filteredEpisodes = _episodes.where((e) => 
-              e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-            ).toList();
+            _filterEpisodes();
           });
           _showSnackBar('Added to queue!', Colors.green);
         }

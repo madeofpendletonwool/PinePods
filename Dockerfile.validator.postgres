@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Install PostgreSQL dev libraries and required packages
 RUN apt-get update && apt-get install -y \
@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install required packages
-RUN pip install psycopg[binary] mysql-connector-python cryptography passlib argon2-cffi
+RUN pip install psycopg[binary] mysql-connector-python cryptography argon2-cffi
 
 # Copy validation scripts
 COPY database_functions/ /app/database_functions/

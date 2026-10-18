@@ -1,7 +1,6 @@
 mysql-connector-python
 requests
 python-dateutil
-python-dateutil
 passlib
 uvicorn
 fastapi
@@ -14,7 +13,6 @@ werkzeug
 pillow
 fernet
 eyed3
-asyncio
 websockets
 pytz
 psycopg[binary]
