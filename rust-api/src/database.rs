@@ -12200,107 +12200,61 @@ impl DatabasePool {
         }
     }
 
-    // Get play episode details - matches Python get_play_episode_details function exactly
+    // Resolve account defaults and podcast overrides in one database round trip.
     pub async fn get_play_episode_details(&self, user_id: i32, podcast_id: i32, _is_youtube: bool) -> AppResult<(f64, i32, i32, bool)> {
         match self {
             DatabasePool::Postgres(pool) => {
-                // First get user's default playback speed
-                let user_row = sqlx::query(r#"SELECT playbackspeed FROM "Users" WHERE userid = $1"#)
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
-                    
-                let user_playback_speed = if let Some(row) = user_row {
-                    if let Ok(speed) = row.try_get::<Option<bigdecimal::BigDecimal>, _>("playbackspeed") {
-                        speed.map(|s| s.to_f64().unwrap_or(1.0)).unwrap_or(1.0)
-                    } else {
-                        1.0
-                    }
-                } else {
-                    1.0
-                };
-
-                // Now get podcast-specific settings
-                let podcast_row = sqlx::query(r#"
-                    SELECT playbackspeed, playbackspeedcustomized, startskip, endskip
-                    FROM "Podcasts"
-                    WHERE podcastid = $1 AND userid = $2
+                let row = sqlx::query(r#"
+                    SELECT COALESCE(
+                        CASE WHEN p.playbackspeedcustomized THEN p.playbackspeed END,
+                        u.playbackspeed, 1.0
+                    ) AS playback_speed,
+                    COALESCE(p.startskip, 0) AS start_skip,
+                    COALESCE(p.endskip, 0) AS end_skip,
+                    COALESCE(p.playbackspeedcustomized, FALSE) AS customized
+                    FROM "Users" u
+                    LEFT JOIN "Podcasts" p ON p.userid = u.userid AND p.podcastid = $2
+                    WHERE u.userid = $1
                 "#)
-                    .bind(podcast_id)
                     .bind(user_id)
+                    .bind(podcast_id)
                     .fetch_optional(pool)
                     .await?;
-                    
-                if let Some(row) = podcast_row {
-                    let playback_speed_customized: Option<bool> = row.try_get("playbackspeedcustomized")?;
-                    let podcast_playback_speed: Option<f64> = if let Ok(speed) = row.try_get::<Option<bigdecimal::BigDecimal>, _>("playbackspeed") {
-                        speed.map(|s| s.to_f64().unwrap_or(1.0))
-                    } else {
-                        None
-                    };
-                    let start_skip: Option<i32> = row.try_get("startskip")?;
-                    let end_skip: Option<i32> = row.try_get("endskip")?;
-                    
-                    let is_customized = playback_speed_customized.unwrap_or(false);
-                    let final_playback_speed = if is_customized {
-                        podcast_playback_speed.unwrap_or(user_playback_speed)
-                    } else {
-                        user_playback_speed
-                    };
-
-                    Ok((final_playback_speed, start_skip.unwrap_or(0), end_skip.unwrap_or(0), is_customized))
-                } else {
-                    Ok((user_playback_speed, 0, 0, false))
+                match row {
+                    Some(row) => Ok((
+                        row.try_get::<bigdecimal::BigDecimal, _>("playback_speed")?.to_f64().unwrap_or(1.0),
+                        row.try_get("start_skip")?,
+                        row.try_get("end_skip")?,
+                        row.try_get("customized")?,
+                    )),
+                    None => Ok((1.0, 0, 0, false)),
                 }
             }
             DatabasePool::MySQL(pool) => {
-                // First get user's default playback speed
-                let user_row = sqlx::query("SELECT PlaybackSpeed FROM Users WHERE UserID = ?")
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
-                    
-                let user_playback_speed = if let Some(row) = user_row {
-                    if let Ok(speed) = row.try_get::<Option<bigdecimal::BigDecimal>, _>("PlaybackSpeed") {
-                        speed.map(|s| s.to_f64().unwrap_or(1.0)).unwrap_or(1.0)
-                    } else {
-                        1.0
-                    }
-                } else {
-                    1.0
-                };
-
-                // Now get podcast-specific settings
-                let podcast_row = sqlx::query("
-                    SELECT PlaybackSpeed, PlaybackSpeedCustomized, StartSkip, EndSkip
-                    FROM Podcasts
-                    WHERE PodcastID = ? AND UserID = ?
+                let row = sqlx::query("
+                    SELECT COALESCE(
+                        CASE WHEN p.PlaybackSpeedCustomized THEN p.PlaybackSpeed END,
+                        u.PlaybackSpeed, 1.0
+                    ) AS playback_speed,
+                    COALESCE(p.StartSkip, 0) AS start_skip,
+                    COALESCE(p.EndSkip, 0) AS end_skip,
+                    COALESCE(p.PlaybackSpeedCustomized, FALSE) AS customized
+                    FROM Users u
+                    LEFT JOIN Podcasts p ON p.UserID = u.UserID AND p.PodcastID = ?
+                    WHERE u.UserID = ?
                 ")
                     .bind(podcast_id)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
-                    
-                if let Some(row) = podcast_row {
-                    let playback_speed_customized: Option<bool> = row.try_get("PlaybackSpeedCustomized")?;
-                    let podcast_playback_speed: Option<f64> = if let Ok(speed) = row.try_get::<Option<bigdecimal::BigDecimal>, _>("PlaybackSpeed") {
-                        speed.map(|s| s.to_f64().unwrap_or(1.0))
-                    } else {
-                        None
-                    };
-                    let start_skip: Option<i32> = row.try_get("StartSkip")?;
-                    let end_skip: Option<i32> = row.try_get("EndSkip")?;
-                    
-                    let is_customized = playback_speed_customized.unwrap_or(false);
-                    let final_playback_speed = if is_customized {
-                        podcast_playback_speed.unwrap_or(user_playback_speed)
-                    } else {
-                        user_playback_speed
-                    };
-
-                    Ok((final_playback_speed, start_skip.unwrap_or(0), end_skip.unwrap_or(0), is_customized))
-                } else {
-                    Ok((user_playback_speed, 0, 0, false))
+                match row {
+                    Some(row) => Ok((
+                        row.try_get::<bigdecimal::BigDecimal, _>("playback_speed")?.to_f64().unwrap_or(1.0),
+                        row.try_get("start_skip")?,
+                        row.try_get("end_skip")?,
+                        row.try_get("customized")?,
+                    )),
+                    None => Ok((1.0, 0, 0, false)),
                 }
             }
         }
@@ -31520,3 +31474,6 @@ mod totp_tests {
         assert!(url.contains(&format!("secret={SECRET}")));
     }
 }
+
+#[cfg(test)]
+mod playback_settings_tests;

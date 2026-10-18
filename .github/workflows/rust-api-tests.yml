@@ -1,0 +1,52 @@
+name: Rust API Tests
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["rust-api/**", ".github/workflows/rust-api-tests.yml"]
+  push:
+    branches: [main]
+    paths: ["rust-api/**", ".github/workflows/rust-api-tests.yml"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: pinepods_test
+          POSTGRES_PASSWORD: pinepods_test
+          POSTGRES_DB: pinepods_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pinepods_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: pinepods_test
+          MARIADB_DATABASE: pinepods_test
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hecrj/setup-rust-action@v2
+        with:
+          rust-version: "1.99.0"
+      - name: Unit and database regressions
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: pinepods_test
+          DB_PASSWORD: pinepods_test
+          DB_NAME: pinepods_test
+          PINEPODS_TEST_POSTGRES_URL: postgres://pinepods_test:pinepods_test@localhost:5432/pinepods_test
+          PINEPODS_TEST_MYSQL_URL: mysql://root:pinepods_test@127.0.0.1:3306/pinepods_test
+        run: cargo test --locked --manifest-path rust-api/Cargo.toml -- --include-ignored --test-threads=1
