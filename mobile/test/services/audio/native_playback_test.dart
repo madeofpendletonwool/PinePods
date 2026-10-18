@@ -5,18 +5,27 @@ import 'package:mocktail/mocktail.dart';
 import 'package:pinepods_mobile/repository/repository.dart';
 import 'package:pinepods_mobile/services/audio/native_audio_player_service.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import '../../support/factories.dart';
 
 class MockRepository extends Mock implements Repository {}
 
 class MockSettings extends Mock implements SettingsService {}
 
+class MockPinepodsAudio extends Mock implements PinepodsAudioService {}
+
 void main() {
-  for (final resume in [false, true]) {
-    testWidgets('native playback honors resume=$resume', (tester) async {
+  for (final (resume, advancesDuringLookup) in [
+    (false, false),
+    (true, false),
+    (true, true),
+  ]) {
+    testWidgets('resume=$resume preserves newer progress=$advancesDuringLookup', (
+      tester,
+    ) async {
       final repository = MockRepository();
       final settings = MockSettings();
-      final episode = buildEpisode(position: 120000);
+      final episode = buildEpisode(guid: 'pinepods_101', position: 120000);
       when(() => repository.loadQueue()).thenAnswer((_) async => []);
       when(
         () => repository.saveEpisode(episode),
@@ -53,10 +62,23 @@ void main() {
         settingsService: settings,
       );
       await tester.pump(const Duration(milliseconds: 1));
+      if (advancesDuringLookup) {
+        final pinepods = MockPinepodsAudio();
+        when(
+          () => pinepods.getServerPositionForEpisode(101, 0, false),
+        ).thenAnswer((_) async {
+          // A local position save can finish while the server lookup is pending.
+          episode.position = 150000;
+          return 100;
+        });
+        service.setPinepodsAudioService(pinepods);
+      }
       await service.playEpisode(episode: episode, resume: resume);
       final play = calls.singleWhere((c) => c.method == 'playEpisode');
-      expect(play.arguments['startPosition'], resume ? 120000 : 0);
-      expect(episode.position, resume ? 120000 : 0);
+      final expected = advancesDuringLookup ? 150000 : (resume ? 120000 : 0);
+      expect(play.arguments['startPosition'], expected);
+      expect(episode.position, expected);
+      service.setPinepodsAudioService(null);
       await service.stop();
       await tester.pump(const Duration(milliseconds: 1));
     });
