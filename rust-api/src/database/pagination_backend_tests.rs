@@ -14,7 +14,8 @@ async fn execute(db: &DatabasePool, sql: &str) {
         DatabasePool::MySQL(pool) => {
             // Column names are case-insensitive; table names retain their schema spelling.
             let sql = sql.replace('"', "").replace("is_video", "IsVideo");
-            sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            // MySQL does not support USE through the prepared-statement protocol.
+            sqlx::raw_sql(sqlx::AssertSqlSafe(sql.as_str()))
                 .execute(pool)
                 .await
                 .unwrap();
