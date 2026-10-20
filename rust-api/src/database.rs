@@ -13421,6 +13421,12 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
 
+                // Stats row (the stats page and every stats counter depend on it).
+                sqlx::query(r#"INSERT INTO "UserStats" (userid) VALUES ($1) ON CONFLICT (userid) DO NOTHING"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+
                 // Create default playlists for the new user
                 if let Err(e) = self.create_default_playlists_for_user(user_id).await {
                     tracing::warn!("⚠️ Failed to create default playlists for new user {}: {}", user_id, e);
@@ -13446,6 +13452,12 @@ impl DatabasePool {
                 sqlx::query("INSERT INTO UserSettings (UserID, Theme) VALUES (?, ?)")
                     .bind(user_id)
                     .bind("light")
+                    .execute(pool)
+                    .await?;
+
+                // Stats row (the stats page and every stats counter depend on it).
+                sqlx::query("INSERT IGNORE INTO UserStats (UserID) VALUES (?)")
+                    .bind(user_id)
                     .execute(pool)
                     .await?;
 

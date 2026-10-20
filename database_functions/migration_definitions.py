@@ -4242,7 +4242,8 @@ def migration_038_add_is_video_to_episodes(conn, db_type: str):
             cursor.execute("""
                 SELECT COLUMN_NAME
                 FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_NAME = 'Episodes'
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'Episodes'
                 AND COLUMN_NAME = 'IsVideo'
             """)
 
@@ -4304,7 +4305,8 @@ def migration_039_add_auto_play_next_to_podcasts(conn, db_type: str):
             cursor.execute("""
                 SELECT COLUMN_NAME
                 FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_NAME = 'Podcasts'
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'Podcasts'
                 AND COLUMN_NAME = 'AutoPlayNext'
             """)
 
@@ -4356,7 +4358,8 @@ def migration_040_add_is_favorite_to_podcasts(conn, db_type: str):
             cursor.execute("""
                 SELECT COLUMN_NAME
                 FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_NAME = 'Podcasts'
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'Podcasts'
                 AND COLUMN_NAME = 'IsFavorite'
             """)
             if cursor.fetchone():
@@ -5659,5 +5662,60 @@ def add_ytdlp_management_columns(conn, db_type: str) -> None:
 
         logger.info("yt-dlp management columns migration completed")
 
+    finally:
+        cursor.close()
+
+
+@register_migration("060", "backfill_missing_user_stats", "Create the missing UserStats row for users added via add_user / self-service sign-up", requires=["003"])
+def backfill_missing_user_stats(conn, db_type: str) -> None:
+    """Users created through /api/data/add_user (admin "add user" and self-service sign-up)
+    never got a UserStats row, so their stats page 404'd and every stats counter
+    (UPDATE "UserStats" ... WHERE userid = ...) silently updated nothing. The API now creates
+    the row; this backfills it for accounts created before the fix. Idempotent."""
+    logger.info("Starting migration 060: backfill missing UserStats rows")
+    cursor = conn.cursor()
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                INSERT INTO "UserStats" (UserID)
+                SELECT u.UserID FROM "Users" u
+                WHERE NOT EXISTS (SELECT 1 FROM "UserStats" s WHERE s.UserID = u.UserID)
+            """)
+        else:  # MySQL/MariaDB
+            cursor.execute("""
+                INSERT INTO UserStats (UserID)
+                SELECT u.UserID FROM Users u
+                WHERE NOT EXISTS (SELECT 1 FROM UserStats s WHERE s.UserID = u.UserID)
+            """)
+        logger.info(f"Backfilled UserStats for {cursor.rowcount} user(s)")
+    finally:
+        cursor.close()
+
+
+@register_migration("061", "repair_mysql_columns_skipped_by_cross_schema_check", "Re-add Episodes.IsVideo / Podcasts.AutoPlayNext / Podcasts.IsFavorite where 038-040 were skipped (MySQL/MariaDB)", requires=["038", "039", "040"])
+def repair_mysql_columns_skipped_by_cross_schema_check(conn, db_type: str) -> None:
+    """Migrations 038-040 checked INFORMATION_SCHEMA.COLUMNS for their column without
+    `TABLE_SCHEMA = DATABASE()`. On a MySQL/MariaDB server hosting another database that
+    already had the column (a second PinePods instance, a test copy, ...), they concluded
+    "already exists", were recorded as applied, and added nothing, after which episode
+    listing fails with "Unknown column 'Episodes.IsVideo'". Those checks are now schema-
+    scoped; this repairs databases that were already skipped. PostgreSQL's
+    information_schema is per-database, so it was never affected."""
+    if db_type == "postgresql":
+        return
+    logger.info("Starting migration 061: repair columns skipped by cross-schema checks")
+    cursor = conn.cursor()
+    try:
+        for table, column in [("Episodes", "IsVideo"), ("Podcasts", "AutoPlayNext"), ("Podcasts", "IsFavorite")]:
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s
+                """,
+                (table, column),
+            )
+            if cursor.fetchone()[0] == 0:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} BOOLEAN DEFAULT FALSE")
+                logger.info(f"Repaired missing {table}.{column}")
     finally:
         cursor.close()
