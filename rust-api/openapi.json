@@ -12843,14 +12843,16 @@
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Minimum episode length in **minutes** (stored, and returned by get_playlists, in seconds)."
           },
           "max_duration": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Maximum episode length in **minutes** (stored, and returned by get_playlists, in seconds)."
           },
           "sort_order": {
             "type": "string",
@@ -16656,14 +16658,16 @@
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Minimum episode length in **minutes** (stored, and returned by get_playlists, in seconds)."
           },
           "max_duration": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Maximum episode length in **minutes** (stored, and returned by get_playlists, in seconds)."
           },
           "sort_order": {
             "type": "string",
