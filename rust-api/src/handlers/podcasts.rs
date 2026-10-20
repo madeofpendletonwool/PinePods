@@ -2571,6 +2571,7 @@ pub async fn search_data(
     if !is_valid {
         return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
     }
+    crate::handlers::require_user_access(&state, &api_key, request.user_id).await?;
 
     let limit  = params.limit.unwrap_or(50).min(200);
     let offset = params.offset.unwrap_or(0).max(0);

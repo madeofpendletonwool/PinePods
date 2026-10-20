@@ -1380,8 +1380,8 @@ pub async fn send_email(
     headers: HeaderMap,
     Json(request): Json<SendEmailRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    require_valid_api_key(&state, &api_key).await?;
+    // Arbitrary recipient/subject/body through the server's SMTP account: admin only.
+    crate::handlers::require_admin(&state, &headers).await?;
 
     // Get email settings from database
     let email_settings = state.db_pool.get_email_settings().await?;
@@ -3136,8 +3136,8 @@ pub async fn list_oidc_providers(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    require_valid_api_key(&state, &api_key).await?;
+    // Instance auth configuration (admin settings tab).
+    crate::handlers::require_admin(&state, &headers).await?;
 
     let providers = state.db_pool.list_oidc_providers().await?;
     Ok(Json(serde_json::json!({ "providers": providers })))
@@ -5746,7 +5746,7 @@ pub async fn get_user_language(
         .parse()
         .map_err(|_| AppError::bad_request("Invalid user_id format"))?;
     
-    check_user_access(&state, &api_key, user_id).await?;
+    crate::handlers::require_user_access(&state, &api_key, user_id).await?;
     
     let language = state.db_pool.get_user_language(user_id).await?;
     
@@ -5774,7 +5774,7 @@ pub async fn update_user_language(
     let api_key = extract_api_key(&headers)?;
     require_valid_api_key(&state, &api_key).await?;
     
-    check_user_access(&state, &api_key, request.user_id).await?;
+    crate::handlers::require_user_access(&state, &api_key, request.user_id).await?;
     
     let success = state.db_pool.update_user_language(request.user_id, &request.language).await?;
     

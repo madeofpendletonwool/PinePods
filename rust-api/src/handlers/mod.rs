@@ -76,6 +76,15 @@ pub async fn require_admin(state: &AppState, headers: &HeaderMap) -> AppResult<i
     }
 }
 
+/// Fail closed: `Err(403)` unless the key's owner is `target_user_id` (or the web key).
+pub async fn require_user_access(state: &AppState, api_key: &str, target_user_id: i32) -> AppResult<()> {
+    if check_user_access(state, api_key, target_user_id).await? {
+        Ok(())
+    } else {
+        Err(AppError::forbidden("You can only access your own data"))
+    }
+}
+
 // Check if user has permission (either owns the resource or has web key/admin access)
 pub async fn check_user_access(state: &AppState, api_key: &str, target_user_id: i32) -> AppResult<bool> {
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
