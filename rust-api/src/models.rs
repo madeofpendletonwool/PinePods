@@ -255,6 +255,10 @@ pub struct NowPlayingSnapshot {
     /// Unix seconds when this snapshot was last updated (server-stamped on write).
     #[serde(default)]
     pub updated_at: i64,
+    /// Actions the device says it applies (from its `capabilities` connect
+    /// parameter). Empty means it didn't say: assume the original action set.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]

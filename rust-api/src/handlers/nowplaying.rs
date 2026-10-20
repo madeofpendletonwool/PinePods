@@ -17,6 +17,11 @@
 //!   with the same id.
 //! - `device_name` / `device_type`: free-form display strings (`"Web"`, `"iOS"`,
 //!   `"Android"`, `"Firewood"`, …). The server never interprets them.
+//! - `capabilities` (optional): comma-separated action names the device applies,
+//!   e.g. `play,pause,seek,skip_forward,skip_back,set_speed,play_episode`. Echoed in
+//!   its snapshot as a `capabilities` list so other UIs can hide controls it lacks.
+//!   Absent or empty means unknown: assume the actions listed below, which every
+//!   client predating the parameter supports. The server doesn't interpret it.
 //! - On connect the device is immediately listed as idle (`episode_id: 0`) so it can
 //!   be targeted (e.g. `play_episode`) before it has played anything.
 //! - The server pings every 30s and drops a socket that has sent nothing (including
@@ -300,6 +305,23 @@ pub struct NowPlayingWsQuery {
     device_name: String,
     #[serde(default)]
     device_type: String,
+    #[serde(default)]
+    capabilities: String,
+}
+
+/// Most a device can claim, and the longest action name kept, so a client can't
+/// bloat every device list it's part of.
+const MAX_CAPABILITIES: usize = 32;
+const MAX_CAPABILITY_LEN: usize = 32;
+
+/// `"play, pause,,seek"` → `["play", "pause", "seek"]`.
+fn parse_capabilities(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|c| !c.is_empty() && c.len() <= MAX_CAPABILITY_LEN)
+        .take(MAX_CAPABILITIES)
+        .map(str::to_string)
+        .collect()
 }
 
 /// Full-duplex now-playing socket: `/ws/api/nowplaying/{user_id}`. Carries device
@@ -332,6 +354,7 @@ async fn handle_now_playing_socket(
     let device_id = query.device_id.clone();
     let device_name = query.device_name.clone();
     let device_type = query.device_type.clone();
+    let capabilities = parse_capabilities(&query.capabilities);
 
     let (mut sink, mut stream) = socket.split();
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
@@ -346,7 +369,10 @@ async fn handle_now_playing_socket(
     // user's other devices know it arrived.
     let _ = state
         .redis_client
-        .ensure_now_playing_present(user_id, idle_snapshot(&device_id, &device_name, &device_type))
+        .ensure_now_playing_present(
+            user_id,
+            idle_snapshot(&device_id, &device_name, &device_type, &capabilities),
+        )
         .await;
     notify_devices_changed(&state, user_id, &device_id).await;
 
@@ -399,6 +425,7 @@ async fn handle_now_playing_socket(
     let reader_device = device_id.clone();
     let reader_name = device_name.clone();
     let reader_type = device_type.clone();
+    let reader_caps = capabilities.clone();
     let reader_tx = tx.clone();
     let reader_seen = last_seen_ms.clone();
     let mut reader = tokio::spawn(async move {
@@ -431,6 +458,7 @@ async fn handle_now_playing_socket(
                                 playing,
                                 speed,
                                 updated_at: 0, // stamped by upsert
+                                capabilities: reader_caps.clone(),
                             };
                             let _ = reader_state
                                 .redis_client
@@ -452,7 +480,12 @@ async fn handle_now_playing_socket(
                                     .redis_client
                                     .ensure_now_playing_present(
                                         user_id,
-                                        idle_snapshot(&reader_device, &reader_name, &reader_type),
+                                        idle_snapshot(
+                                            &reader_device,
+                                            &reader_name,
+                                            &reader_type,
+                                            &reader_caps,
+                                        ),
                                     )
                                     .await;
                                 notify_devices_changed(&reader_state, user_id, &reader_device).await;
@@ -544,7 +577,12 @@ async fn handle_now_playing_socket(
 }
 
 /// The snapshot a connected device has before it reports any playback.
-fn idle_snapshot(device_id: &str, device_name: &str, device_type: &str) -> NowPlayingSnapshot {
+fn idle_snapshot(
+    device_id: &str,
+    device_name: &str,
+    device_type: &str,
+    capabilities: &[String],
+) -> NowPlayingSnapshot {
     NowPlayingSnapshot {
         device_id: device_id.to_string(),
         device_name: device_name.to_string(),
@@ -558,6 +596,7 @@ fn idle_snapshot(device_id: &str, device_name: &str, device_type: &str) -> NowPl
         playing: false,
         speed: 1.0,
         updated_at: 0,
+        capabilities: capabilities.to_vec(),
     }
 }
 
@@ -768,6 +807,19 @@ mod tests {
         // After removal the device is no longer addressable.
         assert!(mgr.remove(1, "B", b_conn).await);
         assert!(!mgr.send_to_device(1, "B", txt("cmd")).await);
+    }
+
+    #[test]
+    fn capabilities_are_trimmed_and_bounded() {
+        assert_eq!(
+            parse_capabilities(" play, pause,,seek "),
+            vec!["play", "pause", "seek"]
+        );
+        assert!(parse_capabilities("").is_empty());
+        let long = "x".repeat(MAX_CAPABILITY_LEN + 1);
+        assert_eq!(parse_capabilities(&format!("play,{long}")), vec!["play"]);
+        let many = vec!["a"; MAX_CAPABILITIES + 5].join(",");
+        assert_eq!(parse_capabilities(&many).len(), MAX_CAPABILITIES);
     }
 
     #[tokio::test]
