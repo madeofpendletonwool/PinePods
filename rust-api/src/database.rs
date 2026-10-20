@@ -6551,7 +6551,8 @@ impl DatabasePool {
 
     // Record podcast history - matches Python record_podcast_history function
     pub async fn record_podcast_history(&self, episode_id: i32, user_id: i32, episode_pos: f32, is_youtube: bool) -> AppResult<()> {
-        let listen_duration = (episode_pos * 100.0) as i32; // Convert position to duration
+        // Position in seconds, stored as-is (same unit record_listen_duration stores).
+        let listen_duration = episode_pos.max(0.0) as i32;
 
         match self {
             DatabasePool::Postgres(pool) => {
