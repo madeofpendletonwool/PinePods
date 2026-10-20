@@ -53,6 +53,29 @@ pub async fn validate_api_key(state: &AppState, api_key: &str) -> AppResult<bool
     Ok(is_valid)
 }
 
+/// Fail closed: `Err(401)` unless `api_key` is a real key. Use this instead of
+/// `validate_api_key(..).await?;`, which discards the bool and lets *any* key through.
+pub async fn require_valid_api_key(state: &AppState, api_key: &str) -> AppResult<()> {
+    if validate_api_key(state, api_key).await? {
+        Ok(())
+    } else {
+        Err(AppError::unauthorized("Invalid API key"))
+    }
+}
+
+/// Fail closed for admin-only endpoints: returns the caller's user id if they're an admin
+/// (or the background/web key, user 1), `Err(401/403)` otherwise.
+pub async fn require_admin(state: &AppState, headers: &HeaderMap) -> AppResult<i32> {
+    let api_key = extract_api_key(headers)?;
+    require_valid_api_key(state, &api_key).await?;
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if user_id == 1 || state.db_pool.user_admin_check(user_id).await? {
+        Ok(user_id)
+    } else {
+        Err(AppError::forbidden("Admin access required"))
+    }
+}
+
 // Check if user has permission (either owns the resource or has web key/admin access)
 pub async fn check_user_access(state: &AppState, api_key: &str, target_user_id: i32) -> AppResult<bool> {
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(api_key).await?;

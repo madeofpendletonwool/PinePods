@@ -4,7 +4,7 @@ use axum::http::{StatusCode, header};
 use sqlx::Row;
 use crate::{
     error::{AppError, AppResult},
-    handlers::{extract_api_key, validate_api_key},
+    handlers::{extract_api_key, require_valid_api_key},
     models::{BulkEpisodeActionRequest, BulkEpisodeActionResponse},
     AppState,
 };
@@ -30,7 +30,7 @@ pub async fn bulk_mark_episodes_completed(
     Json(request): Json<BulkEpisodeActionRequest>,
 ) -> AppResult<Json<BulkEpisodeActionResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let calling_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if calling_user_id != request.user_id {
@@ -74,7 +74,7 @@ pub async fn bulk_save_episodes(
     Json(request): Json<BulkEpisodeActionRequest>,
 ) -> AppResult<Json<BulkEpisodeActionResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let calling_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if calling_user_id != request.user_id {
@@ -118,7 +118,7 @@ pub async fn bulk_queue_episodes(
     Json(request): Json<BulkEpisodeActionRequest>,
 ) -> AppResult<Json<BulkEpisodeActionResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let calling_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if calling_user_id != request.user_id {
@@ -169,7 +169,7 @@ pub async fn bulk_download_episodes(
     Json(request): Json<BulkEpisodeActionRequest>,
 ) -> AppResult<Json<BulkEpisodeActionResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let calling_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if calling_user_id != request.user_id {
@@ -238,7 +238,7 @@ pub async fn bulk_delete_downloaded_episodes(
     Json(request): Json<BulkEpisodeActionRequest>,
 ) -> AppResult<Json<BulkEpisodeActionResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let calling_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if calling_user_id != request.user_id {
@@ -282,7 +282,7 @@ pub async fn share_episode(
     headers: HeaderMap,
 ) -> AppResult<Json<serde_json::Value>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     // Get the user ID from the API key
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -364,7 +364,7 @@ pub async fn download_episode_file(
         return Err(AppError::unauthorized("API key is required"));
     };
     
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     

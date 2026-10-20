@@ -3892,16 +3892,8 @@
                 }
               }
             }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
           }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
+        }
       }
     },
     "/api/data/get_default_volume": {
@@ -4953,16 +4945,8 @@
                 "schema": {}
               }
             }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
           }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
+        }
       }
     },
     "/api/data/get_silence_trim": {
@@ -7727,7 +7711,7 @@
         "operationId": "remove_oidc_provider",
         "requestBody": {
           "content": {
-            "text/plain": {
+            "application/json": {
               "schema": {
                 "type": "integer",
                 "format": "int32"
@@ -13309,8 +13293,8 @@
             "type": "string"
           },
           "server_port": {
-            "type": "integer",
-            "format": "int32"
+            "type": "string",
+            "example": "587"
           },
           "from_email": {
             "type": "string"
@@ -13322,8 +13306,7 @@
             "type": "string"
           },
           "auth_required": {
-            "type": "integer",
-            "format": "int32"
+            "type": "boolean"
           },
           "email_username": {
             "type": "string"

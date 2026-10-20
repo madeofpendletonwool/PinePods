@@ -10,7 +10,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     error::AppError,
-    handlers::{extract_api_key, validate_api_key},
+    handlers::{extract_api_key, require_valid_api_key},
     services::ytdlp::ytdlp_binary,
     AppState,
 };
@@ -80,7 +80,7 @@ pub async fn search_youtube_channels(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only search for themselves  
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -236,7 +236,7 @@ pub async fn subscribe_to_youtube_channel(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only subscribe for themselves
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -757,7 +757,7 @@ pub async fn check_youtube_channel(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only check for themselves
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;

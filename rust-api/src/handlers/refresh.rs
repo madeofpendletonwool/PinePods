@@ -73,7 +73,10 @@ lazy_static::lazy_static! {
 )]
 pub async fn refresh_pods_admin(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
+    // Server-wide fan-out over every user: admin (or background key) only.
+    crate::handlers::require_admin(&state, &headers).await?;
     info!("Starting admin refresh process - background task (no WebSocket)");
     
     // This is the background task version - NO WebSocket, just direct refresh like Python
@@ -103,7 +106,10 @@ pub async fn refresh_pods_admin(
 )]
 pub async fn refresh_gpodder_subscriptions_admin(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
+    // Server-wide fan-out over every user: admin (or background key) only.
+    crate::handlers::require_admin(&state, &headers).await?;
     info!("Starting admin gPodder sync process for all users");
     
     let state_clone = state.clone();
@@ -1108,7 +1114,10 @@ pub async fn refresh_gpodder_subscriptions_admin_internal(state: &AppState) -> A
 )]
 pub async fn refresh_nextcloud_subscriptions_admin(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
+    // Server-wide fan-out over every user: admin (or background key) only.
+    crate::handlers::require_admin(&state, &headers).await?;
     info!("Starting admin Nextcloud sync process for all users");
     
     let state_clone = state.clone();

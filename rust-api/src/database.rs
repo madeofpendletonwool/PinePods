@@ -241,25 +241,27 @@ impl DatabasePool {
     }
 
     // Get user ID from API key - matches Python get_api_user function
+    /// Owner of `api_key`. An unknown key is an auth failure (401), not a database error.
     pub async fn get_user_id_from_api_key(&self, api_key: &str) -> AppResult<i32> {
-        match self {
+        let user_id = match self {
             DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT userid FROM "APIKeys" WHERE apikey = $1 LIMIT 1"#)
+                sqlx::query(r#"SELECT userid FROM "APIKeys" WHERE apikey = $1 LIMIT 1"#)
                     .bind(api_key)
-                    .fetch_one(pool)
-                    .await?;
-                
-                Ok(row.try_get("userid")?)
+                    .fetch_optional(pool)
+                    .await?
+                    .map(|row| row.try_get("userid"))
+                    .transpose()?
             }
             DatabasePool::MySQL(pool) => {
-                let row = sqlx::query("SELECT UserID FROM APIKeys WHERE APIKey = ? LIMIT 1")
+                sqlx::query("SELECT UserID FROM APIKeys WHERE APIKey = ? LIMIT 1")
                     .bind(api_key)
-                    .fetch_one(pool)
-                    .await?;
-                
-                Ok(row.try_get("UserID")?)
+                    .fetch_optional(pool)
+                    .await?
+                    .map(|row| row.try_get("UserID"))
+                    .transpose()?
             }
-        }
+        };
+        user_id.ok_or_else(|| AppError::unauthorized("Invalid API key"))
     }
 
     // Get user ID from username - for login and key creation
