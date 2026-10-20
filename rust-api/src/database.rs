@@ -5619,12 +5619,13 @@ impl DatabasePool {
                         description: row.try_get("description").ok(),
                         is_default: is_default != 0,
                         icon: row.try_get("icon")?,
+                        // TIMESTAMP columns decode as DateTime<Utc> on MySQL (NaiveDateTime is DATETIME).
                         created_at: row
-                            .try_get::<chrono::NaiveDateTime, _>("createdat")?
+                            .try_get::<chrono::DateTime<chrono::Utc>, _>("createdat")?
                             .format("%Y-%m-%dT%H:%M:%S")
                             .to_string(),
                         last_updated: row
-                            .try_get::<chrono::NaiveDateTime, _>("lastupdated")?
+                            .try_get::<chrono::DateTime<chrono::Utc>, _>("lastupdated")?
                             .format("%Y-%m-%dT%H:%M:%S")
                             .to_string(),
                         episode_count: row.try_get("episode_count")?,
