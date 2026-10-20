@@ -38,6 +38,21 @@ class NowPlayingDevice {
   final double speed;
   final int updatedAt;
 
+  /// Actions the device says it applies. Empty: it predates the `capabilities`
+  /// connect parameter, so it handles [legacyActions].
+  final List<String> capabilities;
+
+  /// What every client applied before devices could list their actions.
+  static const legacyActions = [
+    'play',
+    'pause',
+    'seek',
+    'skip_forward',
+    'skip_back',
+    'set_speed',
+    'play_episode',
+  ];
+
   const NowPlayingDevice({
     required this.deviceId,
     required this.deviceName,
@@ -51,7 +66,13 @@ class NowPlayingDevice {
     required this.playing,
     required this.speed,
     required this.updatedAt,
+    this.capabilities = const [],
   });
+
+  /// Whether this device applies [action], so the UI can hide controls it lacks.
+  bool supports(String action) => capabilities.isEmpty
+      ? legacyActions.contains(action)
+      : capabilities.contains(action);
 
   static double _toDouble(dynamic v) => (v is num) ? v.toDouble() : 0.0;
   static int _toInt(dynamic v) => (v is num) ? v.toInt() : 0;
@@ -70,6 +91,9 @@ class NowPlayingDevice {
       playing: json['playing'] as bool? ?? false,
       speed: _toDouble(json['speed']),
       updatedAt: _toInt(json['updated_at']),
+      capabilities:
+          (json['capabilities'] as List?)?.whereType<String>().toList() ??
+              const [],
     );
   }
 }
@@ -128,6 +152,10 @@ class NowPlayingService {
   String? _deviceId;
   String? _deviceName;
   String _deviceType = 'Mobile';
+
+  /// The actions [_applyCommand] handles, announced on connect.
+  static const _capabilities =
+      'play,pause,seek,skip_forward,skip_back,set_speed,play_episode';
 
   // Credentials of the currently-connected session; reused for `play_episode`.
   String? _server;
@@ -244,7 +272,8 @@ class NowPlayingService {
       '?api_key=${Uri.encodeComponent(apiKey)}'
       '&device_id=${Uri.encodeComponent(deviceId)}'
       '&device_name=${Uri.encodeComponent(_deviceName ?? _deviceType)}'
-      '&device_type=${Uri.encodeComponent(_deviceType)}',
+      '&device_type=${Uri.encodeComponent(_deviceType)}'
+      '&capabilities=${Uri.encodeComponent(_capabilities)}',
     );
 
     try {
@@ -514,7 +543,9 @@ class NowPlayingService {
   /// two places, and resume at its live position rather than the staler
   /// server-stored one. Mirrors web remote_devices.rs.
   Future<void> playHere(NowPlayingDevice source) async {
-    if (source.playing) sendCommand(source.deviceId, 'pause');
+    if (source.playing && source.supports('pause')) {
+      sendCommand(source.deviceId, 'pause');
+    }
     await _playEpisodeById(
       source.episodeId,
       source.isYoutube,

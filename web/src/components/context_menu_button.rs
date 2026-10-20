@@ -124,11 +124,13 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let i18n_add_to_collection = i18n.t("collections.add_to_collection").to_string();
     let i18n_play_on = i18n.t("remote_devices.play_on").to_string();
     let i18n_playing_on = i18n.t("remote_devices.playing_on").to_string();
-    // Other devices as (id, label, type). Selecting just these keeps the many
-    // context-menu instances on a page from re-rendering on every position report.
+    // Other devices that can start an episode, as (id, label, type). Selecting just
+    // these keeps the many context-menu instances on a page from re-rendering on
+    // every position report.
     let play_on_targets = use_selector(|s: &NowPlayingState| {
         s.devices
             .iter()
+            .filter(|d| d.supports("play_episode"))
             .map(|d| (d.device_id.clone(), device_label(d), d.device_type.clone()))
             .collect::<Vec<_>>()
     });

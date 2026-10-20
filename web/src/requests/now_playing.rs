@@ -49,6 +49,35 @@ pub struct NowPlayingDevice {
     pub speed: f64,
     #[serde(default)]
     pub updated_at: i64,
+    /// Actions the device says it applies. Empty: it predates the `capabilities`
+    /// connect parameter, so it handles `LEGACY_ACTIONS`.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+}
+
+/// What every client applied before devices could list their actions.
+const LEGACY_ACTIONS: &[&str] = &[
+    "play",
+    "pause",
+    "seek",
+    "skip_forward",
+    "skip_back",
+    "set_speed",
+    "play_episode",
+];
+
+/// The actions `apply_command` handles, announced on connect.
+const CAPABILITIES: &str = "play,pause,seek,skip_forward,skip_back,set_speed,play_episode";
+
+impl NowPlayingDevice {
+    /// Whether this device applies `action`, so UIs can hide controls it lacks.
+    pub fn supports(&self, action: &str) -> bool {
+        if self.capabilities.is_empty() {
+            LEGACY_ACTIONS.contains(&action)
+        } else {
+            self.capabilities.iter().any(|c| c == action)
+        }
+    }
 }
 
 /// A request to start an episode on THIS device — either from the local "Play
@@ -216,7 +245,7 @@ pub fn connect_now_playing_ws(server_name: String, user_id: i32, api_key: String
             Dispatch::<NowPlayingState>::global()
                 .reduce_mut(|s| s.self_device_id = device_id.clone());
             let url = format!(
-                "{}{}/ws/api/nowplaying/{}?api_key={}&device_id={}&device_name={}&device_type={}",
+                "{}{}/ws/api/nowplaying/{}?api_key={}&device_id={}&device_name={}&device_type={}&capabilities={}",
                 proto,
                 clean,
                 user_id,
@@ -224,6 +253,7 @@ pub fn connect_now_playing_ws(server_name: String, user_id: i32, api_key: String
                 enc(&device_id),
                 enc(&dev_name),
                 enc(&dev_type),
+                enc(CAPABILITIES),
             );
             match WebSocket::open(&url) {
                 Ok(ws) => {

@@ -162,7 +162,9 @@ class EpisodeContextMenu extends StatelessWidget {
     return ValueListenableBuilder<List<NowPlayingDevice>>(
       valueListenable: service.devices,
       builder: (context, deviceList, _) {
-        if (deviceList.isEmpty) return const SizedBox.shrink();
+        if (!deviceList.any((d) => d.supports('play_episode'))) {
+          return const SizedBox.shrink();
+        }
         return _buildMenuOption(
           context,
           icon: Icons.cast,
