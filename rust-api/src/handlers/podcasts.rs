@@ -3267,7 +3267,7 @@ pub async fn stream_episode(
     Query(query): Query<StreamQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let api_key = &query.api_key;
-    info!("Stream request for episode {} with api_key {} and user_id {}", episode_id, api_key, query.user_id);
+    tracing::debug!("Stream request for episode {} (user_id {})", episode_id, query.user_id);
 
     // Try RSS key validation FIRST (RSS keys are used in RSS feeds for streaming)
     let mut is_valid = false;

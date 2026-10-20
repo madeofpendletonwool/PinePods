@@ -1,6 +1,9 @@
 // lib/ui/widgets/episode_context_menu.dart
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
+import 'package:pinepods_mobile/services/nowplaying/nowplaying_service.dart';
+import 'package:pinepods_mobile/ui/podcast/remote_devices_button.dart';
 
 class EpisodeContextMenu extends StatelessWidget {
   final PinepodsEpisode episode;
@@ -51,6 +54,7 @@ class EpisodeContextMenu extends StatelessWidget {
                     maxWidth: 300,
                     maxHeight: 400,
                   ),
+                  child: SingleChildScrollView(
                   child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -137,7 +141,10 @@ class EpisodeContextMenu extends StatelessWidget {
                       text: episode.completed ? 'Mark as Incomplete' : 'Mark as Complete',
                       onTap: onMarkComplete,
                     ),
+
+                    _buildPlayOnOption(context),
                   ],
+                  ),
                   ),
                 ),
               ),
@@ -145,6 +152,34 @@ class EpisodeContextMenu extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// "Play on device…" — only shown while another device is online.
+  Widget _buildPlayOnOption(BuildContext context) {
+    final service = GlobalServices.nowPlayingService;
+    if (service == null) return const SizedBox.shrink();
+    return ValueListenableBuilder<List<NowPlayingDevice>>(
+      valueListenable: service.devices,
+      builder: (context, deviceList, _) {
+        if (deviceList.isEmpty) return const SizedBox.shrink();
+        return _buildMenuOption(
+          context,
+          icon: Icons.cast,
+          text: 'Play on device…',
+          onTap: () {
+            // Some callers dismiss with Navigator.pop, so dismiss first and open
+            // the picker from the root navigator's (still-mounted) context.
+            final rootContext = Navigator.of(context, rootNavigator: true).context;
+            onDismiss?.call();
+            showPlayOnDevicePicker(
+              rootContext,
+              episodeId: episode.episodeId,
+              isYoutube: episode.isYoutube,
+            );
+          },
+        );
+      },
     );
   }
 
