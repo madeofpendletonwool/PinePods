@@ -9,4 +9,5 @@ mod auth_coverage;
 mod cross_user;
 mod foreign_resources;
 mod podcasts;
+mod queue;
 mod smoke;
