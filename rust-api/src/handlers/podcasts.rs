@@ -411,6 +411,10 @@ pub async fn remove_podcast_id(
     if requesting_user_id != request.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only remove your own podcasts!"));
     }
+    // remove_podcast_id deletes by podcast id alone, so prove the podcast is the caller's.
+    if !state.db_pool.verify_podcast_belongs_to_user(request.podcast_id, request.user_id).await? {
+        return Err(AppError::forbidden("You can only remove your own podcasts!"));
+    }
 
     // Remove podcast from database
     state.db_pool.remove_podcast_id(request.podcast_id, request.user_id).await?;
