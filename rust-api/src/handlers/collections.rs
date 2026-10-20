@@ -209,6 +209,7 @@ pub async fn add_episode_to_collection(
     if user_id != req.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only modify your own collections!"));
     }
+    crate::handlers::require_episode_owner(&state, req.user_id, req.episode_id, req.is_youtube).await?;
     state
         .db_pool
         .add_episode_to_collection(req.user_id, collection_id, req.episode_id, req.is_youtube)
@@ -272,6 +273,9 @@ pub async fn bulk_add_collection(
     let (_key, user_id, is_web_key) = auth_user(&state, &headers).await?;
     if user_id != req.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only modify your own collections!"));
+    }
+    for &(episode_id, is_youtube) in &req.episodes {
+        crate::handlers::require_episode_owner(&state, req.user_id, episode_id, is_youtube).await?;
     }
     state
         .db_pool

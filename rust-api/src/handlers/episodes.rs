@@ -4,7 +4,7 @@ use axum::http::{StatusCode, header};
 use sqlx::Row;
 use crate::{
     error::{AppError, AppResult},
-    handlers::{extract_api_key, require_valid_api_key},
+    handlers::{extract_api_key, require_episode_owner, require_episodes_owner, require_valid_api_key},
     models::{BulkEpisodeActionRequest, BulkEpisodeActionResponse},
     AppState,
 };
@@ -38,6 +38,7 @@ pub async fn bulk_mark_episodes_completed(
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
+    require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
     let (processed_count, failed_count) = state.db_pool
         .bulk_mark_episodes_completed(request.episode_ids, request.user_id, is_youtube)
         .await?;
@@ -82,6 +83,7 @@ pub async fn bulk_save_episodes(
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
+    require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
     let (processed_count, failed_count) = state.db_pool
         .bulk_save_episodes(request.episode_ids, request.user_id, is_youtube)
         .await?;
@@ -126,6 +128,7 @@ pub async fn bulk_queue_episodes(
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
+    require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
     // Bulk "add to queue" lands the batch at the top (in order), consistent with
     // single-add "play next" semantics.
     let (processed_count, failed_count) = state.db_pool
@@ -183,6 +186,7 @@ pub async fn bulk_download_episodes(
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
+    require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
     let mut processed_count = 0;
     let mut failed_count = 0;
 
@@ -246,6 +250,7 @@ pub async fn bulk_delete_downloaded_episodes(
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
+    require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
     let (processed_count, failed_count) = state.db_pool
         .bulk_delete_downloaded_episodes(request.episode_ids, request.user_id, is_youtube)
         .await?;
@@ -286,6 +291,7 @@ pub async fn share_episode(
     
     // Get the user ID from the API key
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    require_episode_owner(&state, user_id, episode_id, false).await?;
     
     // Generate unique share code and expiration date
     let share_code = uuid::Uuid::new_v4().to_string();
@@ -367,6 +373,8 @@ pub async fn download_episode_file(
     require_valid_api_key(&state, &api_key).await?;
     
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    // The download uses the owning podcast's stored feed credentials: owner only.
+    require_episode_owner(&state, user_id, episode_id, false).await?;
     
     // Get episode metadata
     let episode_info = match &state.db_pool {

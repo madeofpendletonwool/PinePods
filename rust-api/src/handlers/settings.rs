@@ -4061,6 +4061,7 @@ pub async fn transcribe_episode(
     if key_id != request.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only process your own episodes."));
     }
+    crate::handlers::require_episode_owner(&state, request.user_id, request.episode_id, false).await?;
     if !state.ai_available.is_available() {
         return Err(AppError::service_unavailable("AI service is not available."));
     }
@@ -4105,6 +4106,7 @@ pub async fn get_episode_transcript(
     if key_id != query.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only view your own episodes."));
     }
+    crate::handlers::require_episode_owner(&state, query.user_id, query.episode_id, false).await?;
 
     let transcript = crate::services::transcription::get_episode_transcript(&state.db_pool, query.episode_id)
         .await
@@ -4319,6 +4321,7 @@ pub async fn get_episode_skip_segments(
     if key_id != query.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only view your own episodes."));
     }
+    crate::handlers::require_episode_owner(&state, query.user_id, query.episode_id, false).await?;
 
     // Per-user view: enriches each segment with its DB id and (for ads) the requesting user's
     // effective status, so the player and transcript review UI share one shape.
@@ -4365,6 +4368,7 @@ pub async fn detect_silence(
     if key_id != request.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only process your own episodes."));
     }
+    crate::handlers::require_episode_owner(&state, request.user_id, request.episode_id, false).await?;
 
     let task_id = state
         .task_spawner
@@ -4411,6 +4415,7 @@ pub async fn detect_ads(
     if key_id != request.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only process your own episodes."));
     }
+    crate::handlers::require_episode_owner(&state, request.user_id, request.episode_id, false).await?;
     if !state.ai_available.is_available() {
         return Err(AppError::service_unavailable("AI service is not available."));
     }

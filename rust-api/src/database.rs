@@ -1959,6 +1959,35 @@ impl DatabasePool {
         }
     }
 
+    /// True if `episode_id` (a `YouTubeVideos.videoid` when `is_youtube`) sits in one of
+    /// `user_id`'s podcasts. Every podcast/episode row is per-user, so this is the ownership
+    /// test for anything addressed by episode id.
+    pub async fn episode_belongs_to_user(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<bool> {
+        let found = match self {
+            DatabasePool::Postgres(pool) => {
+                let sql = if is_youtube {
+                    r#"SELECT 1 FROM "YouTubeVideos" v JOIN "Podcasts" p ON p.podcastid = v.podcastid
+                       WHERE v.videoid = $1 AND p.userid = $2 LIMIT 1"#
+                } else {
+                    r#"SELECT 1 FROM "Episodes" e JOIN "Podcasts" p ON p.podcastid = e.podcastid
+                       WHERE e.episodeid = $1 AND p.userid = $2 LIMIT 1"#
+                };
+                sqlx::query(sql).bind(episode_id).bind(user_id).fetch_optional(pool).await?.is_some()
+            }
+            DatabasePool::MySQL(pool) => {
+                let sql = if is_youtube {
+                    "SELECT 1 FROM YouTubeVideos v JOIN Podcasts p ON p.PodcastID = v.PodcastID
+                     WHERE v.VideoID = ? AND p.UserID = ? LIMIT 1"
+                } else {
+                    "SELECT 1 FROM Episodes e JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                     WHERE e.EpisodeID = ? AND p.UserID = ? LIMIT 1"
+                };
+                sqlx::query(sql).bind(episode_id).bind(user_id).fetch_optional(pool).await?.is_some()
+            }
+        };
+        Ok(found)
+    }
+
     // Get time info for user - matches Python get_time_info function
     pub async fn get_time_info(&self, user_id: i32) -> AppResult<crate::models::TimeInfoResponse> {
         match self {

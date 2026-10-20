@@ -85,6 +85,25 @@ pub async fn require_user_access(state: &AppState, api_key: &str, target_user_id
     }
 }
 
+/// Fail closed: `Err(404)` unless the episode (or YouTube video) is in one of `user_id`'s
+/// podcasts. Call after establishing the caller may act as `user_id`. 404 rather than 403 so
+/// other users' (sequential) episode ids can't be probed for existence.
+pub async fn require_episode_owner(state: &AppState, user_id: i32, episode_id: i32, is_youtube: bool) -> AppResult<()> {
+    if state.db_pool.episode_belongs_to_user(episode_id, user_id, is_youtube).await? {
+        Ok(())
+    } else {
+        Err(AppError::not_found("Episode not found"))
+    }
+}
+
+/// [`require_episode_owner`] for every id in a bulk request; one foreign id rejects the batch.
+pub async fn require_episodes_owner(state: &AppState, user_id: i32, episode_ids: &[i32], is_youtube: bool) -> AppResult<()> {
+    for &id in episode_ids {
+        require_episode_owner(state, user_id, id, is_youtube).await?;
+    }
+    Ok(())
+}
+
 // Check if user has permission (either owns the resource or has web key/admin access)
 pub async fn check_user_access(state: &AppState, api_key: &str, target_user_id: i32) -> AppResult<bool> {
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
