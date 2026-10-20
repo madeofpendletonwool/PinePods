@@ -4,5 +4,7 @@
 mod harness;
 mod support;
 
+mod admin_only;
 mod auth_coverage;
+mod cross_user;
 mod smoke;
