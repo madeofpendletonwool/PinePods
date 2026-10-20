@@ -60,36 +60,7 @@ Future<void> showPlayOnDevicePicker(
     builder: (context) => SafeArea(
       child: ValueListenableBuilder<List<NowPlayingDevice>>(
         valueListenable: service.devices,
-        builder: (context, deviceList, _) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.cast),
-                  const SizedBox(width: 8),
-                  Text('Play on…',
-                      style: Theme.of(context).textTheme.titleLarge),
-                ],
-              ),
-            ),
-            if (deviceList.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No other devices are online.'),
-              ),
-            for (final d in deviceList)
-              ListTile(
-                leading: Icon(_deviceIcon(d.deviceType)),
-                title: Text(_deviceLabel(d)),
-                subtitle: Text(d.episodeId == 0
-                    ? 'idle'
-                    : (d.playing ? 'playing ${d.title}' : 'paused')),
-                onTap: () => Navigator.of(context).pop(d),
-              ),
-          ],
-        ),
+        builder: (context, deviceList, _) => _playOnList(context, deviceList),
       ),
     ),
   );
@@ -97,6 +68,40 @@ Future<void> showPlayOnDevicePicker(
   service.playOnDevice(target.deviceId, episodeId, isYoutube);
   messenger?.showSnackBar(
     SnackBar(content: Text('Playing on ${_deviceLabel(target)}')),
+  );
+}
+
+/// The picker's rows: only devices that can start an episode.
+Widget _playOnList(BuildContext context, List<NowPlayingDevice> deviceList) {
+  final targets = deviceList.where((d) => d.supports('play_episode')).toList();
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Row(
+          children: [
+            const Icon(Icons.cast),
+            const SizedBox(width: 8),
+            Text('Play on…', style: Theme.of(context).textTheme.titleLarge),
+          ],
+        ),
+      ),
+      if (targets.isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('No other devices are online.'),
+        ),
+      for (final d in targets)
+        ListTile(
+          leading: Icon(_deviceIcon(d.deviceType)),
+          title: Text(_deviceLabel(d)),
+          subtitle: Text(d.episodeId == 0
+              ? 'idle'
+              : (d.playing ? 'playing ${d.title}' : 'paused')),
+          onTap: () => Navigator.of(context).pop(d),
+        ),
+    ],
   );
 }
 
@@ -253,7 +258,8 @@ class _DeviceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = _deviceLabel(device);
-    final canSend = service.hasLocalPlayback;
+    final canSend =
+        service.hasLocalPlayback && device.supports('play_episode');
     final track = device.title.isEmpty ? 'Idle' : device.title;
     final progress = device.durationSec > 0
         ? '${_fmtTime(device.positionSec)} / ${_fmtTime(device.durationSec)}'
@@ -313,32 +319,35 @@ class _DeviceRow extends StatelessWidget {
             const SizedBox(height: 4),
             Row(
               children: [
-                IconButton(
-                  tooltip: 'Skip back 15s',
-                  icon: const Icon(Icons.replay),
-                  onPressed: () => service.sendCommand(
-                    device.deviceId,
-                    'skip_back',
-                    const {'seconds': 15},
+                if (device.supports('skip_back'))
+                  IconButton(
+                    tooltip: 'Skip back 15s',
+                    icon: const Icon(Icons.replay),
+                    onPressed: () => service.sendCommand(
+                      device.deviceId,
+                      'skip_back',
+                      const {'seconds': 15},
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: device.playing ? 'Pause' : 'Play',
-                  icon: Icon(device.playing ? Icons.pause : Icons.play_arrow),
-                  onPressed: () => service.sendCommand(
-                    device.deviceId,
-                    device.playing ? 'pause' : 'play',
+                if (device.supports(device.playing ? 'pause' : 'play'))
+                  IconButton(
+                    tooltip: device.playing ? 'Pause' : 'Play',
+                    icon: Icon(device.playing ? Icons.pause : Icons.play_arrow),
+                    onPressed: () => service.sendCommand(
+                      device.deviceId,
+                      device.playing ? 'pause' : 'play',
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Skip forward 30s',
-                  icon: const Icon(Icons.forward_30),
-                  onPressed: () => service.sendCommand(
-                    device.deviceId,
-                    'skip_forward',
-                    const {'seconds': 30},
+                if (device.supports('skip_forward'))
+                  IconButton(
+                    tooltip: 'Skip forward 30s',
+                    icon: const Icon(Icons.forward_30),
+                    onPressed: () => service.sendCommand(
+                      device.deviceId,
+                      'skip_forward',
+                      const {'seconds': 30},
+                    ),
                   ),
-                ),
                 const Spacer(),
                 if (canSend) _sendHereButton(context, label),
                 TextButton.icon(

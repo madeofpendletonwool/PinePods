@@ -197,6 +197,12 @@ pub fn remote_devices_panel() -> Html {
             // Connected but nothing loaded (episode_id 0): listed so it can be a
             // target, but there's nothing to transport-control or take over.
             let is_idle = device.episode_id == 0;
+            // Hide what the device says it can't do; a click would do nothing.
+            let can_skip_back = device.supports("skip_back");
+            let can_skip_fwd = device.supports("skip_forward");
+            let can_play_pause = device.supports(if is_playing { "pause" } else { "play" });
+            let can_send_here = local_playing && device.supports("play_episode");
+            let source_pauses = device.supports("pause");
 
             let on_play_pause = {
                 let id = id.clone();
@@ -227,7 +233,7 @@ pub fn remote_devices_panel() -> Html {
                 Callback::from(move |_: MouseEvent| {
                     // Taking over playback: pause the source device (best-effort,
                     // advisory) so we're not playing the same thing in two places.
-                    if source_playing {
+                    if source_playing && source_pauses {
                         send_command(&source_id, "pause", json!({}));
                     }
                     // Reuse the audio component's remote-play flow: it observes this
@@ -282,24 +288,30 @@ pub fn remote_devices_panel() -> Html {
                     if !is_idle {
                         <span class="rd-progress">{ progress }</span>
                     }
-                    if !is_idle || local_playing {
+                    if !is_idle || can_send_here {
                     <div class="rd-controls">
                         // type="button" on every one: a bare <button> defaults to
                         // submit, and this drawer used to render inside the topbar
                         // search <form> (an empty-query search ate the click).
                         if !is_idle {
+                        if can_skip_back {
                         <button type="button" class="iconbtn" title="Skip back 15s" onclick={on_back}>
                             <i class="ph ph-skip-back"></i>
                         </button>
+                        }
+                        if can_play_pause {
                         <button type="button" class="iconbtn" title={ if is_playing { i18n_pause.clone() } else { i18n_play.clone() } } onclick={on_play_pause}>
                             <i class={ if is_playing { "ph ph-pause" } else { "ph ph-play" } }></i>
                         </button>
+                        }
+                        if can_skip_fwd {
                         <button type="button" class="iconbtn" title="Skip forward 30s" onclick={on_fwd}>
                             <i class="ph ph-skip-forward"></i>
                         </button>
                         }
+                        }
                         <div class="rd-actions">
-                            if local_playing {
+                            if can_send_here {
                                 <button type="button" class="rd-play-here" title="Move what's playing here to this device" onclick={on_send_here}>
                                     <i class="ph ph-arrow-square-out mr-1"></i>{ &i18n_send_here }
                                 </button>
