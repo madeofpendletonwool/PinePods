@@ -4783,7 +4783,7 @@ impl DatabasePool {
                         "playlist_id": playlist_id,
                         "user_id": row.try_get::<i32, _>("userid")?,
                         "name": row.try_get::<String, _>("name")?,
-                        "description": row.try_get::<String, _>("description")?,
+                        "description": row.try_get::<Option<String>, _>("description")?.unwrap_or_default(),
                         "is_system_playlist": row.try_get::<bool, _>("issystemplaylist")?,
                         "podcast_ids": podcast_ids,
                         "include_unplayed": row.try_get::<bool, _>("includeunplayed")?,
@@ -4907,7 +4907,7 @@ impl DatabasePool {
                         "playlist_id": playlist_id,
                         "user_id": row.try_get::<i32, _>("UserID")?,
                         "name": row.try_get::<String, _>("Name")?,
-                        "description": row.try_get::<String, _>("Description")?,
+                        "description": row.try_get::<Option<String>, _>("Description")?.unwrap_or_default(),
                         "is_system_playlist": row.try_get::<i8, _>("IsSystemPlaylist")? != 0,
                         "podcast_ids": podcast_ids,
                         "include_unplayed": row.try_get::<i8, _>("IncludeUnplayed")? != 0,
@@ -18113,7 +18113,7 @@ impl DatabasePool {
     //                     "artworkurl": row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_default(),
     //                     "author": row.try_get::<String, _>("author")?,
     //                     "categories": row.try_get::<Option<String>, _>("categories")?,
-    //                     "description": row.try_get::<String, _>("description")?,
+    //                     "description": row.try_get::<Option<String>, _>("description")?.unwrap_or_default(),
     //                     "episodecount": episode_count,
     //                     "feedurl": row.try_get::<String, _>("feedurl")?,
     //                     "websiteurl": row.try_get::<String, _>("websiteurl")?,
@@ -30526,7 +30526,7 @@ impl DatabasePool {
                 let podcast_ids: Option<Vec<i32>> = playlist.try_get("podcastids").ok();
                 let playlist_info = crate::models::PlaylistInfo {
                     name: playlist.try_get::<String, _>("name")?,
-                    description: playlist.try_get::<String, _>("description")?,
+                    description: playlist.try_get::<Option<String>, _>("description")?.unwrap_or_default(),
                     episode_count: total_count as i32,
                     icon_name: playlist.try_get::<String, _>("iconname")?,
                     is_system_playlist: playlist.try_get::<bool, _>("issystemplaylist")?,
@@ -30829,7 +30829,7 @@ impl DatabasePool {
                 let group_by_raw: i8 = playlist.try_get("GroupByPodcast")?;
                 let playlist_info = crate::models::PlaylistInfo {
                     name: playlist.try_get::<String, _>("Name")?,
-                    description: playlist.try_get::<String, _>("Description")?,
+                    description: playlist.try_get::<Option<String>, _>("Description")?.unwrap_or_default(),
                     episode_count: total_count as i32,
                     icon_name: playlist.try_get::<String, _>("IconName")?,
                     is_system_playlist: is_system_raw != 0,

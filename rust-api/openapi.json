@@ -12853,7 +12853,9 @@
             "format": "int32"
           },
           "sort_order": {
-            "type": "string"
+            "type": "string",
+            "description": "One of date_asc, date_desc, duration_asc, duration_desc, listen_progress, completion.",
+            "example": "date_desc"
           },
           "group_by_podcast": {
             "type": "boolean"
@@ -16664,7 +16666,9 @@
             "format": "int32"
           },
           "sort_order": {
-            "type": "string"
+            "type": "string",
+            "description": "One of date_asc, date_desc, duration_asc, duration_desc, listen_progress, completion.",
+            "example": "date_desc"
           },
           "group_by_podcast": {
             "type": "boolean"
