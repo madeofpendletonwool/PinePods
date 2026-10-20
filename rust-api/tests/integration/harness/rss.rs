@@ -1,6 +1,6 @@
 //! Tiny RSS 2.0 + iTunes + Podcasting 2.0 feed builder for fixtures.
 
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use chrono::{DateTime, Duration, Utc};
 
 #[derive(Clone)]
 pub struct Episode {
@@ -26,7 +26,8 @@ impl Episode {
             guid: Some(format!("guid-{n}")),
             title: format!("Episode {n}"),
             description: format!("Description of episode {n}"),
-            pub_date: Utc.with_ymd_and_hms(2025, 1, 1, 12, 0, 0).unwrap() + Duration::days(n as i64),
+            // Recent (inside any feed-cutoff window), one hour apart, newer for higher n.
+            pub_date: Utc::now() - Duration::days(7) + Duration::hours(n as i64),
             duration_secs: Some(1800 + n),
             enclosure_url: Some(format!("https://cdn.example.invalid/audio/ep{n}.mp3")),
             enclosure_type: "audio/mpeg".into(),

@@ -4,6 +4,7 @@
 pub mod app;
 pub mod env;
 pub mod fixtures;
+pub mod flows;
 pub mod http;
 pub mod rss;
 
@@ -15,3 +16,7 @@ pub use env::Backend;
 pub use fixtures::Fixture;
 #[allow(unused_imports)]
 pub use rss::{Episode, Feed};
+#[allow(unused_imports)]
+pub use flows::eventually;
+#[allow(unused_imports)]
+pub use serde_json::{json, Value};
