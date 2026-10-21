@@ -1,5 +1,6 @@
 // lib/ui/pinepods/podcast_details.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -8,15 +9,16 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
-import 'package:pinepods_mobile/entities/person.dart';
+import 'package:pinepods_mobile/entities/people.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
-import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
+import 'package:pinepods_mobile/ui/pinepods/people/add_people_sheet.dart';
+import 'package:pinepods_mobile/ui/pinepods/people/people_widgets.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
@@ -74,7 +76,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   // Use global audio service instead of creating local instance
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  List<Person> _hosts = [];
+  // People on the show. [_peoplePodcastId] is set once they've loaded from a
+  // server that supports adding people.
+  PodcastCredits _credits = const PodcastCredits();
+  int? _peoplePodcastId;
 
   // Sort and filter state
   EpisodeSortDirection _sortDirection = EpisodeSortDirection.newestFirst;
@@ -673,6 +678,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           }
 
           if (podcastId != null && podcastId > 0) {
+            // People load alongside the episodes rather than after them.
+            unawaited(_loadPeople(podcastId));
             // Get episodes from server
             episodes = await _pinepodsService.getPodcastEpisodes(userId, podcastId);
             print('Loaded ${episodes.length} episodes from server for podcastId: $podcastId');
@@ -700,31 +707,6 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
               }
             }
             
-            // Fetch podcast 2.0 data for hosts information
-            try {
-              final podcastData = await _pinepodsService.fetchPodcasting2PodData(podcastId, userId);
-              if (podcastData != null) {
-                final personsData = podcastData['people'] as List<dynamic>?;
-                if (personsData != null) {
-                  final hosts = personsData.map((personData) {
-                    return Person(
-                      name: personData['name'] ?? '',
-                      role: personData['role'] ?? '',
-                      group: personData['group'] ?? '',
-                      image: personData['img'],
-                      link: personData['href'],
-                    );
-                  }).toList();
-                  
-                  setState(() {
-                    _hosts = hosts;
-                  });
-                  print('Loaded ${hosts.length} hosts from podcast 2.0 data');
-                }
-              }
-            } catch (e) {
-              print('Error loading podcast 2.0 data: $e');
-            }
           } else {
             print('No podcast ID found - podcast may not be properly added');
           }
@@ -773,6 +755,39 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         _errorMessage = 'Failed to load episodes';
       });
     }
+  }
+
+  Future<void> _loadPeople(int podcastId) async {
+    try {
+      final credits = await _pinepodsService.getPodcastPeople(podcastId);
+      if (credits != null) {
+        if (mounted) {
+          setState(() {
+            _credits = credits;
+            _peoplePodcastId = podcastId;
+          });
+        }
+        return;
+      }
+      // Servers before the people endpoints: read-only hosts from the 2.0 data.
+      final userId = Provider.of<SettingsBloc>(context, listen: false).currentSettings.pinepodsUserId;
+      if (userId == null) return;
+      final data = await _pinepodsService.fetchPodcasting2PodData(podcastId, userId);
+      final hosts = (data?['people'] as List<dynamic>? ?? const [])
+          .map((e) => CreditedPerson.fromJson(e as Map<String, dynamic>))
+          .where((p) => p.name.isNotEmpty && p.name != 'Unknown Host')
+          .toList();
+      if (mounted) setState(() => _credits = PodcastCredits(people: hosts));
+    } catch (e) {
+      debugPrint('Error loading podcast people: $e');
+    }
+  }
+
+  Future<void> _addPeople() async {
+    final podcastId = _peoplePodcastId;
+    if (podcastId == null) return;
+    final added = await showAddPeopleSheet(context, podcastId: podcastId);
+    if (added != null && mounted) await _loadPeople(podcastId);
   }
 
   Future<void> _toggleFollow() async {
@@ -843,6 +858,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         if (success) {
           setState(() {
             _isFollowing = false;
+            _credits = const PodcastCredits();
+            _peoplePodcastId = null;
           });
           widget.onFollowChanged?.call(false);
           _showSnackBar('Podcast removed', Colors.orange);
@@ -1515,72 +1532,20 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     ],
                   ),
                   
-                  // Hosts section (filter out "Unknown Host" entries)
-                  if (_hosts.where((host) => host.name != "Unknown Host").isNotEmpty) ...[
+                  if (_credits.people.isNotEmpty || _peoplePodcastId != null) ...[
                     const SizedBox(height: 16),
-                    Text(
-                      'Hosts',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 80,
-                      child: Builder(builder: (context) {
-                        final actualHosts = _hosts.where((host) => host.name != "Unknown Host").toList();
-                        return ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: actualHosts.length,
-                          itemBuilder: (context, index) {
-                            final host = actualHosts[index];
-                          return Container(
-                            width: 70,
-                            margin: const EdgeInsets.only(right: 12),
-                            child: Column(
-                              children: [
-                                Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Colors.grey[300],
-                                  ),
-                                  child: host.image != null && host.image!.isNotEmpty
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(25),
-                                          child: PodcastImage(
-                                            url: host.image!,
-                                            width: 50,
-                                            height: 50,
-                                            fit: BoxFit.cover,
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons.person,
-                                          size: 30,
-                                          color: Colors.grey,
-                                        ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  host.name,
-                                  style: const TextStyle(fontSize: 12),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                        );
-                      }),
+                    PeopleStrip(
+                      title: 'Hosts',
+                      people: _credits.people,
+                      onAdd: _peoplePodcastId != null ? _addPeople : null,
+                      emptyPrompt: 'Who hosts this show? Add them so everyone can find them.',
                     ),
                   ],
-                  
+                  if (_credits.guests.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    PeopleStrip(title: 'Guests', people: _credits.guests, showEpisodeCount: true),
+                  ],
+
                   const SizedBox(height: 24),
                   
                   // Episodes section header

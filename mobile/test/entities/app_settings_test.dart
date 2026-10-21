@@ -40,4 +40,16 @@ void main() {
       expect(copy.bottomBarOrder, base.bottomBarOrder);
     });
   });
+
+  group('normalizeBottomBarOrder', () {
+    test('a saved order from before People keeps its order and gains People at the end', () {
+      final saved = ['Search', 'Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists'];
+      expect(normalizeBottomBarOrder(saved), [...saved, 'People']);
+    });
+
+    test('unknown and duplicate entries are dropped', () {
+      final order = normalizeBottomBarOrder(['Home', 'Bogus', 'Home', ...defaultBottomBarOrder]);
+      expect(order, defaultBottomBarOrder);
+    });
+  });
 }

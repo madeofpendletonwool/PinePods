@@ -8,6 +8,7 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/user_stats.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
+import 'package:pinepods_mobile/entities/people.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 
 /// Debug-only logger: in release builds this compiles out, so request URLs and
@@ -2598,6 +2599,125 @@ class PinepodsService {
       _devLog('Error fetching podcast 2.0 pod data: $e');
       return null;
     }
+  }
+
+  // ---- People (/api/data/people/*) ----
+
+  Map<String, String> get _authHeaders {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    return {'Api-Key': _apiKey!};
+  }
+
+  Uri _peopleUrl(String path, [Map<String, String>? query]) =>
+      Uri.parse('$_server/api/data/people/$path').replace(queryParameters: query);
+
+  /// The server's own message for a failed request, if it sent one.
+  static String _errorMessage(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      final message = body is Map ? body['message'] : null;
+      if (message is String && message.isNotEmpty) return message;
+    } catch (_) {}
+    return 'Request failed (${response.statusCode})';
+  }
+
+  /// Everyone credited on one of the user's podcasts. Returns null when the
+  /// server predates the people endpoints (404), so callers can fall back to
+  /// [fetchPodcasting2PodData].
+  Future<PodcastCredits?> getPodcastPeople(int podcastId) async {
+    final response = await _get(_peopleUrl('podcast/$podcastId'), headers: _authHeaders);
+    if (response.statusCode == 200) {
+      return PodcastCredits.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    }
+    _devLog('Podcast people: ${response.statusCode}');
+    return null;
+  }
+
+  /// People on one of the user's episodes (its own credits plus the show's
+  /// regulars). Null when the server predates the people endpoints.
+  Future<List<CreditedPerson>?> getEpisodePeople(int episodeId) async {
+    final response = await _get(_peopleUrl('episode/$episodeId'), headers: _authHeaders);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List<dynamic>)
+          .map((e) => CreditedPerson.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    _devLog('Episode people: ${response.statusCode}');
+    return null;
+  }
+
+  Future<PersonProfile> getPersonProfile(int personId, {int limit = 50, int offset = 0}) async {
+    final response = await _get(
+      _peopleUrl('$personId', {'limit': '$limit', 'offset': '$offset'}),
+      headers: _authHeaders,
+    );
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return PersonProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// Resolve a PodPeopleDB id (e.g. a search result not yet on this server) to a
+  /// PinePods person id.
+  Future<int?> lookupPerson({int? podpeopleId, String? name}) async {
+    final response = await _get(
+      _peopleUrl('lookup', {
+        if (podpeopleId != null) 'podpeople_id': '$podpeopleId',
+        if (name != null) 'name': name,
+      }),
+      headers: _authHeaders,
+    );
+    if (response.statusCode != 200) return null;
+    return (jsonDecode(response.body) as Map<String, dynamic>)['person_id'] as int?;
+  }
+
+  /// People on this server and PodPeopleDB matching [query].
+  Future<List<PersonHit>> searchPeople(String query) async {
+    final response = await _get(_peopleUrl('search', {'q': query}), headers: _authHeaders);
+    if (response.statusCode != 200) return [];
+    return (jsonDecode(response.body) as List<dynamic>)
+        .map((e) => PersonHit.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Follow or unfollow a person. Returns whether the server accepted it.
+  Future<bool> setPersonFollowed(int personId, bool follow) async {
+    final url = _peopleUrl('$personId/follow');
+    final response = follow
+        ? await _post(url, headers: _authHeaders)
+        : await _client.delete(url, headers: _authHeaders).timeout(_timeout);
+    return response.statusCode == 200;
+  }
+
+  Future<List<PersonInfo>> getFollowedPeople() async {
+    final response = await _get(_peopleUrl('followed'), headers: _authHeaders);
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return (jsonDecode(response.body) as List<dynamic>)
+        .map((e) => PersonInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Add people to a podcast (or one of its episodes). They go to PodPeopleDB,
+  /// live right away as unverified. Returns everyone credited afterwards;
+  /// throws with the server's (or PodPeopleDB's) reason on failure.
+  Future<List<CreditedPerson>> contributePeople({
+    required int podcastId,
+    int? episodeId,
+    required List<ContributePerson> people,
+  }) async {
+    final response = await _post(
+      _peopleUrl('contribute'),
+      headers: {..._authHeaders, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'podcast_id': podcastId,
+        if (episodeId != null) 'episode_id': episodeId,
+        'people': people.map((p) => p.toJson()).toList(),
+      }),
+    );
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return (jsonDecode(response.body) as List<dynamic>)
+        .map((e) => CreditedPerson.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<bool> getAutoPlayNextStatus(int podcastId, int userId) async {
