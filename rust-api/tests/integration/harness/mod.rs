@@ -1,11 +1,14 @@
 //! Integration-test harness. See `tests/README.md` for how the suite is wired and run.
 #![allow(dead_code)] // shared helpers; each test module uses a different subset
 
+pub mod antennapod;
 pub mod app;
 pub mod env;
 pub mod fixtures;
 pub mod flows;
+pub mod gpodder;
 pub mod http;
+pub mod mock_gpodder;
 pub mod rss;
 
 #[allow(unused_imports)]
