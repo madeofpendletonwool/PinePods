@@ -31,6 +31,11 @@ services:
       DB_USER: postgres
       DB_PASSWORD: myS3curepass
       DB_NAME: pinepods_database
+      # Optional PostgreSQL TLS/mTLS settings. Certificate paths are inside this container.
+      # DB_SSL_MODE: verify-full
+      # DB_SSL_ROOT_CERT: /run/secrets/postgresql/ca.crt
+      # DB_SSL_CLIENT_CERT: /run/secrets/postgresql/client.crt
+      # DB_SSL_CLIENT_KEY: /run/secrets/postgresql/client.key
       # Valkey Settings
       VALKEY_HOST: valkey
       VALKEY_PORT: 6379
@@ -49,6 +54,8 @@ services:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
+      # Mount PostgreSQL certificates when using the optional TLS settings above
+      # - /home/user/pinepods/postgresql-certs:/run/secrets/postgresql:ro
       # Mount local media files to use the Add Local Podcast feature (optional)
       - /home/user/pinepods/local-media:/opt/pinepods/local-media
       # Timezone volumes, HIGHLY optional. Read the timezone notes below
