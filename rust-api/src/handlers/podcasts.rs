@@ -296,7 +296,8 @@ pub async fn add_podcast(
     let user_id = request.podcast_values.user_id;
     
     // Get properly parsed podcast values from feed-rs
-    let parsed_podcast_values = state.db_pool.get_podcast_values(feed_url, user_id, None, None).await?;
+    // The body is handed to the episode import below so the feed is only downloaded once.
+    let (parsed_podcast_values, feed_body) = state.db_pool.get_podcast_values_with_body(feed_url, user_id, None, None).await?;
     
     // Convert to PodcastValues struct using backend-parsed data
     let backend_podcast_values = PodcastValues {
@@ -328,6 +329,7 @@ pub async fn add_podcast(
         backend_podcast_values.user_id,
         None, // username
         None, // password
+        Some(feed_body),
     ).await?;
     
     Ok(Json(PodcastStatusResponse {
@@ -2813,6 +2815,10 @@ pub struct RecordListenDurationRequest {
     pub listen_duration: f64,
     #[serde(default)]
     pub is_youtube: bool,
+    /// The player's duration for the episode in seconds, if it knows it. Stored when the feed
+    /// gave none (new episodes beyond the newest few are inserted with duration 0).
+    #[serde(default)]
+    pub episode_duration: Option<f64>,
 }
 
 // Record listen duration - matches Python api record_listen_duration function exactly
@@ -2854,6 +2860,9 @@ pub async fn record_listen_duration(
         state.db_pool.record_youtube_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
     } else {
         state.db_pool.record_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
+        if let Some(d) = data.episode_duration.filter(|d| d.is_finite() && *d >= 1.0) {
+            state.db_pool.set_episode_duration_if_missing(data.episode_id, d.round() as i32).await?;
+        }
     }
 
     // Check if episode should be auto-completed based on user's setting

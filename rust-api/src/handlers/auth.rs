@@ -1005,9 +1005,9 @@ async fn process_opml_import(
         
         // Try to get podcast values and add podcast with robust error handling
         match get_podcast_values_from_url(podcast_url, &db_pool).await {
-            Ok(mut podcast_values) => {
+            Ok((mut podcast_values, feed_body)) => {
                 podcast_values.user_id = import_request.user_id;
-                match db_pool.add_podcast(&podcast_values, 0, None, None).await {
+                match db_pool.add_podcast_with_feed(&podcast_values, 0, None, None, Some(&feed_body)).await {
                     Ok(_) => {
                         tracing::info!("✅ Successfully imported podcast: {}", podcast_url);
                     }
@@ -1039,12 +1039,13 @@ async fn process_opml_import(
 }
 
 // Get podcast values from URL - simplified version of Python get_podcast_values
-async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::DatabasePool) -> Result<crate::handlers::podcasts::PodcastValues, AppError> {
+/// Also returns the fetched feed body, so the import reuses it for the episodes.
+async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::DatabasePool) -> Result<(crate::handlers::podcasts::PodcastValues, String), AppError> {
     // Use the same feed-rs based parsing that manual add uses (which works correctly)
     // This avoids the ampersand truncation issue in the custom quick_xml parser
     
     // Use the working get_podcast_values function that manual add uses
-    let podcast_values_map = db_pool.get_podcast_values(url, 0, None, None).await
+    let (podcast_values_map, feed_body) = db_pool.get_podcast_values_with_body(url, 0, None, None).await
         .map_err(|e| AppError::internal(&format!("Failed to parse podcast feed: {}", e)))?;
     
     debug!("🎙️  Parsed podcast: title='{}', author='{}', description_len={}", 
@@ -1057,7 +1058,7 @@ async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::Datab
         serde_json::from_str(podcast_values_map.get("categories").unwrap_or(&"{}".to_string()))
         .unwrap_or_default();
     
-    Ok(crate::handlers::podcasts::PodcastValues {
+    Ok((crate::handlers::podcasts::PodcastValues {
         pod_title: podcast_values_map.get("podcastname").unwrap_or(&"Unknown Podcast".to_string()).clone(),
         pod_artwork: podcast_values_map.get("artworkurl").unwrap_or(&"".to_string()).clone(),
         pod_author: podcast_values_map.get("author").unwrap_or(&"Unknown Author".to_string()).clone(),
@@ -1068,7 +1069,7 @@ async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::Datab
         pod_website: podcast_values_map.get("websiteurl").unwrap_or(&"".to_string()).clone(),
         pod_explicit: podcast_values_map.get("explicit").unwrap_or(&"False".to_string()) == "True",
         user_id: 0, // Will be set by the caller
-    })
+    }, feed_body))
 }
 
 // OIDC Authentication Flow Endpoints

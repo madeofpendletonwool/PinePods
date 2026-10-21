@@ -18,5 +18,6 @@ mod playback;
 mod podcasting20;
 mod podcasts;
 mod queue;
+mod refresh;
 mod settings;
 mod smoke;

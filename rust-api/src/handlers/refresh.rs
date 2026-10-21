@@ -202,6 +202,7 @@ struct PodcastRefreshItem {
     feed_cutoff: Option<i32>,
     etag: Option<String>,
     last_modified: Option<String>,
+    content_hash: Option<String>,
 }
 
 /// Queue server-side auto-downloads for newly inserted episodes, if the podcast has auto-download
@@ -269,79 +270,107 @@ async fn queue_auto_new_episodes(
 }
 
 /// Refresh one feed that may be shared by several subscriber podcasts (cross-user dedup). The feed
-/// is fetched (with conditional GET) and parsed ONCE, then applied to every subscriber's podcast
-/// row. Cache validators and success/failure state are recorded for the whole group.
-async fn refresh_feed_group(state: &AppState, group: &[PodcastRefreshItem]) -> usize {
+/// is fetched (conditional GET + body hash) and parsed ONCE, then applied to every subscriber's
+/// podcast row. Cache validators and success/failure state are recorded for the whole group.
+/// Returns every newly inserted episode across the group; Err only when the feed itself failed.
+async fn refresh_feed_group(
+    state: &AppState,
+    group: &[PodcastRefreshItem],
+) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
     let rep = &group[0];
     let ids: Vec<i32> = group.iter().map(|i| i.podcast_id).collect();
-    let mut total_new = 0usize;
+    let mut all_new = Vec::new();
 
     // Reuse any stored validator from the group (they converge after the first unified cycle).
+    // The body hash is only trusted when every subscriber has it: a row that never applied this
+    // body (e.g. its first import failed) must not be skipped because another row did.
     let etag = group.iter().find_map(|i| i.etag.clone());
     let last_modified = group.iter().find_map(|i| i.last_modified.clone());
+    let content_hash = rep
+        .content_hash
+        .clone()
+        .filter(|h| group.iter().all(|i| i.content_hash.as_deref() == Some(h.as_str())));
+    let validators = crate::database::FeedValidators {
+        etag: etag.as_deref(),
+        last_modified: last_modified.as_deref(),
+        content_hash: content_hash.as_deref(),
+    };
 
-    match state
+    let fetched = state
         .db_pool
-        .fetch_feed_conditional(
-            &rep.feed_url,
-            rep.username.as_deref(),
-            rep.password.as_deref(),
-            etag.as_deref(),
-            last_modified.as_deref(),
-        )
-        .await
-    {
-        Ok(crate::database::FeedFetch::NotModified) => {
-            debug!("Feed unchanged (304), skipping parse: {}", rep.feed_url);
+        .fetch_feed_conditional(&rep.feed_url, rep.username.as_deref(), rep.password.as_deref(), validators)
+        .await;
+    match fetched {
+        Ok(crate::database::FeedFetch::NotModified { etag, last_modified }) => {
+            debug!("Feed unchanged, skipping parse: {}", rep.feed_url);
+            if etag.is_some() || last_modified.is_some() {
+                let _ = state
+                    .db_pool
+                    .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), None)
+                    .await;
+            }
             let _ = state.db_pool.record_refresh_success(&ids).await;
         }
-        Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified }) => {
+        Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified, content_hash }) => {
             let artwork = rep.artwork_url.clone().unwrap_or_default();
-            match state.db_pool.parse_feed_body(&body, rep.podcast_id, &artwork).await {
-                Ok(parsed) => {
-                    for item in group {
-                        let art = item.artwork_url.as_deref().unwrap_or("");
-                        match state
-                            .db_pool
-                            .apply_parsed_episodes(item.podcast_id, &parsed, art, item.feed_cutoff, true)
-                            .await
-                        {
-                            Ok(new_eps) => {
-                                if !new_eps.is_empty() {
-                                    info!("Podcast {}: {} new episodes", item.podcast_id, new_eps.len());
-                                    total_new += new_eps.len();
-                                }
-                                queue_auto_downloads(state, item.user_id, item.auto_download, &new_eps).await;
-                                queue_auto_new_episodes(state, item.user_id, item.auto_queue, &new_eps).await;
-                                // Auto-transcribe new episodes for opted-in podcasts (independent
-                                // of downloads — the pipeline fetches audio on demand).
-                                for ep in &new_eps {
-                                    crate::services::transcription::maybe_transcribe_episode(state.db_pool.clone(), ep.episodeid);
-                                }
-                            }
-                            Err(e) => warn!("Error applying feed to podcast {}: {}", item.podcast_id, e),
-                        }
-                    }
-                    state.db_pool.store_feed_tags(&ids, &body).await;
-                    let _ = state
-                        .db_pool
-                        .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref())
-                        .await;
-                    let _ = state.db_pool.record_refresh_success(&ids).await;
-                }
+            let parsed = match state.db_pool.parse_feed_body(&body, rep.podcast_id, &artwork).await {
+                Ok(parsed) => parsed,
                 Err(e) => {
                     warn!("Error parsing feed {}: {}", rep.feed_url, e);
-                    let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
+                    let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string(), None).await;
+                    return Err(e);
+                }
+            };
+            let mut all_applied = true;
+            for item in group {
+                let art = item.artwork_url.as_deref().unwrap_or("");
+                match state
+                    .db_pool
+                    .apply_parsed_episodes(item.podcast_id, &parsed, art, item.feed_cutoff, true)
+                    .await
+                {
+                    Ok(new_eps) => {
+                        if !new_eps.is_empty() {
+                            info!("Podcast {}: {} new episodes", item.podcast_id, new_eps.len());
+                        }
+                        queue_auto_downloads(state, item.user_id, item.auto_download, &new_eps).await;
+                        queue_auto_new_episodes(state, item.user_id, item.auto_queue, &new_eps).await;
+                        // Auto-transcribe new episodes for opted-in podcasts (independent
+                        // of downloads — the pipeline fetches audio on demand).
+                        for ep in &new_eps {
+                            crate::services::transcription::maybe_transcribe_episode(state.db_pool.clone(), ep.episodeid);
+                        }
+                        all_new.extend(new_eps);
+                    }
+                    Err(e) => {
+                        all_applied = false;
+                        warn!("Error applying feed to podcast {}: {}", item.podcast_id, e);
+                    }
                 }
             }
+            state.db_pool.store_feed_tags(&ids, &body).await;
+            // Only remember the body hash once every subscriber has it applied; otherwise the
+            // next cycle would skip the row that failed.
+            let hash = all_applied.then_some(content_hash.as_str());
+            let _ = state
+                .db_pool
+                .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), hash)
+                .await;
+            let _ = state.db_pool.record_refresh_success(&ids).await;
+        }
+        Ok(crate::database::FeedFetch::Throttled { status, retry_after }) => {
+            let msg = format!("Feed host throttled refresh (HTTP {})", status);
+            let _ = state.db_pool.record_refresh_failure(&ids, &msg, retry_after).await;
+            return Err(AppError::external_error(&msg));
         }
         Err(e) => {
             warn!("Error fetching feed {}: {}", rep.feed_url, e);
-            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
+            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string(), None).await;
+            return Err(e);
         }
     }
 
-    total_new
+    Ok(all_new)
 }
 
 /// Refresh a single YouTube channel podcast.
@@ -376,7 +405,7 @@ async fn refresh_youtube_item(state: &AppState, item: &PodcastRefreshItem) {
         }
         Err(e) => {
             warn!("Error refreshing YouTube channel {}: {}", item.podcast_id, e);
-            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
+            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string(), None).await;
         }
     }
 }
@@ -411,9 +440,10 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
         crate::database::DatabasePool::Postgres(pool) => {
             let rows = sqlx::query(
                 r#"SELECT podcastid, feedurl, artworkurl, autodownload, autoqueue, username, password,
-                          isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified
+                          isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified, feedcontenthash
                    FROM "Podcasts"
                    WHERE COALESCE(refreshpodcast, TRUE) = TRUE
+                     AND (refreshnotbefore IS NULL OR refreshnotbefore <= NOW())
                      AND (COALESCE(consecutivefailures, 0) = 0
                           OR lastrefreshattempt IS NULL
                           OR lastrefreshattempt < NOW() - (INTERVAL '1 minute' * (30 * LEAST(COALESCE(consecutivefailures, 0), 48))))"#
@@ -436,15 +466,17 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                     feed_cutoff: result.try_get("feedcutoffdays").ok(),
                     etag: result.try_get::<Option<String>, _>("feedetag").ok().flatten(),
                     last_modified: result.try_get::<Option<String>, _>("feedlastmodified").ok().flatten(),
+                    content_hash: result.try_get::<Option<String>, _>("feedcontenthash").ok().flatten(),
                 });
             }
         }
         crate::database::DatabasePool::MySQL(pool) => {
             let rows = sqlx::query(
                 "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, AutoQueue, Username, Password,
-                        IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified
+                        IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified, FeedContentHash
                  FROM Podcasts
                  WHERE COALESCE(RefreshPodcast, 1) = 1
+                   AND (RefreshNotBefore IS NULL OR RefreshNotBefore <= NOW())
                    AND (COALESCE(ConsecutiveFailures, 0) = 0
                         OR LastRefreshAttempt IS NULL
                         OR LastRefreshAttempt < NOW() - INTERVAL (30 * LEAST(COALESCE(ConsecutiveFailures, 0), 48)) MINUTE)"
@@ -467,6 +499,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                     feed_cutoff: result.try_get("FeedCutoffDays").ok(),
                     etag: result.try_get::<Option<String>, _>("FeedETag").ok().flatten(),
                     last_modified: result.try_get::<Option<String>, _>("FeedLastModified").ok().flatten(),
+                    content_hash: result.try_get::<Option<String>, _>("FeedContentHash").ok().flatten(),
                 });
             }
         }
@@ -505,7 +538,8 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
     );
     stream::iter(groups)
         .for_each_concurrent(Some(REFRESH_CONCURRENCY), |group| async move {
-            refresh_feed_group(state, &group).await;
+            // Failures are recorded on the podcast rows and logged inside.
+            let _ = refresh_feed_group(state, &group).await;
         })
         .await;
 
@@ -718,7 +752,9 @@ async fn send_error_and_close(mut socket: WebSocket, error: &str) -> Result<(), 
     Ok(())
 }
 
-async fn run_refresh_process(
+/// A user's manual refresh (what the refresh websocket runs), streaming progress and new
+/// episodes into `tx`.
+pub async fn run_refresh_process(
     user_id: i32,
     nextcloud_refresh: bool,
     tx: tokio::sync::mpsc::Sender<RefreshMessage>,
@@ -885,6 +921,13 @@ pub struct PodcastForRefresh {
     pub password: Option<String>,
     pub feed_cutoff_days: Option<i32>,
     pub user_id: i32,
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
+    pub content_hash: Option<String>,
+    /// The background refresh succeeded on this feed in the last 2 minutes.
+    pub recently_refreshed: bool,
+    /// The host's Retry-After hold hasn't expired yet.
+    pub throttled: bool,
 }
 
 async fn refresh_single_podcast(
@@ -909,51 +952,37 @@ async fn refresh_rss_feed(
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
     debug!("Refreshing RSS feed for podcast: {}", podcast.name);
 
-    let ids = [podcast.id];
-    let artwork = podcast.artwork_url.as_deref().unwrap_or("");
+    if podcast.feed_url.starts_with("local://") {
+        return Ok(Vec::new());
+    }
+    // Nothing can have changed since a refresh moments ago, and a throttled host asked us to
+    // wait; both count as checked.
+    if podcast.recently_refreshed || podcast.throttled {
+        debug!(
+            "Skipping manual refresh of podcast {} (recently refreshed: {}, throttled: {})",
+            podcast.id, podcast.recently_refreshed, podcast.throttled
+        );
+        return Ok(Vec::new());
+    }
 
-    // A user-initiated refresh always does a full fetch (no stored validators passed) — the user
-    // explicitly asked to check for new episodes — but we still capture fresh ETag/Last-Modified
-    // so the scheduled background refresh can revalidate cheaply afterwards. The whole feed is
-    // fetched + parsed once and applied through the shared dedup/insert path, with the podcast's
-    // FeedCutoffDays honored (previously ignored for RSS).
-    let new_episodes = match state
-        .db_pool
-        .fetch_feed_conditional(
-            &podcast.feed_url,
-            podcast.username.as_deref(),
-            podcast.password.as_deref(),
-            None,
-            None,
-        )
-        .await
-    {
-        Ok(crate::database::FeedFetch::NotModified) => {
-            let _ = state.db_pool.record_refresh_success(&ids).await;
-            Vec::new()
-        }
-        Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified }) => {
-            let parsed = state.db_pool.parse_feed_body(&body, podcast.id, artwork).await?;
-            let new_eps = state
-                .db_pool
-                .apply_parsed_episodes(podcast.id, &parsed, artwork, podcast.feed_cutoff_days, true)
-                .await?;
-            state.db_pool.store_feed_tags(&ids, &body).await;
-            let _ = state
-                .db_pool
-                .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref())
-                .await;
-            let _ = state.db_pool.record_refresh_success(&ids).await;
-            new_eps
-        }
-        Err(e) => {
-            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
-            return Err(e);
-        }
+    // Same path as the scheduled refresh: conditional GET + body hash, the podcast's
+    // FeedCutoffDays, auto-download/queue/transcribe, failure and Retry-After tracking.
+    let item = PodcastRefreshItem {
+        podcast_id: podcast.id,
+        feed_url: podcast.feed_url.clone(),
+        artwork_url: podcast.artwork_url.clone(),
+        auto_download: podcast.auto_download,
+        auto_queue: podcast.auto_queue,
+        username: podcast.username.clone(),
+        password: podcast.password.clone(),
+        is_youtube: false,
+        user_id,
+        feed_cutoff: podcast.feed_cutoff_days,
+        etag: podcast.etag.clone(),
+        last_modified: podcast.last_modified.clone(),
+        content_hash: podcast.content_hash.clone(),
     };
-
-    queue_auto_downloads(state, user_id, podcast.auto_download, &new_episodes).await;
-    queue_auto_new_episodes(state, user_id, podcast.auto_queue, &new_episodes).await;
+    let new_episodes = refresh_feed_group(state, std::slice::from_ref(&item)).await?;
 
     if !new_episodes.is_empty() {
         info!("Refreshed podcast '{}' for user {}: {} new episodes", podcast.name, user_id, new_episodes.len());
@@ -991,7 +1020,7 @@ async fn refresh_youtube_channel(
         }
         Err(e) => {
             warn!("Error refreshing YouTube channel {}: {}", podcast.name, e);
-            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
+            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string(), None).await;
             Err(e)
         }
     }

@@ -737,6 +737,19 @@ impl DatabasePool {
         username: Option<&str>,
         password: Option<&str>,
     ) -> AppResult<(i32, Option<i32>)> {
+        self.add_podcast_with_feed(podcast_values, podcast_index_id, username, password, None).await
+    }
+
+    /// `add_podcast`, importing episodes from `feed_body` when the caller already fetched the
+    /// feed (e.g. for `get_podcast_values_with_body`), so it isn't downloaded twice.
+    pub async fn add_podcast_with_feed(
+        &self,
+        podcast_values: &crate::handlers::podcasts::PodcastValues,
+        podcast_index_id: i64,
+        username: Option<&str>,
+        password: Option<&str>,
+        feed_body: Option<&str>,
+    ) -> AppResult<(i32, Option<i32>)> {
         match self {
             DatabasePool::Postgres(pool) => {
                 // Check if podcast already exists
@@ -759,7 +772,7 @@ impl DatabasePool {
                         // No episodes, add them
                         let first_episode_id = self.add_episodes(podcast_id, &podcast_values.pod_feed_url, 
                                                                   &podcast_values.pod_artwork, false, 
-                                                                  username, password).await?;
+                                                                  username, password, feed_body).await?;
                         return Ok((podcast_id, first_episode_id));
                     } else {
                         return Ok((podcast_id, None));
@@ -805,7 +818,7 @@ impl DatabasePool {
                 // Add episodes
                 let first_episode_id = self.add_episodes(podcast_id, &podcast_values.pod_feed_url, 
                                                           &podcast_values.pod_artwork, false, 
-                                                          username, password).await?;
+                                                          username, password, feed_body).await?;
                 
                 // Count episodes for logging
                 let episode_count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE podcastid = $1"#)
@@ -839,7 +852,7 @@ impl DatabasePool {
                         // No episodes, add them
                         let first_episode_id = self.add_episodes(podcast_id, &podcast_values.pod_feed_url, 
                                                                   &podcast_values.pod_artwork, false, 
-                                                                  username, password).await?;
+                                                                  username, password, feed_body).await?;
                         return Ok((podcast_id, first_episode_id));
                     } else {
                         return Ok((podcast_id, None));
@@ -884,7 +897,7 @@ impl DatabasePool {
                 // Add episodes
                 let first_episode_id = self.add_episodes(podcast_id, &podcast_values.pod_feed_url, 
                                                           &podcast_values.pod_artwork, false, 
-                                                          username, password).await?;
+                                                          username, password, feed_body).await?;
                 
                 // Count episodes for logging
                 let episode_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM Episodes WHERE PodcastID = ?")
@@ -1410,7 +1423,12 @@ impl DatabasePool {
                         username as username,
                         password as password,
                         feedcutoffdays as feed_cutoff_days,
-                        userid as user_id
+                        userid as user_id,
+                        feedetag as etag,
+                        feedlastmodified as last_modified,
+                        feedcontenthash as content_hash,
+                        (lastrefreshsuccess IS NOT NULL AND lastrefreshsuccess > NOW() - INTERVAL '2 minutes') as recently_refreshed,
+                        (refreshnotbefore IS NOT NULL AND refreshnotbefore > NOW()) as throttled
                     FROM "Podcasts" 
                     WHERE userid = $1"#
                 )
@@ -1432,6 +1450,11 @@ impl DatabasePool {
                         password: row.try_get("password").ok(),
                         feed_cutoff_days: row.try_get("feed_cutoff_days").ok(),
                         user_id: row.try_get("user_id")?,
+                        etag: row.try_get("etag").ok().flatten(),
+                        last_modified: row.try_get("last_modified").ok().flatten(),
+                        content_hash: row.try_get("content_hash").ok().flatten(),
+                        recently_refreshed: row.try_get("recently_refreshed").unwrap_or(false),
+                        throttled: row.try_get("throttled").unwrap_or(false),
                     });
                 }
                 Ok(podcasts)
@@ -1449,7 +1472,12 @@ impl DatabasePool {
                         Username as username,
                         Password as password,
                         FeedCutoffDays as feed_cutoff_days,
-                        UserID as user_id
+                        UserID as user_id,
+                        FeedETag as etag,
+                        FeedLastModified as last_modified,
+                        FeedContentHash as content_hash,
+                        (LastRefreshSuccess IS NOT NULL AND LastRefreshSuccess > NOW() - INTERVAL 2 MINUTE) as recently_refreshed,
+                        (RefreshNotBefore IS NOT NULL AND RefreshNotBefore > NOW()) as throttled
                     FROM Podcasts 
                     WHERE UserID = ?"
                 )
@@ -1471,6 +1499,11 @@ impl DatabasePool {
                         password: row.try_get("password").ok(),
                         feed_cutoff_days: row.try_get("feed_cutoff_days").ok(),
                         user_id: row.try_get("user_id")?,
+                        etag: row.try_get("etag").ok().flatten(),
+                        last_modified: row.try_get("last_modified").ok().flatten(),
+                        content_hash: row.try_get("content_hash").ok().flatten(),
+                        recently_refreshed: row.try_get::<i64, _>("recently_refreshed").unwrap_or(0) != 0,
+                        throttled: row.try_get::<i64, _>("throttled").unwrap_or(0) != 0,
                     });
                 }
                 Ok(podcasts)
@@ -7053,45 +7086,35 @@ impl DatabasePool {
         _auto_download: bool,
         username: Option<&str>,
         password: Option<&str>,
+        feed_body: Option<&str>,
     ) -> AppResult<Option<i32>> {
-        // Fetch the RSS feed
-        let content = self.try_fetch_feed(feed_url, username, password).await?;
-        
+        // Reuse the body the caller already fetched (add-podcast reads the feed's metadata first).
+        let fetched;
+        let content = match feed_body {
+            Some(body) => body,
+            None => {
+                fetched = self.try_fetch_feed(feed_url, username, password).await?;
+                fetched.as_str()
+            }
+        };
+
         // Parse the RSS feed, then apply via the shared dedup/insert path (GUID→URL→title dedup,
-        // no-op UPDATE skipping, async duration estimation). Kept as a separate function from
-        // add_episodes_with_new_list only because callers here want the first episode id rather
-        // than the list of newly-inserted episodes.
-        let episodes = self.parse_rss_feed(&content, podcast_id, artwork_url).await?;
-        let _new = self.apply_parsed_episodes(podcast_id, &episodes, artwork_url, None, true).await?;
-        self.store_feed_tags(&[podcast_id], &content).await;
+        // no-op UPDATE skipping, batched insert). This is the initial import of the back
+        // catalogue, so no new-episode notifications.
+        let episodes = self.parse_rss_feed(content, podcast_id, artwork_url).await?;
+        let _new = self.apply_parsed_episodes(podcast_id, &episodes, artwork_url, None, false).await?;
+        self.store_feed_tags(&[podcast_id], content).await;
+        // The next scheduled refresh can skip this exact body.
+        let hash = crate::services::http::content_hash(content);
+        if let Err(e) = self.store_feed_cache_validators(&[podcast_id], None, None, Some(&hash)).await {
+            warn!("Storing feed hash for podcast {} failed: {}", podcast_id, e);
+        }
         crate::services::people::podpeople::queue_sync(podcast_id);
 
         // Get the actual first episode ID (earliest by pub date)
         let first_id = self.get_first_episode_id(podcast_id, false).await?;
 
         Ok(first_id)
-    }
-
-    // New function to add episodes and return list of newly inserted episodes
-    // This matches the Python add_episodes websocket=True functionality
-    pub async fn add_episodes_with_new_list(
-        &self,
-        podcast_id: i32,
-        feed_url: &str,
-        artwork_url: &str,
-        username: Option<&str>,
-        password: Option<&str>,
-    ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
-        // Thin wrapper retained for callers that don't need conditional-GET or per-podcast cutoff
-        // (initial add, gpodder import). The refresh paths instead call fetch_feed_conditional +
-        // parse_feed_episodes + apply_parsed_episodes directly so they can skip unchanged feeds,
-        // apply the feed cutoff, and (for multi-user instances) parse a shared feed only once.
-        let content = self.try_fetch_feed(feed_url, username, password).await?;
-        let episodes = self.parse_rss_feed(&content, podcast_id, artwork_url).await?;
-        let new = self.apply_parsed_episodes(podcast_id, &episodes, artwork_url, None, true).await?;
-        self.store_feed_tags(&[podcast_id], &content).await;
-        crate::services::people::podpeople::queue_sync(podcast_id);
-        Ok(new)
     }
 
     /// Store a fetched feed's Podcasting 2.0 tags (people, chapters, transcripts, podroll,
@@ -7147,8 +7170,9 @@ impl DatabasePool {
 
         let parsed_count = candidates.len();
         let mut new_episodes = Vec::new();
-        let mut skipped_count: usize = 0;
         let mut updated_count: usize = 0;
+        let mut pending: Vec<NewEpisodeRow> = Vec::new();
+        let mut pending_guids: std::collections::HashSet<&str> = std::collections::HashSet::new();
 
         // Dedup key lists. url_bases/titles cover ALL candidates (not just guid-less ones) so a
         // new episode that now carries a GUID can still match a legacy row stored before GUIDs
@@ -7262,97 +7286,59 @@ impl DatabasePool {
                 continue;
             }
 
-            // NEW episode. Estimate duration asynchronously (no block_in_place) when missing.
-            let mut duration = ep.duration;
-            if duration == 0 && !ep.url.is_empty() {
-                if let Some(est) = self.estimate_duration_from_audio_url_async(&ep.url).await {
-                    duration = est;
-                    debug!("Estimated duration {} seconds for new episode: {}", est, ep.title);
+            // NEW episode: collected and inserted together below. A feed that lists the same GUID
+            // twice yields one episode.
+            if let Some(g) = &ep.guid {
+                if !pending_guids.insert(g.as_str()) {
+                    continue;
                 }
             }
+            pending.push(NewEpisodeRow { ep, artwork, duration: ep.duration });
+        }
 
-            // Insert. Use match (not ?) so a single bad episode logs and skips rather than
-            // aborting the entire batch — prevents partial-refresh silent failures.
-            let episode_id = match self {
-                DatabasePool::Postgres(pool) => {
-                    let row = match sqlx::query(
-                        r#"INSERT INTO "Episodes"
-                           (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration, is_video, episodeguid)
-                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                           RETURNING episodeid"#,
-                    )
-                    .bind(podcast_id)
-                    .bind(&ep.title)
-                    .bind(&ep.description)
-                    .bind(&ep.url)
-                    .bind(artwork)
-                    .bind(ep.pub_date)
-                    .bind(duration)
-                    .bind(ep.is_video)
-                    .bind(ep.guid.as_deref())
-                    .fetch_one(pool)
-                    .await
-                    {
-                        Ok(r) => r,
-                        Err(e) => {
-                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", ep.title, podcast_id, e);
-                            skipped_count += 1;
-                            continue;
-                        }
-                    };
-                    match row.try_get::<i32, _>("episodeid") {
-                        Ok(id) => id,
-                        Err(e) => {
-                            tracing::warn!("Failed to read episodeid for '{}': {}", ep.title, e);
-                            skipped_count += 1;
-                            continue;
-                        }
-                    }
-                }
-                DatabasePool::MySQL(pool) => {
-                    let result = match sqlx::query(
-                        "INSERT INTO Episodes
-                         (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, IsVideo, EpisodeGUID)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    )
-                    .bind(podcast_id)
-                    .bind(&ep.title)
-                    .bind(&ep.description)
-                    .bind(&ep.url)
-                    .bind(artwork)
-                    .bind(ep.pub_date)
-                    .bind(duration)
-                    .bind(ep.is_video)
-                    .bind(ep.guid.as_deref())
-                    .execute(pool)
-                    .await
-                    {
-                        Ok(r) => r,
-                        Err(e) => {
-                            tracing::warn!("Skipping episode '{}' (podcast {}): {}", ep.title, podcast_id, e);
-                            skipped_count += 1;
-                            continue;
-                        }
-                    };
-                    result.last_insert_id() as i32
-                }
-            };
-
-            if notify {
-                if let Err(e) = self.check_and_send_notification(podcast_id, &ep.title).await {
-                    tracing::warn!("Failed to send notification for episode '{}': {}", ep.title, e);
-                }
+        // Durations: probe only the newest few episodes that lack one (a new podcast's back
+        // catalogue would otherwise be hundreds of sequential HEAD requests before it shows up).
+        // The rest are filled in by a background job after insert.
+        let mut probe_order: Vec<usize> = (0..pending.len())
+            .filter(|&i| pending[i].duration == 0 && !pending[i].ep.url.is_empty())
+            .collect();
+        probe_order.sort_by(|&a, &b| pending[b].ep.pub_date.cmp(&pending[a].ep.pub_date));
+        let backfill_from = probe_order.len().min(DURATION_PROBES_PER_APPLY);
+        use futures::StreamExt;
+        let probed: Vec<(usize, Option<i32>)> = futures::stream::iter(probe_order[..backfill_from].to_vec())
+            .map(|i| {
+                let url = pending[i].ep.url.clone();
+                async move { (i, self.estimate_duration_from_audio_url_async(&url).await) }
+            })
+            .buffer_unordered(DURATION_PROBE_CONCURRENCY)
+            .collect()
+            .await;
+        for (i, est) in probed {
+            if let Some(d) = est {
+                debug!("Estimated duration {} seconds for new episode: {}", d, pending[i].ep.title);
+                pending[i].duration = d;
             }
+        }
+        let needs_backfill: std::collections::HashSet<usize> = probe_order[backfill_from..].iter().copied().collect();
 
+        let inserted = self.insert_new_episodes(podcast_id, &pending).await?;
+        let skipped_count = pending.len() - inserted.len();
+
+        let mut backfill = Vec::new();
+        for (i, episode_id) in inserted {
+            let row = &pending[i];
+            if needs_backfill.contains(&i) {
+                backfill.push((episode_id, row.ep.url.clone()));
+            }
             new_episodes.push(crate::handlers::podcasts::Episode {
                 podcastid: podcast_id,
                 podcastname: "".to_string(),
-                episodetitle: ep.title.clone(),
-                episodepubdate: ep.pub_date.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                episodedescription: ep.description.clone(),
-                episodeartwork: artwork.to_string(),
-                episodeurl: ep.url.clone(),
-                episodeduration: duration,
+                episodetitle: row.ep.title.clone(),
+                episodepubdate: row.ep.pub_date.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                episodedescription: row.ep.description.clone(),
+                episodeartwork: row.artwork.to_string(),
+                episodeurl: row.ep.url.clone(),
+                episodeduration: row.duration,
                 listenduration: None,
                 episodeid: episode_id,
                 completed: false,
@@ -7360,8 +7346,26 @@ impl DatabasePool {
                 queued: false,
                 downloaded: false,
                 is_youtube: false,
-                is_video: ep.is_video,
+                is_video: row.ep.is_video,
             });
+        }
+
+        if !backfill.is_empty() {
+            debug!("Podcast {}: backfilling {} episode durations in the background", podcast_id, backfill.len());
+            let db = self.clone();
+            tokio::spawn(async move { db.backfill_episode_durations(backfill).await });
+        }
+
+        if notify && !new_episodes.is_empty() {
+            match self.load_notification_targets(podcast_id).await {
+                Ok(targets) if !targets.is_empty() => {
+                    for ep in &new_episodes {
+                        Self::send_new_episode_notifications(&targets, &ep.episodetitle).await;
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => warn!("Loading notification settings for podcast {} failed: {}", podcast_id, e),
+            }
         }
 
         tracing::debug!(
@@ -7377,21 +7381,178 @@ impl DatabasePool {
         Ok(new_episodes)
     }
 
-    // Check and send notifications for new episodes - matches Python check_and_send_notification function
-    pub async fn check_and_send_notification(&self, podcast_id: i32, episode_title: &str) -> AppResult<bool> {
-        use std::time::Duration;
-        
-        let mut success = false;
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(2))
-            .build()
-            .map_err(|e| AppError::Http(e))?;
-        
+    /// Insert new episodes for one podcast in a single transaction. Rows whose
+    /// (PodcastID, EpisodeGUID) already exists (another refresh got there first) are skipped by
+    /// the unique index rather than duplicated. Returns (index into `rows`, EpisodeID) for each
+    /// row actually inserted.
+    async fn insert_new_episodes(&self, podcast_id: i32, rows: &[NewEpisodeRow<'_>]) -> AppResult<Vec<(usize, i32)>> {
+        if rows.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Concurrent inserts of the same keys can deadlock (InnoDB takes shared locks on the
+        // duplicates); the database rolls one transaction back, and running it again simply
+        // skips what the other one inserted.
+        let mut attempt = 0;
+        loop {
+            match self.insert_new_episodes_once(podcast_id, rows).await {
+                Err(AppError::Database(sqlx::Error::Database(e)))
+                    if attempt < 3 && matches!(e.code().as_deref(), Some("40001") | Some("40P01")) =>
+                {
+                    attempt += 1;
+                    debug!("Episode insert for podcast {} hit a deadlock, retrying ({}/3)", podcast_id, attempt);
+                    tokio::time::sleep(Duration::from_millis(20 * attempt as u64)).await;
+                }
+                other => return other,
+            }
+        }
+    }
+
+    async fn insert_new_episodes_once(&self, podcast_id: i32, rows: &[NewEpisodeRow<'_>]) -> AppResult<Vec<(usize, i32)>> {
+        let mut inserted = Vec::with_capacity(rows.len());
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // RETURNING can't carry the input position, so match rows back by GUID (unique
+                // per podcast, and deduplicated above) or, without one, by URL + title.
+                let mut by_guid: HashMap<&str, usize> = HashMap::new();
+                let mut by_url_title: HashMap<(String, String), Vec<usize>> = HashMap::new();
+                for (i, r) in rows.iter().enumerate() {
+                    match &r.ep.guid {
+                        Some(g) => { by_guid.insert(g.as_str(), i); }
+                        None => by_url_title.entry((r.ep.url.clone(), r.ep.title.clone())).or_default().push(i),
+                    }
+                }
+                let mut tx = pool.begin().await?;
+                for chunk in rows.chunks(EPISODE_INSERT_CHUNK) {
+                    let returned = sqlx::query(
+                        r#"INSERT INTO "Episodes"
+                           (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork,
+                            episodepubdate, episodeduration, is_video, episodeguid)
+                           SELECT $1, t.* FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[],
+                                                      $6::timestamptz[], $7::int4[], $8::bool[], $9::text[]) AS t
+                           ON CONFLICT DO NOTHING
+                           RETURNING episodeid, episodeguid, episodeurl, episodetitle"#,
+                    )
+                    .bind(podcast_id)
+                    .bind(chunk.iter().map(|r| r.ep.title.as_str()).collect::<Vec<_>>())
+                    .bind(chunk.iter().map(|r| r.ep.description.as_str()).collect::<Vec<_>>())
+                    .bind(chunk.iter().map(|r| r.ep.url.as_str()).collect::<Vec<_>>())
+                    .bind(chunk.iter().map(|r| r.artwork).collect::<Vec<_>>())
+                    .bind(chunk.iter().map(|r| r.ep.pub_date).collect::<Vec<_>>())
+                    .bind(chunk.iter().map(|r| r.duration).collect::<Vec<_>>())
+                    .bind(chunk.iter().map(|r| r.ep.is_video).collect::<Vec<_>>())
+                    .bind(chunk.iter().map(|r| r.ep.guid.as_deref()).collect::<Vec<_>>())
+                    .fetch_all(&mut *tx)
+                    .await?;
+                    for row in returned {
+                        let id: i32 = row.try_get("episodeid")?;
+                        let guid: Option<String> = row.try_get("episodeguid")?;
+                        let index = match guid {
+                            Some(g) => by_guid.get(g.as_str()).copied(),
+                            None => {
+                                let url: String = row.try_get("episodeurl")?;
+                                let title: String = row.try_get("episodetitle")?;
+                                by_url_title.get_mut(&(url, title)).and_then(|v| v.pop())
+                            }
+                        };
+                        match index {
+                            Some(i) => inserted.push((i, id)),
+                            None => warn!("Inserted episode {} for podcast {} didn't match any parsed entry", id, podcast_id),
+                        }
+                    }
+                }
+                tx.commit().await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                // Row by row inside one transaction: a multi-row INSERT IGNORE can't say which rows
+                // were skipped or which ids the others got (auto-increment may interleave with a
+                // concurrent refresh), and the transaction makes per-row cost small.
+                let mut tx = pool.begin().await?;
+                for (i, r) in rows.iter().enumerate() {
+                    let result = sqlx::query(
+                        "INSERT IGNORE INTO Episodes
+                         (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration, IsVideo, EpisodeGUID)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    )
+                    .bind(podcast_id)
+                    .bind(&r.ep.title)
+                    .bind(&r.ep.description)
+                    .bind(&r.ep.url)
+                    .bind(r.artwork)
+                    .bind(r.ep.pub_date)
+                    .bind(r.duration)
+                    .bind(r.ep.is_video)
+                    .bind(r.ep.guid.as_deref())
+                    .execute(&mut *tx)
+                    .await?;
+                    if result.rows_affected() == 1 {
+                        inserted.push((i, result.last_insert_id() as i32));
+                    }
+                }
+                tx.commit().await?;
+            }
+        }
+        if inserted.len() < rows.len() {
+            debug!(
+                "Podcast {}: {} new episodes were already inserted by a concurrent refresh",
+                podcast_id,
+                rows.len() - inserted.len()
+            );
+        }
+        Ok(inserted)
+    }
+
+    /// Estimate durations for episodes that were inserted without one, a few at a time across the
+    /// whole server, and store them unless something (a player report) filled one in meanwhile.
+    async fn backfill_episode_durations(&self, episodes: Vec<(i32, String)>) {
+        static PROBES: std::sync::LazyLock<tokio::sync::Semaphore> = std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(DURATION_BACKFILL_CONCURRENCY));
+        let mut filled = 0usize;
+        for (episode_id, url) in &episodes {
+            let Ok(_permit) = PROBES.acquire().await else { return };
+            let Some(duration) = self.estimate_duration_from_audio_url_async(url).await else { continue };
+            if let Err(e) = self.set_episode_duration_if_missing(*episode_id, duration).await {
+                warn!("Storing estimated duration for episode {} failed: {}", episode_id, e);
+            } else {
+                filled += 1;
+            }
+        }
+        debug!("Duration backfill: filled {}/{} episodes", filled, episodes.len());
+    }
+
+    /// Store `duration` (seconds) for an episode whose duration is still unknown (NULL or 0).
+    pub async fn set_episode_duration_if_missing(&self, episode_id: i32, duration: i32) -> AppResult<()> {
+        if duration <= 0 {
+            return Ok(());
+        }
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"UPDATE "Episodes" SET episodeduration = $1
+                       WHERE episodeid = $2 AND COALESCE(episodeduration, 0) = 0"#,
+                )
+                .bind(duration)
+                .bind(episode_id)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Episodes SET EpisodeDuration = ? WHERE EpisodeID = ? AND COALESCE(EpisodeDuration, 0) = 0")
+                    .bind(duration)
+                    .bind(episode_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Where to announce new episodes of `podcast_id`: the owner's enabled notification settings,
+    /// if notifications are on for this podcast. Loaded once per refresh of the podcast.
+    async fn load_notification_targets(&self, podcast_id: i32) -> AppResult<Vec<NotificationTarget>> {
+        let mut targets = Vec::new();
         match self {
             DatabasePool::Postgres(pool) => {
                 let rows = sqlx::query(
-                    r#"SELECT p.notificationsenabled, p.userid, p.podcastname,
-                           uns.platform, uns.enabled, uns.ntfytopic, uns.ntfyserverurl,
+                    r#"SELECT p.podcastname, uns.platform, uns.ntfytopic, uns.ntfyserverurl,
                            uns.ntfyusername, uns.ntfypassword, uns.ntfyaccesstoken,
                            uns.gotifyurl, uns.gotifytoken
                     FROM "Podcasts" p
@@ -7401,45 +7562,23 @@ impl DatabasePool {
                 .bind(podcast_id)
                 .fetch_all(pool)
                 .await?;
-                
-                for result in rows {
-                    let podcast_name: String = result.try_get("podcastname")?;
-                    let platform: String = result.try_get("platform")?;
-                    
-                    match platform.as_str() {
-                        "ntfy" => {
-                            let topic: String = result.try_get("ntfytopic")?;
-                            let server_url: String = result.try_get("ntfyserverurl")?;
-                            let username: Option<String> = result.try_get("ntfyusername").ok();
-                            let password: Option<String> = result.try_get("ntfypassword").ok();
-                            let access_token: Option<String> = result.try_get("ntfyaccesstoken").ok();
-                            
-                            if let Ok(sent) = Self::send_ntfy_notification(&client, &topic, &server_url, username.as_deref(), password.as_deref(), access_token.as_deref(), &podcast_name, episode_title).await {
-                                if sent {
-                                    success = true;
-                                }
-                            }
-                        }
-                        "gotify" => {
-                            let url: String = result.try_get("gotifyurl")?;
-                            let token: String = result.try_get("gotifytoken")?;
-                            
-                            if let Ok(sent) = Self::send_gotify_notification(&client, &url, &token, &podcast_name, episode_title).await {
-                                if sent {
-                                    success = true;
-                                }
-                            }
-                        }
-                        _ => {
-                            tracing::warn!("Unknown notification platform: {}", platform);
-                        }
-                    }
+                for row in rows {
+                    targets.push(NotificationTarget {
+                        podcast_name: row.try_get("podcastname")?,
+                        platform: row.try_get("platform")?,
+                        ntfy_topic: row.try_get("ntfytopic").ok(),
+                        ntfy_server_url: row.try_get("ntfyserverurl").ok(),
+                        ntfy_username: row.try_get("ntfyusername").ok(),
+                        ntfy_password: row.try_get("ntfypassword").ok(),
+                        ntfy_access_token: row.try_get("ntfyaccesstoken").ok(),
+                        gotify_url: row.try_get("gotifyurl").ok(),
+                        gotify_token: row.try_get("gotifytoken").ok(),
+                    });
                 }
             }
             DatabasePool::MySQL(pool) => {
                 let rows = sqlx::query(
-                    "SELECT p.NotificationsEnabled, p.UserID, p.PodcastName,
-                            uns.Platform, uns.Enabled, uns.NtfyTopic, uns.NtfyServerUrl,
+                    "SELECT p.PodcastName, uns.Platform, uns.NtfyTopic, uns.NtfyServerUrl,
                             uns.NtfyUsername, uns.NtfyPassword, uns.NtfyAccessToken,
                             uns.GotifyUrl, uns.GotifyToken
                      FROM Podcasts p
@@ -7449,44 +7588,62 @@ impl DatabasePool {
                 .bind(podcast_id)
                 .fetch_all(pool)
                 .await?;
-                
-                for result in rows {
-                    let podcast_name: String = result.try_get("PodcastName")?;
-                    let platform: String = result.try_get("Platform")?;
-                    
-                    match platform.as_str() {
-                        "ntfy" => {
-                            let topic: String = result.try_get("NtfyTopic")?;
-                            let server_url: String = result.try_get("NtfyServerUrl")?;
-                            let username: Option<String> = result.try_get("NtfyUsername").ok();
-                            let password: Option<String> = result.try_get("NtfyPassword").ok();
-                            let access_token: Option<String> = result.try_get("NtfyAccessToken").ok();
-                            
-                            if let Ok(sent) = Self::send_ntfy_notification(&client, &topic, &server_url, username.as_deref(), password.as_deref(), access_token.as_deref(), &podcast_name, episode_title).await {
-                                if sent {
-                                    success = true;
-                                }
-                            }
-                        }
-                        "gotify" => {
-                            let url: String = result.try_get("GotifyUrl")?;
-                            let token: String = result.try_get("GotifyToken")?;
-                            
-                            if let Ok(sent) = Self::send_gotify_notification(&client, &url, &token, &podcast_name, episode_title).await {
-                                if sent {
-                                    success = true;
-                                }
-                            }
-                        }
-                        _ => {
-                            tracing::warn!("Unknown notification platform: {}", platform);
-                        }
-                    }
+                for row in rows {
+                    targets.push(NotificationTarget {
+                        podcast_name: row.try_get("PodcastName")?,
+                        platform: row.try_get("Platform")?,
+                        ntfy_topic: row.try_get("NtfyTopic").ok(),
+                        ntfy_server_url: row.try_get("NtfyServerUrl").ok(),
+                        ntfy_username: row.try_get("NtfyUsername").ok(),
+                        ntfy_password: row.try_get("NtfyPassword").ok(),
+                        ntfy_access_token: row.try_get("NtfyAccessToken").ok(),
+                        gotify_url: row.try_get("GotifyUrl").ok(),
+                        gotify_token: row.try_get("GotifyToken").ok(),
+                    });
                 }
             }
         }
-        
-        Ok(success)
+        Ok(targets)
+    }
+
+    /// Announce one new episode on every target. Returns whether any send succeeded; failures
+    /// are logged by the senders.
+    async fn send_new_episode_notifications(targets: &[NotificationTarget], episode_title: &str) -> bool {
+        let client = crate::services::http::service_client();
+        let mut success = false;
+        for t in targets {
+            let sent = match t.platform.as_str() {
+                "ntfy" => match (&t.ntfy_topic, &t.ntfy_server_url) {
+                    (Some(topic), Some(server_url)) => Self::send_ntfy_notification(
+                        client,
+                        topic,
+                        server_url,
+                        t.ntfy_username.as_deref(),
+                        t.ntfy_password.as_deref(),
+                        t.ntfy_access_token.as_deref(),
+                        &t.podcast_name,
+                        episode_title,
+                    )
+                    .await
+                    .unwrap_or(false),
+                    _ => false,
+                },
+                "gotify" => match (&t.gotify_url, &t.gotify_token) {
+                    (Some(url), Some(token)) => {
+                        Self::send_gotify_notification(client, url, token, &t.podcast_name, episode_title)
+                            .await
+                            .unwrap_or(false)
+                    }
+                    _ => false,
+                },
+                other => {
+                    tracing::warn!("Unknown notification platform: {}", other);
+                    false
+                }
+            };
+            success |= sent;
+        }
+        success
     }
 
     // Helper function to send NTFY notification - matches Python send_ntfy_notification function
@@ -7505,6 +7662,7 @@ impl DatabasePool {
         
         let mut request = client
             .post(&url)
+            .timeout(std::time::Duration::from_secs(2))
             .header("Content-Type", "text/plain")
             .body(message);
         
@@ -7521,7 +7679,7 @@ impl DatabasePool {
         {
             Ok(response) => {
                 if response.status().is_success() {
-                    tracing::info!("Successfully sent NTFY notification to {}", url);
+                    tracing::debug!("Sent NTFY notification to {}", url);
                     Ok(true)
                 } else {
                     tracing::warn!("NTFY notification failed with status: {}", response.status());
@@ -7548,6 +7706,7 @@ impl DatabasePool {
         
         match client
             .post(&url)
+            .timeout(std::time::Duration::from_secs(2))
             .header("Content-Type", "application/json")
             .json(&serde_json::json!({
                 "message": message,
@@ -7558,7 +7717,8 @@ impl DatabasePool {
         {
             Ok(response) => {
                 if response.status().is_success() {
-                    tracing::info!("Successfully sent Gotify notification to {}", url);
+                    // The URL carries the app token; don't log it.
+                    tracing::debug!("Sent Gotify notification to {}", server_url);
                     Ok(true)
                 } else {
                     tracing::warn!("Gotify notification failed with status: {}", response.status());
@@ -7706,18 +7866,20 @@ impl DatabasePool {
         Ok(out)
     }
 
-    /// Conditional feed fetch: sends If-None-Match / If-Modified-Since from previously stored
-    /// validators so an unchanged feed returns 304 and we skip the full download + parse entirely.
-    /// On a 200 the new ETag / Last-Modified are returned so the caller can persist them. Falls
-    /// back to the full `try_fetch_feed` (UA fallback, www/non-www) when the conditional request
-    /// errors or returns a non-success/non-304 status.
+    /// Conditional feed fetch through the shared feed client. Sends If-None-Match /
+    /// If-Modified-Since from the stored validators, and also compares the body's SHA-256 with the
+    /// stored hash so hosts with missing or unreliable ETags still skip parse/apply when nothing
+    /// changed. Status handling:
+    /// - 304, or 200 with an unchanged body → `NotModified`;
+    /// - 403/406 → one retry through the browser-UA / www fallbacks (the only case they help);
+    /// - 429/503 → `Throttled` with the host's `Retry-After`, for the caller's backoff;
+    /// - anything else (404/410, 5xx, transport errors) → error, with no second fetch.
     pub async fn fetch_feed_conditional(
         &self,
         url: &str,
         username: Option<&str>,
         password: Option<&str>,
-        prev_etag: Option<&str>,
-        prev_last_modified: Option<&str>,
+        prev: FeedValidators<'_>,
     ) -> AppResult<FeedFetch> {
         // SSRF guard: url is a stored feed URL (originally user-supplied/imported).
         if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(url).await {
@@ -7726,61 +7888,70 @@ impl DatabasePool {
         }
 
         // Always issue the request (even with no prior validators) so we can capture ETag /
-        // Last-Modified for next time. Conditional headers are only added when we have a prior
-        // value to revalidate against.
-        let client = reqwest::Client::builder()
-            .user_agent("PinePods/1.0")
-            .timeout(std::time::Duration::from_secs(30))
-            .redirect(crate::services::url_guard::guarded_redirect_policy())
-            .build()
-            .map_err(AppError::Http)?;
-
-        let mut request = client.get(url);
+        // Last-Modified for next time.
+        let mut request = crate::services::http::feed_client().get(url);
         if let (Some(user), Some(pass)) = (username, password) {
             request = request.basic_auth(user, Some(pass));
         }
-        if let Some(etag) = prev_etag {
+        if let Some(etag) = prev.etag {
             request = request.header(reqwest::header::IF_NONE_MATCH, etag);
         }
-        if let Some(lm) = prev_last_modified {
+        if let Some(lm) = prev.last_modified {
             request = request.header(reqwest::header::IF_MODIFIED_SINCE, lm);
         }
 
-        match request.send().await {
-            Ok(response) if response.status() == reqwest::StatusCode::NOT_MODIFIED => {
-                debug!("Feed not modified (304): {}", url);
-                Ok(FeedFetch::NotModified)
-            }
-            Ok(response) if response.status().is_success() => {
-                let etag = response
-                    .headers()
-                    .get(reqwest::header::ETAG)
-                    .and_then(|v| v.to_str().ok())
-                    .map(|s| s.to_string());
-                let last_modified = response
-                    .headers()
-                    .get(reqwest::header::LAST_MODIFIED)
-                    .and_then(|v| v.to_str().ok())
-                    .map(|s| s.to_string());
-                let body = response.text().await.map_err(AppError::Http)?;
-                Ok(FeedFetch::Fetched { body, etag, last_modified })
-            }
-            // Non-success (e.g. 403) or transport error: fall back to the resilient full fetch,
-            // which has the UA + www/non-www retry logic. We don't carry validators through here.
-            _ => {
-                let body = self.try_fetch_feed(url, username, password).await?;
-                Ok(FeedFetch::Fetched { body, etag: None, last_modified: None })
-            }
+        let response = request.send().await.map_err(|e| {
+            warn!("Feed request failed for {}: {}", url, e);
+            AppError::Http(e)
+        })?;
+        let status = response.status();
+
+        let (body, etag, last_modified) = if status == reqwest::StatusCode::NOT_MODIFIED {
+            debug!("Feed not modified (304): {}", url);
+            return Ok(FeedFetch::NotModified { etag: None, last_modified: None });
+        } else if status.is_success() {
+            let header = |name: reqwest::header::HeaderName| {
+                response.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string)
+            };
+            let etag = header(reqwest::header::ETAG);
+            let last_modified = header(reqwest::header::LAST_MODIFIED);
+            (response.text().await.map_err(AppError::Http)?, etag, last_modified)
+        } else if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::NOT_ACCEPTABLE {
+            debug!("Feed {} returned {}, retrying with fallbacks", url, status);
+            (self.fetch_feed_fallbacks(url, username, password).await?, None, None)
+        } else if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+            let retry_after = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| crate::services::http::parse_retry_after(v, Utc::now()));
+            warn!("Feed {} throttled (HTTP {}), retry after {:?}", url, status.as_u16(), retry_after);
+            return Ok(FeedFetch::Throttled { status: status.as_u16(), retry_after });
+        } else if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::GONE {
+            warn!("Feed {} is gone (HTTP {})", url, status.as_u16());
+            return Err(AppError::external_error(&format!("Feed gone: HTTP {}", status.as_u16())));
+        } else {
+            warn!("Feed {} failed with HTTP {}", url, status.as_u16());
+            return Err(AppError::external_error(&format!("Feed request failed: HTTP {}", status.as_u16())));
+        };
+
+        let content_hash = crate::services::http::content_hash(&body);
+        if prev.content_hash == Some(content_hash.as_str()) {
+            debug!("Feed body unchanged (hash match), skipping parse: {}", url);
+            return Ok(FeedFetch::NotModified { etag, last_modified });
         }
+        Ok(FeedFetch::Fetched { body, etag, last_modified, content_hash })
     }
 
-    /// Persist fresh conditional-GET validators (ETag / Last-Modified) for every podcast row that
-    /// shares this feed, so the next cycle can revalidate with a 304.
+    /// Persist fresh conditional-GET validators (ETag / Last-Modified) and, when given, the body
+    /// hash for every podcast row that shares this feed, so the next cycle can skip it. A `None`
+    /// hash leaves the stored one alone (a 304 carries no body).
     pub async fn store_feed_cache_validators(
         &self,
         podcast_ids: &[i32],
         etag: Option<&str>,
         last_modified: Option<&str>,
+        content_hash: Option<&str>,
     ) -> AppResult<()> {
         if podcast_ids.is_empty() {
             return Ok(());
@@ -7788,10 +7959,13 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
-                    r#"UPDATE "Podcasts" SET feedetag = $1, feedlastmodified = $2 WHERE podcastid = ANY($3)"#,
+                    r#"UPDATE "Podcasts" SET feedetag = $1, feedlastmodified = $2,
+                              feedcontenthash = COALESCE($3, feedcontenthash)
+                       WHERE podcastid = ANY($4)"#,
                 )
                 .bind(etag)
                 .bind(last_modified)
+                .bind(content_hash)
                 .bind(podcast_ids)
                 .execute(pool)
                 .await?;
@@ -7799,10 +7973,14 @@ impl DatabasePool {
             DatabasePool::MySQL(pool) => {
                 let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
                 let sql = format!(
-                    "UPDATE Podcasts SET FeedETag = ?, FeedLastModified = ? WHERE PodcastID IN ({})",
+                    "UPDATE Podcasts SET FeedETag = ?, FeedLastModified = ?, \
+                     FeedContentHash = COALESCE(?, FeedContentHash) WHERE PodcastID IN ({})",
                     placeholders
                 );
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(etag).bind(last_modified);
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(etag)
+                    .bind(last_modified)
+                    .bind(content_hash);
                 for id in podcast_ids { q = q.bind(id); }
                 q.execute(pool).await?;
             }
@@ -7811,7 +7989,7 @@ impl DatabasePool {
     }
 
     /// Mark a successful refresh for every podcast row sharing this feed: clears the failure
-    /// counter and records the timestamps used for backoff decisions.
+    /// counter and any Retry-After hold, and records the timestamps used for backoff decisions.
     pub async fn record_refresh_success(&self, podcast_ids: &[i32]) -> AppResult<()> {
         if podcast_ids.is_empty() {
             return Ok(());
@@ -7821,7 +7999,7 @@ impl DatabasePool {
                 sqlx::query(
                     r#"UPDATE "Podcasts"
                        SET lastrefreshattempt = NOW(), lastrefreshsuccess = NOW(),
-                           consecutivefailures = 0, lasterrormessage = NULL
+                           consecutivefailures = 0, lasterrormessage = NULL, refreshnotbefore = NULL
                        WHERE podcastid = ANY($1)"#,
                 )
                 .bind(podcast_ids)
@@ -7832,7 +8010,8 @@ impl DatabasePool {
                 let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
                 let sql = format!(
                     "UPDATE Podcasts SET LastRefreshAttempt = NOW(), LastRefreshSuccess = NOW(), \
-                     ConsecutiveFailures = 0, LastErrorMessage = NULL WHERE PodcastID IN ({})",
+                     ConsecutiveFailures = 0, LastErrorMessage = NULL, RefreshNotBefore = NULL \
+                     WHERE PodcastID IN ({})",
                     placeholders
                 );
                 let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
@@ -7844,23 +8023,36 @@ impl DatabasePool {
     }
 
     /// Record a failed refresh: bumps the consecutive-failure counter (used for backoff) and
-    /// stores the error for visibility.
-    pub async fn record_refresh_failure(&self, podcast_ids: &[i32], error: &str) -> AppResult<()> {
+    /// stores the error for visibility. `not_before` (a host's Retry-After) additionally holds
+    /// the feed back until then, on top of the usual failure backoff.
+    pub async fn record_refresh_failure(
+        &self,
+        podcast_ids: &[i32],
+        error: &str,
+        not_before: Option<std::time::Duration>,
+    ) -> AppResult<()> {
         if podcast_ids.is_empty() {
             return Ok(());
         }
         // Truncate overly long errors so a giant message can't bloat the row.
-        let error = if error.len() > 1000 { &error[..1000] } else { error };
+        let error = match error.char_indices().nth(1000) {
+            Some((i, _)) => &error[..i],
+            None => error,
+        };
+        let wait_secs = not_before.map(|d| d.as_secs() as i64);
         match self {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
                     r#"UPDATE "Podcasts"
                        SET lastrefreshattempt = NOW(),
                            consecutivefailures = COALESCE(consecutivefailures, 0) + 1,
-                           lasterrormessage = $1
-                       WHERE podcastid = ANY($2)"#,
+                           lasterrormessage = $1,
+                           refreshnotbefore = CASE WHEN $2::BIGINT IS NULL THEN NULL
+                                                   ELSE NOW() + make_interval(secs => $2::BIGINT) END
+                       WHERE podcastid = ANY($3)"#,
                 )
                 .bind(error)
+                .bind(wait_secs)
                 .bind(podcast_ids)
                 .execute(pool)
                 .await?;
@@ -7869,11 +8061,13 @@ impl DatabasePool {
                 let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
                 let sql = format!(
                     "UPDATE Podcasts SET LastRefreshAttempt = NOW(), \
-                     ConsecutiveFailures = COALESCE(ConsecutiveFailures, 0) + 1, LastErrorMessage = ? \
+                     ConsecutiveFailures = COALESCE(ConsecutiveFailures, 0) + 1, LastErrorMessage = ?, \
+                     RefreshNotBefore = NOW() + INTERVAL ? SECOND \
                      WHERE PodcastID IN ({})",
                     placeholders
                 );
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(error);
+                // NOW() + INTERVAL NULL SECOND is NULL, which clears the hold as intended.
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(error).bind(wait_secs);
                 for id in podcast_ids { q = q.bind(id); }
                 q.execute(pool).await?;
             }
@@ -7889,11 +8083,6 @@ impl DatabasePool {
         password: Option<&str>,
     ) -> AppResult<String> {
         debug!("try_fetch_feed called with URL: {}", url);
-        if let (Some(_user), Some(_pass)) = (username, password) {
-            debug!("Using basic authentication for feed: {}", url);
-        } else {
-            debug!("No authentication for feed: {}", url);
-        }
 
         // SSRF guard: url is a stored feed URL (originally user-supplied/imported).
         if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(url).await {
@@ -7901,106 +8090,72 @@ impl DatabasePool {
             return Err(AppError::bad_request(format!("Refused to fetch feed URL: {}", reason)));
         }
 
-        // Build HTTP client with proper configuration for container environment.
-        // Use podcast client UA first — many hosts (e.g. Omny) return full episode lists to
-        // podcast apps but truncated/paginated feeds to browser UAs.
-        let client = reqwest::Client::builder()
-            .user_agent("PinePods/1.0")
-            .timeout(std::time::Duration::from_secs(30))
-            .redirect(crate::services::url_guard::guarded_redirect_policy())
-            .build()
+        // PinePods UA first — many hosts (e.g. Omny) return full episode lists to podcast apps
+        // but truncated/paginated feeds to browser UAs.
+        let response = Self::feed_get(crate::services::http::feed_client(), url, username, password)
+            .send()
+            .await
             .map_err(|e| {
-                warn!("Failed to build HTTP client: {}", e);
+                warn!("HTTP request failed for {}: {}", url, e);
                 AppError::Http(e)
             })?;
-            
-        let mut request = client.get(url);
-        
-        if let (Some(user), Some(pass)) = (username, password) {
-            debug!("Adding basic authentication to feed request");
-            request = request.basic_auth(user, Some(pass));
+
+        if response.status().is_success() {
+            debug!("Request succeeded with status: {}", response.status());
+            return Ok(response.text().await.map_err(AppError::Http)?);
         }
-        
-        debug!("Sending HTTP request to: {}", url);
-        let response = request.send().await.map_err(|e| {
-            warn!("HTTP request failed for {}: {}", url, e);
-            AppError::Http(e)
-        })?;
-        
-        if !response.status().is_success() {
-            // If we get a 403, the server might be blocking podcast client User-Agents.
-            // Try with a browser User-Agent as a fallback.
-            if response.status() == 403 {
-                debug!("Got 403 Forbidden, retrying with browser User-Agent");
+        warn!("Initial request for {} failed with status: {}", url, response.status());
+        self.fetch_feed_fallbacks(url, username, password).await
+    }
 
-                let podcast_client = reqwest::Client::builder()
-                    .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                    .timeout(std::time::Duration::from_secs(30))
-                    .redirect(crate::services::url_guard::guarded_redirect_policy())
-                    .build()
-                    .map_err(|e| {
-                        warn!("Failed to build podcast client: {}", e);
-                        AppError::Http(e)
-                    })?;
+    /// GET a feed with basic auth when credentials are stored.
+    fn feed_get(client: &reqwest::Client, url: &str, username: Option<&str>, password: Option<&str>) -> reqwest::RequestBuilder {
+        let request = client.get(url);
+        match (username, password) {
+            (Some(user), Some(pass)) => request.basic_auth(user, Some(pass)),
+            _ => request,
+        }
+    }
 
-                let mut podcast_request = podcast_client.get(url);
-                
-                if let (Some(user), Some(pass)) = (username, password) {
-                    debug!("Adding basic authentication to podcast client request");
-                    podcast_request = podcast_request.basic_auth(user, Some(pass));
-                }
-                
-                let podcast_response = podcast_request.send().await.map_err(|e| {
-                    warn!("Podcast client request failed for {}: {}", url, e);
-                    AppError::Http(e)
-                })?;
-                
-                if podcast_response.status().is_success() {
-                    debug!("Browser UA request succeeded with status: {}", podcast_response.status());
-                    return Ok(podcast_response.text().await.map_err(|e| AppError::Http(e))?);
-                }
+    /// After the normal request failed: retry once with a browser UA (hosts that block podcast
+    /// clients), then once on the www/non-www variant of the URL.
+    async fn fetch_feed_fallbacks(&self, url: &str, username: Option<&str>, password: Option<&str>) -> AppResult<String> {
+        let browser = Self::feed_get(crate::services::http::browser_feed_client(), url, username, password)
+            .send()
+            .await
+            .map_err(|e| {
+                warn!("Browser UA request failed for {}: {}", url, e);
+                AppError::Http(e)
+            })?;
+        if browser.status().is_success() {
+            debug!("Browser UA request succeeded with status: {}", browser.status());
+            return Ok(browser.text().await.map_err(AppError::Http)?);
+        }
+        warn!("Browser UA request for {} also failed with status: {}, trying alternate URL", url, browser.status());
 
-                warn!("Browser UA request also failed with status: {}", podcast_response.status());
-            }
-            
-            warn!("Initial request failed with status: {}, trying alternate URL", response.status());
-            // Try alternate URL (www vs non-www)
-            let alternate_url = if url.contains("://www.") {
-                url.replace("://www.", "://")
-            } else {
-                url.replace("://", "://www.")
-            };
-            
-            debug!("Trying alternate URL: {}", alternate_url);
-            // SSRF guard: alternate_url is a www/non-www variant not covered by the
-            // up-front check, so validate it before fetching.
-            if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(&alternate_url).await {
-                warn!("Refusing to fetch alternate feed URL {}: {}", alternate_url, reason);
-                return Err(AppError::bad_request(format!("Refused to fetch feed URL: {}", reason)));
-            }
-            let mut alt_request = client.get(&alternate_url);
-            
-            if let (Some(user), Some(pass)) = (username, password) {
-                debug!("Adding basic authentication to alternate request");
-                alt_request = alt_request.basic_auth(user, Some(pass));
-            }
-            
-            let alt_response = alt_request.send().await.map_err(|e| {
+        let alternate_url = if url.contains("://www.") {
+            url.replace("://www.", "://")
+        } else {
+            url.replace("://", "://www.")
+        };
+        // SSRF guard: alternate_url is a www/non-www variant not covered by the up-front check.
+        if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(&alternate_url).await {
+            warn!("Refusing to fetch alternate feed URL {}: {}", alternate_url, reason);
+            return Err(AppError::bad_request(format!("Refused to fetch feed URL: {}", reason)));
+        }
+        let alt = Self::feed_get(crate::services::http::feed_client(), &alternate_url, username, password)
+            .send()
+            .await
+            .map_err(|e| {
                 warn!("Alternate HTTP request failed for {}: {}", alternate_url, e);
                 AppError::Http(e)
             })?;
-            
-            if !alt_response.status().is_success() {
-                warn!("Alternate request also failed with status: {}", alt_response.status());
-                return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", alt_response.status())));
-            }
-            
-            debug!("Alternate request succeeded with status: {}", alt_response.status());
-            return Ok(alt_response.text().await.map_err(|e| AppError::Http(e))?);
+        if !alt.status().is_success() {
+            warn!("Alternate request also failed with status: {}", alt.status());
+            return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", alt.status())));
         }
-        
-        debug!("Request succeeded with status: {}", response.status());
-        Ok(response.text().await.map_err(|e| AppError::Http(e))?)
+        debug!("Alternate request succeeded with status: {}", alt.status());
+        Ok(alt.text().await.map_err(AppError::Http)?)
     }
 
     // Custom function to extract raw iTunes durations before feed_rs processes them
@@ -8629,26 +8784,10 @@ impl DatabasePool {
             return None;
         }
 
-        // Build HTTP client with timeout to avoid hanging. Redirects are
-        // re-validated so a public URL cannot 30x into the internal network.
-        let client = match reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .timeout(std::time::Duration::from_secs(10)) // Short timeout
-            .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                match crate::services::url_guard::ensure_safe_public_url(attempt.url().as_str()) {
-                    Ok(()) => attempt.follow(),
-                    Err(_) => attempt.stop(),
-                }
-            }))
-            .build()
-        {
-            Ok(client) => client,
-            Err(e) => {
-                warn!("Failed to build HTTP client for duration estimation: {}", e);
-                return None;
-            }
-        };
-        
+        // Shared probe client: 10s timeout, redirects re-validated so a public URL cannot 30x
+        // into the internal network.
+        let client = crate::services::http::probe_client();
+
         // Make HEAD request to get Content-Length without downloading the file
         match client.head(audio_url).send().await {
             Ok(response) => {
@@ -8666,11 +8805,11 @@ impl DatabasePool {
                     }
                     debug!("No Content-Length header found in response");
                 } else {
-                    warn!("HEAD request failed with status: {}", response.status());
+                    debug!("HEAD request failed with status: {}", response.status());
                 }
             }
             Err(e) => {
-                warn!("HTTP HEAD request failed for {}: {}", audio_url, e);
+                debug!("HTTP HEAD request failed for {}: {}", audio_url, e);
             }
         }
         
@@ -13612,15 +13751,62 @@ pub struct EpisodeData {
     pub guid: Option<String>,
 }
 
+/// A parsed episode about to be inserted, with the artwork and duration it will be stored with.
+struct NewEpisodeRow<'a> {
+    ep: &'a EpisodeData,
+    artwork: &'a str,
+    duration: i32,
+}
+
+/// Rows per `INSERT ... UNNEST` statement when importing a back catalogue (Postgres).
+const EPISODE_INSERT_CHUNK: usize = 1000;
+/// Episodes without a duration that get a HEAD probe during the refresh itself (newest first).
+const DURATION_PROBES_PER_APPLY: usize = 10;
+const DURATION_PROBE_CONCURRENCY: usize = 5;
+/// HEAD probes the background duration backfill runs at once, server-wide.
+const DURATION_BACKFILL_CONCURRENCY: usize = 2;
+
+/// One user notification channel for new episodes of a podcast.
+struct NotificationTarget {
+    podcast_name: String,
+    platform: String,
+    ntfy_topic: Option<String>,
+    ntfy_server_url: Option<String>,
+    ntfy_username: Option<String>,
+    ntfy_password: Option<String>,
+    ntfy_access_token: Option<String>,
+    gotify_url: Option<String>,
+    gotify_token: Option<String>,
+}
+
+/// What a feed group last stored, sent back on the next fetch (see `fetch_feed_conditional`).
+#[derive(Clone, Copy, Default)]
+pub struct FeedValidators<'a> {
+    pub etag: Option<&'a str>,
+    pub last_modified: Option<&'a str>,
+    /// SHA-256 hex of the last body that was applied.
+    pub content_hash: Option<&'a str>,
+}
+
 /// Result of a conditional feed fetch (see `fetch_feed_conditional`).
 pub enum FeedFetch {
-    /// Server returned 304 Not Modified — the caller should skip parsing entirely.
-    NotModified,
+    /// 304, or a 200 whose body hash matches the stored one: skip parsing entirely. A 200 still
+    /// carries fresh validators to persist.
+    NotModified {
+        etag: Option<String>,
+        last_modified: Option<String>,
+    },
     /// Feed body plus any fresh cache validators to persist for next time.
     Fetched {
         body: String,
         etag: Option<String>,
         last_modified: Option<String>,
+        content_hash: String,
+    },
+    /// 429/503: the host asked us to back off, for `retry_after` if it said how long.
+    Throttled {
+        status: u16,
+        retry_after: Option<std::time::Duration>,
     },
 }
 
@@ -16758,101 +16944,66 @@ impl DatabasePool {
     
     // Get podcast values from RSS feed - matches Python get_podcast_values function exactly
     pub async fn get_podcast_values(&self, feed_url: &str, user_id: i32, username: Option<&str>, password: Option<&str>) -> AppResult<std::collections::HashMap<String, String>> {
-        use reqwest::header::AUTHORIZATION;
-        
-        
+        Ok(self.get_podcast_values_with_body(feed_url, user_id, username, password).await?.0)
+    }
+
+    /// `get_podcast_values`, plus the feed body it fetched, so adding the podcast can import its
+    /// episodes from the same download instead of fetching the feed a second time.
+    pub async fn get_podcast_values_with_body(
+        &self,
+        feed_url: &str,
+        user_id: i32,
+        username: Option<&str>,
+        password: Option<&str>,
+    ) -> AppResult<(std::collections::HashMap<String, String>, String)> {
         debug!("Fetching podcast values from feed URL: {}", feed_url);
 
         // SSRF guard: feed_url is attacker-controlled (add_podcast request body).
         // Reject loopback/private/link-local/reserved destinations before any
-        // server-side request; redirects are re-validated on each client below.
+        // server-side request; redirects are re-validated by the shared clients.
         if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(feed_url).await {
             warn!("Refusing to fetch feed from unsafe URL {}: {}", feed_url, reason);
             return Err(AppError::bad_request(format!("Refused to fetch feed URL: {}", reason)));
         }
 
-        // Build HTTP client with podcast client UA first — many hosts serve full feeds to
-        // podcast apps but truncated versions to browser UAs.
-        let client = reqwest::Client::builder()
-            .user_agent("PinePods/1.0")
-            .timeout(std::time::Duration::from_secs(30))
-            .redirect(crate::services::url_guard::guarded_redirect_policy())
-            .build()
-            .map_err(|e| {
-                warn!("Failed to build HTTP client in get_podcast_values: {}", e);
-                AppError::Http(e)
-            })?;
-
-        let mut request = client.get(feed_url);
-
-        if let (Some(user), Some(pass)) = (username, password) {
-            debug!("Using basic authentication for feed: {}", feed_url);
-            use base64::Engine;
-            let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
-            request = request.header(AUTHORIZATION, format!("Basic {}", encoded));
-        }
-
-        // Fetch RSS feed with better error handling
-        debug!("Sending HTTP request to: {}", feed_url);
-        let response = request.send().await
+        // PinePods UA first — many hosts serve full feeds to podcast apps but truncated
+        // versions to browser UAs.
+        let response = Self::feed_get(crate::services::http::feed_client(), feed_url, username, password)
+            .send()
+            .await
             .map_err(|e| {
                 warn!("HTTP request failed for {}: {}", feed_url, e);
                 AppError::Http(e)
             })?;
+        debug!("Received response with status: {}", response.status());
 
-        info!("Received response with status: {}", response.status());
-        if !response.status().is_success() {
-            // If we get a 403, the server might be blocking podcast client User-Agents.
-            // Try with a browser User-Agent as fallback.
-            if response.status() == 403 {
-                debug!("Got 403 Forbidden, retrying with browser User-Agent");
-
-                let podcast_client = reqwest::Client::builder()
-                    .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                    .timeout(std::time::Duration::from_secs(30))
-                    .redirect(crate::services::url_guard::guarded_redirect_policy())
-                    .build()
-                    .map_err(|e| {
-                        warn!("Failed to build podcast client in get_podcast_values: {}", e);
-                        AppError::Http(e)
-                    })?;
-                
-                let mut podcast_request = podcast_client.get(feed_url);
-                
-                if let (Some(user), Some(pass)) = (username, password) {
-                    debug!("Using basic authentication for podcast client request: {}", feed_url);
-                    use base64::Engine;
-                    let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
-                    podcast_request = podcast_request.header(AUTHORIZATION, format!("Basic {}", encoded));
-                }
-                
-                let podcast_response = podcast_request.send().await
-                    .map_err(|e| {
-                        warn!("Podcast client request failed for {}: {}", feed_url, e);
-                        AppError::Http(e)
-                    })?;
-                
-                if podcast_response.status().is_success() {
-                    debug!("Podcast client request succeeded with status: {}", podcast_response.status());
-                    let content = podcast_response.text().await?;
-                    
-                    // Continue with the same parsing logic
-                    return self.parse_feed_content_to_values(content, feed_url, user_id).await;
-                }
-                
-                warn!("Podcast client request also failed with status: {}", podcast_response.status());
+        let content = if response.status().is_success() {
+            response.text().await?
+        } else if matches!(response.status().as_u16(), 403 | 406) {
+            // The host may be blocking podcast client User-Agents; retry with a browser one.
+            debug!("Got {}, retrying with browser User-Agent", response.status());
+            let retry = Self::feed_get(crate::services::http::browser_feed_client(), feed_url, username, password)
+                .send()
+                .await
+                .map_err(|e| {
+                    warn!("Browser UA request failed for {}: {}", feed_url, e);
+                    AppError::Http(e)
+                })?;
+            if !retry.status().is_success() {
+                warn!("Browser UA request also failed with status: {}", retry.status());
+                return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", response.status())));
             }
-            
+            retry.text().await?
+        } else {
             return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", response.status())));
-        }
-        
-        let content = response.text().await?;
-        
-        self.parse_feed_content_to_values(content, feed_url, user_id).await
+        };
+
+        let values = self.parse_feed_content_to_values(&content, feed_url, user_id).await?;
+        Ok((values, content))
     }
     
     // Helper function to parse feed content into podcast values (extracted to avoid duplication)
-    async fn parse_feed_content_to_values(&self, content: String, feed_url: &str, user_id: i32) -> AppResult<std::collections::HashMap<String, String>> {
+    async fn parse_feed_content_to_values(&self, content: &str, feed_url: &str, user_id: i32) -> AppResult<std::collections::HashMap<String, String>> {
         use feed_rs::parser;
         
         // Parse RSS feed using feed-rs
@@ -16901,7 +17052,7 @@ impl DatabasePool {
         podcast_values.insert("podcastindexid".to_string(), "0".to_string());
         podcast_values.insert("episodeupdatecount".to_string(), "0".to_string());
         
-        info!("Successfully extracted podcast values: {}", podcast_values.get("podcastname").unwrap_or(&"Unknown".to_string()));
+        debug!("Extracted podcast values: {}", podcast_values.get("podcastname").unwrap_or(&"Unknown".to_string()));
         
         Ok(podcast_values)
     }
@@ -17202,7 +17353,9 @@ impl DatabasePool {
     }
 
     // Add podcast from RSS values - wrapper function for custom podcast addition
-    pub async fn add_podcast_from_values(&self, podcast_values: &std::collections::HashMap<String, String>, user_id: i32, _feed_cutoff: i32, username: Option<&str>, password: Option<&str>) -> AppResult<(i32, Option<i32>)> {
+    /// `feed_body`: the feed as fetched for `podcast_values` (`get_podcast_values_with_body`), so
+    /// episodes are imported without downloading it again.
+    pub async fn add_podcast_from_values(&self, podcast_values: &std::collections::HashMap<String, String>, user_id: i32, _feed_cutoff: i32, username: Option<&str>, password: Option<&str>, feed_body: Option<&str>) -> AppResult<(i32, Option<i32>)> {
         // Convert HashMap values to PodcastValues struct
         let podcast_data = crate::handlers::podcasts::PodcastValues {
             user_id,
@@ -17222,7 +17375,7 @@ impl DatabasePool {
             .parse::<i64>()
             .unwrap_or(0);
 
-        self.add_podcast(&podcast_data, podcast_index_id, username, password).await
+        self.add_podcast_with_feed(&podcast_data, podcast_index_id, username, password, feed_body).await
     }
     
     // // Get podcast details - matches Python get_podcast_details function exactly
@@ -21862,10 +22015,10 @@ impl DatabasePool {
             // Check if this user already has the news feed
             if !self.user_has_podcast_feed(user_id, feed_url).await? {
                 // Add the PinePods news feed using existing functions - matches Python add_custom_podcast
-                match self.get_podcast_values(feed_url, user_id, None, None).await {
-                    Ok(podcast_values) => {
+                match self.get_podcast_values_with_body(feed_url, user_id, None, None).await {
+                    Ok((podcast_values, body)) => {
                         let feed_cutoff = 30; // Default cutoff like Python
-                        if let Err(e) = self.add_podcast_from_values(&podcast_values, user_id, feed_cutoff, None, None).await {
+                        if let Err(e) = self.add_podcast_from_values(&podcast_values, user_id, feed_cutoff, None, None, Some(&body)).await {
                             error!("Failed to add PinePods news feed for user {}: {}", user_id, e);
                             // Continue with other users even if one fails
                         }
@@ -25686,10 +25839,10 @@ impl DatabasePool {
         }
 
         // Get podcast metadata from feed URL using existing function
-        let podcast_values = self.get_podcast_values(feed_url, user_id, None, None).await?;
+        let (podcast_values, body) = self.get_podcast_values_with_body(feed_url, user_id, None, None).await?;
         
         // Add podcast using existing function
-        let _result = self.add_podcast_from_values(&podcast_values, user_id, 30, None, None).await?;
+        let _result = self.add_podcast_from_values(&podcast_values, user_id, 30, None, None, Some(&body)).await?;
         
         tracing::info!("Successfully added podcast {} for user {}", feed_url, user_id);
         Ok(())

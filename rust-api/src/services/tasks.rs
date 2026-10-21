@@ -1170,6 +1170,8 @@ impl TaskSpawner {
         user_id: i32,
         username: Option<String>,
         password: Option<String>,
+        // The feed as already fetched by the caller; fetched again only when None.
+        feed_body: Option<String>,
     ) -> AppResult<String> {
         let task_type = "add_podcast_episodes".to_string();
         
@@ -1191,6 +1193,7 @@ impl TaskSpawner {
                         false, // auto_download
                         username.as_deref(),
                         password.as_deref(),
+                        feed_body.as_deref(),
                     ).await {
                         Ok(first_episode_id) => {
                             // Update progress - fetching count

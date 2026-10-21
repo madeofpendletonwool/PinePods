@@ -109,6 +109,18 @@ impl FixtureServer {
         self.inner.lock().unwrap().routes.remove(path);
     }
 
+    /// Paths requested under `/{namespace}{prefix}`, in arrival order, with that prefix removed.
+    pub fn request_order(&self, namespace: &str, prefix: &str) -> Vec<String> {
+        let full = format!("/{namespace}{prefix}");
+        self.inner
+            .lock()
+            .unwrap()
+            .log
+            .iter()
+            .filter_map(|r| r.path.strip_prefix(&full).map(str::to_string))
+            .collect()
+    }
+
     pub fn requests_to(&self, path: &str) -> Vec<RecordedRequest> {
         self.inner
             .lock()

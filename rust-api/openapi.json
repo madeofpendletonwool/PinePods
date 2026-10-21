@@ -15756,6 +15756,14 @@
           },
           "is_youtube": {
             "type": "boolean"
+          },
+          "episode_duration": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The player's duration for the episode in seconds, if it knows it. Stored when the feed\ngave none (new episodes beyond the newest few are inserted with duration 0)."
           }
         }
       },

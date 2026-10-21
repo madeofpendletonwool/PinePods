@@ -2780,7 +2780,7 @@ pub async fn add_custom_podcast(
 
     // Regular podcast feed handling
     // Get podcast values from feed URL
-    let podcast_values = state.db_pool.get_podcast_values(
+    let (podcast_values, feed_body) = state.db_pool.get_podcast_values_with_body(
         &request.feed_url,
         request.user_id,
         request.username.as_deref(),
@@ -2793,7 +2793,8 @@ pub async fn add_custom_podcast(
         request.user_id,
         30,
         request.username.as_deref(),
-        request.password.as_deref()
+        request.password.as_deref(),
+        Some(&feed_body)
     ).await?;
 
     // Get complete podcast details for response

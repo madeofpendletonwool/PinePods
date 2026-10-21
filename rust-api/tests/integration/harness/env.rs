@@ -225,7 +225,7 @@ async fn ensure_template(env: &TestEnv) -> String {
 }
 
 /// Run the real production migration path (startup/setup_database_new.py) into `db_name`.
-fn run_migrations(env: &TestEnv, db_name: &str) {
+pub fn run_migrations(env: &TestEnv, db_name: &str) {
     let python = var("PINEPODS_TEST_PYTHON", "python3");
     let root = repo_root();
     eprintln!("[harness] migrating template database {db_name} ({:?}) with {python}", env.backend);
