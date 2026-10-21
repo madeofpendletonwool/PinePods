@@ -631,37 +631,6 @@ pub async fn final_admin(
     Ok(Json(serde_json::json!({ "final_admin": is_final_admin })))
 }
 
-// Enable/disable guest - matches Python api_enable_disable_guest function exactly (admin only)
-#[utoipa::path(
-    post,
-    path = "/enable_disable_guest",
-    tag = "settings",
-    summary = "Enable disable guest",
-    security(("api_key" = [])),
-    responses(
-        (status = 200, description = "Success", body = serde_json::Value),
-        (status = 401, description = "Invalid or missing API key"),
-    ),
-)]
-pub async fn enable_disable_guest(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    require_valid_api_key(&state, &api_key).await?;
-
-    // Check if user is admin (matches Python check_if_admin dependency)
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
-    if !is_admin {
-        return Err(AppError::forbidden("Admin access required"));
-    }
-
-    state.db_pool.enable_disable_guest().await?;
-    Ok(Json(serde_json::json!({ "success": true })))
-}
-
 // Enable/disable downloads - matches Python api_enable_disable_downloads function exactly (admin only)
 #[utoipa::path(
     post,
@@ -722,29 +691,6 @@ pub async fn enable_disable_self_service(
 
     state.db_pool.enable_disable_self_service().await?;
     Ok(Json(serde_json::json!({ "success": true })))
-}
-
-// Get guest status - matches Python api_guest_status function exactly
-#[utoipa::path(
-    get,
-    path = "/guest_status",
-    tag = "settings",
-    summary = "Guest status",
-    security(("api_key" = [])),
-    responses(
-        (status = 200, description = "Success", body = bool),
-        (status = 401, description = "Invalid or missing API key"),
-    ),
-)]
-pub async fn guest_status(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<bool>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    require_valid_api_key(&state, &api_key).await?;
-
-    let result = state.db_pool.guest_status().await?;
-    Ok(Json(result))
 }
 
 // Get RSS feed status - matches Python get_rss_feed_status function exactly

@@ -19,7 +19,6 @@ pub const ADMIN_ONLY: &[&str] = &[
     "PUT /api/data/user/set_isadmin",
     "DELETE /api/data/user/delete/{user_id}",
     // Instance settings
-    "POST /api/data/enable_disable_guest",
     "POST /api/data/enable_disable_downloads",
     "POST /api/data/enable_disable_self_service",
     // (GET /api/data/admin_self_service_status is any-user: same data as the public

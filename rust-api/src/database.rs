@@ -13480,23 +13480,6 @@ impl DatabasePool {
         }
     }
 
-    // Enable/disable guest - matches Python enable_disable_guest function exactly
-    pub async fn enable_disable_guest(&self) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET email = CASE WHEN email = 'inactive' THEN 'active' ELSE 'inactive' END WHERE username = 'guest'"#)
-                    .execute(pool)
-                    .await?;
-            }
-            DatabasePool::MySQL(pool) => {
-                sqlx::query("UPDATE Users SET Email = CASE WHEN Email = 'inactive' THEN 'active' ELSE 'inactive' END WHERE Username = 'guest'")
-                    .execute(pool)
-                    .await?;
-            }
-        }
-        Ok(())
-    }
-
     // Enable/disable downloads - matches Python enable_disable_downloads function exactly
     pub async fn enable_disable_downloads(&self) -> AppResult<()> {
         match self {
@@ -13529,24 +13512,6 @@ impl DatabasePool {
             }
         }
         Ok(())
-    }
-
-    // Get guest status - matches Python guest_status function exactly
-    pub async fn guest_status(&self) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result: Option<String> = sqlx::query_scalar(r#"SELECT email FROM "Users" WHERE email = 'active'"#)
-                    .fetch_optional(pool)
-                    .await?;
-                Ok(result.is_some())
-            }
-            DatabasePool::MySQL(pool) => {
-                let result: Option<String> = sqlx::query_scalar("SELECT Email FROM Users WHERE Email = 'active'")
-                    .fetch_optional(pool)
-                    .await?;
-                Ok(result.is_some())
-            }
-        }
     }
 
     // Toggle RSS feeds - matches Python toggle_rss_feeds function exactly
@@ -14108,28 +14073,6 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.map(|key| key == api_key).unwrap_or(false))
-            }
-        }
-    }
-
-    // Check if API key belongs to guest user - matches Python belongs_to_guest_user function exactly
-    pub async fn belongs_to_guest_user(&self, api_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result: Option<i32> = sqlx::query_scalar(r#"SELECT userid FROM "APIKeys" WHERE apikeyid = $1"#)
-                    .bind(api_id)
-                    .fetch_optional(pool)
-                    .await?;
-                
-                Ok(result.map(|user_id| user_id == 1).unwrap_or(false))
-            }
-            DatabasePool::MySQL(pool) => {
-                let result: Option<i32> = sqlx::query_scalar("SELECT UserID FROM APIKeys WHERE APIKeyID = ?")
-                    .bind(api_id)
-                    .fetch_optional(pool)
-                    .await?;
-                
-                Ok(result.map(|user_id| user_id == 1).unwrap_or(false))
             }
         }
     }

@@ -2986,33 +2986,6 @@
         ]
       }
     },
-    "/api/data/enable_disable_guest": {
-      "post": {
-        "tags": [
-          "settings"
-        ],
-        "summary": "Enable disable guest",
-        "operationId": "enable_disable_guest",
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
-          }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
-      }
-    },
     "/api/data/enable_disable_self_service": {
       "post": {
         "tags": [
@@ -5338,35 +5311,6 @@
             "content": {
               "application/json": {
                 "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
-          }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
-      }
-    },
-    "/api/data/guest_status": {
-      "get": {
-        "tags": [
-          "settings"
-        ],
-        "summary": "Guest status",
-        "operationId": "guest_status",
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "type": "boolean"
-                }
               }
             }
           },
