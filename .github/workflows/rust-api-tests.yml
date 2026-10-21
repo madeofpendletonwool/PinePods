@@ -88,6 +88,10 @@ jobs:
           go-version-file: gpodder-api/go.mod
           cache-dependency-path: gpodder-api/go.sum
 
+      - name: Build gpodder-api for the protocol tests
+        working-directory: gpodder-api
+        run: go build -o "$RUNNER_TEMP/gpodder-api" ./cmd/server
+
       - name: Set up Python (schema migrations)
         uses: actions/setup-python@v7
         with:
@@ -110,4 +114,5 @@ jobs:
         env:
           PINEPODS_TEST_EXTERNAL_SERVICES: "1"
           PINEPODS_TEST_PYTHON: python
+          PINEPODS_TEST_GPODDER_BIN: ${{ runner.temp }}/gpodder-api
         run: scripts/integration-tests.sh --db ${{ matrix.db }}

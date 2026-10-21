@@ -180,6 +180,14 @@ fn go_binary() -> &'static PathBuf {
                 .arg(&out)
                 .arg("./cmd/server")
                 .current_dir(root.join("gpodder-api"))
+                // The test process points every proxy variable at a dead port (env.rs); the
+                // build itself may need to download modules.
+                .env_remove("HTTP_PROXY")
+                .env_remove("HTTPS_PROXY")
+                .env_remove("ALL_PROXY")
+                .env_remove("http_proxy")
+                .env_remove("https_proxy")
+                .env_remove("all_proxy")
                 .status()
                 .unwrap_or_else(|e| {
                     panic!("could not run `go build` for gpodder-api ({e}); install Go or set PINEPODS_TEST_GPODDER_BIN")

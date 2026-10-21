@@ -26,7 +26,8 @@ async fn late_upload_reaches_other_devices() {
         let tablet = s.device("tablet").await;
         let cursor_b = cursor(&tablet.episode_actions(0).await.ok_json());
 
-        tokio::time::sleep(Duration::from_millis(1100)).await;
+        // Clear of the cursor's second even if the server rounds it up (the Go one does).
+        tokio::time::sleep(Duration::from_millis(2100)).await;
         let an_hour_ago = Utc::now() - chrono::Duration::hours(1);
         phone.upload_episode_actions(&[play_action(POD, &ep(1), an_hour_ago, 0, 300, 1800)]).await;
 
