@@ -333,11 +333,29 @@ pub async fn episodes_for_user(db: &DatabasePool, person_id: i32, user_id: i32, 
     ))
 }
 
+/// Podcast Index often lists one show under several feeds (old and new URLs), so shows are
+/// matched by name as well as feed: the same name, ignoring case and surrounding space.
+pub fn show_key(name: &str) -> String {
+    name.trim().to_lowercase()
+}
+
+/// Remove external episodes that would show twice: ones from a show already in the library
+/// under another feed URL, and the same episode listed under two feeds of one show.
+pub fn drop_duplicates(episodes: &mut Vec<ExternalEpisode>, library: &[PersonPodcast]) {
+    let library_shows: HashSet<String> = library.iter().map(|p| show_key(&p.podcastname)).collect();
+    let mut seen = HashSet::new();
+    episodes.retain(|e| {
+        let show = show_key(&e.podcastname);
+        !library_shows.contains(&show) && seen.insert((show, e.episodetitle.trim().to_lowercase()))
+    });
+}
+
 /// Shows outside the library the person appears on, from their external episodes.
 pub fn podcasts_from(episodes: &[ExternalEpisode], art: &HashMap<String, String>) -> Vec<PersonPodcast> {
     let mut out: Vec<PersonPodcast> = Vec::new();
     for e in episodes {
-        match out.iter_mut().find(|p| p.feedurl == e.feedurl) {
+        let key = show_key(&e.podcastname);
+        match out.iter_mut().find(|p| p.feedurl == e.feedurl || show_key(&p.podcastname) == key) {
             Some(p) => {
                 p.episode_count += 1;
                 if let Some(role) = &e.role {
@@ -371,4 +389,63 @@ pub async fn podcast_art(db: &DatabasePool, person_id: i32) -> AppResult<HashMap
     )
     .into_iter()
     .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ep(show: &str, feed: &str, title: &str) -> ExternalEpisode {
+        ExternalEpisode {
+            episodeid: -1,
+            podcastid: 0,
+            podcastname: show.into(),
+            feedurl: feed.into(),
+            podcastindexid: None,
+            episodetitle: title.into(),
+            episodepubdate: String::new(),
+            episodedescription: String::new(),
+            episodeartwork: String::new(),
+            episodeurl: format!("{feed}/{title}"),
+            episodeduration: 0,
+            listenduration: None,
+            completed: false,
+            saved: false,
+            queued: false,
+            downloaded: false,
+            is_youtube: false,
+            is_video: false,
+            role: Some("host".into()),
+        }
+    }
+
+    #[test]
+    fn one_show_listed_under_two_feeds_is_one_show() {
+        let eps = [ep("No Agenda Show", "https://a/feed", "1"), ep("no agenda show ", "https://b/feed", "2")];
+        let shows = podcasts_from(&eps, &HashMap::new());
+        assert_eq!(shows.len(), 1);
+        assert_eq!(shows[0].episode_count, 2);
+    }
+
+    #[test]
+    fn duplicate_episodes_and_library_shows_are_dropped() {
+        let mut eps = vec![
+            ep("No Agenda Show", "https://a/feed", "Episode 1"),
+            ep("No Agenda Show", "https://b/feed", "Episode 1"),
+            ep("Podcasting 2.0", "https://c/feed", "Board meeting"),
+        ];
+        let library = [PersonPodcast {
+            podcastid: Some(4),
+            podcastname: "Podcasting 2.0".into(),
+            artworkurl: None,
+            feedurl: "https://elsewhere/feed".into(),
+            podcastindexid: None,
+            roles: vec![],
+            podcast_level: true,
+            episode_count: 0,
+        }];
+        drop_duplicates(&mut eps, &library);
+        assert_eq!(eps.len(), 1);
+        assert_eq!(eps[0].feedurl, "https://a/feed");
+    }
 }

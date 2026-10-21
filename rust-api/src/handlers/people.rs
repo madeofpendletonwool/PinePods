@@ -109,7 +109,8 @@ pub async fn person_profile(
     };
     let mut podcasts = store::library_podcasts(db, person_id, user_id).await?;
     let episodes = store::library_episodes(db, person_id, user_id, limit, offset).await?;
-    let external_episodes = external::episodes_for_user(db, person_id, user_id, 100).await?;
+    let mut external_episodes = external::episodes_for_user(db, person_id, user_id, 100).await?;
+    external::drop_duplicates(&mut external_episodes, &podcasts);
     let art = external::podcast_art(db, person_id).await?;
     podcasts.extend(external::podcasts_from(&external_episodes, &art));
 
