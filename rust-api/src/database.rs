@@ -14210,28 +14210,31 @@ impl DatabasePool {
 
         match self {
             DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
                 let key_id: i32 = sqlx::query_scalar(r#"INSERT INTO "RssKeys" (userid, rsskey) VALUES ($1, $2) RETURNING rsskeyid"#)
                     .bind(user_id)
                     .bind(&rss_key)
-                    .fetch_one(pool)
+                    .fetch_one(&mut *tx)
                     .await?;
 
                 // Handle podcast IDs if provided
                 if let Some(podcast_ids) = podcast_ids {
                     for podcast_id in podcast_ids {
-                        sqlx::query(r#"INSERT INTO "RssKeyPodcasts" (rsskeyid, podcastid) VALUES ($1, $2)"#)
+                        sqlx::query(r#"INSERT INTO "RssKeyMap" (rsskeyid, podcastid) VALUES ($1, $2)"#)
                             .bind(key_id)
                             .bind(podcast_id)
-                            .execute(pool)
+                            .execute(&mut *tx)
                             .await?;
                     }
                 }
+                tx.commit().await?;
             }
             DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
                 let result = sqlx::query("INSERT INTO RssKeys (UserID, RssKey) VALUES (?, ?)")
                     .bind(user_id)
                     .bind(&rss_key)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
 
                 let key_id = result.last_insert_id() as i32;
@@ -14239,13 +14242,14 @@ impl DatabasePool {
                 // Handle podcast IDs if provided
                 if let Some(podcast_ids) = podcast_ids {
                     for podcast_id in podcast_ids {
-                        sqlx::query("INSERT INTO RssKeyPodcasts (RssKeyID, PodcastID) VALUES (?, ?)")
+                        sqlx::query("INSERT INTO RssKeyMap (RssKeyID, PodcastID) VALUES (?, ?)")
                             .bind(key_id)
                             .bind(podcast_id)
-                            .execute(pool)
+                            .execute(&mut *tx)
                             .await?;
                     }
                 }
+                tx.commit().await?;
             }
         }
 
@@ -24603,18 +24607,17 @@ impl DatabasePool {
         
         let user_id = rss_key.user_id;
         let mut effective_podcast_ids = rss_key.podcast_ids.clone();
-        
-        // If podcast_id parameter is provided, use it; otherwise use RSS key podcast_ids
+        let key_is_scoped = !rss_key.podcast_ids.contains(&-1);
+
+        // If podcast_id parameter is provided, use it (get_rss_key_if_valid already checked a
+        // scoped key covers it); otherwise a scoped key still only sees its own podcasts.
         let explicit_podcast_filter = podcast_ids.is_some();
         if let Some(ids) = podcast_ids {
             if !ids.is_empty() {
                 effective_podcast_ids = ids.clone();
             }
         }
-        
-        // Only use podcast filter if explicitly requested via URL parameter
-        // RSS key podcast_ids should not affect "All Podcasts" feed behavior
-        let podcast_filter = explicit_podcast_filter;
+        let podcast_filter = explicit_podcast_filter || key_is_scoped;
         
         // Check if RSS feeds are enabled for user
         if !self.get_rss_feed_status(user_id).await? {
@@ -24653,8 +24656,9 @@ impl DatabasePool {
         let (podcast_name, feed_image, feed_description) = if podcast_filter {
             match self {
                 DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(r#"SELECT podcastname, artworkurl, description FROM "Podcasts" WHERE podcastid = ANY($1)"#)
+                    let row = sqlx::query(r#"SELECT podcastname, artworkurl, description FROM "Podcasts" WHERE podcastid = ANY($1) AND userid = $2"#)
                         .bind(&effective_podcast_ids)
+                        .bind(user_id)
                         .fetch_optional(pool)
                         .await?;
                     
@@ -24670,8 +24674,9 @@ impl DatabasePool {
                 }
                 DatabasePool::MySQL(pool) => {
                     if effective_podcast_ids.len() == 1 {
-                        let row = sqlx::query("SELECT PodcastName, ArtworkURL, Description FROM Podcasts WHERE PodcastID = ?")
+                        let row = sqlx::query("SELECT PodcastName, ArtworkURL, Description FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
                             .bind(effective_podcast_ids[0])
+                            .bind(user_id)
                             .fetch_optional(pool)
                             .await?;
                         
@@ -24686,11 +24691,12 @@ impl DatabasePool {
                         }
                     } else {
                         let placeholders = vec!["?"; effective_podcast_ids.len()].join(",");
-                        let query_str = format!("SELECT PodcastName, ArtworkURL, Description FROM Podcasts WHERE PodcastID IN ({})", placeholders);
+                        let query_str = format!("SELECT PodcastName, ArtworkURL, Description FROM Podcasts WHERE PodcastID IN ({}) AND UserID = ?", placeholders);
                         let mut query = sqlx::query(sqlx::AssertSqlSafe(query_str.as_str()));
                         for &id in &effective_podcast_ids {
                             query = query.bind(id);
                         }
+                        query = query.bind(user_id);
                         let row = query.fetch_optional(pool).await?;
                         
                         if let Some(row) = row {
@@ -24709,10 +24715,15 @@ impl DatabasePool {
             ("All Podcasts".to_string(), format!("{}/static/assets/favicon.png", domain), "RSS feed for all podcasts from Pinepods".to_string())
         };
 
-        // Get or create RSS key for this user to use in stream URLs
-        let user_rss_key = self.get_or_create_user_rss_key(user_id).await?;
+        // Stream URLs carry the user's RSS key, except for a scoped key: handing out the
+        // user's universal key there would undo the scope.
+        let user_rss_key = if key_is_scoped {
+            rss_key.key.clone()
+        } else {
+            self.get_or_create_user_rss_key(user_id).await?
+        };
 
-        // Get episodes (use the user's RSS key for stream URLs, not the requesting key)
+        // Get episodes
         let episodes = self.get_rss_episodes(user_id, limit, source_type, &effective_podcast_ids, podcast_filter, domain, &user_rss_key).await?;
 
         Self::write_rss_document(
@@ -25102,7 +25113,9 @@ impl DatabasePool {
     pub async fn get_user_rss_key(&self, user_id: i32) -> AppResult<Option<String>> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT rsskey FROM "RssKeys" WHERE userid = $1"#)
+                let row = sqlx::query(r#"SELECT k.rsskey FROM "RssKeys" k
+                    WHERE k.userid = $1 AND NOT EXISTS (SELECT 1 FROM "RssKeyMap" m WHERE m.rsskeyid = k.rsskeyid)
+                    ORDER BY k.rsskeyid LIMIT 1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -25114,7 +25127,9 @@ impl DatabasePool {
                 }
             }
             DatabasePool::MySQL(pool) => {
-                let row = sqlx::query("SELECT RssKey FROM RssKeys WHERE UserID = ?")
+                let row = sqlx::query("SELECT k.RssKey FROM RssKeys k
+                    WHERE k.UserID = ? AND NOT EXISTS (SELECT 1 FROM RssKeyMap m WHERE m.RssKeyID = k.RssKeyID)
+                    ORDER BY k.RssKeyID LIMIT 1")
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -25133,7 +25148,10 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 // Try to get existing RSS key
-                let existing_key = sqlx::query(r#"SELECT rsskey FROM "RssKeys" WHERE userid = $1 LIMIT 1"#)
+                // Only a universal key (no podcast scope) can stand in as "the user's RSS key".
+                let existing_key = sqlx::query(r#"SELECT k.rsskey FROM "RssKeys" k
+                    WHERE k.userid = $1 AND NOT EXISTS (SELECT 1 FROM "RssKeyMap" m WHERE m.rsskeyid = k.rsskeyid)
+                    ORDER BY k.rsskeyid LIMIT 1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -25154,7 +25172,9 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 // Try to get existing RSS key
-                let existing_key = sqlx::query("SELECT RssKey FROM RssKeys WHERE UserID = ? LIMIT 1")
+                let existing_key = sqlx::query("SELECT k.RssKey FROM RssKeys k
+                    WHERE k.UserID = ? AND NOT EXISTS (SELECT 1 FROM RssKeyMap m WHERE m.RssKeyID = k.RssKeyID)
+                    ORDER BY k.RssKeyID LIMIT 1")
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;

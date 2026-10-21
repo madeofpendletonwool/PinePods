@@ -3300,9 +3300,21 @@ pub async fn stream_episode(
     debug!("Trying RSS key validation first");
     match state.db_pool.get_rss_key_if_valid(api_key, None).await {
         Ok(Some(rss_info)) => {
-            info!("Valid RSS key for user {}", rss_info.user_id);
+            // An RSS key only ever streams its own user's files, and a podcast-scoped key
+            // only episodes from the podcasts it was issued for.
+            if rss_info.user_id != query.user_id {
+                return Err(AppError::forbidden("You do not have permission to access this episode"));
+            }
+            if !rss_info.podcast_ids.contains(&-1) {
+                let is_youtube = query.source_type.as_deref() == Some("youtube");
+                let podcast_id = state.db_pool
+                    .get_podcast_id_from_episode(episode_id, query.user_id, is_youtube)
+                    .await?;
+                if !podcast_id.is_some_and(|id| rss_info.podcast_ids.contains(&id)) {
+                    return Err(AppError::forbidden("This RSS key does not cover that episode"));
+                }
+            }
             is_valid = true;
-            // Don't set key_user_id for RSS keys - they don't need permission checks
         }
         Ok(None) => {
             debug!("Not an RSS key, trying regular API key");
@@ -3346,7 +3358,6 @@ pub async fn stream_episode(
             return Err(AppError::forbidden("You do not have permission to access this episode"));
         }
     }
-    // RSS keys don't need user permission checks - they can stream any episode
 
     // Choose which lookup to use based on source_type
     let mut file_path = if query.source_type.as_deref() == Some("youtube") {

@@ -1637,6 +1637,13 @@ pub async fn create_api_key(
     }
 
     if request.rssonly {
+        if let Some(ids) = &request.podcast_ids {
+            for &podcast_id in ids {
+                if !state.db_pool.verify_podcast_belongs_to_user(podcast_id, request.user_id).await? {
+                    return Err(AppError::not_found("Podcast not found"));
+                }
+            }
+        }
         let new_key = state.db_pool.create_rss_key(request.user_id, request.podcast_ids).await?;
         Ok(Json(serde_json::json!({ "rss_key": new_key })))
     } else {

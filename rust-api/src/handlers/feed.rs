@@ -110,6 +110,11 @@ pub async fn get_user_feed(
         }
     };
 
+    // A podcast-scoped key is for those podcasts' feeds only, not the user's saved/queue/etc.
+    if !rss_key.podcast_ids.contains(&-1) && !matches!(feed_source, FeedSource::Subscriptions) {
+        return Err(AppError::forbidden("This RSS key only covers specific podcasts"));
+    }
+
     let feed_content = match feed_source {
         FeedSource::Subscriptions => {
             state.db_pool.generate_podcast_rss(
