@@ -232,8 +232,9 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
 
       // Extract unique categories
       final allCategories = <String>{};
+      // Older servers can return blank categories; never show an empty chip.
       for (final cats in categories.values) {
-        allCategories.addAll(cats);
+        allCategories.addAll(cats.map((c) => c.trim()).where((c) => c.isNotEmpty));
       }
 
       setState(() {

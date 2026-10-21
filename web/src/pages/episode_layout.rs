@@ -3132,7 +3132,7 @@ pub fn episode_layout() -> Html {
                                         if let Some(categories) = &feed.categories {
                                             html! {
                                                 <>
-                                                    { categories.iter().map(|(_, category_name)| {
+                                                    { categories.iter().filter(|(_, name)| !name.trim().is_empty()).map(|(_, category_name)| {
                                                         let category_name = category_name.clone();
                                                         let onclick_remove = onclick_remove.clone();
                                                         let category_to_remove = category_to_remove.clone();
@@ -4621,17 +4621,16 @@ pub fn episode_layout() -> Html {
                                                     } else { html! {} }}
 
                                                     // ── Categories ──
-                                                    { if let Some(categories) = &podcast_info.categories {
-                                                        if !categories.is_empty() {
-                                                            html! {
-                                                                <div class="ep-mobile-categories">
-                                                                    { for categories.iter().map(|(_, category_name)| {
-                                                                        html! { <span class="category-box">{ category_name }</span> }
-                                                                    })}
-                                                                </div>
-                                                            }
-                                                        } else { html! {} }
-                                                    } else { html! {} }}
+                                                    { {
+                                                        let categories = visible_categories(podcast_info.categories.as_ref());
+                                                        if categories.is_empty() { html! {} } else { html! {
+                                                            <div class="ep-mobile-categories">
+                                                                { for categories.iter().map(|category_name| {
+                                                                    html! { <span class="category-box">{ category_name }</span> }
+                                                                })}
+                                                            </div>
+                                                        } }
+                                                    } }
 
                                                 </div>
                                             }
@@ -4639,7 +4638,7 @@ pub fn episode_layout() -> Html {
                                             let pod_link = podcast_info.feedurl.clone();
                                             let subscribed = podcast_state.podcast_added.unwrap_or(false);
                                             let backdrop_style = format!("background-image: url('{}');", &podcast_info.artworkurl);
-                                            let eyebrow_text = match podcast_info.categories.as_ref().and_then(|c| c.values().next()) {
+                                            let eyebrow_text = match visible_categories(podcast_info.categories.as_ref()).first() {
                                                 Some(cat) => format!("{} · {}", i18n.t("episodes_layout.podcast"), cat),
                                                 None => i18n.t("episodes_layout.podcast").to_string(),
                                             };
@@ -4777,17 +4776,16 @@ pub fn episode_layout() -> Html {
                                                             }
                                                         } else { html! {} } }
 
-                                                        { if let Some(categories) = &podcast_info.categories {
-                                                            if !categories.is_empty() {
-                                                                html! {
-                                                                    <div class="pd-banner-cats">
-                                                                        { for categories.values().map(|category_name| {
-                                                                            html! { <span class="category-box">{ category_name }</span> }
-                                                                        }) }
-                                                                    </div>
-                                                                }
-                                                            } else { html! {} }
-                                                        } else { html! {} } }
+                                                        { {
+                                                            let categories = visible_categories(podcast_info.categories.as_ref());
+                                                            if categories.is_empty() { html! {} } else { html! {
+                                                                <div class="pd-banner-cats">
+                                                                    { for categories.iter().map(|category_name| {
+                                                                        html! { <span class="category-box">{ category_name }</span> }
+                                                                    }) }
+                                                                </div>
+                                                            } }
+                                                        } }
                                                     </div>
                                                 </div>
                                             }
@@ -5372,4 +5370,21 @@ pub fn episode_layout() -> Html {
             </div>
 
         }
+}
+
+/// Category names worth showing: no blanks, each name once (ignoring case), in key order so the
+/// list doesn't reshuffle between renders.
+fn visible_categories(categories: Option<&HashMap<String, String>>) -> Vec<String> {
+    let Some(categories) = categories else { return Vec::new() };
+    let mut entries: Vec<(&String, &String)> = categories.iter().collect();
+    entries.sort_by(|(a, _), (b, _)| match (a.parse::<i64>(), b.parse::<i64>()) {
+        (Ok(x), Ok(y)) => x.cmp(&y),
+        _ => a.cmp(b),
+    });
+    let mut seen = std::collections::HashSet::new();
+    entries
+        .into_iter()
+        .map(|(_, name)| name.trim().to_string())
+        .filter(|name| !name.is_empty() && seen.insert(name.to_lowercase()))
+        .collect()
 }

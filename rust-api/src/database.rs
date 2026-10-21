@@ -767,7 +767,7 @@ impl DatabasePool {
                 }
                 
                 // Convert categories to string
-                let category_list = serde_json::to_string(&podcast_values.categories)?;
+                let category_list = serde_json::to_string(&clean_categories(podcast_values.categories.clone()))?;
                 
                 // Insert new podcast
                 let row = sqlx::query(
@@ -847,7 +847,7 @@ impl DatabasePool {
                 }
                 
                 // Convert categories to string
-                let category_list = serde_json::to_string(&podcast_values.categories)?;
+                let category_list = serde_json::to_string(&clean_categories(podcast_values.categories.clone()))?;
                 
                 // Insert new podcast
                 let result = sqlx::query(
@@ -923,7 +923,7 @@ impl DatabasePool {
                 }
                 
                 // Convert categories to string
-                let category_list = serde_json::to_string(&podcast_values.categories)?;
+                let category_list = serde_json::to_string(&clean_categories(podcast_values.categories.clone()))?;
                 
                 // Insert new podcast without episodes
                 let row = sqlx::query(
@@ -977,7 +977,7 @@ impl DatabasePool {
                 }
                 
                 // Convert categories to string
-                let category_list = serde_json::to_string(&podcast_values.categories)?;
+                let category_list = serde_json::to_string(&clean_categories(podcast_values.categories.clone()))?;
                 
                 // Insert new podcast without episodes
                 let result = sqlx::query(
@@ -20649,7 +20649,7 @@ impl DatabasePool {
         if categories_str.starts_with('{') {
             // Try to parse as JSON first
             if let Ok(parsed) = serde_json::from_str::<std::collections::HashMap<String, String>>(categories_str) {
-                return Some(parsed);
+                return Some(clean_categories(parsed));
             }
         } else {
             // Fall back to comma-separated parsing like Python version.
@@ -20662,7 +20662,7 @@ impl DatabasePool {
                 }
                 result.insert(result.len().to_string(), trimmed.to_string());
             }
-            return Some(result);
+            return Some(clean_categories(result));
         }
         
         // Return empty map if parsing fails
@@ -29123,6 +29123,51 @@ where
         }
     }
     Ok(())
+}
+
+/// Drop blank categories and repeats of the same name (ignoring case and surrounding space),
+/// keeping the first by key, so a podcast never shows an empty or duplicate category.
+pub(crate) fn clean_categories(
+    categories: std::collections::HashMap<String, String>,
+) -> std::collections::HashMap<String, String> {
+    let mut entries: Vec<(String, String)> = categories.into_iter().collect();
+    // Numeric keys (Podcast Index ids, comma-split positions) in numeric order, then the rest.
+    entries.sort_by(|(a, _), (b, _)| match (a.parse::<i64>(), b.parse::<i64>()) {
+        (Ok(x), Ok(y)) => x.cmp(&y),
+        (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+        (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+        _ => a.cmp(b),
+    });
+    let mut seen = std::collections::HashSet::new();
+    entries
+        .into_iter()
+        .filter_map(|(key, name)| {
+            let name = name.trim().to_string();
+            (!name.is_empty() && seen.insert(name.to_lowercase())).then_some((key, name))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod clean_categories_tests {
+    use super::clean_categories;
+    use std::collections::HashMap;
+
+    fn map(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn drops_blank_and_whitespace_categories() {
+        let cleaned = clean_categories(map(&[("1", "News"), ("2", ""), ("3", "   ")]));
+        assert_eq!(cleaned, map(&[("1", "News")]));
+    }
+
+    #[test]
+    fn keeps_one_of_each_name_ignoring_case_and_space() {
+        let cleaned = clean_categories(map(&[("10", "Technology"), ("2", "technology "), ("3", "News")]));
+        assert_eq!(cleaned, map(&[("2", "technology"), ("3", "News")]));
+    }
 }
 
 /// Serialize a collection's auto-add category list for storage.
