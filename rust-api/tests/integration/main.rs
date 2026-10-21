@@ -8,6 +8,7 @@ mod accounts;
 mod admin_only;
 mod auth_coverage;
 mod cross_user;
+mod feeds;
 mod foreign_resources;
 mod library;
 mod playback;
