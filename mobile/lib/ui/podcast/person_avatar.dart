@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:pinepods_mobile/entities/person.dart';
 import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/ui/pinepods/people/people_widgets.dart' show openPerson;
 import 'package:url_launcher/url_launcher.dart';
 
 /// This Widget handles rendering of a person avatar.
@@ -39,19 +40,25 @@ class PersonAvatar extends StatelessWidget {
     }
   }
 
+  /// Open their PinePods person page when the server knows them, otherwise their own link.
+  VoidCallback? _onTap(BuildContext context) {
+    final id = person.personId ?? 0;
+    if (id > 0) {
+      return () => unawaited(openPerson(context, id, name: person.name));
+    }
+    final link = person.link;
+    if (link == null || link.isEmpty) return null;
+    return () {
+      final uri = Uri.parse(link);
+      unawaited(canLaunchUrl(uri).then((value) => launchUrl(uri)));
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onTap: person.link != null && person.link!.isNotEmpty
-          ? () {
-              final uri = Uri.parse(person.link!);
-
-              unawaited(
-                canLaunchUrl(uri).then((value) => launchUrl(uri)),
-              );
-            }
-          : null,
+      onTap: _onTap(context),
       child: SizedBox(
         width: 96,
         child: Padding(
@@ -61,10 +68,10 @@ class PersonAvatar extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 32,
-                foregroundImage: ExtendedImage.network(
-                  person.image!,
-                  cache: true,
-                ).image,
+                // No image request for an empty URL: it can only fail.
+                foregroundImage: (person.image ?? '').isEmpty
+                    ? null
+                    : ExtendedImage.network(person.image!, cache: true).image,
                 child: Text(initials),
               ),
               Text(

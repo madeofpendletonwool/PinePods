@@ -3,6 +3,8 @@ use crate::components::context::{AppState, EpisodeDetailState, EpisodeNavigation
 use crate::components::context::NotificationState;
 use crate::components::gen_components::{EpisodeModal, FallbackImage};
 use crate::components::gen_funcs::format_time_rm_hour;
+use crate::components::people::{PeopleLayout, PeopleStrip};
+use crate::requests::people_req::call_get_episode_people;
 #[cfg(not(feature = "server_build"))]
 use crate::pages::downloads_tauri::start_local_file_server;
 use crate::requests::episode::Episode;
@@ -598,6 +600,26 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         });
                     }
 
+                    // People on their own request: a quick database read, while the 2.0 data
+                    // below can wait on a remote chapters file. Cleared first so the previous
+                    // episode's people never show against this one.
+                    let people_dispatch = dispatch.clone();
+                    people_dispatch.reduce_mut(|state| state.episode_people = None);
+                    if episode_id != 0 && !is_youtube_vid {
+                        let people_api_key = api_key.clone().unwrap_or_default();
+                        let people_server_name = server_name.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match call_get_episode_people(&people_server_name, &people_api_key, episode_id).await {
+                                Ok(people) => people_dispatch.reduce_mut(|state| {
+                                    state.episode_people = Some(people);
+                                }),
+                                Err(e) => web_sys::console::log_1(
+                                    &format!("Error fetching episode people: {}", e).into(),
+                                ),
+                            }
+                        });
+                    }
+
                     // Only proceed if the episode_id is not zero
                     if episode_id != 0 && !is_youtube_vid {
                         wasm_bindgen_futures::spawn_local(async move {
@@ -615,11 +637,9 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 Ok(response) => {
                                     let chapters = response.chapters.clone(); // Clone chapters to avoid move issue
                                     let transcripts = response.transcripts.clone(); // Clone transcripts to avoid move issue
-                                    let people = response.people.clone(); // Clone people to avoid move issue
                                     dispatch.reduce_mut(|state| {
                                         state.episode_chapters = Some(chapters);
                                         state.episode_transcript = Some(transcripts);
-                                        state.episode_people = Some(people);
                                     });
                                 }
                                 Err(e) => {
@@ -1787,6 +1807,23 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                         <div class="player-fs-meta">
                             <div class="player-fs-title">{ &audio_props.title }</div>
+                            { match &audio_state.episode_people {
+                                Some(people) if !people.is_empty() => {
+                                    let collapse = {
+                                        let dispatch = _audio_dispatch.clone();
+                                        Callback::from(move |_: ()| dispatch.reduce_mut(|state| state.is_expanded = false))
+                                    };
+                                    html! {
+                                        <PeopleStrip
+                                            people={Rc::new(people.clone())}
+                                            layout={PeopleLayout::Chips}
+                                            class={classes!("player-fs-people")}
+                                            on_open={collapse}
+                                        />
+                                    }
+                                }
+                                _ => html! {},
+                            } }
                         </div>
 
                         // Scrub bar

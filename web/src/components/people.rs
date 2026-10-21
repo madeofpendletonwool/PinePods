@@ -44,8 +44,13 @@ pub fn person_path(person_id: i32) -> String {
     format!("/person/{}", person_id)
 }
 
-fn go_to_person(person_id: i32) -> Callback<MouseEvent> {
-    Callback::from(move |_: MouseEvent| BrowserHistory::new().push(person_path(person_id)))
+fn go_to_person(person_id: i32, on_open: Option<Callback<()>>) -> Callback<MouseEvent> {
+    Callback::from(move |_: MouseEvent| {
+        if let Some(on_open) = &on_open {
+            on_open.emit(());
+        }
+        BrowserHistory::new().push(person_path(person_id))
+    })
 }
 
 fn avatar(server_name: &str, person: &CreditedPerson, class: &'static str, placeholder: &'static str) -> Html {
@@ -117,6 +122,9 @@ pub struct PeopleStripProps {
     /// Wrapper class, so pages keep their own spacing.
     #[prop_or_default]
     pub class: Classes,
+    /// Runs before opening a person page (the player collapses itself).
+    #[prop_or_default]
+    pub on_open: Option<Callback<()>>,
 }
 
 #[function_component(PeopleStrip)]
@@ -179,7 +187,7 @@ pub fn people_strip(props: &PeopleStripProps) -> Html {
                 <div class={classes!("pd-banner-hosts", props.class.clone())}>
                     <div class="pd-host-stack">
                         { for shown.iter().map(|p| html! {
-                            <div class="pd-host-avatar-wrap" title={p.name.clone()} onclick={go_to_person(p.id)}>
+                            <div class="pd-host-avatar-wrap" title={p.name.clone()} onclick={go_to_person(p.id, props.on_open.clone())}>
                                 { avatar(&server_name, p, "pd-host-avatar", "pd-host-avatar-ph") }
                             </div>
                         }) }
@@ -192,7 +200,7 @@ pub fn people_strip(props: &PeopleStripProps) -> Html {
                                 html! {
                                     <>
                                         { sep }
-                                        <a class="pp-name-link" onclick={go_to_person(p.id)}>{ &p.name }</a>
+                                        <a class="pp-name-link" onclick={go_to_person(p.id, props.on_open.clone())}>{ &p.name }</a>
                                         { unverified_dot(p) }
                                     </>
                                 }
@@ -212,7 +220,7 @@ pub fn people_strip(props: &PeopleStripProps) -> Html {
                 </div>
                 <div class="ep-mobile-hosts-scroll">
                     { for people.iter().map(|p| html! {
-                        <div class="ep-mobile-host-chip" onclick={go_to_person(p.id)} title={p.name.clone()}>
+                        <div class="ep-mobile-host-chip" onclick={go_to_person(p.id, props.on_open.clone())} title={p.name.clone()}>
                             <div class="pp-chip-avatar">
                                 { avatar(&server_name, p, "ep-mobile-host-avatar", "ep-mobile-host-placeholder") }
                                 { unverified_dot(p) }
@@ -231,7 +239,7 @@ pub fn people_strip(props: &PeopleStripProps) -> Html {
                         let roles = p.roles.join(", ");
                         let roles = if roles.is_empty() { p.role.clone() } else { roles };
                         html! {
-                            <div class="ep-person" onclick={go_to_person(p.id)} title={p.name.clone()}>
+                            <div class="ep-person" onclick={go_to_person(p.id, props.on_open.clone())} title={p.name.clone()}>
                                 { avatar(&server_name, p, "ep-person-avatar", "ep-person-avatar-ph") }
                                 <div class="ep-person-body">
                                     <div class="ep-person-name">{ &p.name }{ unverified_dot(p) }</div>

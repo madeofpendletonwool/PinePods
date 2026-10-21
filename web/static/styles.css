@@ -10677,3 +10677,8 @@ body.search-takeover-open .drawer-icon { display: none; }
     .pp-sheet-scrim, .pp-sheet { animation: none; }
     .pp-show-img, .pp-followed-card, .pp-add-btn, .pp-follow { transition: none; }
 }
+
+/* People on the playing episode, under the title in the full-screen player */
+.player-fs-people { margin: 4px auto 12px; max-width: 560px; }
+.player-fs-people .pp-head { display: none; }
+.player-fs-people .ep-mobile-hosts-scroll { justify-content: safe center; }
