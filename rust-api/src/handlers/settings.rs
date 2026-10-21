@@ -5742,6 +5742,7 @@ pub async fn get_ignored_podcasts(
     path = "/get_user_language",
     tag = "settings",
     summary = "Get user language",
+    params(("user_id" = i32, Query)),
     security(("api_key" = [])),
     responses(
         (status = 200, description = "Success", body = UserLanguageResponse),

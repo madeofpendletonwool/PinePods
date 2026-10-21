@@ -13,4 +13,5 @@ mod library;
 mod playback;
 mod podcasts;
 mod queue;
+mod settings;
 mod smoke;

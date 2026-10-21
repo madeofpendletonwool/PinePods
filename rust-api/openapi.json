@@ -5217,6 +5217,17 @@
         ],
         "summary": "Get user language",
         "operationId": "get_user_language",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
