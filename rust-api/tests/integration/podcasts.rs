@@ -210,3 +210,114 @@ async fn a_user_cannot_unsubscribe_someone_else() {
     assert!(!resp.is_success() || resp.json()["success"] == false, "{}", resp.text());
     assert_eq!(app.podcasts(&alice).await.len(), 1, "alice's subscription must survive");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn password_protected_feeds_send_their_credentials_on_every_fetch() {
+    let app = TestApp::new().await;
+    let user = app.user("patron").await;
+    let feed = Feed::with_episodes("Premium Show", 2);
+    let url = app.feed("premium.xml", &feed);
+
+    let body = app
+        .post("/api/data/add_custom_podcast")
+        .key(&user)
+        .json(&json!({ "user_id": user.id, "feed_url": url, "username": "patron", "password": "s3cret:pass" }))
+        .send()
+        .await
+        .ok_json();
+    let podcast_id = body["data"]["podcastid"].as_i64().unwrap_or_else(|| panic!("{body}")) as i32;
+    eventually("premium episodes", || async { (app.episodes(&user, podcast_id).await.len() == 2).then_some(()) }).await;
+
+    app.feed("premium.xml", &feed.episode(Episode::new(3)));
+    app.refresh().await;
+    assert_eq!(app.episodes(&user, podcast_id).await.len(), 3);
+
+    // base64("patron:s3cret:pass")
+    let expected = "Basic cGF0cm9uOnMzY3JldDpwYXNz";
+    let hits = app.fixtures().hits("premium.xml");
+    assert!(hits.len() >= 2, "{hits:?}");
+    for h in &hits {
+        assert_eq!(h.headers.get("authorization").map(String::as_str), Some(expected), "every fetch authenticates: {h:?}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn merged_podcasts_show_as_one_and_can_be_split_again() {
+    let app = TestApp::new().await;
+    let user = app.user("merger").await;
+    let main_url = app.feed("main.xml", &Feed::new("Main Feed").episode(Episode::new(1).title("Main ep")));
+    let extra_url = app.feed("extra.xml", &Feed::new("Bonus Feed").episode(Episode::new(1).title("Bonus ep")));
+    let main = app.subscribe(&user, &main_url, 1).await;
+    let extra = app.subscribe(&user, &extra_url, 1).await;
+
+    let merge = |primary: i32, secondary: Vec<i32>| {
+        app.post(&format!("/api/data/{primary}/merge")).key(&user).json(&json!({ "secondary_podcast_ids": secondary }))
+    };
+    let merged_ids = || async {
+        app.get(&format!("/api/data/{main}/merged")).key(&user).send().await.ok_json()["merged_podcast_ids"].clone()
+    };
+    let names = || async {
+        let mut n: Vec<String> =
+            app.podcasts(&user).await.iter().map(|p| p["podcastname"].as_str().unwrap().to_string()).collect();
+        n.sort();
+        n
+    };
+
+    assert_eq!(merge(main, vec![main]).send().await.ok_json()["success"], false, "cannot merge into itself");
+
+    let r = merge(main, vec![extra]).send().await.ok_json();
+    assert_eq!(r["success"], true, "{r}");
+    assert_eq!(merged_ids().await, json!([extra]));
+    assert_eq!(names().await, ["Main Feed"], "the secondary podcast is hidden from the list");
+    let titles: Vec<String> =
+        app.episodes(&user, main).await.iter().map(|e| e["Episodetitle"].as_str().unwrap().to_string()).collect();
+    assert!(titles.contains(&"Main ep".to_string()) && titles.contains(&"Bonus ep".to_string()), "{titles:?}");
+
+    let r = app.post(&format!("/api/data/{main}/unmerge/{extra}")).key(&user).send().await.ok_json();
+    assert_eq!(r["success"], true, "{r}");
+    assert_eq!(merged_ids().await, json!([]));
+    assert_eq!(names().await, ["Bonus Feed", "Main Feed"]);
+    let titles: Vec<String> =
+        app.episodes(&user, main).await.iter().map(|e| e["Episodetitle"].as_str().unwrap().to_string()).collect();
+    assert_eq!(titles, ["Main ep"]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn podcasts_cannot_be_merged_with_someone_elses() {
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let mallory = app.user("mallory").await;
+    let a = app.subscribe(&alice, &app.feed("a.xml", &Feed::with_episodes("Alice Show", 1)), 1).await;
+    let m = app.subscribe(&mallory, &app.feed("m.xml", &Feed::with_episodes("Mallory Show", 1)), 1).await;
+
+    let r = app.post(&format!("/api/data/{m}/merge")).key(&mallory).json(&json!({ "secondary_podcast_ids": [a] })).send().await;
+    assert!(!r.is_success() || r.json()["success"] == false, "{}", r.text());
+    assert_eq!(app.podcasts(&alice).await.len(), 1, "alice's podcast must stay visible");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn search_finds_episodes_in_your_own_library_only() {
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let bob = app.user("bob").await;
+    let needle = format!("Zebra{}", app.tag);
+    let feed = Feed::new("Search Show")
+        .episode(Episode::new(1).title(&format!("All about the {needle}")))
+        .episode(Episode::new(2).title("Something else"));
+    let url = app.feed("search.xml", &feed);
+    app.subscribe(&alice, &url, 2).await;
+    app.subscribe(&bob, &app.feed("bob.xml", &Feed::new("Bob Show").episode(Episode::new(1).title(&needle))), 1).await;
+
+    let search = |u: &TestUser, term: &str| {
+        app.post("/api/data/search_data").key(u).json(&json!({ "user_id": u.id, "search_term": term }))
+    };
+    let hits = search(&alice, &needle.to_lowercase()).send().await.ok_json();
+    let titles: Vec<&str> = hits["data"].as_array().unwrap().iter().filter_map(|e| e["episodetitle"].as_str()).collect();
+    assert_eq!(titles, [format!("All about the {needle}").as_str()], "{hits}");
+    assert_eq!(hits["total"], 1);
+
+    assert_eq!(search(&alice, "nothing-matches-this").send().await.ok_json()["total"], 0);
+    assert_eq!(search(&bob, &needle).send().await.ok_json()["total"], 1, "bob finds only his own copy");
+    let r = app.post("/api/data/search_data").key(&bob).json(&json!({ "user_id": alice.id, "search_term": needle })).send().await;
+    assert!(!r.is_success(), "searching someone else's library: {}", r.text());
+}

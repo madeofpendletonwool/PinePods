@@ -11,6 +11,7 @@ mod cross_user;
 mod feeds;
 mod foreign_resources;
 mod library;
+mod opml;
 mod playback;
 mod podcasts;
 mod queue;
