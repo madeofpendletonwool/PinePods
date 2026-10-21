@@ -4,6 +4,7 @@
 mod harness;
 mod support;
 
+mod accounts;
 mod admin_only;
 mod auth_coverage;
 mod cross_user;
