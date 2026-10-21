@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:collection';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show NetworkImageLoadException;
 import 'package:flutter/services.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -345,6 +346,13 @@ class AppLogger {
   // Setup crash handler
   Future<void> _setupCrashHandler() async {
     FlutterError.onError = (FlutterErrorDetails details) {
+      // A failed image download (missing artwork, an avatar host that's down) isn't a crash:
+      // the widget shows its placeholder. Log it without replacing the last real crash.
+      if (isImageLoadError(details)) {
+        warning('ImageLoad', details.exception.toString());
+        FlutterError.presentError(details);
+        return;
+      }
       _logCrash('Flutter Error', details.exception.toString(), details.stack);
       // Still call the default error handler
       FlutterError.presentError(details);
@@ -356,6 +364,13 @@ class AppLogger {
     };
   }
   
+  /// Whether [details] is an image that failed to load, reported by Flutter's image cache.
+  @visibleForTesting
+  static bool isImageLoadError(FlutterErrorDetails details) {
+    return details.library == 'image resource service' ||
+        details.exception is NetworkImageLoadException;
+  }
+
   // Log crash to persistent storage
   Future<void> _logCrash(String type, String error, StackTrace? stackTrace) async {
     try {
