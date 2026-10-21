@@ -2229,7 +2229,7 @@ pub async fn fetch_podcasting_2_pod_data(
         return Err(AppError::unauthorized("Invalid API key or insufficient permissions"));
     }
 
-    // Fetch podcasting 2.0 podcast data
+    crate::handlers::require_user_access(&state, &api_key, query.user_id).await?;
     let data = state.db_pool.fetch_podcasting_2_pod_data(query.podcast_id, query.user_id).await?;
     
     Ok(Json(data))
@@ -3571,94 +3571,6 @@ pub async fn get_podcast_details_dynamic(
             websiteurl: podcast_values.get("pod_website").and_then(|v| v.as_str()).unwrap_or("").to_string(),
             podcastindexid: query.podcast_index_id,
             is_youtube: Some(false),
-        }))
-    }
-}
-
-// Query struct for podpeople host podcasts
-#[derive(Deserialize, utoipa::IntoParams)]
-pub struct HostPodcastsQuery {
-    pub hostname: String,
-}
-
-// Response struct for podpeople host podcasts
-#[derive(Serialize, utoipa::ToSchema)]
-pub struct PodPeopleResponse {
-    pub success: bool,
-    pub podcasts: Vec<serde_json::Value>,
-}
-
-// Get host podcasts from podpeople endpoint
-#[utoipa::path(
-    get,
-    path = "/podpeople/host_podcasts",
-    tag = "podcasts",
-    summary = "Get host podcasts",
-    params(HostPodcastsQuery),
-    security(("api_key" = [])),
-    responses(
-        (status = 200, description = "Success", body = PodPeopleResponse),
-        (status = 401, description = "Invalid or missing API key"),
-    ),
-)]
-pub async fn get_host_podcasts(
-    State(state): State<crate::AppState>,
-    headers: HeaderMap,
-    Query(query): Query<HostPodcastsQuery>,
-) -> Result<Json<PodPeopleResponse>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    require_valid_api_key(&state, &api_key).await?;
-
-    // Get people URL from config
-    let people_url = std::env::var("PEOPLE_API_URL").unwrap_or_else(|_| "https://people.pinepods.online".to_string());
-
-    // Make request to podpeople database (10s timeout)
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .unwrap_or_default();
-    let response = client
-        .get(&format!("{}/api/host-search", people_url))
-        .query(&[("name", &query.hostname)])
-        .send()
-        .await
-        .map_err(|e| AppError::external_error(&format!("Failed to fetch from podpeople: {}", e)))?;
-
-    if response.status().is_success() {
-        // /api/host-search returns an array of hosts, each with a `podcasts` array. Flatten into
-        // the {podcastid, podcastname, feedurl} shape this endpoint's consumers expect, deduped
-        // by feed URL.
-        let hosts: Vec<serde_json::Value> = response
-            .json()
-            .await
-            .map_err(|e| AppError::external_error(&format!("Failed to parse podpeople response: {}", e)))?;
-
-        let mut seen = std::collections::HashSet::new();
-        let mut podcasts = Vec::new();
-        for host in &hosts {
-            if let Some(host_podcasts) = host.get("podcasts").and_then(|v| v.as_array()) {
-                for podcast in host_podcasts {
-                    let feed_url = podcast.get("feedUrl").and_then(|v| v.as_str()).unwrap_or("");
-                    if feed_url.is_empty() || !seen.insert(feed_url.to_string()) {
-                        continue;
-                    }
-                    podcasts.push(serde_json::json!({
-                        "podcastid": podcast.get("podcastId").and_then(|v| v.as_i64()).unwrap_or(0),
-                        "podcastname": podcast.get("podcastTitle").and_then(|v| v.as_str()).unwrap_or(""),
-                        "feedurl": feed_url,
-                    }));
-                }
-            }
-        }
-
-        Ok(Json(PodPeopleResponse {
-            success: true,
-            podcasts,
-        }))
-    } else {
-        Ok(Json(PodPeopleResponse {
-            success: false,
-            podcasts: vec![],
         }))
     }
 }

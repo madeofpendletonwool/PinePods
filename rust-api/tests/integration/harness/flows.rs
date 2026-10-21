@@ -58,7 +58,30 @@ impl TestApp {
             (n == expected_episodes).then_some(())
         })
         .await;
+        // Podcasting 2.0 tags are stored right after the episodes.
+        eventually(&format!("feed tags stored for podcast {podcast_id}"), || async {
+            self.feed_tags_stored(podcast_id).await.then_some(())
+        })
+        .await;
         podcast_id
+    }
+
+    /// True once refresh has stored the podcast's Podcasting 2.0 tags (even if it has none).
+    pub async fn feed_tags_stored(&self, podcast_id: i32) -> bool {
+        use pinepods_api::database::DatabasePool;
+        let hash: Option<Option<String>> = match self.db() {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT podcasting2hash FROM "Podcasts" WHERE podcastid = $1"#)
+                .bind(podcast_id)
+                .fetch_optional(pool)
+                .await
+                .unwrap(),
+            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT Podcasting2Hash FROM Podcasts WHERE PodcastID = ?")
+                .bind(podcast_id)
+                .fetch_optional(pool)
+                .await
+                .unwrap(),
+        };
+        hash.flatten().is_some()
     }
 
     /// All episodes of `podcast_id` as `user` sees them (`/api/data/podcast_episodes`).

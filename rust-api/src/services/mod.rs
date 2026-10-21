@@ -4,6 +4,8 @@ pub mod ai_settings;
 pub mod audio_processing;
 pub mod auth;
 pub mod download_metadata;
+pub mod people;
+pub mod podcasting2;
 pub mod recommendations;
 pub mod scheduler;
 pub mod task_manager;

@@ -5719,3 +5719,269 @@ def repair_mysql_columns_skipped_by_cross_schema_check(conn, db_type: str) -> No
                 logger.info(f"Repaired missing {table}.{column}")
     finally:
         cursor.close()
+
+
+def _normalize_person_name(name) -> str:
+    """Name key for matching people. Must stay identical to normalize_name in
+    rust-api/src/services/podcasting2.rs (and PodPeopleDB's)."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", name or "")
+    s = "".join(c for c in s if not unicodedata.combining(c)).lower()
+    s = s.translate(str.maketrans({"ß": "s", "ø": "o", "æ": "a", "đ": "d", "ð": "d", "ł": "l"}))
+    out = []
+    for c in s:
+        if c.isalnum():
+            out.append(c)
+        elif c.isspace() or c in "-_":
+            out.append(" ")
+    return " ".join("".join(out).split())
+
+
+def _column_exists(cursor, db_type: str, table: str, column: str) -> bool:
+    if db_type == "postgresql":
+        cursor.execute(
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = %s AND column_name = %s",
+            (table, column.lower()),
+        )
+    else:
+        cursor.execute(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s",
+            (table, column),
+        )
+    return cursor.fetchone()[0] > 0
+
+
+def _table_exists(cursor, db_type: str, table: str) -> bool:
+    if db_type == "postgresql":
+        cursor.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = %s", (table,))
+    else:
+        cursor.execute(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s",
+            (table,),
+        )
+    return cursor.fetchone()[0] > 0
+
+
+@register_migration("062", "people_refactor", "Shared people identity, feed/PodPeopleDB credits, person follows, stored Podcasting 2.0 data", requires=["001", "005", "009"])
+def migration_062_people_refactor(conn, db_type: str) -> None:
+    """Replace per-user host subscriptions with a shared person identity.
+
+    - Persons: one row per person across the server (name, image, link, PodPeopleDB id).
+    - PodcastPeople / EpisodePeople: who is credited on a podcast or episode, from the feed's
+      <podcast:person> tags (Source 'feed', written at refresh) or PodPeopleDB ('podpeople',
+      written by the background sync). Rows cascade with their podcast/episode.
+    - PersonFollows: a user following a person, everywhere they appear (#349).
+    - PersonExternalEpisodes: episodes a followed/viewed person appears in on shows outside the
+      library, cached from the Podcast Index person search and PodPeopleDB.
+    - Podcasts.Podcasting2Data/Podcasting2Hash/PodcastGUID and Episodes.ChaptersURL/
+      TranscriptsJSON: Podcasting 2.0 data stored at refresh so pages never fetch the feed.
+
+    Existing People rows become Persons + PersonFollows; People, PeopleEpisodes and
+    HostFeedCache are dropped. The user-1 placeholder podcasts the old code created for host
+    feeds are removed by the API at startup (it owns the cascade logic for podcast removal).
+    """
+    logger.info("Starting migration 062: people refactor")
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    try:
+        if pg:
+            statements = [
+                '''CREATE TABLE IF NOT EXISTS "Persons" (
+                    PersonID SERIAL PRIMARY KEY,
+                    Name TEXT NOT NULL,
+                    NameNormalized TEXT NOT NULL,
+                    Img TEXT,
+                    Href TEXT,
+                    PodPeopleID INT UNIQUE,
+                    ExternalRefreshedAt TIMESTAMP,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )''',
+                'CREATE INDEX IF NOT EXISTS idx_persons_name_normalized ON "Persons"(NameNormalized)',
+                '''CREATE TABLE IF NOT EXISTS "PodcastPeople" (
+                    PodcastID INT NOT NULL REFERENCES "Podcasts"(PodcastID) ON DELETE CASCADE,
+                    PersonID INT NOT NULL REFERENCES "Persons"(PersonID) ON DELETE CASCADE,
+                    Role VARCHAR(64) NOT NULL,
+                    PersonGroup VARCHAR(64),
+                    Source VARCHAR(16) NOT NULL,
+                    Verified BOOLEAN NOT NULL DEFAULT TRUE,
+                    PRIMARY KEY (PodcastID, PersonID, Role, Source)
+                )''',
+                'CREATE INDEX IF NOT EXISTS idx_podcastpeople_person ON "PodcastPeople"(PersonID)',
+                '''CREATE TABLE IF NOT EXISTS "EpisodePeople" (
+                    EpisodeID INT NOT NULL REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE,
+                    PersonID INT NOT NULL REFERENCES "Persons"(PersonID) ON DELETE CASCADE,
+                    Role VARCHAR(64) NOT NULL,
+                    PersonGroup VARCHAR(64),
+                    Source VARCHAR(16) NOT NULL,
+                    Verified BOOLEAN NOT NULL DEFAULT TRUE,
+                    PRIMARY KEY (EpisodeID, PersonID, Role, Source)
+                )''',
+                'CREATE INDEX IF NOT EXISTS idx_episodepeople_person ON "EpisodePeople"(PersonID)',
+                '''CREATE TABLE IF NOT EXISTS "PersonFollows" (
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    PersonID INT NOT NULL REFERENCES "Persons"(PersonID) ON DELETE CASCADE,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (UserID, PersonID)
+                )''',
+                'CREATE INDEX IF NOT EXISTS idx_personfollows_person ON "PersonFollows"(PersonID)',
+                '''CREATE TABLE IF NOT EXISTS "PersonExternalEpisodes" (
+                    ID SERIAL PRIMARY KEY,
+                    PersonID INT NOT NULL REFERENCES "Persons"(PersonID) ON DELETE CASCADE,
+                    FeedURL TEXT NOT NULL,
+                    PodcastTitle TEXT,
+                    PodcastArtwork TEXT,
+                    PodcastIndexID INT,
+                    EpisodeGUID TEXT,
+                    EpisodeTitle TEXT NOT NULL,
+                    EpisodeDescription TEXT,
+                    EpisodeURL TEXT NOT NULL,
+                    EpisodeArtwork TEXT,
+                    EpisodePubDate TIMESTAMP,
+                    EpisodeDuration INT,
+                    Role VARCHAR(64),
+                    Source VARCHAR(16) NOT NULL,
+                    FetchedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (PersonID, EpisodeURL)
+                )''',
+                'CREATE INDEX IF NOT EXISTS idx_personexternal_date ON "PersonExternalEpisodes"(PersonID, EpisodePubDate DESC)',
+            ]
+        else:
+            statements = [
+                '''CREATE TABLE IF NOT EXISTS Persons (
+                    PersonID INT AUTO_INCREMENT PRIMARY KEY,
+                    Name VARCHAR(255) NOT NULL,
+                    NameNormalized VARCHAR(255) NOT NULL,
+                    Img TEXT,
+                    Href TEXT,
+                    PodPeopleID INT UNIQUE,
+                    ExternalRefreshedAt TIMESTAMP NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_persons_name_normalized (NameNormalized)
+                )''',
+                '''CREATE TABLE IF NOT EXISTS PodcastPeople (
+                    PodcastID INT NOT NULL,
+                    PersonID INT NOT NULL,
+                    Role VARCHAR(64) NOT NULL,
+                    PersonGroup VARCHAR(64),
+                    Source VARCHAR(16) NOT NULL,
+                    Verified BOOLEAN NOT NULL DEFAULT TRUE,
+                    PRIMARY KEY (PodcastID, PersonID, Role, Source),
+                    INDEX idx_podcastpeople_person (PersonID),
+                    FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID) ON DELETE CASCADE,
+                    FOREIGN KEY (PersonID) REFERENCES Persons(PersonID) ON DELETE CASCADE
+                )''',
+                '''CREATE TABLE IF NOT EXISTS EpisodePeople (
+                    EpisodeID INT NOT NULL,
+                    PersonID INT NOT NULL,
+                    Role VARCHAR(64) NOT NULL,
+                    PersonGroup VARCHAR(64),
+                    Source VARCHAR(16) NOT NULL,
+                    Verified BOOLEAN NOT NULL DEFAULT TRUE,
+                    PRIMARY KEY (EpisodeID, PersonID, Role, Source),
+                    INDEX idx_episodepeople_person (PersonID),
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (PersonID) REFERENCES Persons(PersonID) ON DELETE CASCADE
+                )''',
+                '''CREATE TABLE IF NOT EXISTS PersonFollows (
+                    UserID INT NOT NULL,
+                    PersonID INT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (UserID, PersonID),
+                    INDEX idx_personfollows_person (PersonID),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (PersonID) REFERENCES Persons(PersonID) ON DELETE CASCADE
+                )''',
+                '''CREATE TABLE IF NOT EXISTS PersonExternalEpisodes (
+                    ID INT AUTO_INCREMENT PRIMARY KEY,
+                    PersonID INT NOT NULL,
+                    FeedURL TEXT NOT NULL,
+                    PodcastTitle TEXT,
+                    PodcastArtwork TEXT,
+                    PodcastIndexID INT,
+                    EpisodeGUID TEXT,
+                    EpisodeTitle TEXT NOT NULL,
+                    EpisodeDescription MEDIUMTEXT,
+                    EpisodeURL TEXT NOT NULL,
+                    EpisodeURLHash CHAR(64) NOT NULL,
+                    EpisodeArtwork TEXT,
+                    EpisodePubDate TIMESTAMP NULL,
+                    EpisodeDuration INT,
+                    Role VARCHAR(64),
+                    Source VARCHAR(16) NOT NULL,
+                    FetchedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uniq_person_episode (PersonID, EpisodeURLHash),
+                    INDEX idx_personexternal_date (PersonID, EpisodePubDate),
+                    FOREIGN KEY (PersonID) REFERENCES Persons(PersonID) ON DELETE CASCADE
+                )''',
+            ]
+        for stmt in statements:
+            cursor.execute(stmt)
+
+        podcasts = '"Podcasts"' if pg else "Podcasts"
+        episodes = '"Episodes"' if pg else "Episodes"
+        for table, quoted, column, definition in [
+            ("Podcasts", podcasts, "Podcasting2Data", "TEXT"),
+            ("Podcasts", podcasts, "Podcasting2Hash", "VARCHAR(32)"),
+            ("Podcasts", podcasts, "PodcastGUID", "VARCHAR(255)"),
+            ("Episodes", episodes, "ChaptersURL", "TEXT"),
+            ("Episodes", episodes, "TranscriptsJSON", "TEXT"),
+        ]:
+            if not _column_exists(cursor, db_type, table, column):
+                cursor.execute(f"ALTER TABLE {quoted} ADD COLUMN {column} {definition}")
+
+        # Existing host subscriptions -> Persons + PersonFollows.
+        people_table = '"People"' if pg else "People"
+        if _table_exists(cursor, db_type, "People"):
+            cursor.execute(f"SELECT UserID, Name, PersonImg, PeopleDBID FROM {people_table}")
+            rows = cursor.fetchall()
+            persons_table = '"Persons"' if pg else "Persons"
+            follows_table = '"PersonFollows"' if pg else "PersonFollows"
+            by_podpeople, by_name = {}, {}
+            migrated = 0
+            for user_id, name, img, podpeople_id in rows:
+                name = " ".join((name or "").split())
+                norm = _normalize_person_name(name)
+                if not norm:
+                    continue
+                podpeople_id = podpeople_id if podpeople_id and podpeople_id > 0 else None
+                person_id = (by_podpeople.get(podpeople_id) if podpeople_id else None) or by_name.get(norm)
+                if person_id is None:
+                    if pg:
+                        cursor.execute(
+                            f"INSERT INTO {persons_table} (Name, NameNormalized, Img, PodPeopleID) VALUES (%s, %s, %s, %s) RETURNING PersonID",
+                            (name, norm, img or None, podpeople_id),
+                        )
+                        person_id = cursor.fetchone()[0]
+                    else:
+                        cursor.execute(
+                            f"INSERT INTO {persons_table} (Name, NameNormalized, Img, PodPeopleID) VALUES (%s, %s, %s, %s)",
+                            (name, norm, img or None, podpeople_id),
+                        )
+                        person_id = cursor.lastrowid
+                elif podpeople_id and podpeople_id not in by_podpeople:
+                    cursor.execute(
+                        f"UPDATE {persons_table} SET PodPeopleID = %s WHERE PersonID = %s AND PodPeopleID IS NULL",
+                        (podpeople_id, person_id),
+                    )
+                by_name.setdefault(norm, person_id)
+                if podpeople_id:
+                    by_podpeople.setdefault(podpeople_id, person_id)
+                if pg:
+                    cursor.execute(
+                        f"INSERT INTO {follows_table} (UserID, PersonID) SELECT %s, %s WHERE EXISTS (SELECT 1 FROM \"Users\" WHERE UserID = %s) ON CONFLICT DO NOTHING",
+                        (user_id, person_id, user_id),
+                    )
+                else:
+                    cursor.execute(
+                        f"INSERT IGNORE INTO {follows_table} (UserID, PersonID) SELECT %s, %s FROM DUAL WHERE EXISTS (SELECT 1 FROM Users WHERE UserID = %s)",
+                        (user_id, person_id, user_id),
+                    )
+                migrated += 1
+            logger.info(f"Migrated {migrated} host subscriptions into {len(by_name)} people")
+
+        for old in ["PeopleEpisodes", "People", "HostFeedCache"]:
+            if _table_exists(cursor, db_type, old):
+                cursor.execute(f'DROP TABLE {chr(34) + old + chr(34) if pg else old}')
+        logger.info("Migration 062 completed")
+    finally:
+        cursor.close()

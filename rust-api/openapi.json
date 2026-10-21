@@ -6060,17 +6060,298 @@
         ]
       }
     },
-    "/api/data/person/episodes/{user_id}/{person_id}": {
+    "/api/data/people/contribute": {
+      "post": {
+        "tags": [
+          "people"
+        ],
+        "summary": "Add people to a podcast or episode",
+        "operationId": "contribute_people",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContributeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Everyone on the podcast or episode afterwards",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CreditedPerson"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rejected (PodPeopleDB's reason is in the message)"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Not one of your podcasts"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/people/episode/{episode_id}": {
       "get": {
         "tags": [
-          "settings"
+          "people"
         ],
-        "summary": "Get person episodes",
-        "operationId": "get_person_episodes",
+        "summary": "People on an episode",
+        "operationId": "episode_people",
         "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "description": "Your episode id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The episode's own credits plus the show's regulars",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CreditedPerson"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Not one of your episodes"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/people/followed": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "summary": "Followed people",
+        "operationId": "followed_people",
+        "responses": {
+          "200": {
+            "description": "People",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Person"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/people/lookup": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "summary": "Find a person id",
+        "operationId": "lookup_person",
+        "parameters": [
+          {
+            "name": "podpeople_id",
+            "in": "query",
+            "description": "A PodPeopleDB person id (from search results).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Or a name.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "`{ \"person_id\": 12 }`",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such person"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/people/podcast/{podcast_id}": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "summary": "People on a podcast",
+        "operationId": "podcast_people",
+        "parameters": [
+          {
+            "name": "podcast_id",
+            "in": "path",
+            "description": "Your podcast id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Regulars in `people`, episode-only credits in `guests`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodcastCredits"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Not one of your podcasts"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/people/search": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "summary": "Search people",
+        "operationId": "search_people",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PersonHit"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/people/{person_id}": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "summary": "Person profile",
+        "operationId": "person_profile",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "description": "PinePods person id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
           {
             "name": "limit",
             "in": "query",
+            "description": "Library episodes per page (default 50, max 200).",
             "required": false,
             "schema": {
               "type": [
@@ -6091,37 +6372,24 @@
               ],
               "format": "int64"
             }
-          },
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "person_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Profile",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PersonProfile"
+                }
               }
             }
           },
           "401": {
             "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Unknown person"
           }
         },
         "security": [
@@ -6131,143 +6399,18 @@
         ]
       }
     },
-    "/api/data/person/feed/{user_id}": {
-      "get": {
-        "tags": [
-          "settings"
-        ],
-        "summary": "Get host feed",
-        "operationId": "get_host_feed",
-        "parameters": [
-          {
-            "name": "name",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "person_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int32"
-            }
-          },
-          {
-            "name": "include_podcasts",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
-          }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
-      }
-    },
-    "/api/data/person/subscribe/{user_id}/{person_id}": {
+    "/api/data/people/{person_id}/follow": {
       "post": {
         "tags": [
-          "settings"
+          "people"
         ],
-        "summary": "Subscribe to person",
-        "operationId": "subscribe_to_person",
+        "summary": "Follow a person",
+        "operationId": "follow_person",
         "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
           {
             "name": "person_id",
             "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PersonSubscribeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
-          }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
-      }
-    },
-    "/api/data/person/subscriptions/{user_id}": {
-      "get": {
-        "tags": [
-          "settings"
-        ],
-        "summary": "Get person subscriptions",
-        "operationId": "get_person_subscriptions",
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
+            "description": "PinePods person id",
             "required": true,
             "schema": {
               "type": "integer",
@@ -6277,7 +6420,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Following",
             "content": {
               "application/json": {
                 "schema": {}
@@ -6286,6 +6429,9 @@
           },
           "401": {
             "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Unknown person"
           }
         },
         "security": [
@@ -6293,28 +6439,18 @@
             "api_key": []
           }
         ]
-      }
-    },
-    "/api/data/person/unsubscribe/{user_id}/{person_id}": {
+      },
       "delete": {
         "tags": [
-          "settings"
+          "people"
         ],
-        "summary": "Unsubscribe from person",
-        "operationId": "unsubscribe_from_person",
+        "summary": "Unfollow a person",
+        "operationId": "unfollow_person",
         "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
           {
             "name": "person_id",
             "in": "path",
+            "description": "PinePods person id",
             "required": true,
             "schema": {
               "type": "integer",
@@ -6322,19 +6458,9 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PersonUnsubscribeRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Not following",
             "content": {
               "application/json": {
                 "schema": {}
@@ -7029,45 +7155,6 @@
             "content": {
               "application/json": {
                 "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
-          }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
-      }
-    },
-    "/api/data/podpeople/host_podcasts": {
-      "get": {
-        "tags": [
-          "podcasts"
-        ],
-        "summary": "Get host podcasts",
-        "operationId": "get_host_podcasts",
-        "parameters": [
-          {
-            "name": "hostname",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PodPeopleResponse"
-                }
               }
             }
           },
@@ -12488,6 +12575,68 @@
           }
         }
       },
+      "ContributePerson": {
+        "type": "object",
+        "properties": {
+          "person_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "A person PinePods already knows (from a credit or search result)."
+          },
+          "podpeople_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "A PodPeopleDB person (from search results)."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Or just a name."
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Defaults to \"host\" on a podcast and \"guest\" on an episode."
+          }
+        }
+      },
+      "ContributeRequest": {
+        "type": "object",
+        "required": [
+          "podcast_id",
+          "people"
+        ],
+        "properties": {
+          "podcast_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "episode_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Credit these people on one episode instead of the whole show."
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContributePerson"
+            }
+          }
+        }
+      },
       "CreateApiKeyRequest": {
         "type": "object",
         "required": [
@@ -12842,6 +12991,90 @@
           "playlist_id": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "CreditedPerson": {
+        "type": "object",
+        "description": "A person as shown on a podcast or episode page.",
+        "required": [
+          "id",
+          "name",
+          "role",
+          "roles",
+          "scope",
+          "episode_count",
+          "sources",
+          "verified",
+          "followed"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "description": "PinePods person id (`Persons.PersonID`); use it for the person page and follows."
+          },
+          "podpeople_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "img": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "href": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "description": "Most significant role (\"host\", \"co-host\", \"guest\", ...)."
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every role this person has here, most significant first."
+          },
+          "group": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "description": "\"podcast\": credited on the show itself or a regular across its episodes.\n\"episodes\": credited only on some episodes. \"episode\": credited on this episode."
+          },
+          "episode_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Episodes of this podcast the person is credited on."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "\"feed\" and/or \"podpeople\"."
+          },
+          "verified": {
+            "type": "boolean",
+            "description": "False when every credit is an unreviewed community submission."
+          },
+          "followed": {
+            "type": "boolean"
           }
         }
       },
@@ -13513,6 +13746,101 @@
           "days": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ExternalEpisode": {
+        "type": "object",
+        "description": "An episode from a show outside the user's library.",
+        "required": [
+          "episodeid",
+          "podcastid",
+          "podcastname",
+          "feedurl",
+          "episodetitle",
+          "episodepubdate",
+          "episodedescription",
+          "episodeartwork",
+          "episodeurl",
+          "episodeduration",
+          "completed",
+          "saved",
+          "queued",
+          "downloaded",
+          "is_youtube",
+          "is_video"
+        ],
+        "properties": {
+          "episodeid": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "podcastid": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "podcastname": {
+            "type": "string"
+          },
+          "feedurl": {
+            "type": "string"
+          },
+          "podcastindexid": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "episodetitle": {
+            "type": "string"
+          },
+          "episodepubdate": {
+            "type": "string"
+          },
+          "episodedescription": {
+            "type": "string"
+          },
+          "episodeartwork": {
+            "type": "string"
+          },
+          "episodeurl": {
+            "type": "string"
+          },
+          "episodeduration": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "listenduration": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "completed": {
+            "type": "boolean"
+          },
+          "saved": {
+            "type": "boolean"
+          },
+          "queued": {
+            "type": "boolean"
+          },
+          "downloaded": {
+            "type": "boolean"
+          },
+          "is_youtube": {
+            "type": "boolean"
+          },
+          "is_video": {
+            "type": "boolean"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -14416,34 +14744,177 @@
           }
         }
       },
-      "PersonSubscribeRequest": {
+      "Person": {
         "type": "object",
         "required": [
-          "person_name",
-          "person_img",
-          "podcast_id"
+          "id",
+          "name",
+          "followed"
         ],
         "properties": {
-          "person_name": {
-            "type": "string"
-          },
-          "person_img": {
-            "type": "string"
-          },
-          "podcast_id": {
+          "id": {
             "type": "integer",
             "format": "int32"
+          },
+          "podpeople_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "img": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "href": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "followed": {
+            "type": "boolean"
           }
         }
       },
-      "PersonUnsubscribeRequest": {
+      "PersonHit": {
         "type": "object",
         "required": [
-          "person_name"
+          "name",
+          "followed"
         ],
         "properties": {
-          "person_name": {
+          "person_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "PinePods person id, when this server already knows them."
+          },
+          "podpeople_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "name": {
             "type": "string"
+          },
+          "img": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "known_for": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A few podcasts they're known for, to tell namesakes apart."
+          },
+          "followed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PersonPodcast": {
+        "type": "object",
+        "description": "A podcast a person is credited on.",
+        "required": [
+          "podcastname",
+          "feedurl",
+          "roles",
+          "podcast_level",
+          "episode_count"
+        ],
+        "properties": {
+          "podcastid": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The user's podcast id, or None for a show outside their library."
+          },
+          "podcastname": {
+            "type": "string"
+          },
+          "artworkurl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feedurl": {
+            "type": "string"
+          },
+          "podcastindexid": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "podcast_level": {
+            "type": "boolean"
+          },
+          "episode_count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PersonProfile": {
+        "type": "object",
+        "required": [
+          "person",
+          "podcasts",
+          "episodes",
+          "external_episodes",
+          "refreshing"
+        ],
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "podcasts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonPodcast"
+            }
+          },
+          "episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Episode"
+            },
+            "description": "Library episodes the person is credited on (directly, or as a podcast's host), newest first."
+          },
+          "external_episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExternalEpisode"
+            },
+            "description": "Recent episodes from shows outside the library."
+          },
+          "refreshing": {
+            "type": "boolean",
+            "description": "True while the external episode list is being refreshed in the background."
           }
         }
       },
@@ -14513,19 +14984,26 @@
           }
         }
       },
-      "PodPeopleResponse": {
+      "PodcastCredits": {
         "type": "object",
         "required": [
-          "success",
-          "podcasts"
+          "people",
+          "guests"
         ],
         "properties": {
-          "success": {
-            "type": "boolean"
-          },
-          "podcasts": {
+          "people": {
             "type": "array",
-            "items": {}
+            "items": {
+              "$ref": "#/components/schemas/CreditedPerson"
+            },
+            "description": "Hosts, co-hosts and anyone else credited on the show or appearing as a regular."
+          },
+          "guests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreditedPerson"
+            },
+            "description": "Guests and other episode-only credits, most frequent first."
           }
         }
       },
@@ -17059,6 +17537,10 @@
     {
       "name": "podcasts",
       "description": "Podcast subscriptions, episodes, queue, and playback"
+    },
+    {
+      "name": "people",
+      "description": "Hosts and guests on podcasts and episodes, person pages, follows, and contributing to PodPeopleDB"
     },
     {
       "name": "episodes",

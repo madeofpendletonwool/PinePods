@@ -137,10 +137,6 @@ impl BackgroundScheduler {
                     warn!("⚠️ Category collection auto-add failed during scheduled refresh: {}", e);
                 }
 
-                // Propagate new podcast episodes into PeopleEpisodes for subscribed people
-                if let Err(e) = state.db_pool.refresh_people_episodes_from_podcasts().await {
-                    warn!("⚠️ People episodes sync failed during scheduled refresh: {}", e);
-                }
             }
             Err(e) => {
                 error!("❌ Podcast refresh failed: {}", e);
@@ -153,7 +149,7 @@ impl BackgroundScheduler {
     async fn run_nightly_tasks(state: Arc<AppState>) -> AppResult<()> {
         // Call nightly tasks directly
         if let Err(e) = tasks::refresh_hosts_internal(&state).await {
-            warn!("⚠️ Refresh hosts failed during nightly tasks: {}", e);
+            warn!("⚠️ People sync failed during nightly tasks: {}", e);
         }
         
         if let Err(e) = tasks::auto_complete_episodes_internal(&state).await {
@@ -359,6 +355,12 @@ impl BackgroundScheduler {
             warn!("⚠️ Initial startup refresh failed: {}", e);
         }
         
+        // People: drop old host-feed placeholders, backfill stored tags, first PodPeopleDB sync.
+        tokio::spawn(crate::services::people::startup(
+            state.db_pool.clone(),
+            crate::services::people::Endpoints::from_config(&state.config),
+        ));
+
         info!("✅ Startup tasks completed");
         Ok(())
     }

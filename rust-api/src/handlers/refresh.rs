@@ -322,6 +322,7 @@ async fn refresh_feed_group(state: &AppState, group: &[PodcastRefreshItem]) -> u
                             Err(e) => warn!("Error applying feed to podcast {}: {}", item.podcast_id, e),
                         }
                     }
+                    state.db_pool.store_feed_tags(&ids, &body).await;
                     let _ = state
                         .db_pool
                         .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref())
@@ -937,6 +938,7 @@ async fn refresh_rss_feed(
                 .db_pool
                 .apply_parsed_episodes(podcast.id, &parsed, artwork, podcast.feed_cutoff_days, true)
                 .await?;
+            state.db_pool.store_feed_tags(&ids, &body).await;
             let _ = state
                 .db_pool
                 .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref())
