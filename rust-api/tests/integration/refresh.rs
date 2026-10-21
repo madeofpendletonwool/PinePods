@@ -6,55 +6,6 @@ use pinepods_api::database::DatabasePool;
 
 use crate::harness::*;
 
-/// Run `sql` on the test database. Write table names double-quoted (Postgres style); the quotes
-/// are dropped for MariaDB. Only inline literals, no binds.
-async fn exec(app: &TestApp, sql: &str) {
-    match app.db() {
-        DatabasePool::Postgres(pool) => {
-            sqlx::raw_sql(sqlx::AssertSqlSafe(sql.to_string())).execute(pool).await.unwrap_or_else(|e| panic!("{sql}: {e}"));
-        }
-        DatabasePool::MySQL(pool) => {
-            let sql = sql.replace('"', "");
-            sqlx::raw_sql(sqlx::AssertSqlSafe(sql.clone())).execute(pool).await.unwrap_or_else(|e| panic!("{sql}: {e}"));
-        }
-    }
-}
-
-/// First column of the first row as an integer (counts, ids, booleans), None for SQL NULL / no row.
-async fn int(app: &TestApp, sql: &str) -> Option<i64> {
-    use sqlx::Row;
-    fn get<R: Row>(row: &R) -> Option<i64>
-    where
-        usize: sqlx::ColumnIndex<R>,
-        i64: for<'r> sqlx::Decode<'r, R::Database> + sqlx::Type<R::Database>,
-        i32: for<'r> sqlx::Decode<'r, R::Database> + sqlx::Type<R::Database>,
-        bool: for<'r> sqlx::Decode<'r, R::Database> + sqlx::Type<R::Database>,
-    {
-        if let Ok(v) = row.try_get::<Option<i64>, _>(0) {
-            return v;
-        }
-        if let Ok(v) = row.try_get::<Option<i32>, _>(0) {
-            return v.map(i64::from);
-        }
-        row.try_get::<Option<bool>, _>(0).unwrap().map(i64::from)
-    }
-    match app.db() {
-        DatabasePool::Postgres(pool) => sqlx::query(sqlx::AssertSqlSafe(sql.to_string()))
-            .fetch_optional(pool)
-            .await
-            .unwrap_or_else(|e| panic!("{sql}: {e}"))
-            .and_then(|r| get(&r)),
-        DatabasePool::MySQL(pool) => {
-            let sql = sql.replace('"', "");
-            sqlx::query(sqlx::AssertSqlSafe(sql.clone()))
-                .fetch_optional(pool)
-                .await
-                .unwrap_or_else(|e| panic!("{sql}: {e}"))
-                .and_then(|r| get(&r))
-        }
-    }
-}
-
 async fn title_of(app: &TestApp, user: &TestUser, podcast_id: i32, guid: &str) -> String {
     let id = int(app, &format!(r#"SELECT EpisodeID FROM "Episodes" WHERE PodcastID = {podcast_id} AND EpisodeGUID = '{guid}'"#))
         .await

@@ -19584,6 +19584,24 @@ impl DatabasePool {
         Ok(())
     }
 
+    /// Delete gpodder API sessions that expired more than a day ago. Expired sessions are
+    /// already refused at login; this only stops the table growing (the day of slack covers
+    /// clock/timezone skew between the writer and the database). Returns the rows deleted.
+    pub async fn cleanup_expired_gpodder_sessions(&self) -> AppResult<u64> {
+        let deleted = match self {
+            DatabasePool::Postgres(pool) => sqlx::query(r#"DELETE FROM "GpodderSessions" WHERE ExpiresAt < NOW() - INTERVAL '1 day'"#)
+                .execute(pool)
+                .await?
+                .rows_affected(),
+            DatabasePool::MySQL(pool) => sqlx::query("DELETE FROM GpodderSessions WHERE ExpiresAt < NOW() - INTERVAL 1 DAY")
+                .execute(pool)
+                .await?
+                .rows_affected(),
+        };
+        tracing::debug!("Cleaned up {} expired gpodder sessions", deleted);
+        Ok(deleted)
+    }
+
     // Update all playlists - matches Python update_all_playlists function exactly
     pub async fn update_all_playlists(&self) -> AppResult<()> {
         tracing::debug!("=================== PLAYLIST UPDATE STARTING ===================");

@@ -191,7 +191,9 @@ def migration_001_core_tables(conn, db_type: str):
                     oidc_subject VARCHAR(255),
                     PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0,
                     AutoDownloadDeleteDays INT DEFAULT 0,
-                    DefaultVolume INT DEFAULT 100
+                    DefaultVolume INT DEFAULT 100,
+                    GpodderServerEnabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    SyncNotice VARCHAR(64)
                 )
             """)
 
@@ -251,7 +253,9 @@ def migration_001_core_tables(conn, db_type: str):
                     oidc_subject VARCHAR(255),
                     PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0,
                     AutoDownloadDeleteDays INT DEFAULT 0,
-                    DefaultVolume INT DEFAULT 100
+                    DefaultVolume INT DEFAULT 100,
+                    GpodderServerEnabled TINYINT(1) NOT NULL DEFAULT 0,
+                    SyncNotice VARCHAR(64)
                 )
             """)
 
@@ -1008,6 +1012,7 @@ def migration_008_gpodder_tables(conn, db_type: str):
                     IsDefault BOOLEAN DEFAULT FALSE,
                     LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     IsActive BOOLEAN DEFAULT TRUE,
+                    SystemRole VARCHAR(16),
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
                     UNIQUE(UserID, DeviceName)
                 )
@@ -1041,6 +1046,7 @@ def migration_008_gpodder_tables(conn, db_type: str):
                     IsDefault BOOLEAN DEFAULT FALSE,
                     LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     IsActive BOOLEAN DEFAULT TRUE,
+                    SystemRole VARCHAR(16),
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
                     UNIQUE(UserID, DeviceName)
                 )
@@ -2957,12 +2963,14 @@ def migration_100_gpodder_initial_schema(conn, db_type: str):
                 CREATE TABLE IF NOT EXISTS "GpodderSyncSubscriptions" (
                     SubscriptionID SERIAL PRIMARY KEY,
                     UserID INT NOT NULL,
-                    DeviceID INT NOT NULL,
+                    DeviceID INT,
                     PodcastURL TEXT NOT NULL,
                     Action VARCHAR(10) NOT NULL,
                     Timestamp BIGINT NOT NULL,
+                    ServerTs BIGINT,
+                    Origin VARCHAR(32) NOT NULL DEFAULT 'client',
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
-                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE
+                    CONSTRAINT fk_gpodder_subscriptions_device FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE SET NULL
                 )
                 ''',
                 '''
@@ -2977,8 +2985,13 @@ def migration_100_gpodder_initial_schema(conn, db_type: str):
                     Started INT,
                     Position INT,
                     Total INT,
+                    ServerTs BIGINT NOT NULL,
+                    Guid TEXT,
+                    EpisodeID INT,
+                    Origin VARCHAR(32) NOT NULL DEFAULT 'client',
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
-                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE
+                    CONSTRAINT fk_gpodder_episode_actions_device FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE SET NULL,
+                    CONSTRAINT fk_gpodder_episode_actions_episode FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID) ON DELETE SET NULL
                 )
                 ''',
                 '''
@@ -3066,12 +3079,14 @@ def migration_100_gpodder_initial_schema(conn, db_type: str):
                 CREATE TABLE IF NOT EXISTS GpodderSyncSubscriptions (
                     SubscriptionID INT AUTO_INCREMENT PRIMARY KEY,
                     UserID INT NOT NULL,
-                    DeviceID INT NOT NULL,
+                    DeviceID INT,
                     PodcastURL TEXT NOT NULL,
                     Action VARCHAR(10) NOT NULL,
                     Timestamp BIGINT NOT NULL,
+                    ServerTs BIGINT,
+                    Origin VARCHAR(32) NOT NULL DEFAULT 'client',
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
-                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+                    CONSTRAINT fk_gpodder_subscriptions_device FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE SET NULL
                 )
                 ''',
                 '''
@@ -3086,8 +3101,13 @@ def migration_100_gpodder_initial_schema(conn, db_type: str):
                     Started INT,
                     Position INT,
                     Total INT,
+                    ServerTs BIGINT NOT NULL,
+                    Guid TEXT,
+                    EpisodeID INT,
+                    Origin VARCHAR(32) NOT NULL DEFAULT 'client',
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
-                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+                    CONSTRAINT fk_gpodder_episode_actions_device FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE SET NULL,
+                    CONSTRAINT fk_gpodder_episode_actions_episode FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE SET NULL
                 )
                 ''',
                 '''
@@ -6343,5 +6363,501 @@ def migration_110_gpodder_action_server_ts(conn, db_type: str) -> None:
             "idx_gpodder_episode_actions_user_serverts",
         )
         logger.info("Migration 110 completed")
+    finally:
+        cursor.close()
+
+
+@register_migration("067", "create_sync_targets_and_app_passwords", "Add SyncTargets, GpodderAppPasswords and the Users.GpodderServerEnabled / SyncNotice columns (sync overhaul D5)", requires=["001"])
+def migration_067_create_sync_targets_and_app_passwords(conn, db_type: str) -> None:
+    """Schema for the per-user sync settings that replace the shared Users.Gpodder* columns.
+
+    - Users.GpodderServerEnabled: the internal gpodder server is a per-user on/off flag.
+    - Users.SyncNotice: a one-off message for the settings UI, e.g. 'reenter_external' when an
+      external server couldn't be carried over by migration 068. Cleared by the UI.
+    - SyncTargets: one external gpodder or Nextcloud server per user (UNIQUE(UserID) for now).
+      EncryptedSecret is Fernet-encrypted with AppSettings.EncryptionKey. The pull cursors are
+      server-returned timestamps; the push cursors are local log IDs
+      (GpodderSyncSubscriptions.SubscriptionID / GpodderSyncEpisodeActions.ActionID).
+    - GpodderAppPasswords: argon2 hashes accepted as the HTTP Basic password by the internal
+      gpodder server. A table rather than one Users column so a user can have several (one per
+      app, revocable separately) and so the migrated legacy token is just one of them.
+
+    The old Users.GpodderUrl/GpodderLoginName/GpodderToken/Pod_Sync_Type columns stay until the
+    old sync code is removed.
+    """
+    logger.info("Starting migration 067: SyncTargets + GpodderAppPasswords")
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    users = '"Users"' if pg else "Users"
+    try:
+        if not _column_exists(cursor, db_type, "Users", "GpodderServerEnabled"):
+            if pg:
+                cursor.execute(f"ALTER TABLE {users} ADD COLUMN GpodderServerEnabled BOOLEAN NOT NULL DEFAULT FALSE")
+            else:
+                cursor.execute(f"ALTER TABLE {users} ADD COLUMN GpodderServerEnabled TINYINT(1) NOT NULL DEFAULT 0")
+            logger.info("Added Users.GpodderServerEnabled")
+        if not _column_exists(cursor, db_type, "Users", "SyncNotice"):
+            cursor.execute(f"ALTER TABLE {users} ADD COLUMN SyncNotice VARCHAR(64)")
+            logger.info("Added Users.SyncNotice")
+
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "SyncTargets" (
+                    TargetID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    Kind VARCHAR(16) NOT NULL CHECK (Kind IN ('gpodder', 'nextcloud')),
+                    Url TEXT NOT NULL,
+                    Username VARCHAR(255) NOT NULL DEFAULT '',
+                    EncryptedSecret TEXT NOT NULL,
+                    DeviceName VARCHAR(255),
+                    Enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    SubsPullCursor BIGINT NOT NULL DEFAULT 0,
+                    ActionsPullCursor BIGINT NOT NULL DEFAULT 0,
+                    SubsPushCursor BIGINT NOT NULL DEFAULT 0,
+                    ActionsPushCursor BIGINT NOT NULL DEFAULT 0,
+                    NeedsFullSync BOOLEAN NOT NULL DEFAULT TRUE,
+                    LastAttemptAt TIMESTAMP,
+                    LastSuccessAt TIMESTAMP,
+                    LastError TEXT,
+                    ConsecutiveFailures INT NOT NULL DEFAULT 0,
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_sync_targets_user UNIQUE (UserID)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "GpodderAppPasswords" (
+                    AppPasswordID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    Label VARCHAR(255) NOT NULL,
+                    PasswordHash VARCHAR(500) NOT NULL,
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    LastUsedAt TIMESTAMP
+                )
+            """)
+            safe_add_index(
+                cursor, db_type,
+                'CREATE INDEX idx_gpodder_app_passwords_user ON "GpodderAppPasswords"(UserID)',
+                "idx_gpodder_app_passwords_user",
+            )
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS SyncTargets (
+                    TargetID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Kind VARCHAR(16) NOT NULL CHECK (Kind IN ('gpodder', 'nextcloud')),
+                    Url TEXT NOT NULL,
+                    Username VARCHAR(255) NOT NULL DEFAULT '',
+                    EncryptedSecret TEXT NOT NULL,
+                    DeviceName VARCHAR(255),
+                    Enabled TINYINT(1) NOT NULL DEFAULT 1,
+                    SubsPullCursor BIGINT NOT NULL DEFAULT 0,
+                    ActionsPullCursor BIGINT NOT NULL DEFAULT 0,
+                    SubsPushCursor BIGINT NOT NULL DEFAULT 0,
+                    ActionsPushCursor BIGINT NOT NULL DEFAULT 0,
+                    NeedsFullSync TINYINT(1) NOT NULL DEFAULT 1,
+                    LastAttemptAt DATETIME,
+                    LastSuccessAt DATETIME,
+                    LastError TEXT,
+                    ConsecutiveFailures INT NOT NULL DEFAULT 0,
+                    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_sync_targets_user UNIQUE (UserID),
+                    CONSTRAINT fk_sync_targets_user FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS GpodderAppPasswords (
+                    AppPasswordID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Label VARCHAR(255) NOT NULL,
+                    PasswordHash VARCHAR(500) NOT NULL,
+                    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    LastUsedAt DATETIME,
+                    INDEX idx_gpodder_app_passwords_user (UserID),
+                    CONSTRAINT fk_gpodder_app_passwords_user FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+        logger.info("Migration 067 completed")
+    finally:
+        cursor.close()
+
+
+INTERNAL_GPODDER_URL = "http://localhost:8042"
+LEGACY_TOKEN_LABEL = "legacy token"
+
+
+@register_migration("068", "migrate_pod_sync_type", "Move Users.Pod_Sync_Type settings to GpodderServerEnabled / SyncTargets / app passwords", requires=["002", "018", "019", "020", "067"])
+def migration_068_migrate_pod_sync_type(conn, db_type: str) -> None:
+    """Carry each user's sync setup over to the new model. The old columns are left as they are.
+
+    - 'gpodder' (internal server): GpodderServerEnabled = true. The internal token (stored in
+      plaintext; the Go server compares it as-is with the Basic password or X-GPodder-Token) is
+      stored argon2-hashed as a permanent app password labelled 'legacy token', so connected
+      clients keep working.
+    - 'external': SyncTargets(kind='gpodder') with the already-encrypted token and the default
+      device as Pinepods' device name.
+    - 'nextcloud': SyncTargets(kind='nextcloud').
+    - 'both': enabling the internal server overwrote the external credentials with the internal
+      token, so this is 'gpodder' plus SyncNotice = 'reenter_external' for the UI banner.
+
+    An external/Nextcloud row whose secret is missing or doesn't decrypt with the current key
+    gets SyncNotice = 'reenter_external' instead of a target. Only counts are logged, never
+    credentials. Safe to re-run: existing targets and legacy app passwords are kept.
+    """
+    logger.info("Starting migration 068: Pod_Sync_Type -> SyncTargets")
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    t = (lambda name: f'"{name}"') if pg else (lambda name: name)
+    try:
+        cursor.execute(f"SELECT EncryptionKey FROM {t('AppSettings')} LIMIT 1")
+        row = cursor.fetchone()
+        key = row[0] if row else None
+        if isinstance(key, memoryview):
+            key = key.tobytes()
+        if isinstance(key, str):
+            key = key.encode()
+        fernet = None
+        if key:
+            try:
+                fernet = Fernet(key.rstrip(b"\x00"))
+            except Exception:
+                logger.warning("Migration 068: AppSettings.EncryptionKey is not a valid Fernet key; external sync settings can't be carried over")
+
+        cursor.execute(
+            f"SELECT UserID, Pod_Sync_Type, GpodderUrl, GpodderLoginName, GpodderToken, DefaultGpodderDevice FROM {t('Users')}"
+        )
+        rows = cursor.fetchall()
+
+        counts = {k: 0 for k in (
+            "gpodder", "both", "external", "nextcloud", "legacy_app_passwords", "no_token",
+            "reenter_external", "unreadable_secret", "already_migrated", "unknown", "internal_with_other_url",
+        )}
+        ph = PasswordHasher()
+
+        def has_target(user_id):
+            cursor.execute(f"SELECT COUNT(*) FROM {t('SyncTargets')} WHERE UserID = %s", (user_id,))
+            return cursor.fetchone()[0] > 0
+
+        def enable_internal(user_id, url, token):
+            cursor.execute(f"UPDATE {t('Users')} SET GpodderServerEnabled = %s WHERE UserID = %s", (True, user_id))
+            if (url or "") not in ("", INTERNAL_GPODDER_URL):
+                counts["internal_with_other_url"] += 1
+            if not token:
+                counts["no_token"] += 1
+                return
+            cursor.execute(
+                f"SELECT COUNT(*) FROM {t('GpodderAppPasswords')} WHERE UserID = %s AND Label = %s",
+                (user_id, LEGACY_TOKEN_LABEL),
+            )
+            if cursor.fetchone()[0] > 0:
+                counts["already_migrated"] += 1
+                return
+            cursor.execute(
+                f"INSERT INTO {t('GpodderAppPasswords')} (UserID, Label, PasswordHash) VALUES (%s, %s, %s)",
+                (user_id, LEGACY_TOKEN_LABEL, ph.hash(token)),
+            )
+            counts["legacy_app_passwords"] += 1
+
+        def flag_reenter(user_id):
+            cursor.execute(f"UPDATE {t('Users')} SET SyncNotice = %s WHERE UserID = %s", ("reenter_external", user_id))
+            counts["reenter_external"] += 1
+
+        def add_target(user_id, kind, url, username, token, device):
+            if has_target(user_id):
+                counts["already_migrated"] += 1
+                return
+            if not url or not token:
+                flag_reenter(user_id)
+                return
+            try:
+                if fernet is None:
+                    raise ValueError("no key")
+                fernet.decrypt(token.encode())
+            except Exception:
+                counts["unreadable_secret"] += 1
+                flag_reenter(user_id)
+                return
+            cursor.execute(
+                f"INSERT INTO {t('SyncTargets')} (UserID, Kind, Url, Username, EncryptedSecret, DeviceName, Enabled, NeedsFullSync) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (user_id, kind, url, username or "", token, device or None, True, True),
+            )
+
+        for user_id, sync_type, url, login, token, device in rows:
+            kind = (sync_type or "").strip().lower()
+            if kind in ("", "none"):
+                continue
+            if kind in ("gpodder", "both", "external", "nextcloud"):
+                counts[kind] += 1
+            if kind == "gpodder":
+                enable_internal(user_id, url, token)
+            elif kind == "both":
+                enable_internal(user_id, url, token)
+                flag_reenter(user_id)
+            elif kind == "external":
+                add_target(user_id, "gpodder", url, login, token, device)
+            elif kind == "nextcloud":
+                add_target(user_id, "nextcloud", url, login, token, None)
+            else:
+                counts["unknown"] += 1
+
+        logger.info(
+            "Migration 068: gpodder=%d both=%d external=%d nextcloud=%d legacy_app_passwords=%d "
+            "no_token=%d reenter_external=%d unreadable_secret=%d already_migrated=%d unknown_type=%d "
+            "internal_with_other_url=%d",
+            counts["gpodder"], counts["both"], counts["external"], counts["nextcloud"],
+            counts["legacy_app_passwords"], counts["no_token"], counts["reenter_external"],
+            counts["unreadable_secret"], counts["already_migrated"], counts["unknown"],
+            counts["internal_with_other_url"],
+        )
+        logger.info("Migration 068 completed")
+    finally:
+        cursor.close()
+
+
+_PG_FK_RULES = {"a": "NO ACTION", "r": "RESTRICT", "c": "CASCADE", "n": "SET NULL", "d": "SET DEFAULT"}
+
+
+def _foreign_keys(cursor, db_type: str, table: str, column: str, ref_table: str):
+    """(constraint name, ON DELETE rule) for each FK on table.column that references ref_table."""
+    if db_type == "postgresql":
+        cursor.execute(
+            """
+            SELECT c.conname, c.confdeltype
+            FROM pg_constraint c
+            JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+            WHERE c.contype = 'f' AND c.conrelid = %s::regclass AND c.confrelid = %s::regclass
+              AND a.attname = %s
+            """,
+            (f'"{table}"', f'"{ref_table}"', column.lower()),
+        )
+        return [(name, _PG_FK_RULES.get(rule, rule)) for name, rule in cursor.fetchall()]
+    cursor.execute(
+        """
+        SELECT rc.CONSTRAINT_NAME, rc.DELETE_RULE
+        FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+        JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE k
+          ON k.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA AND k.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
+         AND k.TABLE_NAME = rc.TABLE_NAME
+        WHERE rc.CONSTRAINT_SCHEMA = DATABASE() AND rc.TABLE_NAME = %s
+          AND rc.REFERENCED_TABLE_NAME = %s AND k.COLUMN_NAME = %s
+        """,
+        (table, ref_table, column),
+    )
+    return list(cursor.fetchall())
+
+
+def _ensure_fk_set_null(cursor, db_type: str, table: str, column: str, ref_table: str, ref_column: str,
+                        name: str, make_nullable: bool = False) -> None:
+    """Make table.column's FK to ref_table ON DELETE SET NULL (looked up, not assumed by name)."""
+    existing = _foreign_keys(cursor, db_type, table, column, ref_table)
+    if existing and all(rule == "SET NULL" for _, rule in existing):
+        return
+    pg = db_type == "postgresql"
+    qt = f'"{table}"' if pg else table
+    for fk_name, rule in existing:
+        if pg:
+            cursor.execute(f'ALTER TABLE {qt} DROP CONSTRAINT "{fk_name}"')
+        else:
+            cursor.execute(f"ALTER TABLE {qt} DROP FOREIGN KEY `{fk_name}`")
+        logger.info(f"Dropped FK {fk_name} on {table}.{column} (ON DELETE {rule})")
+    if make_nullable:
+        if pg:
+            cursor.execute(f"ALTER TABLE {qt} ALTER COLUMN {column} DROP NOT NULL")
+        else:
+            cursor.execute(f"ALTER TABLE {qt} MODIFY COLUMN {column} INT NULL")
+    qr = f'"{ref_table}"' if pg else ref_table
+    cursor.execute(
+        f"ALTER TABLE {qt} ADD CONSTRAINT {name} FOREIGN KEY ({column}) "
+        f"REFERENCES {qr}({ref_column}) ON DELETE SET NULL"
+    )
+    logger.info(f"Added FK {name} on {table}.{column} ON DELETE SET NULL")
+
+
+@register_migration("111", "gpodder_episode_action_log", "Episode action log: Guid, resolved EpisodeID, Origin, indexes; keep actions when a device is removed", requires=["066", "110"])
+def migration_111_gpodder_episode_action_log(conn, db_type: str) -> None:
+    """Turn GpodderSyncEpisodeActions into the sync log/outbox (sync overhaul 3.2).
+
+    - Guid: the episode GUID when the client sends one.
+    - EpisodeID: the resolved local episode (NULL = unmatched). Backfilled here by exact
+      EpisodeURL within the user's podcasts; GUID and URL-base matching is the Phase 4 resolver's
+      job. FK ON DELETE SET NULL, so removing a podcast leaves its actions unmatched.
+    - Origin: 'client' (gpodder clients; the default, so the Go server's INSERTs keep working),
+      'pinepods', or 'target:<TargetID>'.
+    - DeviceID FK CASCADE -> SET NULL: removing a device no longer erases its history.
+    """
+    logger.info("Starting migration 111: episode action log")
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    name = "GpodderSyncEpisodeActions"
+    table = f'"{name}"' if pg else name
+    try:
+        if not _column_exists(cursor, db_type, name, "Guid"):
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN Guid TEXT NULL")
+        if not _column_exists(cursor, db_type, name, "EpisodeID"):
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN EpisodeID INT NULL")
+        if not _column_exists(cursor, db_type, name, "Origin"):
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN Origin VARCHAR(32) NOT NULL DEFAULT 'client'")
+
+        if pg:
+            cursor.execute(f"""
+                UPDATE {table} a SET EpisodeID = (
+                    SELECT MIN(e.EpisodeID) FROM "Episodes" e
+                    JOIN "Podcasts" p ON p.PodcastID = e.PodcastID
+                    WHERE p.UserID = a.UserID AND e.EpisodeURL = a.EpisodeURL
+                ) WHERE a.EpisodeID IS NULL
+            """)
+        else:
+            cursor.execute(f"""
+                UPDATE {table} a SET a.EpisodeID = (
+                    SELECT MIN(e.EpisodeID) FROM Episodes e
+                    JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                    WHERE p.UserID = a.UserID AND e.EpisodeURLHash = SHA2(a.EpisodeURL, 256)
+                      AND e.EpisodeURL = a.EpisodeURL
+                ) WHERE a.EpisodeID IS NULL
+            """)
+        cursor.execute(f"SELECT COUNT(*), COUNT(EpisodeID) FROM {table}")
+        total, matched = cursor.fetchone()
+        logger.info(f"Migration 111: {matched} of {total} episode actions matched to an episode by URL")
+
+        # Indexes before the FKs, so MySQL reuses them instead of adding its own. (UserID,
+        # ActionID) is PG only: InnoDB secondary indexes carry the primary key, so the existing
+        # (UserID) index already is that index there.
+        if pg:
+            safe_add_index(cursor, db_type,
+                           f"CREATE INDEX idx_gpodder_episode_actions_user_actionid ON {table}(UserID, ActionID)",
+                           "idx_gpodder_episode_actions_user_actionid")
+        safe_add_index(cursor, db_type,
+                       f"CREATE INDEX idx_gpodder_episode_actions_episodeid ON {table}(EpisodeID, UserID)",
+                       "idx_gpodder_episode_actions_episodeid")
+        if pg:
+            safe_add_index(cursor, db_type,
+                           f"CREATE INDEX idx_gpodder_episode_actions_unmatched ON {table}(UserID) WHERE EpisodeID IS NULL",
+                           "idx_gpodder_episode_actions_unmatched")
+        else:
+            safe_add_index(cursor, db_type,
+                           f"CREATE INDEX idx_gpodder_episode_actions_unmatched ON {table}(UserID, EpisodeID)",
+                           "idx_gpodder_episode_actions_unmatched")
+
+        _ensure_fk_set_null(cursor, db_type, name, "DeviceID", "GpodderDevices", "DeviceID",
+                            "fk_gpodder_episode_actions_device")
+        _ensure_fk_set_null(cursor, db_type, name, "EpisodeID", "Episodes", "EpisodeID",
+                            "fk_gpodder_episode_actions_episode")
+        logger.info("Migration 111 completed")
+    finally:
+        cursor.close()
+
+
+@register_migration("112", "gpodder_subscription_log", "Subscription log: ServerTs, Origin, indexes, SET NULL device FK; GpodderDeviceSubscriptions", requires=["100"])
+def migration_112_gpodder_subscription_log(conn, db_type: str) -> None:
+    """Turn GpodderSyncSubscriptions into the sync log/outbox and add per-device lists (3.3).
+
+    - ServerTs: server receive time, the download cursor (D2). Backfilled from Timestamp, which
+      the Go server already stamps with its own clock. NULLable for now because the Go server
+      doesn't write it; the Rust server (Phase 5) writes it and makes it NOT NULL.
+    - Origin: as in migration 111.
+    - DeviceID becomes NULLable with FK ON DELETE SET NULL, so removing a device keeps its
+      (possibly not yet pushed) log rows.
+    - GpodderDeviceSubscriptions: each device's last known list, for correct PUT diffs (G5).
+      Backfilled by replaying the log per device: the last action per URL wins.
+    """
+    logger.info("Starting migration 112: subscription log + GpodderDeviceSubscriptions")
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    name = "GpodderSyncSubscriptions"
+    table = f'"{name}"' if pg else name
+    try:
+        if not _column_exists(cursor, db_type, name, "ServerTs"):
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN ServerTs BIGINT NULL")
+        cursor.execute(f"UPDATE {table} SET ServerTs = Timestamp WHERE ServerTs IS NULL")
+        if not _column_exists(cursor, db_type, name, "Origin"):
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN Origin VARCHAR(32) NOT NULL DEFAULT 'client'")
+
+        safe_add_index(cursor, db_type,
+                       f"CREATE INDEX idx_gpodder_subscriptions_user_serverts ON {table}(UserID, ServerTs)",
+                       "idx_gpodder_subscriptions_user_serverts")
+        if pg:  # InnoDB: the existing (UserID) index already ends in the primary key
+            safe_add_index(cursor, db_type,
+                           f"CREATE INDEX idx_gpodder_subscriptions_user_subid ON {table}(UserID, SubscriptionID)",
+                           "idx_gpodder_subscriptions_user_subid")
+        _ensure_fk_set_null(cursor, db_type, name, "DeviceID", "GpodderDevices", "DeviceID",
+                            "fk_gpodder_subscriptions_device", make_nullable=True)
+
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "GpodderDeviceSubscriptions" (
+                    DeviceID INT NOT NULL REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                    PodcastURL TEXT NOT NULL,
+                    PRIMARY KEY (DeviceID, PodcastURL)
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO "GpodderDeviceSubscriptions" (DeviceID, PodcastURL)
+                SELECT DeviceID, PodcastURL FROM (
+                    SELECT DeviceID, PodcastURL, Action,
+                           ROW_NUMBER() OVER (PARTITION BY DeviceID, PodcastURL
+                                              ORDER BY Timestamp DESC, SubscriptionID DESC) AS rn
+                    FROM "GpodderSyncSubscriptions" WHERE DeviceID IS NOT NULL
+                ) latest
+                WHERE rn = 1 AND LOWER(Action) = 'add'
+                ON CONFLICT DO NOTHING
+            """)
+        else:
+            # TEXT can't be a key on MySQL: unique on a generated SHA2 of the URL instead.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS GpodderDeviceSubscriptions (
+                    DeviceSubscriptionID INT AUTO_INCREMENT PRIMARY KEY,
+                    DeviceID INT NOT NULL,
+                    PodcastURL TEXT NOT NULL,
+                    PodcastURLHash CHAR(64) AS (SHA2(PodcastURL, 256)) STORED,
+                    UNIQUE KEY uq_gpodder_device_subscriptions (DeviceID, PodcastURLHash),
+                    CONSTRAINT fk_gpodder_device_subscriptions_device FOREIGN KEY (DeviceID)
+                        REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("""
+                INSERT IGNORE INTO GpodderDeviceSubscriptions (DeviceID, PodcastURL)
+                SELECT DeviceID, PodcastURL FROM (
+                    SELECT DeviceID, PodcastURL, Action,
+                           ROW_NUMBER() OVER (PARTITION BY DeviceID, SHA2(PodcastURL, 256)
+                                              ORDER BY Timestamp DESC, SubscriptionID DESC) AS rn
+                    FROM GpodderSyncSubscriptions WHERE DeviceID IS NOT NULL
+                ) latest
+                WHERE rn = 1 AND LOWER(Action) = 'add'
+            """)
+        dsub = '"GpodderDeviceSubscriptions"' if pg else "GpodderDeviceSubscriptions"
+        cursor.execute(f"SELECT COUNT(*), COUNT(DISTINCT DeviceID) FROM {dsub}")
+        rows, devices = cursor.fetchone()
+        logger.info(f"Migration 112: backfilled {rows} device subscriptions across {devices} devices")
+        logger.info("Migration 112 completed")
+    finally:
+        cursor.close()
+
+
+@register_migration("113", "gpodder_pinepods_device", "GpodderDevices.SystemRole marks Pinepods' own device per user", requires=["008"])
+def migration_113_gpodder_pinepods_device(conn, db_type: str) -> None:
+    """Identify Pinepods' own gpodder device by role rather than by name (3.4).
+
+    DeviceName is chosen by clients and UNIQUE(UserID, DeviceName), so a name alone can't be
+    trusted to mean "Pinepods". SystemRole = 'pinepods' marks it, unique per user (NULLs don't
+    collide). The device itself is created on demand by the sync core (Phase 4). The existing
+    internal device the current Rust sync uses ('pinepods-internal-<UserID>') is marked now, so
+    Pinepods keeps its device history and no second Pinepods device appears.
+    """
+    logger.info("Starting migration 113: GpodderDevices.SystemRole")
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    table = '"GpodderDevices"' if pg else "GpodderDevices"
+    try:
+        if not _column_exists(cursor, db_type, "GpodderDevices", "SystemRole"):
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN SystemRole VARCHAR(16) NULL")
+        safe_add_index(cursor, db_type,
+                       f"CREATE UNIQUE INDEX idx_gpodder_devices_user_systemrole ON {table}(UserID, SystemRole)",
+                       "idx_gpodder_devices_user_systemrole")
+        name_expr = "'pinepods-internal-' || CAST(UserID AS TEXT)" if pg else "CONCAT('pinepods-internal-', UserID)"
+        cursor.execute(
+            f"UPDATE {table} SET SystemRole = 'pinepods' WHERE SystemRole IS NULL AND DeviceName = {name_expr}"
+        )
+        logger.info(f"Migration 113: marked {cursor.rowcount} existing internal devices as the Pinepods device")
+        logger.info("Migration 113 completed")
     finally:
         cursor.close()
