@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config represents the application configuration
@@ -43,7 +44,11 @@ func Load() (*Config, error) {
 	}
 
 	// Get database type - defaults to postgresql if not specified
-	dbType := getEnv("DB_TYPE", "postgresql")
+	dbType := strings.ToLower(getEnv("DB_TYPE", "postgresql"))
+	// MariaDB speaks the MySQL protocol; the compose files set DB_TYPE=mariadb.
+	if dbType == "mariadb" {
+		dbType = "mysql"
+	}
 
 	// Set default port based on database type if not explicitly provided
 	if os.Getenv("DB_PORT") == "" {

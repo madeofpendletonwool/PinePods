@@ -14953,6 +14953,9 @@ impl DatabasePool {
 
     // Call gPodder service for sync - matches Python API calls exactly with enhanced error handling
     async fn call_gpodder_service_sync(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str, device_name: &str, force: bool) -> AppResult<bool> {
+        // Recorded as the next `since` at the end. Taken now, not at the end, so changes that
+        // reach the server while this sync runs are picked up next time instead of skipped.
+        let sync_started = chrono::Utc::now();
         // Step 1: Get ALL devices first (critical for detecting changes from external devices like AntennaPod)
         let devices_url = format!("{}/api/2/devices/{}.json", 
             gpodder_url.trim_end_matches('/'), username);
@@ -15224,12 +15227,10 @@ impl DatabasePool {
         let server_removed: std::collections::HashSet<&String> = removals_vec.iter().collect();
         to_add.retain(|f| !server_added.contains(f));
         to_remove.retain(|f| !server_removed.contains(f));
-        if let Err(e) = self
-            .upload_subscription_delta_to_gpodder(gpodder_url, username, password, device_name, &to_add, &to_remove)
-            .await
-        {
-            tracing::warn!("Subscription delta upload failed but continuing: {}", e);
-        }
+        // A failed upload fails the sync, so neither the snapshot nor the sync time advance and
+        // the same changes are uploaded next time.
+        self.upload_subscription_delta_to_gpodder(gpodder_url, username, password, device_name, &to_add, &to_remove)
+            .await?;
         // Record the reconciled local state as the new baseline for next time.
         self.save_subscription_snapshot(user_id, gpodder_url, &local_subscriptions).await?;
 
@@ -15240,16 +15241,12 @@ impl DatabasePool {
             None => self.get_user_episode_actions(user_id).await?,
         };
         if !local_actions.is_empty() {
-            if let Err(e) = self
-                .upload_episode_actions_to_gpodder(gpodder_url, username, password, &local_actions)
-                .await
-            {
-                tracing::warn!("Episode actions upload failed but continuing: {}", e);
-            }
+            self.upload_episode_actions_to_gpodder(gpodder_url, username, password, &local_actions)
+                .await?;
         }
 
         // Step 9: Update last sync timestamp for next incremental sync
-        self.update_last_sync_timestamp(user_id).await?;
+        self.update_last_sync_timestamp(user_id, sync_started).await?;
 
         Ok(true)
     }
@@ -15537,14 +15534,14 @@ impl DatabasePool {
         }
         
         // Process all episode actions and apply them locally
+        // Add subscriptions first, so their episodes exist when the actions are applied
+        self.process_gpodder_subscriptions(user_id, &feed_urls).await?;
+
         if !all_episode_actions.is_empty() {
             if let Err(e) = self.apply_remote_episode_actions(user_id, &all_episode_actions).await {
                 tracing::warn!("Failed to apply remote episode actions from Nextcloud: {}", e);
             }
         }
-        
-        // Process all subscriptions and add missing podcasts
-        self.process_gpodder_subscriptions(user_id, &feed_urls).await?;
         
         // Upload local subscriptions to Nextcloud (full list for the initial sync)
         let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
@@ -15607,10 +15604,9 @@ impl DatabasePool {
                 tracing::info!("Successfully uploaded {} episode actions to GPodder", episode_actions.len());
                 Ok(())
             }
-            Ok(resp) => {
-                tracing::warn!("Failed to upload episode actions to GPodder: {}", resp.status());
-                Ok(()) // Don't fail the whole sync if upload fails
-            }
+            // An error, so the caller doesn't advance its sync state past actions that never
+            // reached the server (they'd be lost for good).
+            Ok(resp) => Err(AppError::internal(&format!("Failed to upload episode actions to GPodder: {}", resp.status()))),
             Err(e) => {
                 Err(AppError::internal(&format!("Failed to upload episode actions to GPodder: {}", e)))
             }
@@ -15652,8 +15648,7 @@ impl DatabasePool {
         } else {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            tracing::warn!("Failed to upload subscriptions to Nextcloud: {} - {}", status, body);
-            Ok(()) // Don't fail the whole sync if upload fails
+            Err(AppError::internal(&format!("Failed to upload subscriptions to Nextcloud: {} - {}", status, body)))
         }
     }
     
@@ -15675,8 +15670,7 @@ impl DatabasePool {
             tracing::info!("Successfully uploaded {} episode actions to Nextcloud", episode_actions.len());
             Ok(())
         } else {
-            tracing::warn!("Failed to upload episode actions to Nextcloud: {}", response.status());
-            Ok(()) // Don't fail the whole sync if upload fails
+            Err(AppError::internal(&format!("Failed to upload episode actions to Nextcloud: {}", response.status())))
         }
     }
     
@@ -15799,14 +15793,8 @@ impl DatabasePool {
                 tracing::info!("Uploaded subscription delta to gPodder service: {} added, {} removed", add.len(), remove.len());
                 Ok(())
             }
-            Ok(resp) => {
-                tracing::warn!("Failed to upload subscriptions to gPodder service: {}", resp.status());
-                Ok(()) // Don't fail sync for upload failures
-            }
-            Err(e) => {
-                tracing::warn!("Failed to upload subscriptions: {}", e);
-                Ok(()) // Don't fail sync for upload failures
-            }
+            Ok(resp) => Err(AppError::internal(&format!("Failed to upload subscriptions to gPodder service: {}", resp.status()))),
+            Err(e) => Err(AppError::internal(&format!("Failed to upload subscriptions: {}", e))),
         }
     }
 
@@ -15940,6 +15928,13 @@ impl DatabasePool {
         let mut not_found_count = 0;
         let mut not_found_urls: Vec<String> = Vec::new();
 
+        // A play this close to the end marks the episode completed: the user's auto-complete
+        // setting, or 60s when it's off (0)
+        let complete_within = match self.get_user_auto_complete_seconds(user_id).await {
+            Ok(secs) if secs > 0 => secs,
+            _ => 60,
+        };
+
         // Process with periodic progress logging
         const LOG_INTERVAL: usize = 500; // Log progress every 500 actions
 
@@ -15985,9 +15980,8 @@ impl DatabasePool {
                                     let position_sec = position as i32;
                                     let remaining_time = episode_duration - position_sec;
 
-                                    // Mark complete if position is at/beyond the end OR within 60 seconds of completion
-                                    if episode_duration > 0 && (position_sec >= episode_duration || remaining_time <= 60) {
-                                        // At end or within 1 minute of completion - mark as complete
+                                    // Mark complete if position is at/beyond the end OR within the threshold
+                                    if episode_duration > 0 && (position_sec >= episode_duration || remaining_time <= complete_within) {
                                         // GPodder sync only handles regular podcast episodes, never YouTube videos
                                         match self.mark_episode_completed(episode_id, user_id, false).await {
                                             Ok(_) => {
@@ -16490,6 +16484,7 @@ impl DatabasePool {
 
     // Sync with Nextcloud - matches Python refresh_nextcloud_subscription function exactly
     async fn sync_with_nextcloud(&self, user_id: i32, settings: &UserSyncSettings, _force: bool) -> AppResult<bool> {
+        let sync_started = chrono::Utc::now();
         let client = reqwest::Client::new();
         let decrypted_password = self.decrypt_password(&settings.token).await?;
         
@@ -16616,11 +16611,7 @@ impl DatabasePool {
         // Step 4: Upload local subscriptions to Nextcloud (if needed)
         if since_timestamp.is_none() || subscriptions_processed {
             let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
-            if let Err(e) = self.upload_subscriptions_to_nextcloud(&settings.url, &settings.username, &decrypted_password, &local_subscriptions).await {
-                tracing::warn!("Failed to upload subscriptions to Nextcloud: {}", e);
-            } else {
-                tracing::info!("Successfully uploaded {} subscriptions to Nextcloud", local_subscriptions.len());
-            }
+            self.upload_subscriptions_to_nextcloud(&settings.url, &settings.username, &decrypted_password, &local_subscriptions).await?;
         } else {
             tracing::info!("Skipping subscription upload to Nextcloud - no changes detected");
         }
@@ -16628,17 +16619,13 @@ impl DatabasePool {
         // Step 5: Upload local episode actions to Nextcloud
         let local_episode_actions = self.get_user_episode_actions(user_id).await?;
         if !local_episode_actions.is_empty() {
-            if let Err(e) = self.upload_episode_actions_to_nextcloud(&settings.url, &settings.username, &decrypted_password, &local_episode_actions).await {
-                tracing::warn!("Failed to upload episode actions to Nextcloud: {}", e);
-            } else {
-                tracing::info!("Successfully uploaded {} episode actions to Nextcloud", local_episode_actions.len());
-            }
+            self.upload_episode_actions_to_nextcloud(&settings.url, &settings.username, &decrypted_password, &local_episode_actions).await?;
         } else {
             tracing::info!("No local episode actions to upload to Nextcloud");
         }
         
         // Step 6: Update last sync timestamp for next incremental sync
-        self.update_last_sync_timestamp(user_id).await?;
+        self.update_last_sync_timestamp(user_id, sync_started).await?;
         
         Ok(subscriptions_processed || episode_actions_processed)
     }
@@ -25299,9 +25286,8 @@ impl DatabasePool {
     }
     
     // Update last sync timestamp - PROPER GPodder spec implementation for incremental sync
-    async fn update_last_sync_timestamp(&self, user_id: i32) -> AppResult<()> {
-        let now = chrono::Utc::now();
-        
+    async fn update_last_sync_timestamp(&self, user_id: i32, now: chrono::DateTime<chrono::Utc>) -> AppResult<()> {
+
         match self {
             DatabasePool::Postgres(pool) => {                
                 sqlx::query(r#"UPDATE "Users" SET lastsynctime = $1 WHERE userid = $2"#)
@@ -25373,30 +25359,16 @@ impl DatabasePool {
 
                 let mut actions = Vec::new();
                 for row in rows {
-                    // Handle PostgreSQL TIMESTAMP (not TIMESTAMPTZ) column
+                    // PostgreSQL TIMESTAMP (not TIMESTAMPTZ) column, stored as UTC
                     let naive_timestamp: chrono::NaiveDateTime = row.try_get("timestamp")?;
-                    let utc_timestamp = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive_timestamp, chrono::Utc);
-                    let timestamp_str = utc_timestamp.to_rfc3339();
-
-                    let action: String = row.try_get("action")?;
-                    let position: Option<i32> = row.try_get("position").ok().flatten();
-                    let total: Option<i32> = row.try_get("total").ok().flatten();
-
-                    // For play actions, include started, position, and total (required by AntennaPod)
-                    let mut action_json = serde_json::json!({
-                        "podcast": row.try_get::<String, _>("podcast")?,
-                        "episode": row.try_get::<String, _>("episode")?,
-                        "action": action,
-                        "timestamp": timestamp_str,
-                    });
-
-                    if action == "play" && position.is_some() && total.is_some() {
-                        action_json["started"] = serde_json::json!(0); // Always start from 0
-                        action_json["position"] = serde_json::json!(position.unwrap());
-                        action_json["total"] = serde_json::json!(total.unwrap());
-                    }
-
-                    actions.push(action_json);
+                    actions.extend(outbound_episode_action(
+                        row.try_get("podcast")?,
+                        row.try_get("episode")?,
+                        row.try_get("action")?,
+                        row.try_get("position").ok().flatten(),
+                        row.try_get("total").ok().flatten(),
+                        naive_timestamp,
+                    ));
                 }
                 Ok(actions)
             }
@@ -25432,30 +25404,16 @@ impl DatabasePool {
 
                 let mut actions = Vec::new();
                 for row in rows {
-                    // Handle MySQL DATETIME column
+                    // MySQL DATETIME column, stored as UTC
                     let naive_timestamp: chrono::NaiveDateTime = row.try_get("timestamp")?;
-                    let utc_timestamp = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive_timestamp, chrono::Utc);
-                    let timestamp_str = utc_timestamp.to_rfc3339();
-
-                    let action: String = row.try_get("action")?;
-                    let position: Option<i32> = row.try_get("position").ok().flatten();
-                    let total: Option<i32> = row.try_get("total").ok().flatten();
-
-                    // For play actions, include started, position, and total (required by AntennaPod)
-                    let mut action_json = serde_json::json!({
-                        "podcast": row.try_get::<String, _>("podcast")?,
-                        "episode": row.try_get::<String, _>("episode")?,
-                        "action": action,
-                        "timestamp": timestamp_str,
-                    });
-
-                    if action == "play" && position.is_some() && total.is_some() {
-                        action_json["started"] = serde_json::json!(0); // Always start from 0
-                        action_json["position"] = serde_json::json!(position.unwrap());
-                        action_json["total"] = serde_json::json!(total.unwrap());
-                    }
-
-                    actions.push(action_json);
+                    actions.extend(outbound_episode_action(
+                        row.try_get("podcast")?,
+                        row.try_get("episode")?,
+                        row.try_get("action")?,
+                        row.try_get("position").ok().flatten(),
+                        row.try_get("total").ok().flatten(),
+                        naive_timestamp,
+                    ));
                 }
                 Ok(actions)
             }
@@ -25468,6 +25426,34 @@ impl DatabasePool {
         let epoch = chrono::DateTime::from_timestamp(0, 0).unwrap_or_else(chrono::Utc::now);
         self.get_user_episode_actions_since(user_id, epoch).await
     }
+}
+
+/// One episode action for upload to a gpodder server, shaped so AntennaPod applies it.
+/// AntennaPod resets the episode to the start for a `play` without `started >= 0`,
+/// `position > 0` and `total > 0`, so a play with no position is skipped and an unknown
+/// duration is sent as `total = position` (AntennaPod uses its own duration for "almost
+/// finished"). AntennaPod also ignores any UTC offset, so the timestamp is plain UTC.
+fn outbound_episode_action(
+    podcast: String,
+    episode: String,
+    action: String,
+    position: Option<i32>,
+    total: Option<i32>,
+    timestamp: chrono::NaiveDateTime,
+) -> Option<serde_json::Value> {
+    let mut action_json = serde_json::json!({
+        "podcast": podcast,
+        "episode": episode,
+        "action": action,
+        "timestamp": timestamp.format("%Y-%m-%dT%H:%M:%S").to_string(),
+    });
+    if action == "play" {
+        let position = position.filter(|p| *p > 0)?;
+        action_json["started"] = serde_json::json!(0);
+        action_json["position"] = serde_json::json!(position);
+        action_json["total"] = serde_json::json!(total.filter(|t| *t > 0).unwrap_or(position));
+    }
+    Some(action_json)
 }
 
 #[derive(Debug)]
@@ -25507,6 +25493,8 @@ impl DatabasePool {
     // Complete implementation of sync_with_nextcloud_for_user - matches Python nextcloud sync functionality  
     pub async fn sync_with_nextcloud_for_user(&self, user_id: i32) -> AppResult<bool> {
         tracing::info!("Starting Nextcloud sync for user {}", user_id);
+        // The next sync's `since`; taken at the start so changes made during this run aren't skipped
+        let sync_started = chrono::Utc::now();
         
         // Get user's Nextcloud configuration
         let gpodder_status = self.gpodder_get_status(user_id).await?;
@@ -25642,12 +25630,13 @@ impl DatabasePool {
             let episode_actions_data: serde_json::Value = episode_actions_response.json().await
                 .map_err(|e| AppError::internal(&format!("Failed to parse episode actions response: {}", e)))?;
             
+            // Same apply path as gpodder: matches episodes within this user's podcasts only, and
+            // download/delete actions don't change listen state.
             if let Some(actions) = episode_actions_data.get("actions").and_then(|v| v.as_array()) {
-                for action in actions {
-                    if let Err(e) = self.process_nextcloud_episode_action(user_id, action).await {
-                        tracing::error!("Failed to process episode action: {}", e);
-                    } else {
-                        has_changes = true;
+                if !actions.is_empty() {
+                    match self.apply_remote_episode_actions(user_id, actions).await {
+                        Ok(()) => has_changes = true,
+                        Err(e) => tracing::error!("Failed to apply Nextcloud episode actions: {}", e),
                     }
                 }
             }
@@ -25664,12 +25653,9 @@ impl DatabasePool {
             .await?;
         to_add.retain(|f| !server_added.contains(f));
         to_remove.retain(|f| !server_removed.contains(f));
-        if let Err(e) = self
-            .upload_subscription_changes_to_nextcloud(&base_url, &username, &password, &to_add, &to_remove)
-            .await
-        {
-            tracing::warn!("Failed to upload subscription delta to Nextcloud: {}", e);
-        }
+        // Upload failures fail the sync so the snapshot and sync time don't advance past them.
+        self.upload_subscription_changes_to_nextcloud(&base_url, &username, &password, &to_add, &to_remove)
+            .await?;
         self.save_subscription_snapshot(user_id, &base_url, &local_subscriptions).await?;
 
         // Upload only episode actions created since the last sync (full history on the first sync),
@@ -25679,62 +25665,16 @@ impl DatabasePool {
             None => self.get_user_episode_actions(user_id).await?,
         };
         if !local_episode_actions.is_empty() {
-            if let Err(e) = self.upload_episode_actions_to_nextcloud(&base_url, &username, &password, &local_episode_actions).await {
-                tracing::warn!("Failed to upload local episode actions to Nextcloud: {}", e);
-            }
+            self.upload_episode_actions_to_nextcloud(&base_url, &username, &password, &local_episode_actions).await?;
         }
 
         // Update last sync timestamp
-        if let Err(e) = self.update_last_sync_timestamp(user_id).await {
+        if let Err(e) = self.update_last_sync_timestamp(user_id, sync_started).await {
             tracing::error!("Failed to update sync timestamp for user {}: {}", user_id, e);
         }
 
         tracing::info!("Nextcloud sync completed for user {} - changes: {}", user_id, has_changes);
         Ok(has_changes)
-    }
-
-    // Process individual episode action from Nextcloud
-    async fn process_nextcloud_episode_action(&self, user_id: i32, action: &serde_json::Value) -> AppResult<()> {
-        let episode_url = action.get("episode") 
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| AppError::internal("Missing episode URL in episode action"))?;
-            
-        let action_type = action.get("action")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| AppError::internal("Missing action type in episode action"))?;
-        
-        // Find the episode by URL
-        let episode_id = match self.get_episode_id_by_url(episode_url).await {
-            Ok(Some(id)) => id,
-            Ok(None) => {
-                tracing::warn!("Episode not found for URL: {}", episode_url);
-                return Ok(());
-            }
-            Err(_) => {
-                tracing::warn!("Error finding episode for URL: {}", episode_url);
-                return Ok(());
-            }
-        };
-        
-        match action_type {
-            "play" => {
-                if let Some(position) = action.get("position").and_then(|v| v.as_i64()) {
-                    self.save_episode_history(user_id, episode_id, position as i32, 0).await?;
-                }
-            }
-            "download" => {
-                self.mark_episode_completed(episode_id, user_id, false).await?;
-            }  
-            "delete" => {
-                // Remove episode from user's history
-                self.remove_episode_from_history(user_id, episode_id).await?;
-            }
-            _ => {
-                tracing::debug!("Unknown action type: {}", action_type);
-            }
-        }
-        
-        Ok(())
     }
 
     // Add podcast from URL - used by Nextcloud sync
@@ -25946,36 +25886,6 @@ impl DatabasePool {
             }
         }
         Ok(())
-    }
-
-    // Get episode ID by URL - used by Nextcloud episode actions
-    pub async fn get_episode_id_by_url(&self, episode_url: &str) -> AppResult<Option<i32>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE episodeurl = $1 LIMIT 1"#)
-                    .bind(episode_url)
-                    .fetch_optional(pool)
-                    .await?;
-                    
-                if let Some(row) = row {
-                    Ok(Some(row.try_get("episodeid")?))
-                } else {
-                    Ok(None)
-                }
-            }
-            DatabasePool::MySQL(pool) => {
-                let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE EpisodeURL = ? LIMIT 1")
-                    .bind(episode_url)
-                    .fetch_optional(pool)
-                    .await?;
-                    
-                if let Some(row) = row {
-                    Ok(Some(row.try_get("EpisodeID")?))
-                } else {
-                    Ok(None)
-                }
-            }
-        }
     }
 
     // Save episode history - used by Nextcloud episode actions  
@@ -29299,5 +29209,45 @@ mod totp_tests {
         assert!(url.starts_with("otpauth://totp/"));
         assert!(url.contains("issuer=Pinepods"));
         assert!(url.contains(&format!("secret={SECRET}")));
+    }
+}
+
+#[cfg(test)]
+mod outbound_episode_action_tests {
+    use super::outbound_episode_action;
+
+    fn ts() -> chrono::NaiveDateTime {
+        chrono::NaiveDate::from_ymd_opt(2026, 1, 2).unwrap().and_hms_opt(3, 4, 5).unwrap()
+    }
+
+    fn play(position: Option<i32>, total: Option<i32>) -> Option<serde_json::Value> {
+        outbound_episode_action("https://f.test/feed.xml".into(), "https://f.test/ep.mp3".into(), "play".into(), position, total, ts())
+    }
+
+    #[test]
+    fn play_carries_started_position_total_and_plain_utc_timestamp() {
+        let a = play(Some(600), Some(1800)).unwrap();
+        assert_eq!(a["started"], 0);
+        assert_eq!(a["position"], 600);
+        assert_eq!(a["total"], 1800);
+        assert_eq!(a["timestamp"], "2026-01-02T03:04:05");
+    }
+
+    #[test]
+    fn unknown_duration_sends_total_equal_to_position() {
+        assert_eq!(play(Some(600), None).unwrap()["total"], 600);
+        assert_eq!(play(Some(600), Some(0)).unwrap()["total"], 600);
+    }
+
+    #[test]
+    fn play_without_a_position_is_not_sent() {
+        assert!(play(None, Some(1800)).is_none());
+        assert!(play(Some(0), Some(1800)).is_none());
+    }
+
+    #[test]
+    fn other_actions_have_no_play_fields() {
+        let a = outbound_episode_action("p".into(), "e".into(), "download".into(), None, Some(1800), ts()).unwrap();
+        assert!(a.get("position").is_none() && a.get("total").is_none());
     }
 }

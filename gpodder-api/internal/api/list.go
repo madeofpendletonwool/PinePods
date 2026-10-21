@@ -149,11 +149,7 @@ func createPodcastList(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
 			return
 		}
-		defer func() {
-			if err != nil {
-				tx.Rollback()
-			}
-		}()
+		defer tx.Rollback() // no-op after Commit
 
 		// Check if a list with this name already exists
 		var existingID int
@@ -457,11 +453,7 @@ func updatePodcastList(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
 			return
 		}
-		defer func() {
-			if err != nil {
-				tx.Rollback()
-			}
-		}()
+		defer tx.Rollback() // no-op after Commit
 
 		// Get list ID
 		var listID int
@@ -561,11 +553,7 @@ func deletePodcastList(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
 			return
 		}
-		defer func() {
-			if err != nil {
-				tx.Rollback()
-			}
-		}()
+		defer tx.Rollback() // no-op after Commit
 
 		// Get list ID
 		var listID int

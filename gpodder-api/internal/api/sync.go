@@ -133,11 +133,7 @@ func updateSyncStatus(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
 			return
 		}
-		defer func() {
-			if err != nil {
-				tx.Rollback()
-			}
-		}()
+		defer tx.Rollback() // no-op after Commit
 
 		// Process synchronize pairs
 		for _, pair := range req.Synchronize {

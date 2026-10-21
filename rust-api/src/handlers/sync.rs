@@ -149,8 +149,10 @@ pub async fn gpodder_force_sync(
             state.db_pool.call_gpodder_initial_full_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name).await
         }
         "nextcloud" => {
-            // Nextcloud initial sync
-            state.db_pool.call_nextcloud_initial_full_sync(user_id, &settings.url, &settings.username, &settings.token).await
+            // Nextcloud initial sync. The stored token is encrypted; passing it as-is always
+            // failed authentication.
+            let app_password = state.db_pool.decrypt_password(&settings.token).await?;
+            state.db_pool.call_nextcloud_initial_full_sync(user_id, &settings.url, &settings.username, &app_password).await
         }
         "external" => {
             // External gPodder server - decrypt token first then call initial full sync

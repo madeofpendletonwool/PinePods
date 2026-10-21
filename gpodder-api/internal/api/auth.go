@@ -685,7 +685,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 		username := c.Param("username")
 		if username == "" {
 			log.Printf("[ERROR] AuthenticationMiddleware: Username parameter is missing in path")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Username is required"})
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Username is required"})
 			return
 		}
 
@@ -713,7 +713,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 
 			if err != nil {
 				log.Printf("[ERROR] AuthenticationMiddleware: Database error: %v", err)
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or token"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or token"})
 				return
 			}
 
@@ -721,7 +721,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 			if podSyncType != "gpodder" && podSyncType != "both" && podSyncType != "external" {
 				log.Printf("[ERROR] AuthenticationMiddleware: Gpodder API not enabled for user: %s (sync type: %s)",
 					username, podSyncType)
-				c.JSON(http.StatusForbidden, gin.H{"error": "Gpodder API not enabled for this user"})
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Gpodder API not enabled for this user"})
 				return
 			}
 
@@ -736,7 +736,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 
 			// If token doesn't match, authentication failed
 			log.Printf("[ERROR] AuthenticationMiddleware: Invalid X-GPodder-Token for user: %s", username)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			return
 		}
 
@@ -744,28 +744,28 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			log.Printf("[ERROR] AuthenticationMiddleware: No Authorization header found")
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
 			return
 		}
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Basic" {
 			log.Printf("[ERROR] AuthenticationMiddleware: Invalid Authorization header format")
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization header format"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization header format"})
 			return
 		}
 
 		decoded, err := base64.StdEncoding.DecodeString(parts[1])
 		if err != nil {
 			log.Printf("[ERROR] AuthenticationMiddleware: Failed to decode base64 credentials: %v", err)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization header"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization header"})
 			return
 		}
 
 		credentials := strings.SplitN(string(decoded), ":", 2)
 		if len(credentials) != 2 {
 			log.Printf("[ERROR] AuthenticationMiddleware: Invalid credentials format")
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials format"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials format"})
 			return
 		}
 
@@ -775,7 +775,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 		if strings.ToLower(username) != strings.ToLower(authUsername) {
 			log.Printf("[ERROR] AuthenticationMiddleware: Username mismatch - URL: %s, Auth: %s",
 				strings.ToLower(username), strings.ToLower(authUsername))
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Username mismatch"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Username mismatch"})
 			return
 		}
 
@@ -799,10 +799,10 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 		if err != nil {
 			if err == sql.ErrNoRows {
 				log.Printf("[ERROR] AuthenticationMiddleware: User not found: %s", username)
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 			} else {
 				log.Printf("[ERROR] AuthenticationMiddleware: Database error: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 			}
 			return
 		}
@@ -810,7 +810,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 		if podSyncType != "gpodder" && podSyncType != "both" && podSyncType != "external" {
 			log.Printf("[ERROR] AuthenticationMiddleware: Gpodder API not enabled for user: %s (sync type: %s)",
 				username, podSyncType)
-			c.JSON(http.StatusForbidden, gin.H{"error": "Gpodder API not enabled for this user"})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Gpodder API not enabled for this user"})
 			return
 		}
 
@@ -839,7 +839,7 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 
 		// Authentication failed
 		log.Printf("[ERROR] AuthenticationMiddleware: Invalid credentials for user: %s", username)
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 	}
 }
 

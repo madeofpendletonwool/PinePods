@@ -119,6 +119,22 @@ func (e EpisodeAction) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// UnmarshalJSON reads the client's `timestamp` into Timestamp (its `json:"-"` tag would
+// otherwise drop it, and every action got stamped with the upload time). The value is kept
+// as decoded (string or number); the upload handler parses it.
+func (e *EpisodeAction) UnmarshalJSON(data []byte) error {
+	type alias EpisodeAction
+	aux := struct {
+		*alias
+		Timestamp interface{} `json:"timestamp"`
+	}{alias: (*alias)(e)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	e.Timestamp = aux.Timestamp
+	return nil
+}
+
 // EpisodeActionResponse represents a response to episode action upload
 type EpisodeActionResponse struct {
 	Timestamp  int64      `json:"timestamp"`

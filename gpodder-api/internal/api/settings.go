@@ -504,14 +504,17 @@ func saveSettings(database *db.Database) gin.HandlerFunc {
 							INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsActive, LastSync)
 							VALUES (?, ?, 'other', true, ?)
 						`
-						result, err := database.Exec(deviceQuery, userID, deviceName, "other", time.Now())
+						// Assign the outer err (not a new one) so the check after this branch sees it
+						var result sql.Result
+						result, err = database.Exec(deviceQuery, userID, deviceName, time.Now())
 						if err != nil {
 							log.Printf("Error creating device: %v", err)
 							c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
 							return
 						}
 
-						lastID, err := result.LastInsertId()
+						var lastID int64
+						lastID, err = result.LastInsertId()
 						if err != nil {
 							log.Printf("Error getting last insert ID: %v", err)
 							c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
@@ -543,12 +546,7 @@ func saveSettings(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save settings"})
 			return
 		}
-		defer func() {
-			if err != nil {
-				tx.Rollback()
-				return
-			}
-		}()
+		defer tx.Rollback() // no-op after Commit
 
 		// Process settings to set
 		for key, value := range req.Set {

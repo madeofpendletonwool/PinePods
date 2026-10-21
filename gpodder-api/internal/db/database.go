@@ -152,7 +152,7 @@ func (db *Database) Close() error {
 
 // IsMySQLDB returns true if the database is MySQL/MariaDB
 func (db *Database) IsMySQLDB() bool {
-	return db.Type == "mysql"
+	return db.Type == "mysql" || db.Type == "mariadb"
 }
 
 // IsPostgreSQLDB returns true if the database is PostgreSQL
@@ -162,38 +162,7 @@ func (db *Database) IsPostgreSQLDB() bool {
 
 // FormatQuery formats a query for the specific database type
 func (db *Database) FormatQuery(query string) string {
-	if db.Type == "postgresql" {
-		return query // PostgreSQL queries already have correct format
-	}
-
-	// For MySQL:
-	result := query
-
-	// First, replace quoted table names
-	knownTables := []string{
-		"Users", "GpodderDevices", "GpodderSyncSettings",
-		"GpodderSyncSubscriptions", "GpodderSyncEpisodeActions",
-		"GpodderSyncPodcastLists", "GpodderSyncState", "GpodderSessions",
-		"GpodderSyncMigrations", "Podcasts", "Episodes", "SavedEpisodes",
-		"UserEpisodeHistory", "UserSettings", "APIKeys",
-	}
-
-	for _, table := range knownTables {
-		quoted := fmt.Sprintf("\"%s\"", table)
-		result = strings.ReplaceAll(result, quoted, table)
-	}
-
-	// Replace column quotes (double quotes to backticks)
-	re := regexp.MustCompile(`"([^"]+)"`)
-	result = re.ReplaceAllString(result, "`$1`")
-
-	// Then replace placeholders
-	for i := 10; i > 0; i-- {
-		old := fmt.Sprintf("$%d", i)
-		result = strings.ReplaceAll(result, old, "?")
-	}
-
-	return result
+	return formatQuery(query, db.Type)
 }
 
 // Exec executes a query with the correct formatting for the database type
@@ -258,33 +227,33 @@ func (tx *Transaction) QueryRow(query string, args ...interface{}) *sql.Row {
 	return tx.tx.QueryRow(formattedQuery, args...)
 }
 
-// Helper function to format queries
-func formatQuery(query string, dbType string) string {
-	if dbType == "postgresql" {
-		return query
-	}
-
-	// For MySQL:
-	// Same logic as FormatQuery method
-	result := query
-
-	knownTables := []string{
+var (
+	mysqlKnownTables = []string{
 		"Users", "GpodderDevices", "GpodderSyncSettings",
 		"GpodderSyncSubscriptions", "GpodderSyncEpisodeActions",
 		"GpodderSyncPodcastLists", "GpodderSyncState", "GpodderSessions",
 		"GpodderSyncMigrations", "Podcasts", "Episodes", "SavedEpisodes",
 		"UserEpisodeHistory", "UserSettings", "APIKeys",
 	}
+	quotedIdentRe = regexp.MustCompile(`"([^"]+)"`)
+	placeholderRe = regexp.MustCompile(`\$[0-9]+`)
+)
 
-	for _, table := range knownTables {
-		quoted := fmt.Sprintf("\"%s\"", table)
-		result = strings.ReplaceAll(result, quoted, table)
+// Helper function to format queries. Used by both Database and Transaction so a query
+// behaves the same inside and outside a transaction.
+func formatQuery(query string, dbType string) string {
+	if dbType == "postgresql" {
+		return query
 	}
 
-	for i := 10; i > 0; i-- {
-		old := fmt.Sprintf("$%d", i)
-		result = strings.ReplaceAll(result, old, "?")
+	// For MySQL:
+	result := query
+	for _, table := range mysqlKnownTables {
+		result = strings.ReplaceAll(result, "\""+table+"\"", table)
 	}
-
+	// Remaining double-quoted identifiers become backticks
+	result = quotedIdentRe.ReplaceAllString(result, "`$1`")
+	// $1..$N placeholders become ? (a fixed $1..$10 loop turned $11 into ?1)
+	result = placeholderRe.ReplaceAllString(result, "?")
 	return result
 }

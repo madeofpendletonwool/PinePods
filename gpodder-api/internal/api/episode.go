@@ -13,6 +13,7 @@ import (
 	"pinepods/gpodder-api/internal/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 // getEpisodeActions handles GET /api/2/episodes/{username}.json
@@ -79,30 +80,11 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			}
 		}
 
-		// Get the latest timestamp for the response
-		var latestTimestamp int64
-		var timestampQuery string
-
-		if database.IsPostgreSQLDB() {
-			timestampQuery = `
-				SELECT COALESCE(MAX(Timestamp), EXTRACT(EPOCH FROM NOW())::bigint)
-				FROM "GpodderSyncEpisodeActions"
-				WHERE UserID = $1
-			`
-		} else {
-			timestampQuery = `
-				SELECT COALESCE(MAX(Timestamp), UNIX_TIMESTAMP())
-				FROM GpodderSyncEpisodeActions
-				WHERE UserID = ?
-			`
-		}
-
-		err := database.QueryRow(timestampQuery, userID).Scan(&latestTimestamp)
-
-		if err != nil {
-			log.Printf("[ERROR] getEpisodeActions: Error getting latest timestamp: %v", err)
-			latestTimestamp = time.Now().Unix() // Fallback to current time
-		}
+		// The cursor the client sends back as its next `since`. Captured before the query and
+		// compared with ServerTs (receive time) using >=, so an action stored in the same second
+		// is sent again rather than skipped. The old MAX(client Timestamp) cursor never delivered
+		// late (offline) uploads to devices that had already synced.
+		responseTimestamp := time.Now().Unix()
 
 		// Performance optimization: Add limits and optimize query structure
 		const MAX_EPISODE_ACTIONS = 25000 // Limit raised to 25k to handle power users while preventing DoS
@@ -127,7 +109,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			queryParts = []string{
 				"SELECT " +
 					"e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL, " +
-					"e.Action, e.Timestamp, e.Started, e.Position, e.Total, " +
+					"e.Action, e.Timestamp, e.ServerTs, e.Started, e.Position, e.Total, " +
 					"COALESCE(d.DeviceName, '') as DeviceName " +
 					"FROM \"GpodderSyncEpisodeActions\" e " +
 					"LEFT JOIN \"GpodderDevices\" d ON e.DeviceID = d.DeviceID " +
@@ -137,7 +119,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			queryParts = []string{
 				"SELECT " +
 					"e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL, " +
-					"e.Action, e.Timestamp, e.Started, e.Position, e.Total, " +
+					"e.Action, e.Timestamp, e.ServerTs, e.Started, e.Position, e.Total, " +
 					"COALESCE(d.DeviceName, '') as DeviceName " +
 					"FROM GpodderSyncEpisodeActions e " +
 					"LEFT JOIN GpodderDevices d ON e.DeviceID = d.DeviceID " +
@@ -156,7 +138,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				var conditions []string
 
 				if since > 0 {
-					conditions = append(conditions, fmt.Sprintf("AND e.Timestamp > $%d", paramCount))
+					conditions = append(conditions, fmt.Sprintf("AND e.ServerTs >= $%d", paramCount))
 					args = append(args, since)
 					paramCount++
 				}
@@ -188,8 +170,8 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 					)
 					SELECT
 						e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL,
-						e.Action, e.Timestamp, e.Started, e.Position, e.Total,
-						d.DeviceName
+						e.Action, e.Timestamp, e.ServerTs, e.Started, e.Position, e.Total,
+						COALESCE(d.DeviceName, '') as DeviceName
 					FROM "GpodderSyncEpisodeActions" e
 					JOIN latest_actions la ON
 						e.PodcastURL = la.PodcastURL AND
@@ -197,7 +179,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 						e.Timestamp = la.max_timestamp
 					LEFT JOIN "GpodderDevices" d ON e.DeviceID = d.DeviceID
 					WHERE e.UserID = $1
-					ORDER BY e.Timestamp ASC
+					ORDER BY e.ServerTs ASC, e.ActionID ASC
 					LIMIT %d
 				`, conditionsStr, MAX_EPISODE_ACTIONS)
 			} else {
@@ -208,7 +190,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				var conditions []string
 
 				if since > 0 {
-					conditions = append(conditions, "AND e.Timestamp > ?")
+					conditions = append(conditions, "AND e.ServerTs >= ?")
 					args = append(args, since)
 				}
 
@@ -224,10 +206,8 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 
 				conditionsStr := strings.Join(conditions, " ")
 
-				// Need to duplicate userID in args for the second part of the query
-				mysqlArgs := make([]interface{}, len(args))
-				copy(mysqlArgs, args)
-				args = append(args, mysqlArgs...)
+				// The outer query has one more placeholder: its own UserID
+				args = append(args, userID)
 
 				query = fmt.Sprintf(`
 					WITH latest_actions AS (
@@ -242,8 +222,8 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 					)
 					SELECT
 						e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL,
-						e.Action, e.Timestamp, e.Started, e.Position, e.Total,
-						d.DeviceName
+						e.Action, e.Timestamp, e.ServerTs, e.Started, e.Position, e.Total,
+						COALESCE(d.DeviceName, '') as DeviceName
 					FROM GpodderSyncEpisodeActions e
 					JOIN latest_actions la ON
 						e.PodcastURL = la.PodcastURL AND
@@ -251,7 +231,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 						e.Timestamp = la.max_timestamp
 					LEFT JOIN GpodderDevices d ON e.DeviceID = d.DeviceID
 					WHERE e.UserID = ?
-					ORDER BY e.Timestamp ASC
+					ORDER BY e.ServerTs ASC, e.ActionID ASC
 					LIMIT %d
 				`, conditionsStr, MAX_EPISODE_ACTIONS)
 			}
@@ -259,7 +239,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			// Simple query with ORDER BY
 			if database.IsPostgreSQLDB() {
 				if since > 0 {
-					queryParts = append(queryParts, fmt.Sprintf("AND e.Timestamp > $%d", paramCount))
+					queryParts = append(queryParts, fmt.Sprintf("AND e.ServerTs >= $%d", paramCount))
 					args = append(args, since)
 					paramCount++
 				}
@@ -277,7 +257,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				}
 			} else {
 				if since > 0 {
-					queryParts = append(queryParts, "AND e.Timestamp > ?")
+					queryParts = append(queryParts, "AND e.ServerTs >= ?")
 					args = append(args, since)
 				}
 
@@ -299,7 +279,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			if orderDesc {
 				queryParts = append(queryParts, "ORDER BY e.Timestamp DESC")
 			} else {
-				queryParts = append(queryParts, "ORDER BY e.Timestamp ASC")
+				queryParts = append(queryParts, "ORDER BY e.ServerTs ASC, e.ActionID ASC")
 			}
 
 			// Add LIMIT for performance - prevents returning massive datasets
@@ -325,7 +305,8 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 
 		// Build response
 		actions := make([]models.EpisodeAction, 0)
-		var maxBatchTimestamp int64
+		var maxBatchServerTs int64
+		rowCount := 0
 		for rows.Next() {
 			var action models.EpisodeAction
 			var deviceIDInt sql.NullInt64
@@ -334,6 +315,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			var position sql.NullInt64
 			var total sql.NullInt64
 			var actionTimestamp int64
+			var serverTs int64
 
 			if err := rows.Scan(
 				&action.ActionID,
@@ -343,6 +325,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				&action.Episode,
 				&action.Action,
 				&actionTimestamp,
+				&serverTs,
 				&started,
 				&position,
 				&total,
@@ -353,8 +336,9 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			}
 
 			action.Timestamp = actionTimestamp
-			if actionTimestamp > maxBatchTimestamp {
-				maxBatchTimestamp = actionTimestamp
+			rowCount++
+			if serverTs > maxBatchServerTs {
+				maxBatchServerTs = serverTs
 			}
 
 			// Set optional fields if present
@@ -377,6 +361,24 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				action.Total = &totalInt
 			}
 
+			// AntennaPod only accepts a play action with started >= 0, position > 0 and
+			// total > 0; anything else resets the episode to the beginning. Clients such as
+			// gPodder desktop send only a position, so fill the rest in. AntennaPod uses its own
+			// duration for "almost finished", so total = position is safe when total is unknown.
+			if action.Action == "play" {
+				if action.Position == nil || *action.Position <= 0 {
+					continue
+				}
+				if action.Started == nil || *action.Started < 0 {
+					zero := 0
+					action.Started = &zero
+				}
+				if action.Total == nil || *action.Total <= 0 {
+					pos := *action.Position
+					action.Total = &pos
+				}
+			}
+
 			actions = append(actions, action)
 		}
 
@@ -389,13 +391,15 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 		totalDuration := time.Since(startTime)
 		debugf("getEpisodeActions: Returning %d actions, total time: %v", len(actions), totalDuration)
 
-		// Determine the timestamp the client should use as 'since' on its next request.
-		// If we hit the row limit there are more actions to fetch, so return the max timestamp
-		// in THIS batch (results are ordered ascending) - that lets the client page forward
-		// through everything. Otherwise return the global latest so the next sync is incremental.
-		responseTimestamp := latestTimestamp
-		if len(actions) >= MAX_EPISODE_ACTIONS && maxBatchTimestamp > 0 {
-			responseTimestamp = maxBatchTimestamp
+		// If we hit the row limit there are more actions to fetch, so return the max ServerTs in
+		// THIS batch (ordered ascending) and let the client page forward. Rows in that second
+		// are sent again next time (>=), which clients handle; if the whole page is one second,
+		// step past it so the client can't loop forever.
+		if !orderDesc && rowCount >= rowLimit && maxBatchServerTs > 0 {
+			responseTimestamp = maxBatchServerTs
+			if maxBatchServerTs <= since {
+				responseTimestamp = since + 1
+			}
 		}
 
 		// Return response in gpodder format
@@ -421,13 +425,14 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 		// Parse request - try both formats
 		var actions []models.EpisodeAction
 
-		// First try parsing as array directly
-		if err := c.ShouldBindJSON(&actions); err != nil {
+		// First try parsing as array directly. ShouldBindBodyWith keeps the body so the second
+		// attempt can read it again (ShouldBindJSON consumes it).
+		if err := c.ShouldBindBodyWith(&actions, binding.JSON); err != nil {
 			// If that fails, try parsing as a wrapper object
 			var wrappedActions struct {
 				Actions []models.EpisodeAction `json:"actions"`
 			}
-			if err2 := c.ShouldBindJSON(&wrappedActions); err2 != nil {
+			if err2 := c.ShouldBindBodyWith(&wrappedActions, binding.JSON); err2 != nil {
 				log.Printf("[ERROR] uploadEpisodeActions: Error parsing request body: %v", err)
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body format"})
 				return
@@ -442,12 +447,10 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
 			return
 		}
-		defer func() {
-			if err != nil {
-				tx.Rollback()
-				return
-			}
-		}()
+		// Always roll back on exit; it's a no-op after a successful Commit. The old conditional
+		// rollback checked an `err` that the loop shadowed, so failed batches leaked open
+		// transactions (and their connections and row locks).
+		defer tx.Rollback()
 
 		// Process actions
 		timestamp := time.Now().Unix()
@@ -509,14 +512,17 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
                                 INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsActive, LastSync)
                                 VALUES (?, ?, 'other', true, CURRENT_TIMESTAMP)
                             `
-							result, err := tx.Exec(query, userID, action.Device, "other")
+							// Assign the outer err (not a new one) so the check after this branch sees it
+							var result sql.Result
+							result, err = tx.Exec(query, userID, action.Device)
 							if err != nil {
 								log.Printf("[ERROR] uploadEpisodeActions: Error creating device: %v", err)
 								c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
 								return
 							}
 
-							lastID, err := result.LastInsertId()
+							var lastID int64
+							lastID, err = result.LastInsertId()
 							if err != nil {
 								log.Printf("[ERROR] uploadEpisodeActions: Error getting last insert ID: %v", err)
 								c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
@@ -595,14 +601,14 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 			if database.IsPostgreSQLDB() {
 				insertQuery = `
                     INSERT INTO "GpodderSyncEpisodeActions"
-                    (UserID, DeviceID, PodcastURL, EpisodeURL, Action, Timestamp, Started, Position, Total)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    (UserID, DeviceID, PodcastURL, EpisodeURL, Action, Timestamp, ServerTs, Started, Position, Total)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 `
 			} else {
 				insertQuery = `
                     INSERT INTO GpodderSyncEpisodeActions
-                    (UserID, DeviceID, PodcastURL, EpisodeURL, Action, Timestamp, Started, Position, Total)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (UserID, DeviceID, PodcastURL, EpisodeURL, Action, Timestamp, ServerTs, Started, Position, Total)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `
 			}
 
@@ -613,6 +619,7 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 				cleanEpisodeURL,
 				action.Action,
 				actionTimestamp,
+				timestamp,
 				action.Started,
 				action.Position,
 				action.Total)
@@ -676,7 +683,11 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 					result, err := tx.Exec(updateHistoryQuery, action.Position, time.Unix(actionTimestamp, 0), userID, episodeID)
 
 					if err != nil {
-						log.Printf("[WARNING] uploadEpisodeActions: Error updating episode history: %v", err)
+						// On PostgreSQL a failed statement aborts the whole transaction, so the
+						// batch can't continue; fail it and let the client retry.
+						log.Printf("[ERROR] uploadEpisodeActions: Error updating episode history: %v", err)
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update episode history"})
+						return
 					} else {
 						rowsAffected, _ := result.RowsAffected()
 						if rowsAffected == 0 {
@@ -704,7 +715,9 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 							_, err = tx.Exec(insertHistoryQuery, userID, episodeID, action.Position, time.Unix(actionTimestamp, 0))
 
 							if err != nil {
-								log.Printf("[WARNING] uploadEpisodeActions: Error creating episode history: %v", err)
+								log.Printf("[ERROR] uploadEpisodeActions: Error creating episode history: %v", err)
+								c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update episode history"})
+								return
 							}
 						}
 					}

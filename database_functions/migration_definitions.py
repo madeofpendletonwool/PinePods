@@ -5953,3 +5953,36 @@ def migration_062_people_refactor(conn, db_type: str) -> None:
         logger.info("Migration 062 completed")
     finally:
         cursor.close()
+
+
+@register_migration("110", "gpodder_action_server_ts", "Add server receive time (ServerTs) to GpodderSyncEpisodeActions for sync cursors", requires=["100"])
+def migration_110_gpodder_action_server_ts(conn, db_type: str) -> None:
+    """Separate when the server received an episode action from when the client says it happened.
+
+    `Timestamp` is the client's action time; clients use it for last-write-wins, so it must be
+    stored as uploaded. Download cursors (`since`) need the server's receive time instead, or an
+    action uploaded late (offline play) is never delivered to devices that already synced past
+    its client time. Existing rows were stamped with their upload time, so ServerTs = Timestamp
+    is the correct backfill.
+    """
+    logger.info("Starting migration 110: GpodderSyncEpisodeActions.ServerTs")
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    table = '"GpodderSyncEpisodeActions"' if pg else "GpodderSyncEpisodeActions"
+    try:
+        if not _column_exists(cursor, db_type, "GpodderSyncEpisodeActions", "ServerTs"):
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN ServerTs BIGINT NULL")
+        cursor.execute(f"UPDATE {table} SET ServerTs = Timestamp WHERE ServerTs IS NULL")
+        if pg:
+            cursor.execute(f"ALTER TABLE {table} ALTER COLUMN ServerTs SET NOT NULL")
+        else:
+            cursor.execute(f"ALTER TABLE {table} MODIFY COLUMN ServerTs BIGINT NOT NULL")
+        safe_add_index(
+            cursor,
+            db_type,
+            f"CREATE INDEX idx_gpodder_episode_actions_user_serverts ON {table}(UserID, ServerTs)",
+            "idx_gpodder_episode_actions_user_serverts",
+        )
+        logger.info("Migration 110 completed")
+    finally:
+        cursor.close()

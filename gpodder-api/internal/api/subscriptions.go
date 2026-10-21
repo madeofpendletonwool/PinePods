@@ -14,7 +14,6 @@ import (
 
 	"pinepods/gpodder-api/internal/db"
 	"pinepods/gpodder-api/internal/models"
-	"pinepods/gpodder-api/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -64,6 +63,41 @@ func sanitizeURL(rawURL string) (string, error) {
 // Replace the entire getSubscriptions function with this implementation
 
 // getSubscriptions handles GET /api/2/subscriptions/{username}/{deviceid}
+// libraryQuery lists the user's library: their Podcasts plus feeds a device subscribed to
+// that Pinepods hasn't imported yet. Subscription uploads no longer insert Podcasts rows (that
+// fetched every feed inline, #636); Pinepods' own sync adds them with full metadata and
+// episodes. An add is pending until the sync after it (Users.LastSyncTime), unless a later
+// remove cancelled it.
+func libraryQuery(database *db.Database, userID interface{}) (string, []interface{}) {
+	if database.IsPostgreSQLDB() {
+		return `
+			SELECT FeedURL FROM "Podcasts" WHERE UserID = $1
+			UNION
+			SELECT s.PodcastURL FROM "GpodderSyncSubscriptions" s
+			WHERE s.UserID = $1 AND s.Action = 'add'
+			AND s.Timestamp >= COALESCE((SELECT FLOOR(EXTRACT(EPOCH FROM LastSyncTime))::bigint FROM "Users" WHERE UserID = $1), 0)
+			AND NOT EXISTS (
+				SELECT 1 FROM "GpodderSyncSubscriptions" r
+				WHERE r.UserID = s.UserID AND r.PodcastURL = s.PodcastURL
+				AND r.Action = 'remove' AND r.SubscriptionID > s.SubscriptionID
+			)
+		`, []interface{}{userID}
+	}
+	// LastSyncTime is a UTC DATETIME; TIMESTAMPDIFF avoids UNIX_TIMESTAMP's session time zone.
+	return `
+		SELECT FeedURL FROM Podcasts WHERE UserID = ?
+		UNION
+		SELECT s.PodcastURL FROM GpodderSyncSubscriptions s
+		WHERE s.UserID = ? AND s.Action = 'add'
+		AND s.Timestamp >= COALESCE((SELECT TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', LastSyncTime) FROM Users WHERE UserID = ?), 0)
+		AND NOT EXISTS (
+			SELECT 1 FROM GpodderSyncSubscriptions r
+			WHERE r.UserID = s.UserID AND r.PodcastURL = s.PodcastURL
+			AND r.Action = 'remove' AND r.SubscriptionID > s.SubscriptionID
+		)
+	`, []interface{}{userID, userID, userID}
+}
+
 func getSubscriptions(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		debugf("getSubscriptions: Starting request processing - %s %s", c.Request.Method, c.Request.URL.Path)
@@ -141,14 +175,17 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 						    INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsActive, LastSync)
 						    VALUES (?, ?, 'other', true, CURRENT_TIMESTAMP)
 						`
-						result, err := database.Exec(query, userID, deviceName)
+						// Assign the outer err (not a new one) so the check after this branch sees it
+						var result sql.Result
+						result, err = database.Exec(query, userID, deviceName)
 						if err != nil {
 							log.Printf("[ERROR] getSubscriptions: Failed to create device: %v", err)
 							c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
 							return
 						}
 
-						lastID, err := result.LastInsertId()
+						var lastID int64
+						lastID, err = result.LastInsertId()
 						if err != nil {
 							log.Printf("[ERROR] getSubscriptions: Failed to get last insert ID: %v", err)
 							c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
@@ -175,13 +212,9 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 				// Get all podcasts for this user
 				var rows *sql.Rows
 
-				if database.IsPostgreSQLDB() {
-					query = `SELECT FeedURL FROM "Podcasts" WHERE UserID = $1`
-				} else {
-					query = `SELECT FeedURL FROM Podcasts WHERE UserID = ?`
-				}
-
-				rows, err = database.Query(query, userID)
+				cursor := time.Now().Unix() // before the query, so nothing stored meanwhile is skipped
+				libQuery, libArgs := libraryQuery(database, userID)
+				rows, err = database.Query(libQuery, libArgs...)
 
 				if err != nil {
 					log.Printf("[ERROR] getSubscriptions: Error querying podcasts: %v", err)
@@ -238,7 +271,7 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 				response := gin.H{
 					"add":       podcasts,
 					"remove":    []string{},
-					"timestamp": time.Now().Unix(),
+					"timestamp": cursor,
 				}
 
 				debugf("getSubscriptions: Returning initial subscription list with %d podcasts", len(podcasts))
@@ -247,108 +280,69 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 				return
 			}
 
-			// Process actual changes since the timestamp
-			// Query subscriptions added since the given timestamp - simplified for performance
-			var addRows *sql.Rows
-
-			if database.IsPostgreSQLDB() {
-				query = `
-					SELECT s.PodcastURL
-					FROM "GpodderSyncSubscriptions" s
-					WHERE s.UserID = $1
-					AND s.DeviceID != $2
-					AND s.Timestamp > $3
-					AND s.Action = 'add'
-					GROUP BY s.PodcastURL
-					ORDER BY MAX(s.Timestamp) DESC
-					LIMIT $4
-                `
-				debugf("getSubscriptions: Executing add query with limit %d", MAX_SUBSCRIPTION_CHANGES)
-				addRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
-			} else {
-				query = `
-					SELECT s.PodcastURL
-					FROM GpodderSyncSubscriptions s
-					WHERE s.UserID = ?
-					AND s.DeviceID != ?
-					AND s.Timestamp > ?
-					AND s.Action = 'add'
-					GROUP BY s.PodcastURL
-					ORDER BY MAX(s.Timestamp) DESC
-					LIMIT ?
-                `
-				debugf("getSubscriptions: Executing add query with limit %d", MAX_SUBSCRIPTION_CHANGES)
-				addRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
-			}
-
-			if err != nil {
-				log.Printf("[ERROR] getSubscriptions: Error querying podcasts to add: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscription changes"})
-				return
-			}
-			defer addRows.Close()
-
-			// Ensure addList is never nil
-			addList := make([]string, 0)
-			for addRows.Next() {
-				var url string
-				if err := addRows.Scan(&url); err != nil {
-					log.Printf("[ERROR] getSubscriptions: Error scanning podcast URL: %v", err)
-					continue
-				}
-				addList = append(addList, url)
-			}
-
-			// Query subscriptions removed since the given timestamp - simplified for performance
-			var removeRows *sql.Rows
-
-			if database.IsPostgreSQLDB() {
-				query = `
-					SELECT s.PodcastURL
-					FROM "GpodderSyncSubscriptions" s
-					WHERE s.UserID = $1
-					AND s.DeviceID != $2
-					AND s.Timestamp > $3
-					AND s.Action = 'remove'
-					GROUP BY s.PodcastURL
-					ORDER BY MAX(s.Timestamp) DESC
-					LIMIT $4
-                `
-				removeRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
-			} else {
-				query = `
-					SELECT s.PodcastURL
-					FROM GpodderSyncSubscriptions s
-					WHERE s.UserID = ?
-					AND s.DeviceID != ?
-					AND s.Timestamp > ?
-					AND s.Action = 'remove'
-					GROUP BY s.PodcastURL
-					ORDER BY MAX(s.Timestamp) DESC
-					LIMIT ?
-                `
-				removeRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
-			}
-
-			if err != nil {
-				log.Printf("[ERROR] getSubscriptions: Error querying podcasts to remove: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscription changes"})
-				return
-			}
-			defer removeRows.Close()
-
-			// Ensure removeList is never nil
-			removeList := make([]string, 0)
-			for removeRows.Next() {
-				var url string
-				if err := removeRows.Scan(&url); err != nil {
-					log.Printf("[ERROR] getSubscriptions: Error scanning podcast URL: %v", err)
-					continue
-				}
-				removeList = append(removeList, url)
-			}
-
+			// Changes from other devices since the cursor, folded to each URL's final action so a
+			// URL is never in both lists (unsubscribe + resubscribe). Timestamp is the server's
+			// receive time here; the cursor is captured before the query and compared with >=, so
+			// a change stored in the same second as the cursor is sent again rather than lost.
 			timestamp := time.Now().Unix()
+
+			if database.IsPostgreSQLDB() {
+				query = `
+					SELECT s.PodcastURL, s.Action
+					FROM "GpodderSyncSubscriptions" s
+					WHERE s.UserID = $1
+					AND s.DeviceID != $2
+					AND s.Timestamp >= $3
+					ORDER BY s.SubscriptionID ASC
+				`
+			} else {
+				query = `
+					SELECT s.PodcastURL, s.Action
+					FROM GpodderSyncSubscriptions s
+					WHERE s.UserID = ?
+					AND s.DeviceID != ?
+					AND s.Timestamp >= ?
+					ORDER BY s.SubscriptionID ASC
+				`
+			}
+
+			changeRows, err := database.Query(query, userID, deviceID, since)
+			if err != nil {
+				log.Printf("[ERROR] getSubscriptions: Error querying subscription changes: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscription changes"})
+				return
+			}
+			defer changeRows.Close()
+
+			finalAction := make(map[string]string)
+			urlOrder := make([]string, 0)
+			for changeRows.Next() {
+				var url, action string
+				if err := changeRows.Scan(&url, &action); err != nil {
+					log.Printf("[ERROR] getSubscriptions: Error scanning subscription change: %v", err)
+					continue
+				}
+				if _, seen := finalAction[url]; !seen {
+					urlOrder = append(urlOrder, url)
+				}
+				finalAction[url] = action
+			}
+			if err = changeRows.Err(); err != nil {
+				log.Printf("[ERROR] getSubscriptions: Error iterating subscription changes: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscription changes"})
+				return
+			}
+
+			// Ensure lists are never nil
+			addList := make([]string, 0)
+			removeList := make([]string, 0)
+			for _, url := range urlOrder {
+				if finalAction[url] == "remove" {
+					removeList = append(removeList, url)
+				} else {
+					addList = append(addList, url)
+				}
+			}
 
 			// Update device's last sync time
 			if database.IsPostgreSQLDB() {
@@ -431,14 +425,17 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 					    INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsActive, LastSync)
 					    VALUES (?, ?, 'other', true, CURRENT_TIMESTAMP)
 					`
-					result, err := database.Exec(query, userID, deviceName)
+					// Assign the outer err (not a new one) so the check after this branch sees it
+					var result sql.Result
+					result, err = database.Exec(query, userID, deviceName)
 					if err != nil {
 						log.Printf("[ERROR] Error creating device: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
 						return
 					}
 
-					lastID, err := result.LastInsertId()
+					var lastID int64
+					lastID, err = result.LastInsertId()
 					if err != nil {
 						log.Printf("[ERROR] Error getting last insert ID: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
@@ -469,13 +466,8 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 		// Get podcasts for this user
 		var rows *sql.Rows
 
-		if database.IsPostgreSQLDB() {
-			query = `SELECT FeedURL FROM "Podcasts" WHERE UserID = $1`
-		} else {
-			query = `SELECT FeedURL FROM Podcasts WHERE UserID = ?`
-		}
-
-		rows, err = database.Query(query, userID)
+		libQuery, libArgs := libraryQuery(database, userID)
+		rows, err = database.Query(libQuery, libArgs...)
 
 		if err != nil {
 			log.Printf("Error getting podcasts: %v", err)
@@ -603,14 +595,17 @@ func updateSubscriptions(database *db.Database) gin.HandlerFunc {
 					    INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsActive, LastSync)
 					    VALUES (?, ?, 'other', true, CURRENT_TIMESTAMP)
 					`
-					result, err := database.Exec(query, userID, deviceName)
+					// Assign the outer err (not a new one) so the check after this branch sees it
+					var result sql.Result
+					result, err = database.Exec(query, userID, deviceName)
 					if err != nil {
 						log.Printf("Error creating device: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
 						return
 					}
 
-					lastID, err := result.LastInsertId()
+					var lastID int64
+					lastID, err = result.LastInsertId()
 					if err != nil {
 						log.Printf("Error getting last insert ID: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
@@ -639,11 +634,7 @@ func updateSubscriptions(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
 			return
 		}
-		defer func() {
-			if err != nil {
-				tx.Rollback()
-			}
-		}()
+		defer tx.Rollback() // no-op after Commit
 
 		// Get existing subscriptions
 		var rows *sql.Rows
@@ -956,14 +947,17 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 					    INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsActive, LastSync)
 					    VALUES (?, ?, 'other', true, CURRENT_TIMESTAMP)
 					`
-					result, err := database.Exec(query, userID, deviceName)
+					// Assign the outer err (not a new one) so the check after this branch sees it
+					var result sql.Result
+					result, err = database.Exec(query, userID, deviceName)
 					if err != nil {
 						log.Printf("[ERROR] uploadSubscriptionChanges: Error creating device: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
 						return
 					}
 
-					lastID, err := result.LastInsertId()
+					var lastID int64
+					lastID, err = result.LastInsertId()
 					if err != nil {
 						log.Printf("[ERROR] uploadSubscriptionChanges: Error getting last insert ID: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
@@ -995,11 +989,7 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
 			return
 		}
-		defer func() {
-			if err != nil {
-				tx.Rollback()
-			}
-		}()
+		defer tx.Rollback() // no-op after Commit
 
 		// Process subscriptions to add
 		timestamp := time.Now().Unix()
@@ -1034,100 +1024,9 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 				return
 			}
 
-			// Check if podcast already exists for this user
-			var podcastExists bool
-
-			if database.IsPostgreSQLDB() {
-				query = `
-					SELECT EXISTS(SELECT 1 FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2)
-				`
-			} else {
-				query = `
-					SELECT EXISTS(SELECT 1 FROM Podcasts WHERE UserID = ? AND FeedURL = ?)
-				`
-			}
-
-			err = tx.QueryRow(query, userID, cleanURL).Scan(&podcastExists)
-
-			if err != nil {
-				log.Printf("[ERROR] uploadSubscriptionChanges: Error checking podcast existence: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check podcast existence"})
-				return
-			}
-
-			// Add to Podcasts table if it doesn't exist
-			if !podcastExists {
-				// Fetch podcast metadata from the feed
-				podcastValues, err := utils.GetPodcastValues(cleanURL, userID.(int), "", "")
-				if err != nil {
-					log.Printf("[WARNING] uploadSubscriptionChanges: Error fetching podcast metadata from %s: %v", cleanURL, err)
-					// Continue with minimal data if we can't fetch full metadata
-				}
-
-				// Use default values if fetch failed
-				if podcastValues == nil {
-					// Insert minimal data
-					if database.IsPostgreSQLDB() {
-						query = `
-							INSERT INTO "Podcasts" (PodcastName, FeedURL, UserID)
-							VALUES ($1, $2, $3)
-						`
-					} else {
-						query = `
-							INSERT INTO Podcasts (PodcastName, FeedURL, UserID)
-							VALUES (?, ?, ?)
-						`
-					}
-
-					_, err = tx.Exec(query, cleanURL, cleanURL, userID)
-				} else {
-					// Insert with full metadata
-					if database.IsPostgreSQLDB() {
-						query = `
-							INSERT INTO "Podcasts" (
-								PodcastName, ArtworkURL, Author, Categories,
-								Description, EpisodeCount, FeedURL, WebsiteURL,
-								Explicit, UserID
-							)
-							VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-						`
-					} else {
-						query = `
-							INSERT INTO Podcasts (
-								PodcastName, ArtworkURL, Author, Categories,
-								Description, EpisodeCount, FeedURL, WebsiteURL,
-								Explicit, UserID
-							)
-							VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-						`
-					}
-
-					explicit := 0
-					if podcastValues.Explicit {
-						explicit = 1
-					}
-
-					_, err = tx.Exec(
-						query,
-						podcastValues.Title,
-						podcastValues.ArtworkURL,
-						podcastValues.Author,
-						podcastValues.Categories,
-						podcastValues.Description,
-						podcastValues.EpisodeCount,
-						cleanURL,
-						podcastValues.WebsiteURL,
-						explicit,
-						userID,
-					)
-				}
-
-				if err != nil {
-					log.Printf("[ERROR] uploadSubscriptionChanges: Error adding podcast: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add podcast"})
-					return
-				}
-			}
+			// The Podcasts row is added by Pinepods' own sync through its normal add-podcast path
+			// (metadata + episodes). Fetching the feed here blocked the request for up to 15s
+			// per feed inside the transaction, past AntennaPod's 30s timeout (#636).
 
 			// If URL was cleaned, add to updateURLs
 			if cleanURL != url {
@@ -1285,15 +1184,8 @@ func getAllSubscriptions(database *db.Database) gin.HandlerFunc {
 		}
 
 		// Get all podcasts for this user
-		var query string
-
-		if database.IsPostgreSQLDB() {
-			query = `SELECT FeedURL FROM "Podcasts" WHERE UserID = $1`
-		} else {
-			query = `SELECT FeedURL FROM Podcasts WHERE UserID = ?`
-		}
-
-		rows, err := database.Query(query, userID)
+		libQuery, libArgs := libraryQuery(database, userID)
+		rows, err := database.Query(libQuery, libArgs...)
 		if err != nil {
 			log.Printf("Error getting podcasts: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscriptions"})
@@ -1376,13 +1268,16 @@ func getSubscriptionsSimple(database *db.Database) gin.HandlerFunc {
 				        INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsActive, LastSync)
 				        VALUES (?, ?, 'other', true, CURRENT_TIMESTAMP)
 				    `
-					result, err := database.Exec(query, userID, deviceName)
+					// Assign the outer err (not a new one) so the check after this branch sees it
+					var result sql.Result
+					result, err = database.Exec(query, userID, deviceName)
 					if err != nil {
 						log.Printf("Error creating device: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
 						return
 					}
-					lastID, err := result.LastInsertId()
+					var lastID int64
+					lastID, err = result.LastInsertId()
 					if err != nil {
 						log.Printf("Error getting last insert ID: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
@@ -1410,15 +1305,8 @@ func getSubscriptionsSimple(database *db.Database) gin.HandlerFunc {
 		// Get podcasts for this user
 		var rows *sql.Rows
 
-		if database.IsPostgreSQLDB() {
-			rows, err = database.Query(`
-				SELECT FeedURL FROM "Podcasts" WHERE UserID = $1
-			`, userID)
-		} else {
-			rows, err = database.Query(`
-				SELECT FeedURL FROM Podcasts WHERE UserID = ?
-			`, userID)
-		}
+		libQuery, libArgs := libraryQuery(database, userID)
+		rows, err = database.Query(libQuery, libArgs...)
 
 		if err != nil {
 			log.Printf("Error getting podcasts: %v", err)
@@ -1669,11 +1557,7 @@ func updateSubscriptionsSimple(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
 			return
 		}
-		defer func() {
-			if err != nil {
-				tx.Rollback()
-			}
-		}()
+		defer tx.Rollback() // no-op after Commit
 
 		// Get existing subscriptions
 		var rows *sql.Rows

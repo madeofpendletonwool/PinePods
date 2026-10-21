@@ -197,11 +197,7 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
-		defer func() {
-			if err != nil {
-				tx.Rollback()
-			}
-		}()
+		defer tx.Rollback() // no-op after Commit
 
 		// Check if device exists
 		var deviceID int
@@ -237,7 +233,9 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 					query = `INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, DeviceCaption, IsActive, LastSync)
                      VALUES (?, ?, ?, ?, true, ?)`
 
-					result, err := tx.Exec(query, userID, deviceName, req.Type, req.Caption, time.Now())
+					// Assign the outer err (not a new one) so the check after this branch sees it
+					var result sql.Result
+					result, err = tx.Exec(query, userID, deviceName, req.Type, req.Caption, time.Now())
 					if err != nil {
 						log.Printf("[ERROR] updateDeviceData: Error creating device: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
@@ -245,7 +243,8 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 					}
 
 					// Get the last inserted ID
-					lastID, err := result.LastInsertId()
+					var lastID int64
+					lastID, err = result.LastInsertId()
 					if err != nil {
 						log.Printf("[ERROR] updateDeviceData: Error getting last insert ID: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get device ID"})
@@ -359,11 +358,7 @@ func getDeviceUpdates(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to begin transaction"})
 			return
 		}
-		defer func() {
-			if err != nil {
-				tx.Rollback()
-			}
-		}()
+		defer tx.Rollback() // no-op after Commit
 
 		// Get or create the device
 		var deviceID int
@@ -400,14 +395,17 @@ func getDeviceUpdates(database *db.Database) gin.HandlerFunc {
 						INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsActive, LastSync)
 						VALUES (?, ?, 'other', true, ?)
 					`
-					result, err := tx.Exec(query, userID, deviceName, time.Now())
+					// Assign the outer err (not a new one) so the check after this branch sees it
+					var result sql.Result
+					result, err = tx.Exec(query, userID, deviceName, time.Now())
 					if err != nil {
 						log.Printf("Error creating device: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
 						return
 					}
 
-					lastID, err := result.LastInsertId()
+					var lastID int64
+					lastID, err = result.LastInsertId()
 					if err != nil {
 						log.Printf("Error getting last insert ID: %v", err)
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get device ID"})

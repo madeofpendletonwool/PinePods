@@ -30,7 +30,7 @@ async fn device_list_parses_in_antennapod() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn first_sync_of_an_empty_account_parses() {
-    conformance("G8 first sync", Known::GoMariaDb, async {
+    conformance("G8 first sync", Known::None, async {
         let s = GpodderScene::start().await;
         let phone = s.device("phone").await;
         assert_subscription_changes(&phone.subscription_changes(0).await.ok_json());
@@ -41,7 +41,7 @@ async fn first_sync_of_an_empty_account_parses() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn play_action_round_trips_for_antennapod() {
-    conformance("G11 play round-trip", Known::Go, async {
+    conformance("G11 play round-trip", Known::None, async {
         let s = GpodderScene::start().await;
         let phone = s.device("phone").await;
         let up = phone.upload_episode_actions(&[play_action(POD, EP, t0(), 0, 600, 1800)]).await;
@@ -62,7 +62,7 @@ async fn play_action_round_trips_for_antennapod() {
 /// resume there rather than reset to 0 (R4, #636).
 #[tokio::test(flavor = "multi_thread")]
 async fn play_without_started_or_total_still_resumes_in_antennapod() {
-    conformance("R4 play fields", Known::Go, async {
+    conformance("R4 play fields", Known::None, async {
         let s = GpodderScene::start().await;
         let desktop = s.device("desktop").await;
         let mut a = play_action(POD, EP, t0(), 0, 600, 0);
@@ -83,7 +83,7 @@ async fn play_without_started_or_total_still_resumes_in_antennapod() {
 /// reads correctly.
 #[tokio::test(flavor = "multi_thread")]
 async fn uploaded_timestamps_come_back_as_utc() {
-    conformance("G11 timestamps", Known::Go, async {
+    conformance("G11 timestamps", Known::None, async {
         let s = GpodderScene::start().await;
         let phone = s.device("phone").await;
         let mut offset = play_action(POD, "https://cdn.example.test/show/offset.mp3", t0(), 0, 60, 600);
@@ -105,7 +105,7 @@ async fn uploaded_timestamps_come_back_as_utc() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn subscription_upload_is_seen_by_other_devices() {
-    conformance("G8 subscriptions", Known::GoMariaDb, async {
+    conformance("G8 subscriptions", Known::None, async {
         let s = GpodderScene::start().await;
         let feed = s.app.feed("sub.xml", &Feed::with_episodes("Sub", 1));
         let phone = s.device("phone").await;
@@ -173,7 +173,7 @@ async fn simple_api_serves_every_format() {
 /// A rejected request gets one 401 with one JSON body, and its handler never runs.
 #[tokio::test(flavor = "multi_thread")]
 async fn wrong_password_is_one_clean_401() {
-    conformance("G3 auth", Known::Go, async {
+    conformance("G3 auth", Known::None, async {
         let s = GpodderScene::start().await;
         let u = &s.user.username;
         let intruder = GpodderClient::new(&s.server.base_url, u, "not-the-password", "phone");
@@ -204,7 +204,7 @@ async fn wrong_password_is_one_clean_401() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn no_credentials_is_401() {
-    conformance("G3 anonymous", Known::Go, async {
+    conformance("G3 anonymous", Known::None, async {
         let s = GpodderScene::start().await;
         let anon = GpodderClient::new(&s.server.base_url, &s.user.username, "", "phone");
         let r = anon.episode_actions(0).await;
@@ -217,7 +217,7 @@ async fn no_credentials_is_401() {
 /// Another user's password or session can't read or write this user's data.
 #[tokio::test(flavor = "multi_thread")]
 async fn other_users_credentials_are_refused() {
-    conformance("G3 cross-user", Known::GoMariaDb, async {
+    conformance("G3 cross-user", Known::None, async {
         let s = GpodderScene::start().await;
         let owner = s.device("phone").await;
         owner.upload_episode_actions(&[play_action(POD, EP, t0(), 0, 600, 1800)]).await;
