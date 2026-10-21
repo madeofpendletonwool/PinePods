@@ -9,7 +9,9 @@ use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::components::loading::Loading;
+use crate::components::people::{AddPeopleSheet, PeopleLayout, PeopleStrip};
 use crate::components::safehtml::SafeHtml;
+use crate::requests::people_req::{call_get_episode_people, CreditedPerson};
 use crate::requests::pod_req;
 use crate::requests::pod_req::{
     call_check_podcast, call_create_share_link, call_download_episode, call_download_episode_file,
@@ -34,7 +36,7 @@ use web_sys::UrlSearchParams;
 use web_sys::{window, Headers, Request, RequestInit, Response};
 use yew::prelude::*;
 use yew::{function_component, html, Html};
-use yew_router::history::{BrowserHistory, History};
+use yew_router::history::BrowserHistory;
 use yew_router::hooks::use_location;
 use yewdux::prelude::*;
 
@@ -1087,7 +1089,7 @@ pub fn mobile_transcript_actions(props: &MobileTranscriptActionsProps) -> Html {
 #[function_component(Episode)]
 pub fn epsiode() -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, dispatch) = use_store::<AppState>();
     let (episode_detail_state, _) = use_store::<EpisodeDetailState>();
     let (prefs_state, _) = use_store::<UserPreferencesState>();
 
@@ -1140,8 +1142,6 @@ pub fn epsiode() -> Html {
     let i18n_cover_alt_text = i18n.t("episode.cover_alt_text").to_string();
     let i18n_failed_to_find_podcast_metadata =
         i18n.t("failed_to_find_podcast_metadata").to_string();
-    let i18n_no_hosts_found = i18n.t("host_component.no_hosts_found").to_string();
-    let i18n_add_hosts_here = i18n.t("host_component.add_hosts_here").to_string();
 
     let (app_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
@@ -1156,6 +1156,13 @@ pub fn epsiode() -> Html {
 
     //let episode_id = state.selected_episode_id.clone();
     let ep_in_db = use_state(|| false);
+    let show_add_people = use_state(|| false);
+    let open_add_people = {
+        let show_add_people = show_add_people.clone();
+        Callback::from(move |_: ()| show_add_people.set(true))
+    };
+    let episode_people_loaded = audio_state.episode_page_people.is_some();
+    let episode_people_rc = Rc::new(audio_state.episode_page_people.clone().unwrap_or_default());
     let ep_2_loading = use_state(|| true);
 
     // Whether the optional AI sidecar is connected — gates the Transcript tab + generate action.
@@ -1225,12 +1232,27 @@ pub fn epsiode() -> Html {
             };
             let ep_2_loading = ep_2_loading.clone();
 
+            // People are a quick DB read; the 2.0 data below can wait on a remote chapters file,
+            // so they're fetched on their own and show up with the page.
+            audio_dispatch.reduce_mut(|state| state.episode_page_people = None);
+            {
+                let audio_dispatch = audio_dispatch.clone();
+                let server_name = server_name.clone();
+                let api_key = api_key.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let Some(key) = api_key.as_deref() else { return };
+                    match call_get_episode_people(&server_name, key, episode_id).await {
+                        Ok(people) => audio_dispatch.reduce_mut(|state| state.episode_page_people = Some(people)),
+                        Err(e) => web_sys::console::log_1(&format!("Error fetching episode people: {}", e).into()),
+                    }
+                });
+            }
+
             wasm_bindgen_futures::spawn_local(async move {
                 match call_fetch_podcasting_2_data(&server_name, &api_key, &chap_request).await {
                     Ok(response) => {
                         audio_dispatch.reduce_mut(|state| {
                             state.episode_page_transcript = Some(response.transcripts);
-                            state.episode_page_people = Some(response.people);
                             state.episode_page_chapters = Some(response.chapters);
                         });
                         ep_2_loading.set(false);
@@ -1241,7 +1263,6 @@ pub fn epsiode() -> Html {
                         );
                         audio_dispatch.reduce_mut(|state| {
                             state.episode_page_transcript = None;
-                            state.episode_page_people = None;
                             state.episode_page_chapters = None;
                         });
                         ep_2_loading.set(false);
@@ -2236,8 +2257,6 @@ pub fn epsiode() -> Html {
                         };
 
                         let layout = if audio_state.is_mobile.unwrap_or(false) {
-                            let server_for_proxy = server_name.clone().unwrap_or_default();
-                            let history_for_host = history.clone();
                             html! {
                                 <div class="mobile-layout ep-mobile-page">
 
@@ -2351,67 +2370,18 @@ pub fn epsiode() -> Html {
                                         }
                                     }}
 
-                                    // ── Host strip ──
-                                    { if !*ep_2_loading {
-                                        if let Some(people) = &audio_state.episode_page_people {
-                                            if !people.is_empty() {
-                                                let has_unknown_host = people.len() == 1
-                                                    && people[0].name == "Unknown Host"
-                                                    && people[0].role == Some("Host".to_string());
-                                                if has_unknown_host {
-                                                    let people_url = state.server_details.as_ref()
-                                                        .and_then(|sd| sd.people_url.as_ref())
-                                                        .cloned()
-                                                        .unwrap_or_default();
-                                                    let host_url = format!("{}/podcast/{}", people_url, episode.podcastid);
-                                                    html! {
-                                                        <div class="ep-mobile-hosts">
-                                                            <p class="ep-mobile-section-label">{ &i18n_in_this_episode }</p>
-                                                            <p class="ep-mobile-no-hosts-msg">
-                                                                { i18n_no_hosts_found.clone() }
-                                                                <a href={host_url} target="_blank" class="ep-mobile-no-hosts-link">
-                                                                    { i18n_add_hosts_here.clone() }
-                                                                </a>
-                                                            </p>
-                                                        </div>
-                                                    }
-                                                } else {
-                                                    let server = server_for_proxy.clone();
-                                                    html! {
-                                                        <div class="ep-mobile-hosts">
-                                                            <p class="ep-mobile-section-label">{ &i18n_in_this_episode }</p>
-                                                            <div class="ep-mobile-hosts-scroll">
-                                                            { for people.iter().map(|person| {
-                                                                let name = person.name.clone();
-                                                                let role = person.role.clone();
-                                                                let img_url = person.img.as_ref().map(|url| {
-                                                                    format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
-                                                                });
-                                                                let hist = history_for_host.clone();
-                                                                let nav_name = name.clone();
-                                                                let on_chip_click = Callback::from(move |_: MouseEvent| {
-                                                                    hist.push(format!("/person/{}", nav_name));
-                                                                });
-                                                                html! {
-                                                                    <div class="ep-mobile-host-chip" onclick={on_chip_click}>
-                                                                        { if let Some(src) = img_url {
-                                                                            html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
-                                                                        } else {
-                                                                            html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
-                                                                        }}
-                                                                        <span class="ep-mobile-host-name">{ &person.name }</span>
-                                                                        { if let Some(r) = &role {
-                                                                            html! { <span class="ep-mobile-host-role">{ r }</span> }
-                                                                        } else { html! {} }}
-                                                                    </div>
-                                                                }
-                                                            })}
-                                                            </div>
-                                                        </div>
-                                                    }
-                                                }
-                                            } else { html! {} }
-                                        } else { html! {} }
+                                    // ── People ──
+                                    { if *ep_in_db && !episode.is_youtube {
+                                        html! {
+                                            <PeopleStrip
+                                                people={episode_people_rc.clone()}
+                                                layout={PeopleLayout::Chips}
+                                                label={i18n_in_this_episode.clone()}
+                                                on_add={episode_people_loaded.then(|| open_add_people.clone())}
+                                                empty_text={i18n.t("people.none_on_episode")}
+                                                class={classes!("ep-mobile-hosts")}
+                                            />
+                                        }
                                     } else { html! {} }}
 
                                     // ── Transcript (built-in + AI, #726) ──
@@ -2595,7 +2565,9 @@ pub fn epsiode() -> Html {
                                         // The Transcript tab is available if there's a built-in transcript OR the AI
                                         // sidecar is connected (so the user can generate one).
                                         let has_transcript = has_feed_transcript || *ai_available;
-                                        let has_people = !*ep_2_loading && audio_state.episode_page_people.as_ref().map_or(false, |p| !p.is_empty());
+                                        // Always offered for library episodes, so people can be added when none are listed.
+                                        let has_people = *ep_in_db && !episode.is_youtube && episode_people_loaded;
+                                        let people_count = episode_people_rc.len();
                                         let effective_tab = match *active_tab {
                                             EpisodeTab::Chapters if has_chapters => EpisodeTab::Chapters,
                                             EpisodeTab::Transcript if has_transcript => EpisodeTab::Transcript,
@@ -2620,7 +2592,7 @@ pub fn epsiode() -> Html {
                                                 { tab_btn(EpisodeTab::Notes, "ph-note", i18n.t("episode.episode_notes").to_string(), None) }
                                                 { if has_chapters { tab_btn(EpisodeTab::Chapters, "ph-list-numbers", i18n.t("audio.chapters").to_string(), Some(chapter_count)) } else { html! {} } }
                                                 { if has_transcript { tab_btn(EpisodeTab::Transcript, "ph-scroll", i18n_transcript.clone(), None) } else { html! {} } }
-                                                { if has_people { tab_btn(EpisodeTab::People, "ph-users-three", i18n_in_this_episode.clone(), None) } else { html! {} } }
+                                                { if has_people { tab_btn(EpisodeTab::People, "ph-users-three", i18n_in_this_episode.clone(), (people_count > 0).then_some(people_count)) } else { html! {} } }
                                             </div>
 
                                             { match effective_tab {
@@ -2741,69 +2713,35 @@ pub fn epsiode() -> Html {
                                                         ai_available={*ai_available}
                                                     />
                                                 },
-                                                EpisodeTab::People => {
-                                                    if let Some(people) = &audio_state.episode_page_people {
-                                                        let has_unknown_host = people.len() == 1
-                                                            && people[0].name == "Unknown Host"
-                                                            && people[0].role == Some("Host".to_string());
-                                                        if has_unknown_host {
-                                                            let people_url = state.server_details.as_ref()
-                                                                .and_then(|sd| sd.people_url.as_ref())
-                                                                .cloned()
-                                                                .unwrap_or_default();
-                                                            let host_url = format!("{}/podcast/{}", people_url, episode.podcastid);
-                                                            html! {
-                                                                <div class="ep-pane">
-                                                                    <p class="ep-nohosts-msg">
-                                                                        { i18n_no_hosts_found.clone() }
-                                                                        <a href={host_url} target="_blank" class="ep-nohosts-link">
-                                                                            { i18n_add_hosts_here.clone() }
-                                                                        </a>
-                                                                    </p>
-                                                                </div>
-                                                            }
-                                                        } else {
-                                                            let server = server_name.clone().unwrap_or_default();
-                                                            html! {
-                                                                <div class="ep-pane">
-                                                                    <div class="ep-people">
-                                                                        { for people.iter().map(|person| {
-                                                                            let name = person.name.clone();
-                                                                            let role = person.role.clone();
-                                                                            let img_url = person.img.as_ref().map(|url| {
-                                                                                format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
-                                                                            });
-                                                                            let hist = history.clone();
-                                                                            let nav_name = name.clone();
-                                                                            let on_chip_click = Callback::from(move |_: MouseEvent| {
-                                                                                hist.push(format!("/person/{}", nav_name));
-                                                                            });
-                                                                            html! {
-                                                                                <div class="ep-person" onclick={on_chip_click} title={name.clone()}>
-                                                                                    { if let Some(src) = img_url {
-                                                                                        html! { <img src={src} alt={name.clone()} class="ep-person-avatar" /> }
-                                                                                    } else {
-                                                                                        html! { <div class="ep-person-avatar ep-person-avatar-ph"><i class="ph ph-user"></i></div> }
-                                                                                    } }
-                                                                                    <div class="ep-person-body">
-                                                                                        <div class="ep-person-name">{ &person.name }</div>
-                                                                                        { if let Some(r) = &role {
-                                                                                            html! { <span class="ep-person-role">{ r }</span> }
-                                                                                        } else { html! {} } }
-                                                                                    </div>
-                                                                                </div>
-                                                                            }
-                                                                        }) }
-                                                                    </div>
-                                                                </div>
-                                                            }
-                                                        }
-                                                    } else { html! {} }
+                                                EpisodeTab::People => html! {
+                                                    <div class="ep-pane">
+                                                        <PeopleStrip
+                                                            people={episode_people_rc.clone()}
+                                                            layout={PeopleLayout::Cards}
+                                                            on_add={Some(open_add_people.clone())}
+                                                            empty_text={i18n.t("people.none_on_episode")}
+                                                        />
+                                                    </div>
                                                 },
                                             } }
                                             </>
                                         }
                                     }}
+
+                                    { if *show_add_people && *ep_in_db {
+                                        let show_add_people = show_add_people.clone();
+                                        let dispatch = audio_dispatch.clone();
+                                        html! {
+                                            <AddPeopleSheet
+                                                podcast_id={episode.podcastid}
+                                                episode_id={Some(episode.episodeid)}
+                                                on_close={Callback::from(move |_: ()| show_add_people.set(false))}
+                                                on_added={Callback::from(move |people: Vec<CreditedPerson>| {
+                                                    dispatch.reduce_mut(|state| state.episode_page_people = Some(people));
+                                                })}
+                                            />
+                                        }
+                                    } else { html! {} } }
 
                                     // ===== TRANSCRIPT MODAL =====
                                     { if let Some(show_modal) = episode_detail_state.show_transcript_modal {

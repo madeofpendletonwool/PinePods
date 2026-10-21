@@ -605,7 +605,13 @@ pub async fn search(db: &DatabasePool, api: &Endpoints, user_id: i32, query: &st
     match remote {
         Ok(remote) => {
             for r in remote {
-                if let Some(local) = hits.iter_mut().find(|h| h.podpeople_id == Some(r.id)) {
+                // A local person not linked to PodPeopleDB yet (feed credits before the next sync)
+                // is the same entry as a same-named remote hit, not a second suggestion.
+                let linked = hits.iter().position(|h| h.podpeople_id == Some(r.id)).or_else(|| {
+                    hits.iter().position(|h| h.podpeople_id.is_none() && h.name.eq_ignore_ascii_case(&r.name))
+                });
+                if let Some(local) = linked.map(|i| &mut hits[i]) {
+                    local.podpeople_id = Some(r.id);
                     local.known_for = r.known_for;
                     if local.img.is_none() {
                         local.img = r.img;

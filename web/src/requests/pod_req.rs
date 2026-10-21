@@ -4,6 +4,7 @@ use crate::components::context::{NotificationState, PageLoadState};
 use crate::requests::cache;
 use crate::components::notification_center::TaskProgress;
 use crate::requests::episode::Episode;
+use crate::requests::people_req::CreditedPerson;
 use futures::StreamExt;
 use gloo::net::websocket::WebSocketError;
 use gloo::net::websocket::{futures::WebSocket, Message};
@@ -1740,22 +1741,11 @@ pub struct Transcript {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub struct Person {
-    pub name: String,
-    pub role: Option<String>,
-    pub group: Option<String>,
-    pub img: Option<String>,
-    pub href: Option<String>,
-    pub id: Option<i32>,
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
 pub struct Podcasting2Data {
     pub chapters: Vec<Chapter>,
     pub transcripts: Vec<Transcript>,
-    pub people: Vec<Person>,
+    #[serde(default)]
+    pub people: Vec<CreditedPerson>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1837,7 +1827,10 @@ pub struct Value {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct Podcasting2PodData {
-    pub people: Vec<Person>,
+    #[serde(default)]
+    pub people: Vec<CreditedPerson>,
+    #[serde(default)]
+    pub guests: Vec<CreditedPerson>,
     pub podroll: Vec<PodrollItem>,
     pub funding: Vec<Funding>,
     pub value: Vec<Value>,

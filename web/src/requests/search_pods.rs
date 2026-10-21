@@ -338,60 +338,6 @@ pub async fn call_get_person_info(
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct PodPeoplePodcast {
-    pub podcastid: i32,
-    pub podcastname: String,
-    pub feedurl: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PodPeopleResponse {
-    pub success: bool,
-    pub podcasts: Vec<PodPeoplePodcast>,
-}
-
-// New function to call podpeople API
-#[allow(dead_code)]
-pub async fn call_get_podpeople_podcasts(
-    hostname: &String,
-    api_url: &Option<String>,
-    api_key: &str,
-) -> Result<PodPeopleResponse, anyhow::Error> {
-    let url = if let Some(base_url) = api_url {
-        format!(
-            "{}/api/data/podpeople/host_podcasts?hostname={}",
-            base_url, hostname
-        )
-    } else {
-        return Err(anyhow::Error::msg("API URL is not provided"));
-    };
-
-    let response = Request::get(&url)
-        .header("Content-Type", "application/json")
-        .header("Api-Key", api_key)
-        .send()
-        .await
-        .map_err(|err| anyhow::Error::new(err))?;
-
-    if response.ok() {
-        let response_text = response
-            .text()
-            .await
-            .map_err(|err| anyhow::Error::new(err))?;
-
-        web_sys::console::log_1(&JsValue::from_str(&response_text));
-
-        let podpeople_results: PodPeopleResponse = serde_json::from_str(&response_text)?;
-        Ok(podpeople_results)
-    } else {
-        Err(anyhow::Error::msg(format!(
-            "Failed to fetch podpeople podcasts: {}",
-            response.status_text()
-        )))
-    }
-}
-
 pub async fn test_connection(search_api_url: &Option<String>) -> Result<(), Error> {
     let url = search_api_url
         .as_ref()

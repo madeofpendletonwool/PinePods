@@ -9,11 +9,12 @@ use crate::requests::login_requests::GetApiDetails;
 use crate::requests::pod_req::PodcastResponseExtra;
 
 use crate::requests::pod_req::{
-    Chapter, Funding, HomeOverview, Person, Playlist, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
+    Chapter, Funding, HomeOverview, Playlist, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
     RefreshProgress, SharedEpisodeResponse, Transcript, Value,
 };
+use crate::requests::people_req::CreditedPerson;
 use crate::requests::search_pods::{
-    PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse, YouTubeChannel,
+    PodcastFeedResult, PodcastSearchResult, SearchResponse, YouTubeChannel,
     YouTubeSearchResults,
 };
 use crate::requests::stat_reqs::{UserStats, ExtendedUserStats};
@@ -126,7 +127,6 @@ pub struct EpisodeDetailState {
 pub struct SearchState {
     pub search_results: Option<PodcastSearchResult>,
     pub podcast_feed_results: Option<PodcastFeedResult>,
-    pub people_feed_results: Option<PeopleFeedResult>,
     pub search_episodes: Option<SearchResponse>,
     pub youtube_search_results: Option<YouTubeSearchResults>,
     pub selected_youtube_channel: Option<YouTubeChannel>,
@@ -495,10 +495,11 @@ pub struct UIState {
     pub current_chapter_index: Option<usize>,
     // Auto-skip ranges (silence #727; later ads #790) for the currently-playing episode.
     pub skip_segments: Option<Vec<crate::requests::pod_req::SkipSegment>>,
-    pub podcast_people: Option<Vec<Person>>,
-    pub episode_people: Option<Vec<Person>>,
+    pub podcast_people: Option<Vec<CreditedPerson>>,
+    pub podcast_guests: Option<Vec<CreditedPerson>>,
+    pub episode_people: Option<Vec<CreditedPerson>>,
     pub episode_transcript: Option<Vec<Transcript>>,
-    pub episode_page_people: Option<Vec<Person>>,
+    pub episode_page_people: Option<Vec<CreditedPerson>>,
     pub episode_page_transcript: Option<Vec<Transcript>>,
     pub episode_page_chapters: Option<Vec<Chapter>>,
     pub podcast_funding: Option<Vec<Funding>>,

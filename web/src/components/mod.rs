@@ -5,7 +5,7 @@ pub(crate) mod context_menu_button;
 pub(crate) mod collection_picker_modal;
 pub(crate) mod episode_list_item;
 pub(crate) mod episode_list_view;
-pub(crate) mod host_component;
+pub(crate) mod people;
 pub(crate) mod loading;
 pub mod misc_func;
 pub(crate) mod navigation;
