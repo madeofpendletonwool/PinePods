@@ -10,6 +10,7 @@ mod auth_coverage;
 mod cross_user;
 mod feeds;
 mod foreign_resources;
+mod gpodder;
 mod library;
 mod opml;
 mod people;
