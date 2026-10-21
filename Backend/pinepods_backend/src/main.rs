@@ -13,6 +13,8 @@ use std::collections::{HashMap, HashSet};
 use tokio::process::Command;
 use chrono;
 
+mod youtube_data_api;
+
 #[derive(Deserialize)]
 struct SearchQuery {
     query: Option<String>,
@@ -183,7 +185,10 @@ async fn search_handler(
         client.get(&itunes_search_url).send().await
     } else if index == "youtube" {
         hit_counters.increment_youtube();
-        return search_youtube_channels(&search_term).await;
+        return match youtube_data_api::api_key() {
+            Some(key) => youtube_data_api::search_channels(&search_term, &key).await,
+            None => search_youtube_channels(&search_term).await,
+        };
     } else {
         // Podcast Index API search
         hit_counters.increment_podcast_index();
@@ -443,6 +448,10 @@ async fn youtube_channel_handler(
 ) -> impl Responder {
     println!("youtube_channel_handler called for channel: {}", query.id);
     hit_counters.increment_youtube();
+
+    if let Some(key) = youtube_data_api::api_key() {
+        return youtube_data_api::channel_details(&query.id, &key).await;
+    }
 
     let channel_url = format!("https://www.youtube.com/channel/{}/videos", query.id);
     let output = Command::new("yt-dlp")
