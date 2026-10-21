@@ -1,0 +1,8 @@
+# Python deps the integration harness needs to run the real schema migrations
+# (database_functions/) into its template database. Production uses the `mariadb`
+# connector; the pure-Python mysql connector is the portable fallback migrations.py
+# already supports, so local runs don't need MariaDB Connector/C installed.
+psycopg[binary]
+argon2_cffi
+cryptography
+mysql-connector-python

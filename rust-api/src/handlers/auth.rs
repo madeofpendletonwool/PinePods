@@ -76,7 +76,9 @@ pub struct UserDetails {
     pub Fullname: Option<String>,
     pub Username: Option<String>,
     pub Email: Option<String>,
+    /// Always null: the password hash is never sent to clients. Kept for response compatibility.
     pub Hashed_PW: Option<String>,
+    /// Always null; kept for response compatibility.
     pub Salt: Option<String>,
 }
 

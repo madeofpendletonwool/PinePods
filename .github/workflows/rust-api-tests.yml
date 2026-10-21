@@ -1,0 +1,104 @@
+name: rust-api tests
+
+permissions:
+  contents: read
+
+# Unit tests plus the integration suite (rust-api/tests/integration): the real router
+# against real, freshly migrated Postgres and MariaDB databases and Valkey. Also triggered
+# by migration changes, since the suite builds its schema from database_functions/.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'rust-api/**'
+      - 'database_functions/**'
+      - 'startup/setup_database_new.py'
+      - '.github/workflows/rust-api-tests.yml'
+  pull_request:
+    paths:
+      - 'rust-api/**'
+      - 'database_functions/**'
+      - 'startup/setup_database_new.py'
+      - '.github/workflows/rust-api-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.db }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [postgresql, mariadb]
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pinepods
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: postgres
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U pinepods"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: testpass
+        ports:
+          - 33307:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 56380:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-api
+
+      - name: Set up Python (schema migrations)
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install migration dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qy libmariadb-dev
+          python -m pip install -q -r rust-api/tests/requirements.txt
+          # Production runs migrations with the mariadb connector; use it here too.
+          python -m pip install -q mariadb
+
+      - name: Unit tests
+        working-directory: rust-api
+        run: cargo test --lib --bins
+
+      - name: Integration tests (${{ matrix.db }})
+        working-directory: rust-api
+        env:
+          PINEPODS_TEST_EXTERNAL_SERVICES: "1"
+          PINEPODS_TEST_PYTHON: python
+        run: scripts/integration-tests.sh --db ${{ matrix.db }}

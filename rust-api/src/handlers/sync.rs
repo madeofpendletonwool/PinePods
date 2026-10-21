@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::AppError,
-    handlers::{extract_api_key, validate_api_key},
+    handlers::{extract_api_key, require_valid_api_key},
     AppState,
 };
 
@@ -35,7 +35,7 @@ pub async fn gpodder_set_default(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let success = state.db_pool.gpodder_set_default_device_by_name(user_id, &device_name).await?;
@@ -70,7 +70,7 @@ pub async fn gpodder_get_user_devices(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or own user
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -101,7 +101,7 @@ pub async fn gpodder_get_all_devices(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let devices = state.db_pool.gpodder_get_user_devices(user_id).await?;
@@ -125,7 +125,7 @@ pub async fn gpodder_force_sync(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
@@ -223,7 +223,7 @@ pub async fn gpodder_sync(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
@@ -262,7 +262,7 @@ pub async fn gpodder_status(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let status = state.db_pool.gpodder_get_status(user_id).await?;
@@ -295,7 +295,7 @@ pub async fn gpodder_toggle(
     Json(request): Json<UpdateGpodderSyncRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
@@ -393,7 +393,7 @@ pub async fn gpodder_test_connection(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = params.get("user_id")
         .ok_or_else(|| AppError::bad_request("Missing user_id parameter"))?
@@ -466,7 +466,7 @@ pub async fn gpodder_get_default_device(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let default_device = state.db_pool.gpodder_get_default_device(user_id).await?;
@@ -500,7 +500,7 @@ pub async fn gpodder_create_device(
     Json(request): Json<CreateDeviceRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
@@ -600,7 +600,7 @@ pub async fn gpodder_get_statistics(
     headers: HeaderMap,
 ) -> Result<Json<GpodderStatistics>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     

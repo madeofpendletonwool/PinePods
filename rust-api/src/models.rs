@@ -31,8 +31,12 @@ pub struct CreatePlaylistRequest {
     pub play_progress_min: Option<f64>,
     pub play_progress_max: Option<f64>,
     pub time_filter_hours: Option<i32>,
+    /// Minimum episode length in **minutes** (stored, and returned by get_playlists, in seconds).
     pub min_duration: Option<i32>,
+    /// Maximum episode length in **minutes** (stored, and returned by get_playlists, in seconds).
     pub max_duration: Option<i32>,
+    /// One of date_asc, date_desc, duration_asc, duration_desc, listen_progress, completion.
+    #[schema(example = "date_desc")]
     pub sort_order: String,
     pub group_by_podcast: bool,
     pub max_episodes: Option<i32>,
@@ -69,8 +73,12 @@ pub struct UpdatePlaylistRequest {
     pub play_progress_min: Option<f64>,
     pub play_progress_max: Option<f64>,
     pub time_filter_hours: Option<i32>,
+    /// Minimum episode length in **minutes** (stored, and returned by get_playlists, in seconds).
     pub min_duration: Option<i32>,
+    /// Maximum episode length in **minutes** (stored, and returned by get_playlists, in seconds).
     pub max_duration: Option<i32>,
+    /// One of date_asc, date_desc, duration_asc, duration_desc, listen_progress, completion.
+    #[schema(example = "date_desc")]
     pub sort_order: String,
     pub group_by_podcast: bool,
     pub max_episodes: Option<i32>,

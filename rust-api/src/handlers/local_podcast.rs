@@ -12,7 +12,7 @@ use tracing::{info};
 
 use crate::{
     error::AppError,
-    handlers::{extract_api_key, validate_api_key},
+    handlers::{extract_api_key, require_valid_api_key},
     AppState,
 };
 
@@ -286,7 +286,7 @@ pub async fn add_local_podcast(
     Json(request): Json<AddLocalPodcastRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id_from_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -364,7 +364,7 @@ pub async fn refresh_local_podcast(
     Json(request): Json<RefreshLocalPodcastRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id_from_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -439,7 +439,7 @@ pub async fn add_local_podcast_artwork(
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let mut podcast_id: Option<i32> = None;
     let mut user_id: Option<i32> = None;
@@ -577,7 +577,7 @@ pub async fn detect_local_cover(
     Query(query): Query<ListLocalDirectoriesQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     if query.path.trim().is_empty() {
         return Ok(Json(serde_json::json!({ "artwork_url": serde_json::Value::Null })));
@@ -617,7 +617,7 @@ pub async fn list_local_directories(
     Query(query): Query<ListLocalDirectoriesQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Resolve the directory to list. Empty path = the local-media root (create it if it
     // does not exist yet so first-time users get an empty list rather than an error).

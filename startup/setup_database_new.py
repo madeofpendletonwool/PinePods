@@ -74,8 +74,8 @@ def wait_for_mysql_ready():
     try:
         import mariadb as mysql_connector
     except ImportError:
-        import mysql.connector
-    
+        import mysql.connector as mysql_connector
+
     db_host = os.environ.get("DB_HOST", "127.0.0.1")
     db_port = int(os.environ.get("DB_PORT", "3306"))
     db_user = os.environ.get("DB_USER", "root")

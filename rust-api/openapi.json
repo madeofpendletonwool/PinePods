@@ -2986,33 +2986,6 @@
         ]
       }
     },
-    "/api/data/enable_disable_guest": {
-      "post": {
-        "tags": [
-          "settings"
-        ],
-        "summary": "Enable disable guest",
-        "operationId": "enable_disable_guest",
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
-          }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
-      }
-    },
     "/api/data/enable_disable_self_service": {
       "post": {
         "tags": [
@@ -3892,16 +3865,8 @@
                 }
               }
             }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
           }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
+        }
       }
     },
     "/api/data/get_default_volume": {
@@ -4953,16 +4918,8 @@
                 "schema": {}
               }
             }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
           }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
+        }
       }
     },
     "/api/data/get_silence_trim": {
@@ -5233,6 +5190,17 @@
         ],
         "summary": "Get user language",
         "operationId": "get_user_language",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -5343,35 +5311,6 @@
             "content": {
               "application/json": {
                 "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid or missing API key"
-          }
-        },
-        "security": [
-          {
-            "api_key": []
-          }
-        ]
-      }
-    },
-    "/api/data/guest_status": {
-      "get": {
-        "tags": [
-          "settings"
-        ],
-        "summary": "Guest status",
-        "operationId": "guest_status",
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "type": "boolean"
-                }
               }
             }
           },
@@ -7727,7 +7666,7 @@
         "operationId": "remove_oidc_provider",
         "requestBody": {
           "content": {
-            "text/plain": {
+            "application/json": {
               "schema": {
                 "type": "integer",
                 "format": "int32"
@@ -12859,17 +12798,21 @@
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Minimum episode length in **minutes** (stored, and returned by get_playlists, in seconds)."
           },
           "max_duration": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Maximum episode length in **minutes** (stored, and returned by get_playlists, in seconds)."
           },
           "sort_order": {
-            "type": "string"
+            "type": "string",
+            "description": "One of date_asc, date_desc, duration_asc, duration_desc, listen_progress, completion.",
+            "example": "date_desc"
           },
           "group_by_podcast": {
             "type": "boolean"
@@ -13309,8 +13252,8 @@
             "type": "string"
           },
           "server_port": {
-            "type": "integer",
-            "format": "int32"
+            "type": "string",
+            "example": "587"
           },
           "from_email": {
             "type": "string"
@@ -13322,8 +13265,7 @@
             "type": "string"
           },
           "auth_required": {
-            "type": "integer",
-            "format": "int32"
+            "type": "boolean"
           },
           "email_username": {
             "type": "string"
@@ -16671,17 +16613,21 @@
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Minimum episode length in **minutes** (stored, and returned by get_playlists, in seconds)."
           },
           "max_duration": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Maximum episode length in **minutes** (stored, and returned by get_playlists, in seconds)."
           },
           "sort_order": {
-            "type": "string"
+            "type": "string",
+            "description": "One of date_asc, date_desc, duration_asc, duration_desc, listen_progress, completion.",
+            "example": "date_desc"
           },
           "group_by_podcast": {
             "type": "boolean"
@@ -16897,13 +16843,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Always null: the password hash is never sent to clients. Kept for response compatibility."
           },
           "Salt": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Always null; kept for response compatibility."
           }
         }
       },

@@ -82,5 +82,13 @@ futures = "0.3.34"
 # File handling
 tokio-util = { version = "0.7.20", features = ["io"] }
 
+[features]
+# Test-only hooks (e.g. letting the SSRF guard reach the loopback fixture server).
+# Enabled automatically for `cargo test` via the self dev-dependency below.
+test-support = []
+
 [dev-dependencies]
 tower-test = "0.4"
+pinepods-api = { path = ".", features = ["test-support"] }
+# Integration harness (tests/integration). Same versions as the main dependency set.
+http-body-util = "0.1"

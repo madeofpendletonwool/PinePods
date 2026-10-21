@@ -9,7 +9,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     error::AppError,
-    handlers::{extract_api_key, validate_api_key, check_user_access},
+    handlers::{extract_api_key, validate_api_key, require_valid_api_key, check_user_access, require_episode_owner},
     AppState,
 };
 
@@ -411,6 +411,10 @@ pub async fn remove_podcast_id(
     if requesting_user_id != request.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only remove your own podcasts!"));
     }
+    // remove_podcast_id deletes by podcast id alone, so prove the podcast is the caller's.
+    if !state.db_pool.verify_podcast_belongs_to_user(request.podcast_id, request.user_id).await? {
+        return Err(AppError::forbidden("You can only remove your own podcasts!"));
+    }
 
     // Remove podcast from database
     state.db_pool.remove_podcast_id(request.podcast_id, request.user_id).await?;
@@ -653,6 +657,7 @@ pub async fn queue_episode(
     if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only queue episodes for yourself!"));
     }
+    require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube).await?;
 
     // Insert under the currently-playing episode ("play next"). Prefer the client's
     // own hint (instant local accuracy); if it didn't send one, fall back to the
@@ -717,6 +722,7 @@ pub async fn queue_episode_to_top(
     if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only queue episodes for yourself!"));
     }
+    require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube).await?;
 
     state.db_pool
         .move_queue_episode_to_top(request.episode_id, request.user_id, request.is_youtube)
@@ -919,6 +925,7 @@ pub async fn save_episode(
     if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only save episodes for yourself!"));
     }
+    require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube).await?;
 
     // Save the episode
     state.db_pool.save_episode(request.episode_id, request.user_id, request.is_youtube).await?;
@@ -1052,6 +1059,7 @@ pub async fn add_history(
     if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only add history for yourself!"));
     }
+    require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube).await?;
 
     // Record the history
     state.db_pool.record_podcast_history(
@@ -1275,6 +1283,7 @@ pub async fn download_podcast(
     if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only download content for yourself!"));
     }
+    require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube.unwrap_or(false)).await?;
 
     // Check if server downloads are enabled
     let downloads_enabled = state.db_pool.download_status().await?;
@@ -1335,6 +1344,7 @@ pub async fn delete_episode(
     if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only delete your own downloads!"));
     }
+    require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube.unwrap_or(false)).await?;
 
     let is_youtube = request.is_youtube.unwrap_or(false);
 
@@ -1657,6 +1667,9 @@ pub async fn get_episode_metadata(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id == request.user_id || is_web_key {
+        if !request.person_episode.unwrap_or(false) {
+            require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube.unwrap_or(false)).await?;
+        }
         let episode = state.db_pool.get_episode_metadata(
             request.episode_id,
             request.user_id,
@@ -1706,6 +1719,8 @@ pub async fn fetch_podcasting_2_data(
     // Get the episode_id and user_id from query parameters  
     let episode_id = query.episode_id;
     let user_id = query.user_id;
+    crate::handlers::require_user_access(&state, &api_key, user_id).await?;
+    require_episode_owner(&state, user_id, episode_id, false).await?;
     
     // Call the database method to fetch podcasting 2.0 data
     let data = state.db_pool.fetch_podcasting_2_data(episode_id, user_id).await?;
@@ -1907,6 +1922,7 @@ pub async fn get_next_podcast_episode(
     if key_id != request.user_id {
         return Err(AppError::forbidden("You can only access your own episodes."));
     }
+    require_episode_owner(&state, request.user_id, request.episode_id, false).await?;
 
     let episode = state.db_pool.get_next_podcast_episode(request.episode_id, request.user_id).await?;
     Ok(Json(episode))
@@ -2252,6 +2268,8 @@ pub async fn update_episode_duration(
             "Your API key is either invalid or does not have correct permission",
         ));
     }
+    let caller = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    require_episode_owner(&state, caller, request.episode_id, request.is_youtube).await?;
 
     state
         .db_pool
@@ -2300,6 +2318,7 @@ pub async fn mark_episode_completed(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id == request.user_id || is_web_key {
+        require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube.unwrap_or(false)).await?;
         state.db_pool.mark_episode_completed(
             request.episode_id,
             request.user_id,
@@ -2388,6 +2407,7 @@ pub async fn get_podcast_id_from_ep_id(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id == query.user_id || is_web_key {
+        require_episode_owner(&state, query.user_id, query.episode_id, query.is_youtube.unwrap_or(false)).await?;
         let podcast_id = state.db_pool.get_podcast_id_from_episode(
             query.episode_id,
             query.user_id,
@@ -2571,6 +2591,7 @@ pub async fn search_data(
     if !is_valid {
         return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
     }
+    crate::handlers::require_user_access(&state, &api_key, request.user_id).await?;
 
     let limit  = params.limit.unwrap_or(50).min(200);
     let offset = params.offset.unwrap_or(0).max(0);
@@ -2688,7 +2709,7 @@ pub async fn home_overview(
     Query(query): Query<HomeOverviewQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - user can only access their own data
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2727,7 +2748,7 @@ pub async fn get_playlists(
     Query(query): Query<GetPlaylistsQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - user can only access their own data
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2769,7 +2790,7 @@ pub async fn mark_episode_uncompleted(
     Json(request): Json<MarkEpisodeUncompletedRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - user can only mark their own episodes as uncompleted
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2777,6 +2798,7 @@ pub async fn mark_episode_uncompleted(
     if key_id != request.user_id {
         return Err(AppError::forbidden("You can only mark episodes as uncompleted for yourself."));
     }
+    require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube).await?;
 
     state.db_pool.mark_episode_uncompleted(request.episode_id, request.user_id, request.is_youtube).await?;
     
@@ -2812,7 +2834,7 @@ pub async fn record_listen_duration(
     Json(data): Json<RecordListenDurationRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Ignore listen duration for episodes with ID 0
     if data.episode_id == 0 {
@@ -2826,6 +2848,7 @@ pub async fn record_listen_duration(
     if key_id != data.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only record your own listen duration"));
     }
+    require_episode_owner(&state, data.user_id, data.episode_id, data.is_youtube).await?;
 
     if data.is_youtube {
         state.db_pool.record_youtube_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
@@ -2878,7 +2901,7 @@ pub async fn user_history(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only get their own history
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2917,7 +2940,7 @@ pub async fn increment_listen_time(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only increment their own time
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2957,7 +2980,7 @@ pub async fn get_playback_speed(
     Json(data): Json<GetPlaybackSpeedRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only get their own playback speed
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2997,7 +3020,7 @@ pub async fn get_auto_download_delete_days(
     Json(data): Json<GetAutoDownloadDeleteDaysRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only get their own metadata
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3036,7 +3059,7 @@ pub async fn get_default_volume(
     Json(data): Json<GetDefaultVolumeRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only get their own metadata
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3078,7 +3101,7 @@ pub async fn get_playlist_episodes(
     Query(query): Query<GetPlaylistEpisodesQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - user can only access their own playlists
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3129,7 +3152,7 @@ pub async fn get_podcast_details(
     Query(query): Query<GetPodcastDetailsQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     // Check authorization - user can only access their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3169,7 +3192,7 @@ pub async fn youtube_episodes(
     Query(query): Query<YouTubeEpisodesQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only return episodes of their own
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3213,7 +3236,7 @@ pub async fn remove_youtube_channel(
     Json(data): Json<RemoveYouTubeChannelRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if the provided API key is the web key (elevated access)
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -3277,9 +3300,21 @@ pub async fn stream_episode(
     debug!("Trying RSS key validation first");
     match state.db_pool.get_rss_key_if_valid(api_key, None).await {
         Ok(Some(rss_info)) => {
-            info!("Valid RSS key for user {}", rss_info.user_id);
+            // An RSS key only ever streams its own user's files, and a podcast-scoped key
+            // only episodes from the podcasts it was issued for.
+            if rss_info.user_id != query.user_id {
+                return Err(AppError::forbidden("You do not have permission to access this episode"));
+            }
+            if !rss_info.podcast_ids.contains(&-1) {
+                let is_youtube = query.source_type.as_deref() == Some("youtube");
+                let podcast_id = state.db_pool
+                    .get_podcast_id_from_episode(episode_id, query.user_id, is_youtube)
+                    .await?;
+                if !podcast_id.is_some_and(|id| rss_info.podcast_ids.contains(&id)) {
+                    return Err(AppError::forbidden("This RSS key does not cover that episode"));
+                }
+            }
             is_valid = true;
-            // Don't set key_user_id for RSS keys - they don't need permission checks
         }
         Ok(None) => {
             debug!("Not an RSS key, trying regular API key");
@@ -3323,7 +3358,6 @@ pub async fn stream_episode(
             return Err(AppError::forbidden("You do not have permission to access this episode"));
         }
     }
-    // RSS keys don't need user permission checks - they can stream any episode
 
     // Choose which lookup to use based on source_type
     let mut file_path = if query.source_type.as_deref() == Some("youtube") {
@@ -3394,7 +3428,7 @@ pub async fn get_rss_key(
     Query(query): Query<UserIdQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - user can only get their own RSS key
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3464,7 +3498,7 @@ pub async fn get_podcast_details_dynamic(
     Query(query): Query<PodcastDetailsQuery>,
 ) -> Result<Json<ClickedFeedURLResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     if query.added {
         // Get podcast from database if already added
@@ -3573,7 +3607,7 @@ pub async fn get_host_podcasts(
     Query(query): Query<HostPodcastsQuery>,
 ) -> Result<Json<PodPeopleResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Get people URL from config
     let people_url = std::env::var("PEOPLE_API_URL").unwrap_or_else(|_| "https://people.pinepods.online".to_string());
@@ -3657,7 +3691,7 @@ pub async fn get_podpeople_discover(
     Query(query): Query<PodPeopleDiscoverQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Allowlist the upstream path so `kind` can't be used to hit arbitrary endpoints.
     let path = match query.kind.as_str() {
@@ -3730,7 +3764,7 @@ pub async fn update_feed_cutoff_days(
     Json(data): Json<UpdateFeedCutoffDaysData>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if the provided API key is the web key
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -3774,7 +3808,7 @@ pub async fn fetch_podcast_feed(
     Query(query): Query<FetchPodcastFeedQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     // Parse feed and extract episodes using feed-rs (same logic as add_episodes but without DB insertion)

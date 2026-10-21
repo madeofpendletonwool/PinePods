@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::{
     error::{AppError, AppResult},
-    handlers::{check_user_access, extract_api_key, validate_api_key},
+    handlers::{check_user_access, extract_api_key, validate_api_key, require_valid_api_key},
     models::{
         BulkAddCollectionRequest, CollectionDetailResponse, CollectionEpisodeRequest,
         CollectionsResponse, CreateCollectionRequest, CreateCollectionResponse,
@@ -86,7 +86,7 @@ pub async fn list_collections(
     Path(user_id): Path<i32>,
 ) -> AppResult<Json<CollectionsResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only list your own collections!"));
     }
@@ -114,7 +114,7 @@ pub async fn get_user_categories(
     Path(user_id): Path<i32>,
 ) -> AppResult<Json<UserCategoriesResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only list your own categories!"));
     }
@@ -209,6 +209,7 @@ pub async fn add_episode_to_collection(
     if user_id != req.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only modify your own collections!"));
     }
+    crate::handlers::require_episode_owner(&state, req.user_id, req.episode_id, req.is_youtube).await?;
     state
         .db_pool
         .add_episode_to_collection(req.user_id, collection_id, req.episode_id, req.is_youtube)
@@ -272,6 +273,9 @@ pub async fn bulk_add_collection(
     let (_key, user_id, is_web_key) = auth_user(&state, &headers).await?;
     if user_id != req.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only modify your own collections!"));
+    }
+    for &(episode_id, is_youtube) in &req.episodes {
+        crate::handlers::require_episode_owner(&state, req.user_id, episode_id, is_youtube).await?;
     }
     state
         .db_pool
@@ -362,7 +366,7 @@ pub async fn get_episode_collections(
     Query(query): Query<HashMap<String, String>>,
 ) -> AppResult<Json<EpisodeCollectionsResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only access your own collections!"));
     }
@@ -410,7 +414,7 @@ pub async fn get_collection_add_ui(
     Query(query): Query<HashMap<String, String>>,
 ) -> AppResult<Json<CollectionAddUiResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     let user_id = query
         .get("user_id")
         .and_then(|s| s.parse::<i32>().ok())

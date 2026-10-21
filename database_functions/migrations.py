@@ -28,7 +28,7 @@ try:
     MYSQL_AVAILABLE = True
 except ImportError:
     try:
-        import mysql.connector
+        import mysql.connector as mysql_connector
         MYSQL_AVAILABLE = True
     except ImportError:
         MYSQL_AVAILABLE = False
