@@ -296,33 +296,34 @@ impl DatabasePool {
     pub async fn get_user_details_by_id(&self, user_id: i32) -> AppResult<crate::handlers::auth::UserDetails> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT * FROM "Users" WHERE userid = $1"#)
+                let row = sqlx::query(r#"SELECT userid, fullname, username, email FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
-                
+
+                // The password hash never leaves the server; the fields stay for response compatibility.
                 Ok(crate::handlers::auth::UserDetails {
                     UserID: row.try_get("userid")?,
                     Fullname: row.try_get("fullname").ok(),
                     Username: row.try_get("username").ok(),
                     Email: row.try_get("email").ok(),
-                    Hashed_PW: row.try_get("hashed_pw").ok(),
-                    Salt: row.try_get("salt").ok(),
+                    Hashed_PW: None,
+                    Salt: None,
                 })
             }
             DatabasePool::MySQL(pool) => {
-                let row = sqlx::query("SELECT * FROM Users WHERE UserID = ?")
+                let row = sqlx::query("SELECT UserID, Fullname, Username, Email FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
-                
+
                 Ok(crate::handlers::auth::UserDetails {
                     UserID: row.try_get("UserID")?,
                     Fullname: row.try_get("Fullname").ok(),
                     Username: row.try_get("Username").ok(),
                     Email: row.try_get("Email").ok(),
-                    Hashed_PW: row.try_get("Hashed_PW").ok(),
-                    Salt: row.try_get("Salt").ok(),
+                    Hashed_PW: None,
+                    Salt: None,
                 })
             }
         }
@@ -13516,100 +13517,62 @@ impl DatabasePool {
 
     // Delete user - matches Python delete_user function exactly
     pub async fn delete_user(&self, user_id: i32) -> AppResult<()> {
+        // Podcasts own episodes and videos through NO ACTION foreign keys; reuse the
+        // unsubscribe path, which already deletes their dependents in a valid order.
+        let podcast_ids: Vec<i32> = match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_scalar(r#"SELECT podcastid FROM "Podcasts" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query_scalar("SELECT PodcastID FROM Podcasts WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?
+            }
+        };
+        for podcast_id in podcast_ids {
+            self.remove_podcast_id(podcast_id, user_id).await?;
+        }
+
+        // Tables that reference Users (or the user's People) without ON DELETE CASCADE.
+        // Everything else cascades from the final DELETE.
         match self {
             DatabasePool::Postgres(pool) => {
-                // Delete from UserEpisodeHistory
-                sqlx::query(r#"DELETE FROM "UserEpisodeHistory" WHERE userid = $1"#)
+                sqlx::query(r#"DELETE FROM "PeopleEpisodes" WHERE personid IN (SELECT personid FROM "People" WHERE userid = $1)"#)
                     .bind(user_id)
                     .execute(pool)
-                    .await.ok();
-
-                // Delete from DownloadedEpisodes  
-                sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE userid = $1"#)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // Delete from EpisodeQueue
-                sqlx::query(r#"DELETE FROM "EpisodeQueue" WHERE userid = $1"#)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // Delete from Podcasts
-                sqlx::query(r#"DELETE FROM "Podcasts" WHERE userid = $1"#)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // Delete from UserSettings
-                sqlx::query(r#"DELETE FROM "UserSettings" WHERE userid = $1"#)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // Delete from UserStats
-                sqlx::query(r#"DELETE FROM "UserStats" WHERE userid = $1"#)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // CRITICAL: Delete user's playlists to avoid foreign key constraint violations
-                sqlx::query(r#"DELETE FROM "Playlists" WHERE userid = $1"#)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // Delete from Users (main table)
+                    .await?;
+                for table in [
+                    "UserEpisodeHistory", "UserVideoHistory", "SavedEpisodes", "SavedVideos",
+                    "DownloadedEpisodes", "DownloadedVideos", "EpisodeQueue", "UserSettings", "UserStats",
+                ] {
+                    sqlx::query(sqlx::AssertSqlSafe(format!(r#"DELETE FROM "{table}" WHERE userid = $1"#)))
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                }
                 sqlx::query(r#"DELETE FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
             }
             DatabasePool::MySQL(pool) => {
-                // Delete from UserEpisodeHistory
-                sqlx::query("DELETE FROM UserEpisodeHistory WHERE UserID = ?")
+                sqlx::query("DELETE FROM PeopleEpisodes WHERE PersonID IN (SELECT PersonID FROM People WHERE UserID = ?)")
                     .bind(user_id)
                     .execute(pool)
-                    .await.ok();
-
-                // Delete from DownloadedEpisodes
-                sqlx::query("DELETE FROM DownloadedEpisodes WHERE UserID = ?")
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // Delete from EpisodeQueue
-                sqlx::query("DELETE FROM EpisodeQueue WHERE UserID = ?")
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // Delete from Podcasts
-                sqlx::query("DELETE FROM Podcasts WHERE UserID = ?")
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // Delete from UserSettings
-                sqlx::query("DELETE FROM UserSettings WHERE UserID = ?")
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // Delete from UserStats
-                sqlx::query("DELETE FROM UserStats WHERE UserID = ?")
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // CRITICAL: Delete user's playlists to avoid foreign key constraint violations
-                sqlx::query("DELETE FROM Playlists WHERE UserID = ?")
-                    .bind(user_id)
-                    .execute(pool)
-                    .await.ok();
-
-                // Delete from Users (main table)
+                    .await?;
+                for table in [
+                    "UserEpisodeHistory", "UserVideoHistory", "SavedEpisodes", "SavedVideos",
+                    "DownloadedEpisodes", "DownloadedVideos", "EpisodeQueue", "UserSettings", "UserStats",
+                ] {
+                    sqlx::query(sqlx::AssertSqlSafe(format!("DELETE FROM {table} WHERE UserID = ?")))
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                }
                 sqlx::query("DELETE FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .execute(pool)

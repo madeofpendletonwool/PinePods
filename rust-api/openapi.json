@@ -16888,13 +16888,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Always null: the password hash is never sent to clients. Kept for response compatibility."
           },
           "Salt": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Always null; kept for response compatibility."
           }
         }
       },

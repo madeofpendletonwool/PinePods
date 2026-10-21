@@ -463,6 +463,13 @@ pub async fn delete_user(
         return Err(AppError::forbidden("Admin access required"));
     }
 
+    if user_id == 1 {
+        return Err(AppError::forbidden("The background tasks user cannot be deleted"));
+    }
+    if state.db_pool.final_admin(user_id).await? {
+        return Err(AppError::forbidden("Cannot delete the last admin"));
+    }
+
     state.db_pool.delete_user(user_id).await?;
     Ok(Json(serde_json::json!({ "status": "User deleted" })))
 }
@@ -581,6 +588,10 @@ pub async fn set_isadmin(
     
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
+    }
+
+    if !request.isadmin && state.db_pool.final_admin(request.user_id).await? {
+        return Err(AppError::forbidden("Cannot remove admin rights from the last admin"));
     }
 
     state.db_pool.set_isadmin(request.user_id, request.isadmin).await?;
