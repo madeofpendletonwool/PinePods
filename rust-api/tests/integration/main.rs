@@ -13,6 +13,7 @@ mod foreign_resources;
 mod library;
 mod opml;
 mod playback;
+mod podcasting20;
 mod podcasts;
 mod queue;
 mod settings;
