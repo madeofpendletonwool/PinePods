@@ -9,6 +9,8 @@ use crate::components::gen_funcs::{
 };
 use crate::components::loading::Loading;
 use crate::components::episode_list_view::EpisodeListView;
+use crate::components::people::{AddPeopleSheet, PeopleLayout, PeopleStrip};
+use crate::requests::people_req::{CreditedPerson, PodcastCredits};
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_silence_trim, call_adjust_skip_times,
@@ -552,6 +554,29 @@ pub fn episode_layout() -> Html {
     let is_selecting = use_state(|| false);
 
     let history = BrowserHistory::new();
+    // People on the podcast and the add-people sheet.
+    let show_add_people = use_state(|| false);
+    let open_add_people = {
+        let show_add_people = show_add_people.clone();
+        Callback::from(move |_: ()| show_add_people.set(true))
+    };
+    let people_loaded = state.podcast_people.is_some();
+    let people_rc = Rc::new(state.podcast_people.clone().unwrap_or_default());
+    let guests_rc = Rc::new(state.podcast_guests.clone().unwrap_or_default());
+    let close_add_people = {
+        let show_add_people = show_add_people.clone();
+        Callback::from(move |_: ()| show_add_people.set(false))
+    };
+    let on_people_added = {
+        let dispatch = _dispatch.clone();
+        Callback::from(move |list: Vec<CreditedPerson>| {
+            let credits = PodcastCredits::from_flat(list);
+            dispatch.reduce_mut(|state| {
+                state.podcast_people = Some(credits.people);
+                state.podcast_guests = Some(credits.guests);
+            });
+        })
+    };
     // let node_ref = use_node_ref();
     let user_id = search_state
         .user_details
@@ -640,6 +665,7 @@ pub fn episode_layout() -> Html {
             state.podcast_funding = None;
             state.podcast_podroll = None;
             state.podcast_people = None;
+            state.podcast_guests = None;
         });
         || ()
     });
@@ -1144,7 +1170,18 @@ pub fn episode_layout() -> Html {
                                         let key_opt = Some(api_key.clone().unwrap());
                                         let key_str = api_key.clone().unwrap();
                                         let server = server_name.clone();
-                                        let (auto_dl_result, auto_play_result, auto_queue_result, cutoff_result, notif_result, fav_result, play_details_result, auto_delete_result) = futures::join!(
+                                        // People, podroll, funding and value are stored server-side, so this is a
+                                        // quick DB read; fetched with the rest so hosts render with the page.
+                                        let p2_request = FetchPodcasting2PodDataRequest {
+                                            podcast_id: id,
+                                            user_id,
+                                        };
+                                        let (p2_result, auto_dl_result, auto_play_result, auto_queue_result, cutoff_result, notif_result, fav_result, play_details_result, auto_delete_result) = futures::join!(
+                                            call_fetch_podcasting_2_pod_data(
+                                                &server,
+                                                &key_opt,
+                                                &p2_request,
+                                            ),
                                             call_get_auto_download_status(
                                                 &server,
                                                 user_id,
@@ -1195,6 +1232,22 @@ pub fn episode_layout() -> Html {
                                                 user_id,
                                             ),
                                         );
+                                        match p2_result {
+                                            Ok(response) => {
+                                                audio_dispatch.reduce_mut(|state| {
+                                                    state.podcast_value4value = Some(response.value);
+                                                    state.podcast_funding = Some(response.funding);
+                                                    state.podcast_podroll = Some(response.podroll);
+                                                    state.podcast_people = Some(response.people);
+                                                    state.podcast_guests = Some(response.guests);
+                                                });
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!("Error fetching 2.0 data: {}", e).into(),
+                                                );
+                                            }
+                                        }
                                         match auto_dl_result {
                                             Ok(status) => { download_status.set(status); }
                                             Err(e) => { web_sys::console::log_1(&format!("Error getting auto-download status: {}", e).into()); }
@@ -1238,37 +1291,6 @@ pub fn episode_layout() -> Html {
                                                 effect_auto_delete_customized.set(customized);
                                             }
                                             Err(e) => { web_sys::console::log_1(&format!("Error getting auto-delete days: {}", e).into()); }
-                                        }
-                                        let chap_request = FetchPodcasting2PodDataRequest {
-                                            podcast_id: id,
-                                            user_id,
-                                        };
-                                        match call_fetch_podcasting_2_pod_data(
-                                            &server_name,
-                                            &api_key,
-                                            &chap_request,
-                                        )
-                                        .await
-                                        {
-                                            Ok(response) => {
-                                                // let chapters = response.chapters.clone(); // Clone chapters to avoid move issue
-                                                let value = response.value.clone();
-                                                let funding = response.funding.clone();
-                                                let podroll = response.podroll.clone();
-                                                let people = response.people.clone();
-                                                audio_dispatch.reduce_mut(|state| {
-                                                    state.podcast_value4value = Some(value);
-                                                    state.podcast_funding = Some(funding);
-                                                    state.podcast_podroll = Some(podroll);
-                                                    state.podcast_people = Some(people);
-                                                });
-                                            }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!("Error fetching 2.0 data: {}", e)
-                                                        .into(),
-                                                );
-                                            }
                                         }
                                     }
                             }
@@ -3110,7 +3132,7 @@ pub fn episode_layout() -> Html {
                                         if let Some(categories) = &feed.categories {
                                             html! {
                                                 <>
-                                                    { categories.iter().map(|(_, category_name)| {
+                                                    { categories.iter().filter(|(_, name)| !name.trim().is_empty()).map(|(_, category_name)| {
                                                         let category_name = category_name.clone();
                                                         let onclick_remove = onclick_remove.clone();
                                                         let category_to_remove = category_to_remove.clone();
@@ -4466,7 +4488,6 @@ pub fn episode_layout() -> Html {
                                             .map(|r| r.episodes.iter().any(|e| e.is_video))
                                             .unwrap_or(false);
                                         let layout = if state.is_mobile.unwrap_or(false) {
-                                            let server_for_proxy = server_name.clone().unwrap_or_default();
                                             html! {
                                                 <div class="mobile-layout ep-mobile-pod-header">
 
@@ -4575,104 +4596,49 @@ pub fn episode_layout() -> Html {
                                                         </div>
                                                     </div>
 
-                                                    // ── Host strip or unmatched warning ──
-                                                    { if !podcast_info.is_youtube.unwrap_or(false) {
-                                                        if podcast_info.podcastindexid == 0 {
-                                                            html! {
-                                                                <div class="ep-mobile-hosts">
-                                                                    <div class="import-box">
-                                                                        <p class="item_container-text text-sm">
-                                                                            {"⚠️ This podcast isn't matched to Podcast Index. "}
-                                                                            <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
-                                                                                {&i18n.t("episodes_layout.match_it_here")}
-                                                                            </a>
-                                                                            {" to enable host and guest information."}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            }
-                                                        } else if let Some(people) = &state.podcast_people {
-                                                            if !people.is_empty() {
-                                                                let has_unknown_host = people.len() == 1
-                                                                    && people[0].name == "Unknown Host"
-                                                                    && people[0].role == Some("Host".to_string());
-                                                                if has_unknown_host {
-                                                                    let people_url = search_state.server_details.as_ref()
-                                                                        .and_then(|sd| sd.people_url.as_ref())
-                                                                        .cloned()
-                                                                        .unwrap_or_default();
-                                                                    let host_url = format!("{}/podcast/{}", people_url, podcast_info.podcastindexid);
-                                                                    html! {
-                                                                        <div class="ep-mobile-hosts">
-                                                                            <p class="ep-mobile-section-label">{ &i18n_hosts }</p>
-                                                                            <p class="ep-mobile-no-hosts-msg">
-                                                                                { i18n.t("host_component.no_hosts_found") }
-                                                                                <a href={host_url} target="_blank" class="ep-mobile-no-hosts-link">
-                                                                                    { i18n.t("host_component.add_hosts_here") }
-                                                                                </a>
-                                                                            </p>
-                                                                        </div>
-                                                                    }
-                                                                } else {
-                                                                    let server = server_for_proxy.clone();
-                                                                    html! {
-                                                                        <div class="ep-mobile-hosts">
-                                                                            <p class="ep-mobile-section-label">{ &i18n_hosts }</p>
-                                                                            <div class="ep-mobile-hosts-scroll">
-                                                                            { for people.iter().map(|person| {
-                                                                                let name = person.name.clone();
-                                                                                let role = person.role.clone();
-                                                                                let img_url = person.img.as_ref().map(|url| {
-                                                                                    format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
-                                                                                });
-                                                                                let hist = history.clone();
-                                                                                let nav_name = name.clone();
-                                                                                let on_chip_click = Callback::from(move |_: MouseEvent| {
-                                                                                    hist.push(format!("/person/{}", nav_name));
-                                                                                });
-                                                                                html! {
-                                                                                    <div class="ep-mobile-host-chip" onclick={on_chip_click}>
-                                                                                        { if let Some(src) = img_url {
-                                                                                            html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
-                                                                                        } else {
-                                                                                            html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
-                                                                                        }}
-                                                                                        <span class="ep-mobile-host-name">{ &person.name }</span>
-                                                                                        { if let Some(r) = &role {
-                                                                                            html! { <span class="ep-mobile-host-role">{ r }</span> }
-                                                                                        } else { html! {} }}
-                                                                                    </div>
-                                                                                }
-                                                                            })}
-                                                                            </div>
-                                                                        </div>
-                                                                    }
-                                                                }
-                                                            } else { html! {} }
-                                                        } else { html! {} }
+                                                    // ── People ──
+                                                    { if !podcast_info.is_youtube.unwrap_or(false) && *podcast_id > 0 {
+                                                        html! {
+                                                            <>
+                                                            <PeopleStrip
+                                                                people={people_rc.clone()}
+                                                                layout={PeopleLayout::Chips}
+                                                                label={i18n_hosts.clone()}
+                                                                on_add={people_loaded.then(|| open_add_people.clone())}
+                                                                empty_text={i18n.t("people.none_on_podcast")}
+                                                                class={classes!("ep-mobile-hosts")}
+                                                            />
+                                                            { if guests_rc.is_empty() { html! {} } else { html! {
+                                                                <PeopleStrip
+                                                                    people={guests_rc.clone()}
+                                                                    layout={PeopleLayout::Chips}
+                                                                    label={i18n.t("people.guests")}
+                                                                    class={classes!("ep-mobile-hosts")}
+                                                                />
+                                                            } } }
+                                                            </>
+                                                        }
                                                     } else { html! {} }}
 
                                                     // ── Categories ──
-                                                    { if let Some(categories) = &podcast_info.categories {
-                                                        if !categories.is_empty() {
-                                                            html! {
-                                                                <div class="ep-mobile-categories">
-                                                                    { for categories.iter().map(|(_, category_name)| {
-                                                                        html! { <span class="category-box">{ category_name }</span> }
-                                                                    })}
-                                                                </div>
-                                                            }
-                                                        } else { html! {} }
-                                                    } else { html! {} }}
+                                                    { {
+                                                        let categories = visible_categories(podcast_info.categories.as_ref());
+                                                        if categories.is_empty() { html! {} } else { html! {
+                                                            <div class="ep-mobile-categories">
+                                                                { for categories.iter().map(|category_name| {
+                                                                    html! { <span class="category-box">{ category_name }</span> }
+                                                                })}
+                                                            </div>
+                                                        } }
+                                                    } }
 
                                                 </div>
                                             }
                                         } else {
                                             let pod_link = podcast_info.feedurl.clone();
-                                            let server = server_name.clone().unwrap_or_default();
                                             let subscribed = podcast_state.podcast_added.unwrap_or(false);
                                             let backdrop_style = format!("background-image: url('{}');", &podcast_info.artworkurl);
-                                            let eyebrow_text = match podcast_info.categories.as_ref().and_then(|c| c.values().next()) {
+                                            let eyebrow_text = match visible_categories(podcast_info.categories.as_ref()).first() {
                                                 Some(cat) => format!("{} · {}", i18n.t("episodes_layout.podcast"), cat),
                                                 None => i18n.t("episodes_layout.podcast").to_string(),
                                             };
@@ -4787,101 +4753,39 @@ pub fn episode_layout() -> Html {
                                                             <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
                                                         </div>
 
-                                                        { if !podcast_info.is_youtube.unwrap_or(false) {
-                                                            if podcast_info.podcastindexid == 0 {
-                                                                html! {
-                                                                    <div class="pd-banner-warning">
-                                                                        <div class="import-box">
-                                                                            <p class="item_container-text text-sm">
-                                                                                {"⚠️ This podcast isn't matched to Podcast Index. "}
-                                                                                <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
-                                                                                    {&i18n.t("episodes_layout.match_it_here")}
-                                                                                </a>
-                                                                                {" to enable host and guest information."}
-                                                                            </p>
-                                                                        </div>
-                                                                    </div>
-                                                                }
-                                                            } else if let Some(people) = &state.podcast_people {
-                                                                if !people.is_empty() {
-                                                                    let has_unknown_host = people.len() == 1
-                                                                        && people[0].name == "Unknown Host"
-                                                                        && people[0].role == Some("Host".to_string());
-                                                                    if has_unknown_host {
-                                                                        let people_url = search_state.server_details.as_ref()
-                                                                            .and_then(|sd| sd.people_url.as_ref())
-                                                                            .cloned()
-                                                                            .unwrap_or_default();
-                                                                        let host_url = format!("{}/podcast/{}", people_url, podcast_info.podcastindexid);
-                                                                        html! {
-                                                                            <div class="pd-banner-nohosts">
-                                                                                <span class="pd-host-by">{ &i18n_hosts }</span>
-                                                                                <p class="pd-banner-nohosts-msg">
-                                                                                    { i18n.t("host_component.no_hosts_found") }
-                                                                                    <a href={host_url} target="_blank" class="pd-banner-nohosts-link">
-                                                                                        { i18n.t("host_component.add_hosts_here") }
-                                                                                    </a>
-                                                                                </p>
-                                                                            </div>
-                                                                        }
-                                                                    } else {
-                                                                        let names: Vec<String> = people.iter().map(|p| p.name.clone()).collect();
-                                                                        let names_joined = match names.len() {
-                                                                            0 => String::new(),
-                                                                            1 => names[0].clone(),
-                                                                            2 => format!("{} & {}", names[0], names[1]),
-                                                                            _ => {
-                                                                                let (last, rest) = names.split_last().unwrap();
-                                                                                format!("{} & {}", rest.join(", "), last)
-                                                                            }
-                                                                        };
-                                                                        let server2 = server.clone();
-                                                                        html! {
-                                                                            <div class="pd-banner-hosts">
-                                                                                <div class="pd-host-stack">
-                                                                                    { for people.iter().take(6).map(|person| {
-                                                                                        let name = person.name.clone();
-                                                                                        let img_url = person.img.as_ref().map(|url| {
-                                                                                            format!("{}/api/proxy/image?url={}", server2, urlencoding::encode(url))
-                                                                                        });
-                                                                                        let hist = history.clone();
-                                                                                        let nav_name = name.clone();
-                                                                                        let on_chip_click = Callback::from(move |_: MouseEvent| {
-                                                                                            hist.push(format!("/person/{}", nav_name));
-                                                                                        });
-                                                                                        html! {
-                                                                                            <div class="pd-host-avatar-wrap" title={name.clone()} onclick={on_chip_click}>
-                                                                                                { if let Some(src) = img_url {
-                                                                                                    html! { <img src={src} alt={name.clone()} class="pd-host-avatar" /> }
-                                                                                                } else {
-                                                                                                    html! { <div class="pd-host-avatar pd-host-avatar-ph"><i class="ph ph-user"></i></div> }
-                                                                                                }}
-                                                                                            </div>
-                                                                                        }
-                                                                                    })}
-                                                                                </div>
-                                                                                <div class="pd-host-label">
-                                                                                    <span class="pd-host-by">{ i18n.t("episodes_layout.hosted_by") }</span>
-                                                                                    <span class="pd-host-names">{ names_joined }</span>
-                                                                                </div>
-                                                                            </div>
-                                                                        }
-                                                                    }
-                                                                } else { html! {} }
-                                                            } else { html! {} }
+                                                        { if !podcast_info.is_youtube.unwrap_or(false) && *podcast_id > 0 {
+                                                            html! {
+                                                                <>
+                                                                <PeopleStrip
+                                                                    people={people_rc.clone()}
+                                                                    layout={PeopleLayout::Banner}
+                                                                    label={i18n.t("episodes_layout.hosted_by")}
+                                                                    on_add={people_loaded.then(|| open_add_people.clone())}
+                                                                    empty_text={i18n.t("people.none_on_podcast")}
+                                                                    class={classes!("pd-banner-people")}
+                                                                />
+                                                                { if guests_rc.is_empty() { html! {} } else { html! {
+                                                                    <PeopleStrip
+                                                                        people={guests_rc.clone()}
+                                                                        layout={PeopleLayout::Chips}
+                                                                        label={i18n.t("people.guests")}
+                                                                        class={classes!("pd-banner-guests")}
+                                                                    />
+                                                                } } }
+                                                                </>
+                                                            }
                                                         } else { html! {} } }
 
-                                                        { if let Some(categories) = &podcast_info.categories {
-                                                            if !categories.is_empty() {
-                                                                html! {
-                                                                    <div class="pd-banner-cats">
-                                                                        { for categories.values().map(|category_name| {
-                                                                            html! { <span class="category-box">{ category_name }</span> }
-                                                                        }) }
-                                                                    </div>
-                                                                }
-                                                            } else { html! {} }
-                                                        } else { html! {} } }
+                                                        { {
+                                                            let categories = visible_categories(podcast_info.categories.as_ref());
+                                                            if categories.is_empty() { html! {} } else { html! {
+                                                                <div class="pd-banner-cats">
+                                                                    { for categories.iter().map(|category_name| {
+                                                                        html! { <span class="category-box">{ category_name }</span> }
+                                                                    }) }
+                                                                </div>
+                                                            } }
+                                                        } }
                                                     </div>
                                                 </div>
                                             }
@@ -5452,9 +5356,35 @@ pub fn episode_layout() -> Html {
                         }
                     }
                 }
+            { if *show_add_people && *podcast_id > 0 {
+                html! {
+                    <AddPeopleSheet
+                        podcast_id={*podcast_id}
+                        on_close={close_add_people}
+                        on_added={on_people_added}
+                    />
+                }
+            } else { html! {} } }
             <App_drawer />
             <AudioPlayerBar />
             </div>
 
         }
+}
+
+/// Category names worth showing: no blanks, each name once (ignoring case), in key order so the
+/// list doesn't reshuffle between renders.
+fn visible_categories(categories: Option<&HashMap<String, String>>) -> Vec<String> {
+    let Some(categories) = categories else { return Vec::new() };
+    let mut entries: Vec<(&String, &String)> = categories.iter().collect();
+    entries.sort_by(|(a, _), (b, _)| match (a.parse::<i64>(), b.parse::<i64>()) {
+        (Ok(x), Ok(y)) => x.cmp(&y),
+        _ => a.cmp(b),
+    });
+    let mut seen = std::collections::HashSet::new();
+    entries
+        .into_iter()
+        .map(|(_, name)| name.trim().to_string())
+        .filter(|name| !name.is_empty() && seen.insert(name.to_lowercase()))
+        .collect()
 }

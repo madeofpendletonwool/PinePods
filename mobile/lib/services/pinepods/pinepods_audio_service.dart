@@ -884,6 +884,8 @@ class PinepodsAudioService {
               group: personData['group'] ?? '',
               image: personData['img'],
               link: personData['href'],
+              // Servers with the people endpoints send the person id (0 = unknown).
+              personId: (personData['id'] as int?) ?? 0,
             );
           }).toList();
           

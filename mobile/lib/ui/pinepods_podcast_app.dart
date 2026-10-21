@@ -46,6 +46,7 @@ import 'package:pinepods_mobile/ui/library/library.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/podcast/podcast_details.dart';
 import 'package:pinepods_mobile/ui/search/search.dart';
+import 'package:pinepods_mobile/ui/pinepods/people/followed_people.dart';
 import 'package:pinepods_mobile/ui/pinepods/search.dart';
 import 'package:pinepods_mobile/ui/settings/settings.dart';
 import 'package:pinepods_mobile/ui/themes.dart';
@@ -828,16 +829,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                   ) {
                     final bottomBarOrder =
                         settingsSnapshot.data?.bottomBarOrder ??
-                        [
-                          'Home',
-                          'Feed',
-                          'Saved',
-                          'Podcasts',
-                          'Downloads',
-                          'History',
-                          'Playlists',
-                          'Search',
-                        ];
+                        defaultBottomBarOrder;
 
                     // Create a map of all available nav items
                     final Map<String, BottomNavItem> allNavItems = {
@@ -859,6 +851,11 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                       'Podcasts': BottomNavItem(
                         icon: Icons.podcasts,
                         label: 'Podcasts',
+                        isSelected: false,
+                      ),
+                      'People': BottomNavItem(
+                        icon: Icons.people,
+                        label: 'People',
                         isSelected: false,
                       ),
                       'Downloads': BottomNavItem(
@@ -1077,6 +1074,8 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
         return const PinepodsSaved();
       case 'Podcasts':
         return const PinepodsPodcasts();
+      case 'People':
+        return const PinepodsPeople();
       case 'Downloads':
         return const Downloads();
       case 'History':
@@ -1100,6 +1099,8 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
         return Icons.bookmark;
       case 'Podcasts':
         return Icons.podcasts;
+      case 'People':
+        return Icons.people;
       case 'Downloads':
         return Icons.download;
       case 'History':
@@ -1123,6 +1124,8 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
         return Icons.bookmark_outline;
       case 'Podcasts':
         return Icons.podcasts_outlined;
+      case 'People':
+        return Icons.people_outline;
       case 'Downloads':
         return Icons.download_outlined;
       case 'History':

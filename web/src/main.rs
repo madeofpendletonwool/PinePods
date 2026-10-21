@@ -67,7 +67,7 @@ fn switch(route: Route) -> Html {
         Route::LogOut => html! { <LogOut /> },
         Route::NotFound => html! { <NotFound /> },
         Route::OAuthCallback => html! { <OAuthCallback /> },
-        Route::Person { name } => html! { <Person name={name.clone()} /> },
+        Route::Person { key } => html! { <Person person_key={key.clone()} /> },
         Route::PlaylistDetail { id } => html! { <PlaylistDetail {id} /> },
         Route::Playlists => html! { <Playlists /> },
         Route::Podcasts => html! { <Podcasts /> },

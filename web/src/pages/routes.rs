@@ -33,8 +33,8 @@ pub enum Route {
     UserStats,
     #[at("/sign_out")]
     LogOut,
-    #[at("/person/:name")]
-    Person { name: String },
+    #[at("/person/:key")]
+    Person { key: String },
     #[at("/pod_layout")]
     PodLayout,
     #[at("/people_subs")]

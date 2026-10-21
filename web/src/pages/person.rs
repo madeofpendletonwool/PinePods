@@ -1,946 +1,348 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
+use crate::components::context::{AppState, UIState};
 use crate::components::episode_list_view::EpisodeListView;
-use crate::components::context::ExpandedDescriptions;
-use crate::components::context::{AppState, NotificationState, PageLoadState, PodcastFeedState, SearchState, UIState};
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
-use crate::components::gen_funcs::format_error_message;
-use crate::components::gen_funcs::strip_images_from_html;
-use crate::components::safehtml::SafeHtml;
+use crate::components::loading::Loading;
+use crate::components::people::{proxied_image, use_auth, FollowButton, PersonAvatar};
+use crate::requests::episode::Episode;
 use crate::requests::people_req::{
-    call_get_host_feed, call_get_person_subscriptions, call_subscribe_to_person,
-    call_unsubscribe_from_person,
+    call_get_person_profile, call_lookup_person, PersonPodcast, PersonProfile,
 };
-use crate::requests::pod_req::{
-    call_add_podcast, call_remove_podcasts_name, Person as HostPerson, Podcast, PodcastResponse,
-    PodcastValues, RemovePodcastValuesName,
-};
-use crate::requests::search_pods::PeopleFeedResult;
-use base64::{engine::general_purpose, Engine as _};
+use gloo_timers::future::TimeoutFuture;
 use i18nrs::yew::use_translation;
-use std::collections::HashMap;
-use std::collections::HashSet;
 use std::rc::Rc;
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
-use yew_router::history::BrowserHistory;
-use yew_router::prelude::*;
+use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 
-#[allow(dead_code)]
-fn generate_unique_id(podcast_id: Option<i32>, feed_url: &str) -> String {
-    println!("Podcast ID: {:?}", podcast_id);
-    match podcast_id {
-        Some(id) if id != 0 => id.to_string(),
-        _ => {
-            // Adding a fallback in case of identical feed URLs or ID being zero
-            let encoded_url = general_purpose::STANDARD.encode(feed_url);
-            let sanitized_url = sanitize_for_css(&encoded_url);
-            let fallback_unique = format!("{}", sanitized_url);
-            println!("Generated fallback ID: {}", fallback_unique);
-            fallback_unique
-        }
+const PAGE_SIZE: i64 = 50;
+
+/// How the URL names the person: `/person/12` (PinePods id), `/person/pp-34` (a PodPeopleDB id,
+/// from discover) or `/person/Jane%20Doe` (old links by name).
+#[derive(Clone, PartialEq, Debug)]
+enum PersonKey {
+    Id(i32),
+    PodPeople(i64),
+    Name(String),
+}
+
+fn parse_key(key: &str) -> PersonKey {
+    if let Ok(id) = key.parse::<i32>() {
+        return PersonKey::Id(id);
     }
+    if let Some(id) = key.strip_prefix("pp-").and_then(|s| s.parse::<i64>().ok()) {
+        return PersonKey::PodPeople(id);
+    }
+    let name = urlencoding::decode(key).map(|s| s.into_owned()).unwrap_or_else(|_| key.to_string());
+    PersonKey::Name(name)
 }
 
-#[allow(dead_code)]
-fn sanitize_for_css(input: &str) -> String {
-    input.replace(|c: char| !c.is_alphanumeric() && c != '-', "_")
+#[derive(Clone, Copy, PartialEq)]
+enum EpisodesTab {
+    Library,
+    Elsewhere,
 }
 
-#[derive(Clone, PartialEq, Routable)]
-#[allow(dead_code)]
-pub enum Route {
-    #[at("/person/:name")]
-    Person { name: String },
-    #[at("/")]
-    Home,
+#[derive(Clone, PartialEq)]
+enum Load {
+    Loading,
+    NotFound,
+    Ready,
 }
 
 #[derive(Clone, Properties, PartialEq)]
 pub struct PersonProps {
-    pub name: String,
+    /// PinePods person id, `pp-<PodPeopleDB id>`, or a name.
+    pub person_key: String,
 }
 
 #[function_component(Person)]
-pub fn person(PersonProps { name }: &PersonProps) -> Html {
+pub fn person(props: &PersonProps) -> Html {
     let (i18n, _) = use_translation();
+    let auth = use_auth();
+    let user_id = use_selector(|s: &AppState| s.user_details.as_ref().map(|u| u.UserID)).as_ref().clone();
+    let api_key_opt = use_selector(|s: &AppState| s.auth_details.as_ref().map(|a| a.api_key.clone())).as_ref().clone();
+    let (audio_state, _) = use_store::<UIState>();
 
-    // Pre-capture translation strings for async blocks
-    let i18n_podcast_removed = i18n.t("person.podcast_successfully_removed").to_string();
-    let i18n_error_removing_podcast = i18n.t("person.error_removing_podcast").to_string();
-    let i18n_podcast_added = i18n.t("person.podcast_successfully_added").to_string();
-    let i18n_error_adding_podcast = i18n.t("person.error_adding_podcast").to_string();
-    let i18n_loading_podcasts = i18n.t("person.loading_podcasts").to_string();
+    let load = use_state(|| Load::Loading);
+    let profile = use_state(|| None::<PersonProfile>);
+    let library_episodes = use_state(|| Rc::new(Vec::<Episode>::new()));
+    let can_load_more = use_state(|| false);
+    let loading_more = use_state(|| false);
+    let tab = use_state(|| None::<EpisodesTab>);
 
-    let (_app_state, dispatch) = use_store::<AppState>();
-    let (podcast_state, podcast_dispatch) = use_store::<PodcastFeedState>();
-    let (search_data, _search_data_dispatch) = use_store::<SearchState>();
-    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
-    let person_ids = use_state(|| HashMap::<String, i32>::new());
-    let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, _audio_dispatch) = use_store::<UIState>();
-    let api_key = post_state
-        .auth_details
-        .as_ref()
-        .map(|ud| ud.api_key.clone());
-    let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let server_name = post_state
-        .auth_details
-        .as_ref()
-        .map(|ud| ud.server_name.clone());
-    let history = BrowserHistory::new();
-    let history_clone = history.clone();
-    let is_expanded = use_state(|| true); // Start expanded by default
-    let episodes_expanded = use_state(|| true); // Start expanded by default
-    let subscribed_hosts = use_state(|| HashMap::<String, Vec<i32>>::new());
-    let is_subscribed = use_state(|| false);
-    let page_loading = use_state(|| true);
-    let fetched_person_img = use_state(|| Option::<String>::None);
-
-    // Try to get person data from UIState (fast-path when navigating from podcast page).
-    // Fall back to a minimal struct built from what we know (name from URL, image from subscriptions).
-    let person_data: Option<HostPerson> = audio_state
-        .podcast_people
-        .as_ref()
-        .and_then(|people| people.iter().find(|person| person.name == *name).cloned())
-        .or_else(|| {
-            audio_state
-                .episode_page_people
-                .as_ref()
-                .and_then(|people| people.iter().find(|person| person.name == *name).cloned())
-        })
-        .or_else(|| {
-            Some(HostPerson {
-                name: (*name).clone(),
-                role: None,
-                group: None,
-                img: (*fetched_person_img).clone(),
-                href: None,
-                id: None,
-                description: None,
-            })
+    // Resolve the key and load the profile. A refresh of outside-library episodes may still be
+    // running on the server; refetch a few times until it reports done.
+    {
+        let load = load.clone();
+        let profile = profile.clone();
+        let library_episodes = library_episodes.clone();
+        let can_load_more = can_load_more.clone();
+        let tab = tab.clone();
+        let auth = auth.clone();
+        use_effect_with((props.person_key.clone(), auth.is_some()), move |(key, _)| {
+            let cancelled = Rc::new(std::cell::Cell::new(false));
+            if let Some((server, api_key)) = auth {
+                let key = parse_key(key);
+                let cancelled = cancelled.clone();
+                load.set(Load::Loading);
+                profile.set(None);
+                tab.set(None);
+                spawn_local(async move {
+                    let person_id = match &key {
+                        PersonKey::Id(id) => Ok(*id),
+                        PersonKey::PodPeople(pp) => call_lookup_person(&server, &api_key, Some(*pp), None).await,
+                        PersonKey::Name(name) => call_lookup_person(&server, &api_key, None, Some(name)).await,
+                    };
+                    let person_id = match person_id {
+                        Ok(id) => id,
+                        Err(_) => {
+                            load.set(Load::NotFound);
+                            return;
+                        }
+                    };
+                    if !matches!(key, PersonKey::Id(_)) {
+                        // Canonical URL; the route change reloads with the id.
+                        BrowserHistory::new().replace(format!("/person/{}", person_id));
+                        return;
+                    }
+                    for attempt in 0..4 {
+                        if cancelled.get() {
+                            return;
+                        }
+                        match call_get_person_profile(&server, &api_key, person_id, PAGE_SIZE, 0).await {
+                            Ok(p) => {
+                                let refreshing = p.refreshing;
+                                can_load_more.set(p.episodes.len() as i64 >= PAGE_SIZE);
+                                library_episodes.set(Rc::new(p.episodes.clone()));
+                                profile.set(Some(p));
+                                load.set(Load::Ready);
+                                if !refreshing {
+                                    return;
+                                }
+                            }
+                            Err(_) if attempt == 0 => {
+                                load.set(Load::NotFound);
+                                return;
+                            }
+                            Err(_) => return,
+                        }
+                        TimeoutFuture::new(4_000).await;
+                    }
+                });
+            }
+            move || cancelled.set(true)
         });
-    // Initialize the state for all podcasts
-    let added_podcasts_state = use_state(|| {
-        podcast_state
-            .podcast_feed_return
+    }
+
+    let on_load_more = {
+        let auth = auth.clone();
+        let profile = profile.clone();
+        let library_episodes = library_episodes.clone();
+        let can_load_more = can_load_more.clone();
+        let loading_more = loading_more.clone();
+        use_callback(
+            (profile.as_ref().map(|p| p.person.id), library_episodes.len()),
+            move |_: (), (person_id, offset)| {
+                let (Some((server, api_key)), Some(person_id)) = (auth.clone(), *person_id) else { return };
+                if *loading_more {
+                    return;
+                }
+                let offset = *offset as i64;
+                let library_episodes = library_episodes.clone();
+                let can_load_more = can_load_more.clone();
+                let loading_more = loading_more.clone();
+                loading_more.set(true);
+                spawn_local(async move {
+                    if let Ok(p) = call_get_person_profile(&server, &api_key, person_id, PAGE_SIZE, offset).await {
+                        can_load_more.set(p.episodes.len() as i64 >= PAGE_SIZE);
+                        let mut all = (**library_episodes).clone();
+                        all.extend(p.episodes);
+                        library_episodes.set(Rc::new(all));
+                    }
+                    loading_more.set(false);
+                });
+            },
+        )
+    };
+
+    let elsewhere_episodes: Rc<Vec<Episode>> = use_memo(profile.clone(), |profile| {
+        profile
             .as_ref()
-            .map_or(HashSet::new(), |feed| {
-                feed.pods.as_ref().map_or(HashSet::new(), |pods| {
-                    pods.iter()
-                        .filter(|podcast| podcast.podcastid != 0)
-                        .map(|podcast| podcast.podcastid)
-                        .collect::<HashSet<_>>()
-                })
-            })
+            .as_ref()
+            .map(|p| p.external_episodes.iter().cloned().map(|e| e.into_episode()).collect())
+            .unwrap_or_default()
     });
 
-    {
-        let api_key = api_key.clone();
-        let server_name = server_name.clone();
-        let user_id = user_id.clone();
-        let subscribed_hosts = subscribed_hosts.clone();
-        let person_ids = person_ids.clone();
-        let is_subscribed = is_subscribed.clone();
-        let current_name = (*name).clone();
-        let fetched_person_img = fetched_person_img.clone();
+    let server_name = auth.as_ref().map(|(s, _)| s.clone()).unwrap_or_default();
+    let history = BrowserHistory::new();
 
-        use_effect_with(
-            (api_key.clone(), server_name.clone(), user_id.clone()),
-            move |_| {
-                if let (Some(api_key), Some(server_name), Some(user_id)) =
-                    (api_key, server_name, user_id)
-                {
-                    spawn_local(async move {
-                        match call_get_person_subscriptions(
-                            &server_name,
-                            &api_key.unwrap(),
-                            user_id,
-                        )
-                        .await
-                        {
-                            Ok(subs) => {
-                                let mut sub_map = HashMap::new();
-                                let mut pid_map = HashMap::new();
-                                let mut found_subscription = false;
-
-                                for sub in subs {
-                                    let associated_podcasts = sub
-                                        .associatedpodcasts
-                                        .to_string()
-                                        .split(',')
-                                        .filter_map(|s| s.parse::<i32>().ok())
-                                        .collect::<Vec<i32>>();
-
-                                    // Subscription is global — just name match, no podcast_id needed
-                                    if sub.name == current_name {
-                                        found_subscription = true;
-                                        if !sub.image.is_empty() {
-                                            fetched_person_img.set(Some(sub.image.clone()));
-                                        }
-                                    }
-
-                                    sub_map.insert(sub.name.clone(), associated_podcasts);
-                                    pid_map.insert(sub.name, sub.personid);
-                                }
-
-                                subscribed_hosts.set(sub_map);
-                                person_ids.set(pid_map);
-                                is_subscribed.set(found_subscription);
-                            }
-                            Err(e) => {
-                                web_sys::console::log_1(
-                                    &format!("Failed to fetch subscriptions: {:?}", e).into(),
-                                );
-                            }
-                        }
-                    });
-                }
-                || ()
-            },
+    let show_card = |show: &PersonPodcast| -> Html {
+        let in_library = show.podcastid.is_some();
+        let onclick = create_on_title_click(
+            server_name.clone(),
+            api_key_opt.clone(),
+            &history,
+            // A library podcast opens directly; anything else is looked up and parsed like a
+            // search result.
+            show.podcastid.unwrap_or(0),
+            show.podcastindexid.unwrap_or(0) as i32,
+            show.podcastname.clone(),
+            show.feedurl.clone(),
+            String::new(),
+            String::new(),
+            show.artworkurl.clone().unwrap_or_default(),
+            false,
+            0,
+            None,
+            String::new(),
+            user_id.unwrap_or_default(),
+            false,
         );
-    }
+        let roles = show.roles.join(", ");
+        let detail = if show.podcast_level {
+            roles
+        } else {
+            let count = i18n.t("people.episode_count").replace("{count}", &show.episode_count.to_string());
+            if roles.is_empty() { count } else { format!("{} · {}", roles, count) }
+        };
+        html! {
+            <button type="button" class="pp-show" {onclick} title={show.podcastname.clone()}>
+                <div class="pp-show-art">
+                    <FallbackImage
+                        src={show.artworkurl.clone().unwrap_or_default()}
+                        alt={show.podcastname.clone()}
+                        class={Some("pp-show-img".to_string())}
+                    />
+                    { if in_library { html! {} } else {
+                        html! { <span class="pp-show-badge">{ i18n.t("people.not_in_library") }</span> }
+                    } }
+                </div>
+                <span class="pp-show-name">{ &show.podcastname }</span>
+                <span class="pp-show-meta">{ detail }</span>
+            </button>
+        }
+    };
 
-    // Fetch person podcast and episode data on mount — makes the page self-sufficient
-    // so it works when navigating directly via URL or from subscribed_people page.
-    {
-        let api_key = api_key.clone();
-        let server_name = server_name.clone();
-        let user_id = user_id.clone();
-        let _dispatch = dispatch.clone();
-        let page_loading = page_loading.clone();
-        let name_str = (*name).clone();
-
-        use_effect_with(name.clone(), move |_| {
-            if let (Some(api_key), Some(server_name), Some(user_id)) =
-                (api_key, server_name, user_id)
-            {
-                let api_key_str = api_key.unwrap_or_default();
-                spawn_local(async move {
-                    // One unified call: the backend resolves the host's shows from BOTH the
-                    // Podcast Index person index and PodPeopleDB, parses each feed, and returns the
-                    // merged, artwork-resolved episode list plus the podcast cards.
-                    match call_get_host_feed(&server_name, &api_key_str, user_id, &name_str, None, true)
-                        .await
-                    {
-                        Ok(feed) => {
-                            // Map host-feed podcasts into the Podcast shape the page renders. They
-                            // carry synthetic temp ids (real DB ids are resolved lazily on click,
-                            // same as the search flow).
-                            let podcasts: Vec<Podcast> = feed
-                                .podcasts
-                                .into_iter()
-                                .enumerate()
-                                .map(|(i, p)| Podcast {
-                                    podcastid: 1_000_000_000 + i as i32,
-                                    podcastname: p.podcastname,
-                                    artworkurl: Some(p.artworkurl),
-                                    description: Some(p.description),
-                                    episodecount: Some(p.episodecount),
-                                    websiteurl: Some(p.websiteurl),
-                                    feedurl: p.feedurl,
-                                    author: Some(p.author),
-                                    categories: None,
-                                    explicit: p.explicit,
-                                    podcastindexid: p.podcastindexid,
-                                    is_favorite: false,
-                                    is_video: false,
-                                })
-                                .collect();
-
-                            Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
-                                state.podcast_feed_return = Some(PodcastResponse {
-                                    pods: Some(podcasts),
-                                });
-                            });
-
-                            Dispatch::<SearchState>::global().reduce_mut(|state| {
-                                state.people_feed_results = Some(PeopleFeedResult {
-                                    status: Some("true".to_string()),
-                                    items: feed.episodes,
-                                });
-                            });
-                        }
-                        Err(e) => {
-                            web_sys::console::log_1(
-                                &format!("Failed to fetch host feed: {:?}", e).into(),
-                            );
-                        }
-                    }
-
-                    Dispatch::<PageLoadState>::global().reduce_mut(|state| {
-                        state.is_loading = Some(false);
-                    });
-
-                    page_loading.set(false);
-                });
+    let body = match (&*load, profile.as_ref()) {
+        (Load::NotFound, _) => html! {
+            <div class="empty-episodes-container">
+                <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
+                <h1 class="page-subtitles">{ i18n.t("people.person_not_found") }</h1>
+                <p class="page-paragraphs">{ i18n.t("people.person_not_found_message") }</p>
+            </div>
+        },
+        (Load::Ready, Some(p)) => {
+            let person = &p.person;
+            let library_count = library_episodes.len();
+            let elsewhere_count = elsewhere_episodes.len();
+            let active_tab = (*tab).unwrap_or(if library_count == 0 && elsewhere_count > 0 {
+                EpisodesTab::Elsewhere
             } else {
-                page_loading.set(false);
-            }
-            || ()
-        });
-    }
-
-    let toggle_podcast = {
-        let added_podcasts = added_podcasts_state.clone();
-        let api_key = api_key.clone();
-        let user_id = user_id.clone();
-        let server_name = server_name.clone();
-        let dispatch = dispatch.clone();
-        let state_callback = podcast_state.clone();
-        let _dispatch_podcast = podcast_dispatch.clone();
-
-        Callback::from(move |podcast_id: i32| {
-            Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
-            let added_pod_state = added_podcasts.clone();
-            let server_name_callback = server_name.clone();
-            let api_key_callback = api_key.clone();
-            let user_id_callback = user_id.clone();
-            let added_podcasts_callback = added_podcasts.clone();
-            let _dispatch_callback = dispatch.clone();
-            let i18n_podcast_removed = i18n_podcast_removed.clone();
-            let i18n_error_removing_podcast = i18n_error_removing_podcast.clone();
-            let i18n_podcast_added = i18n_podcast_added.clone();
-            let i18n_error_adding_podcast = i18n_error_adding_podcast.clone();
-            // Extract the necessary data before the async block
-            // let is_added = added_podcasts.contains(&podcast_id);
-            // Extract the podcast ID from the event's dataset
-            // Extract the podcast data
-            let podcast = state_callback
-                .podcast_feed_return
-                .as_ref()
-                .and_then(|feed| {
-                    feed.pods
-                        .as_ref()
-                        .and_then(|pods| pods.iter().find(|pod| pod.podcastid == podcast_id))
-                })
-                .cloned();
-
-            if let Some(mut podcast) = podcast {
-                web_sys::console::log_1(&format!("Handling Podcast ID: {}", podcast_id).into());
-
-                let is_added = podcast.podcastid <= 1_000_000_000
-                    && added_podcasts.contains(&podcast.podcastid);
-
-                let podcast_url = podcast.feedurl.clone();
-
-                wasm_bindgen_futures::spawn_local(async move {
-                    if is_added {
-                        // Remove podcast logic
-                        let podcast_values = RemovePodcastValuesName {
-                            podcast_name: podcast.podcastname.clone(),
-                            podcast_url: podcast_url.clone(),
-                            user_id: user_id.clone().unwrap(),
-                        };
-                        match call_remove_podcasts_name(
-                            &server_name_callback.unwrap(),
-                            &api_key_callback.unwrap(),
-                            &podcast_values,
-                        )
-                        .await
-                        {
-                            Ok(_) => {
-                                let mut new_set = (*added_podcasts_callback).clone();
-                                new_set.remove(&podcast_id);
-                                added_podcasts_callback.set(new_set);
-                                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
-                                    state.is_loading = Some(false);
-                                });
-                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                    state.info_message = Some(i18n_podcast_removed.clone());
-                                });
-                            }
-                            Err(e) => {
-                                let formatted_error = format_error_message(&e.to_string());
-                                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
-                                    state.is_loading = Some(false);
-                                });
-                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                    state.error_message = Some(format!(
-                                        "{}: {:?}",
-                                        i18n_error_removing_podcast.clone(),
-                                        formatted_error
-                                    ));
-                                });
-                            }
-                        }
-                    } else {
-                        // Assuming you have this inside the `toggle_podcast` closure:
-                        let categories_og_hashmap = podcast.categories.clone().unwrap_or_default();
-
-                        // Add podcast logic
-                        let podcast_values = PodcastValues {
-                            pod_title: podcast.podcastname.clone(),
-                            pod_artwork: podcast.artworkurl.clone().unwrap(),
-                            pod_author: podcast.author.clone().unwrap(),
-                            categories: categories_og_hashmap,
-                            pod_description: podcast.description.clone().unwrap(),
-                            pod_episode_count: podcast.episodecount.clone().unwrap_or_else(|| 0),
-                            pod_feed_url: podcast_url.clone(),
-                            pod_website: podcast.websiteurl.clone().unwrap(),
-                            pod_explicit: podcast.explicit,
-                            user_id: user_id.clone().unwrap(),
-                        };
-                        match call_add_podcast(
-                            &server_name_callback.unwrap(),
-                            &api_key_callback.unwrap(),
-                            user_id_callback.unwrap(),
-                            &podcast_values,
-                            0,
-                        )
-                        .await
-                        {
-                            Ok(podcast_info) => {
-                                let new_podcast_id = podcast_info.podcast_id;
-                                // Update the podcast ID with the correct one from the DB
-                                podcast.podcastid = new_podcast_id;
-                                // Update Yewdux state
-                                Dispatch::<PodcastFeedState>::global().reduce_mut(|state| {
-                                    if let Some(feed) = state.podcast_feed_return.as_mut() {
-                                        if let Some(pods) = feed.pods.as_mut() {
-                                            if let Some(existing_podcast) = pods
-                                                .iter_mut()
-                                                .find(|pod| pod.podcastid == podcast_id)
-                                            {
-                                                existing_podcast.podcastid = new_podcast_id;
-                                            }
-                                        }
-                                    }
-                                });
-                                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
-                                    state.is_loading = Some(false);
-                                });
-                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                    state.info_message = Some(i18n_podcast_added.clone());
-                                });
-                                let mut new_set = (*added_podcasts_callback).clone();
-                                new_set.insert(podcast.podcastid);
-                                added_podcasts_callback.set(new_set.clone());
-                                added_pod_state.set(new_set.clone());
-                            }
-                            Err(e) => {
-                                let formatted_error = format_error_message(&e.to_string());
-                                Dispatch::<PageLoadState>::global().reduce_mut(|state| {
-                                    state.is_loading = Some(false);
-                                });
-                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
-                                    state.error_message = Some(format!(
-                                        "{}: {:?}",
-                                        i18n_error_adding_podcast.clone(),
-                                        formatted_error
-                                    ));
-                                });
-                            }
-                        }
-                    }
-                });
-            }
-        })
-    };
-    let on_subscribe_toggle = {
-        let api_key = api_key.clone();
-        let server_name = server_name.clone();
-        let user_id = user_id.clone();
-        let subscribed_hosts = subscribed_hosts.clone();
-        let person_ids = person_ids.clone();
-        let is_subscribed = is_subscribed.clone();
-
-        Callback::from(move |person: HostPerson| {
-            let api_key = api_key.clone();
-            let server_name = server_name.clone();
-            let user_id = user_id.clone();
-            let subscribed_hosts = subscribed_hosts.clone();
-            let host_name = person.name.clone();
-            let host_img = person.img.clone();
-            let host_id = person.id.unwrap_or(0);
-            let person_ids = person_ids.clone();
-            let podcast_id = 0;
-            let is_subscribed = is_subscribed.clone();
-
-            // Store current state before flipping it
-            let current_subscribed = *is_subscribed;
-            is_subscribed.set(!current_subscribed);
-
-            subscribed_hosts.set({
-                let mut hosts = (*subscribed_hosts).clone();
-                hosts
-                    .entry(host_name.clone())
-                    .and_modify(|podcasts| {
-                        if podcasts.contains(&podcast_id) {
-                            podcasts.retain(|&id| id != podcast_id);
-                        } else {
-                            podcasts.push(podcast_id);
-                        }
-                    })
-                    .or_insert_with(|| vec![podcast_id]);
-
-                if let Some(podcasts) = hosts.get(&host_name) {
-                    if podcasts.is_empty() {
-                        hosts.remove(&host_name);
-                    }
-                }
-                hosts
+                EpisodesTab::Library
             });
-
-            spawn_local(async move {
-                let id_to_use = (*person_ids).get(&host_name).copied().unwrap_or(host_id);
-
-                // Use the stored state to determine action
-                if current_subscribed {
-                    if let Err(e) = call_unsubscribe_from_person(
-                        &server_name.unwrap(),
-                        &api_key.unwrap().unwrap(),
-                        user_id.unwrap(),
-                        id_to_use,
-                        host_name.clone(),
-                    )
-                    .await
-                    {
-                        web_sys::console::log_1(&format!("Failed to unsubscribe: {:?}", e).into());
-                        // Revert UI change on error
-                        is_subscribed.set(true);
-                        subscribed_hosts.set({
-                            let mut hosts = (*subscribed_hosts).clone();
-                            hosts
-                                .entry(host_name.clone())
-                                .or_insert_with(Vec::new)
-                                .push(podcast_id);
-                            hosts
-                        });
-                    }
-                } else {
-                    match call_subscribe_to_person(
-                        &server_name.unwrap(),
-                        &api_key.unwrap().unwrap(),
-                        user_id.unwrap(),
-                        host_id,
-                        &host_name,
-                        &host_img,
-                        podcast_id,
-                    )
-                    .await
-                    {
-                        Ok(response) => {
-                            // Update person_ids with the new ID
-                            person_ids.set({
-                                let mut ids = (*person_ids).clone();
-                                ids.insert(host_name.clone(), response.person_id);
-                                ids
-                            });
-                        }
-                        Err(e) => {
-                            web_sys::console::log_1(
-                                &format!("Failed to subscribe: {:?}", e).into(),
-                            );
-                            is_subscribed.set(false);
-                            subscribed_hosts.set({
-                                let mut hosts = (*subscribed_hosts).clone();
-                                if let Some(podcasts) = hosts.get_mut(&host_name) {
-                                    podcasts.retain(|&id| id != podcast_id);
-                                }
-                                if hosts
-                                    .get(&host_name)
-                                    .map_or(false, |podcasts| podcasts.is_empty())
-                                {
-                                    hosts.remove(&host_name);
-                                }
-                                hosts
-                            });
-                        }
-                    }
+            let tab_button = |which: EpisodesTab, label: String, count: usize| {
+                let tab = tab.clone();
+                let active = active_tab == which;
+                html! {
+                    <button type="button" role="tab" aria-selected={active.to_string()}
+                            class={classes!("ep-tab", active.then_some("is-active"))}
+                            onclick={Callback::from(move |_: MouseEvent| tab.set(Some(which)))}>
+                        <span>{ label }</span>
+                        { if count > 0 { html! { <span class="ep-tab-badge">{ count }</span> } } else { html! {} } }
+                    </button>
                 }
-            });
-        })
-    };
+            };
+            let library_shows = p.podcasts.iter().filter(|s| s.podcastid.is_some()).count();
+            let summary = i18n
+                .t("people.profile_summary")
+                .replace("{shows}", &p.podcasts.len().to_string())
+                .replace("{library}", &library_shows.to_string());
+            html! {
+                <>
+                <header class="pp-profile">
+                    <PersonAvatar
+                        src={person.img.as_deref().filter(|s| !s.is_empty()).map(|img| AttrValue::from(proxied_image(&server_name, img)))}
+                        alt={person.name.clone()}
+                        class="pp-profile-avatar"
+                        placeholder="is-ph"
+                    />
+                    <div class="pp-profile-body">
+                        <span class="pp-eyebrow">{ i18n.t("people.person") }</span>
+                        <h1 class="pp-profile-name">{ &person.name }</h1>
+                        <p class="pp-profile-meta">{ summary }</p>
+                        <div class="pp-profile-actions">
+                            <FollowButton person_id={person.id} followed={person.followed} />
+                            { match person.href.as_deref().filter(|h| h.starts_with("http")) {
+                                Some(href) => html! {
+                                    <a class="pp-btn" href={href.to_string()} target="_blank" rel="noopener noreferrer">
+                                        <i class="ph ph-link"></i><span>{ i18n.t("people.website") }</span>
+                                    </a>
+                                },
+                                None => html! {},
+                            } }
+                        </div>
+                    </div>
+                </header>
 
-    fn get_proxied_image_url(server_name: &str, original_url: &str) -> String {
-        let proxied_url = format!(
-            "{}/api/proxy/image?url={}",
-            server_name,
-            urlencoding::encode(original_url)
-        );
-        web_sys::console::log_1(&format!("Proxied URL: {}", proxied_url).into());
-        proxied_url
-    }
+                { if p.podcasts.is_empty() { html! {} } else { html! {
+                    <section class="pp-section">
+                        <h2 class="pp-section-title">{ i18n.t("people.shows") }</h2>
+                        <div class="pp-shows">
+                            { for p.podcasts.iter().map(|s| show_card(s)) }
+                        </div>
+                    </section>
+                } } }
+
+                <section class="pp-section">
+                    <div class="ep-tabs" role="tablist">
+                        { tab_button(EpisodesTab::Library, i18n.t("people.in_your_library").to_string(), library_count) }
+                        { tab_button(EpisodesTab::Elsewhere, i18n.t("people.elsewhere").to_string(), elsewhere_count) }
+                    </div>
+                    { if p.refreshing && active_tab == EpisodesTab::Elsewhere {
+                        html! { <p class="pp-note"><span class="sp-spinner"></span>{ i18n.t("people.looking_for_more") }</p> }
+                    } else { html! {} } }
+                    { match active_tab {
+                        EpisodesTab::Library if library_count == 0 => html! {
+                            <p class="pp-empty-text pp-pad">{ i18n.t("people.no_library_episodes") }</p>
+                        },
+                        EpisodesTab::Library => html! {
+                            <EpisodeListView
+                                key={format!("person-{}-library", person.id)}
+                                episodes={(*library_episodes).clone()}
+                                backend_can_load_more={*can_load_more}
+                                loading_more={*loading_more}
+                                on_load_more={on_load_more.clone()}
+                            />
+                        },
+                        EpisodesTab::Elsewhere if elsewhere_count == 0 => html! {
+                            <p class="pp-empty-text pp-pad">{
+                                if p.refreshing { i18n.t("people.looking_for_more") } else { i18n.t("people.no_elsewhere_episodes") }
+                            }</p>
+                        },
+                        EpisodesTab::Elsewhere => html! {
+                            <EpisodeListView
+                                key={format!("person-{}-elsewhere", person.id)}
+                                episodes={elsewhere_episodes.clone()}
+                            />
+                        },
+                    } }
+                </section>
+                </>
+            }
+        }
+        _ => html! { <Loading /> },
+    };
 
     html! {
         <>
             <div class="main-container">
                 <Search_nav />
                 <UseScrollToTop />
-                {
-                    if let Some(person) = person_data {
-                        web_sys::console::log_1(&format!("Image URL: {:?}", &person).into());
-
-                        let subscribe_text = i18n.t("person.subscribe");
-                        let unsubscribe_text = i18n.t("person.unsubscribe");
-                        let profile_alt = i18n.t("person.profile_alt");
-
-                        html! {
-                            <div class="person-header bg-custom-light p-6 rounded-lg shadow-md mb-6">
-                                <div class="flex items-center gap-6">
-                                    // Image section with fallback
-                                    <div class="w-24 h-24 rounded-full overflow-hidden flex-shrink-0">
-                                        {
-                                            if let Some(img_url) = &person.img {
-                                                web_sys::console::log_1(&format!("Image URL: {}", img_url).into());
-                                                let proxied_url = get_proxied_image_url(&server_name.clone().unwrap(), img_url);
-                                                web_sys::console::log_1(&format!("Proxied URL: {}", proxied_url).into());
-                                                html! {
-                                                    <img
-                                                        src={proxied_url}
-                                                        alt={format!("{} {}", person.name, &profile_alt)}
-                                                        class="w-full h-full object-cover"
-                                                    />
-                                                }
-                                            } else {
-                                                html! {
-                                                    <div class="w-full h-full bg-gray-300 flex items-center justify-center">
-                                                        <i class="ph ph-user text-4xl text-gray-500"></i>
-                                                    </div>
-                                                }
-                                            }
-                                        }
-                                    </div>
-
-                                    // Person details
-                                    <div class="flex-grow">
-                                        <div class="flex items-center justify-between mb-4">
-                                            <h1 class="text-2xl font-bold item_container-text">
-                                                {&person.name}
-                                            </h1>
-                                            <button
-                                                onclick={let person_clone = person.clone();
-                                                    Callback::from(move |_| on_subscribe_toggle.emit(person_clone.clone()))}
-                                                class={if *is_subscribed {
-                                                    "px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-                                                } else {
-                                                    "px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
-                                                }}
-                                            >
-                                                {
-                                                    if *is_subscribed {
-                                                        &unsubscribe_text
-                                                    } else {
-                                                        &subscribe_text
-                                                    }
-                                                }
-                                            </button>
-                                        </div>
-
-                                        <div class="flex flex-wrap gap-2 mb-2">
-                                            {
-                                                if let Some(role) = &person.role {
-                                                    html! {
-                                                        <span class="inline-block bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded">
-                                                            {role}
-                                                        </span>
-                                                    }
-                                                } else {
-                                                    html! {}
-                                                }
-                                            }
-                                            {
-                                                if let Some(group) = &person.group {
-                                                    html! {
-                                                        <span class="inline-block bg-green-100 text-green-800 text-sm px-2 py-1 rounded">
-                                                            {group}
-                                                        </span>
-                                                    }
-                                                } else {
-                                                    html! {}
-                                                }
-                                            }
-                                        </div>
-
-                                        {
-                                            if let Some(description) = &person.description {
-                                                html! {
-                                                    <p class="text-sm item_container-text">
-                                                        {description}
-                                                    </p>
-                                                }
-                                            } else {
-                                                html! {}
-                                            }
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    } else {
-                        html! {
-                            <div class="person-header bg-custom-light p-6 rounded-lg shadow-md mb-6">
-                                <div class="flex items-center gap-6">
-                                    <div class="w-24 h-24 rounded-full overflow-hidden flex-shrink-0">
-                                        <div class="w-full h-full bg-gray-300 flex items-center justify-center">
-                                            <i class="ph ph-user text-4xl text-gray-500"></i>
-                                        </div>
-                                    </div>
-                                    <div class="flex-grow">
-                                        <h1 class="text-2xl font-bold mb-2 item_container-text">
-                                            {name}
-                                        </h1>
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    }
-                }
-                <div class="p-4">
-                    <div class="mb-8">
-                    <div class="flex justify-between items-center mb-4 cursor-pointer"
-                         onclick={let is_expanded = is_expanded.clone();
-                                 Callback::from(move |_| is_expanded.set(!*is_expanded))}>
-                        <h2 class="item_container-text text-xl font-semibold">{&i18n.t("person.podcasts_this_person_appears_in")}</h2>
-                        <i class={classes!(
-                            "ph",
-                            "ph-caret-up",
-                            "transition-transform",
-                            "duration-300",
-                            "item_container-text",
-                            "text-2xl",
-                            if *is_expanded { "rotate-180" } else { "rotate-0" }
-                        )}></i>
-                    </div>
-
-                    // Content section with animation classes
-                    <div class={classes!(
-                        "transition-all",
-                        "duration-300",
-                        "overflow-hidden",
-                        if *is_expanded { "max-h-full opacity-100" } else { "max-h-0 opacity-0" }
-                    )}>
-                        {
-                            if *page_loading {
-                                html! {
-                                    <div class="flex items-center justify-center p-8">
-                                        <p class="item_container-text text-gray-400 italic">{ &i18n_loading_podcasts }</p>
-                                    </div>
-                                }
-                            } else if let Some(podcasts) = podcast_state.podcast_feed_return.clone() {
-                                let int_podcasts = podcasts.clone();
-                                if let Some(pods) = int_podcasts.pods.clone() {
-                                    if pods.is_empty() {
-                                                                // Render "No Recent Episodes Found" if episodes list is empty
-                                        html! {
-                                    <div class="empty-episodes-container">
-                                        <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                        <h1 class="page-subtitles">{&i18n.t("person.no_podcasts_found")}</h1>
-                                        <p class="page-paragraphs">{&i18n.t("person.no_podcasts_message")}</p>
-                                    </div>
-                                        }
-                                    } else {
-                                    pods.into_iter().map(|podcast| {
-                                        let is_added = if podcast.podcastid > 1_000_000_000 {
-                                            false
-                                        } else {
-                                            added_podcasts_state.contains(&podcast.podcastid)
-                                        };
-
-                                        let button_text = if is_added { "ph ph-trash" } else { "ph ph-plus-circle" };
-
-                                        let onclick = {
-                                            let podcast_id = podcast.podcastid;
-                                            let toggle_podcast = toggle_podcast.clone();
-                                            Callback::from(move |_: MouseEvent| {
-                                                toggle_podcast.emit(podcast_id);
-                                            })
-                                        };
-
-                                        let api_key_iter = api_key.clone();
-                                        let server_name_iter = server_name.clone().unwrap();
-                                        let history = history_clone.clone();
-
-                                        let _dispatch = dispatch.clone();
-                                        let podcast_description_clone = podcast.description.clone();
-
-                                        let on_title_click = create_on_title_click(
-                                            server_name_iter,
-                                            api_key_iter,
-                                            &history,
-                                            // Person-page podcasts carry a synthetic temp id
-                                            // (1_000_000_000 + i), not a real DB id. Passing it
-                                            // would send create_on_title_click down its
-                                            // `podcast_id > 0` fast path and fetch episodes for a
-                                            // bogus id (errors, no episodes). Pass 0 so it takes
-                                            // the slow path — call_check_podcast resolves the real
-                                            // DB id for subscribed podcasts and parses the feed for
-                                            // unsubscribed ones — exactly like the search flow in
-                                            // podcast_layout.rs.
-                                            0,
-                                            podcast.podcastindexid.clone(),
-                                            podcast.podcastname.clone(),
-                                            podcast.feedurl.clone(),
-                                            podcast.description.clone().unwrap_or_else(|| i18n.t("person.no_description_provided").to_string()),
-                                            podcast.author.clone().unwrap_or_else(|| i18n.t("person.unknown_author").to_string()),
-                                            podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
-                                            podcast.explicit.clone(),
-                                            podcast.episodecount.clone().unwrap_or_else(|| 0),
-                                            podcast.categories.as_ref().map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", ")),
-                                            podcast.websiteurl.clone().unwrap_or_else(|| i18n.t("person.no_website_provided").to_string()),
-
-                                            user_id.unwrap(),
-                                            false,
-                                        );
-
-                                        let id_string = generate_unique_id(Some(podcast.podcastid.clone()), &podcast.feedurl.clone());
-                                        let desc_expanded = desc_state.expanded_descriptions.contains(&id_string.clone());
-
-                                        #[wasm_bindgen]
-                                        extern "C" {
-                                            #[wasm_bindgen(js_namespace = window)]
-                                            fn toggleDescription(guid: &str, expanded: bool);
-                                        }
-                                        let toggle_expanded = {
-                                            let desc_dispatch = desc_dispatch.clone();
-                                            let episode_guid = id_string;
-                                            // let episode_guid = podcast.podcastid.clone().to_string();
-
-                                            Callback::from(move |_: MouseEvent| {
-                                                let guid = episode_guid.clone();
-                                                desc_dispatch.reduce_mut(move |state| {
-                                                    if state.expanded_descriptions.contains(&guid) {
-                                                        state.expanded_descriptions.remove(&guid); // Collapse the description
-                                                        toggleDescription(&guid, false); // Call JavaScript function
-                                                    } else {
-                                                        state.expanded_descriptions.insert(guid.clone()); // Expand the description
-                                                        toggleDescription(&guid, true); // Call JavaScript function
-                                                    }
-                                                });
-                                            })
-                                        };
-                                        let preview_description = strip_images_from_html(&podcast_description_clone.unwrap());
-
-
-                                        let description_class = if desc_expanded {
-                                            "desc-expanded".to_string()
-                                        } else {
-                                            "desc-collapsed".to_string()
-                                        };
-
-                                        html! {
-                                            <div class="ep-row">
-                                                <div class="ep-art-wrap" onclick={on_title_click.clone()}>
-                                                    <FallbackImage
-                                                        src={podcast.artworkurl.clone().unwrap()}
-                                                        alt={format!("{} {}", &i18n.t("person.cover_for"), podcast.podcastname.clone())}
-                                                        class="ep-art-img"
-                                                    />
-                                                </div>
-                                                <div class="ep-body">
-                                                    <div class="ep-title cursor-pointer" onclick={on_title_click}>
-                                                        { &podcast.podcastname }
-                                                    </div>
-                                                    <hr class="ep-divider" />
-                                                    <div
-                                                        class={format!("ep-desc {}", description_class)}
-                                                        onclick={toggle_expanded}
-                                                        id={format!("desc-{}", podcast.podcastid)}
-                                                    >
-                                                        <SafeHtml html={preview_description} />
-                                                    </div>
-                                                    <div class="ep-meta">
-                                                        <i class="ph ph-broadcast"></i>
-                                                        <span>{ format!("{}: {}", &i18n.t("person.episode_count"), &podcast.episodecount.unwrap_or_else(|| 0)) }</span>
-                                                    </div>
-                                                </div>
-                                                <div class="ep-actions">
-                                                    <button class="ico" onclick={onclick}>
-                                                        <i class={classes!("ph", button_text)}></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        }
-
-                                    }).collect::<Html>()
-                                    }
-                                } else {
-                                    html! {
-                                        <div class="empty-episodes-container">
-                                            <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                            <h1 class="page-subtitles">{&i18n.t("person.no_podcasts_found")}</h1>
-                                            <p class="page-paragraphs">{&i18n.t("person.add_podcasts_message")}</p>
-                                        </div>
-                                    }
-                                }
-                            } else {
-                                html! {
-                                    <div class="empty-episodes-container">
-                                        <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                        <h1 class="page-subtitles">{&i18n.t("person.no_podcasts_found")}</h1>
-                                        <p class="page-paragraphs">{&i18n.t("person.add_podcasts_message")}</p>
-                                    </div>
-                                }
-                            }
-                        }
-                        </div>
-                    </div>
-                    <div class="flex justify-between items-center mb-4 cursor-pointer"
-                         onclick={let episodes_expanded = episodes_expanded.clone();
-                                 Callback::from(move |_| episodes_expanded.set(!*episodes_expanded))}>
-                        <h2 class="item_container-text text-xl font-semibold">{&i18n.t("person.episodes_this_person_appears_in")}</h2>
-                        <i class={classes!(
-                            "ph",
-                            "ph-caret-up",
-                            "transition-transform",
-                            "duration-300",
-                            "item_container-text",
-                            "text-2xl",
-                            if *episodes_expanded { "rotate-180" } else { "rotate-0" }
-                        )}></i>
-                    </div>
-
-                    // Episodes Content with animation
-                    <div class={classes!(
-                        "transition-all",
-                        "duration-300",
-                        "overflow-hidden",
-                        if *episodes_expanded { "max-h-full opacity-100" } else { "max-h-0 opacity-0" }
-                    )}>
-                        {
-                        if let Some(results) = &search_data.people_feed_results {
-                            if results.items.is_empty() {
-                                html! {
-                                    <div class="empty-episodes-container" id="episode-container">
-                                        <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                        <h1 class="page-subtitles">{&i18n.t("person.no_episodes_found")}</h1>
-                                        <p class="page-paragraphs">{&i18n.t("person.no_episodes_message")}</p>
-                                    </div>
-                                }
-                            } else {
-                                // External-API result set — all-at-once fetch, no pagination.
-                                // EpisodeListView still earns its keep: display_count ramp keeps
-                                // the initial render light when a person has appeared in many
-                                // episodes, and the IO sentinel reveals more cards as the user
-                                // scrolls. backend_can_load_more=false disables the load-more
-                                // emission so the (default) no-op on_load_more never fires.
-                                let episodes_rc: Rc<Vec<_>> = Rc::new(results.items.clone());
-                                html! {
-                                    <EpisodeListView
-                                        key={format!("person-{}", name)}
-                                        episodes={episodes_rc}
-                                        backend_can_load_more={false}
-                                        loading_more={false}
-                                    />
-                                }
-                            }
-                        } else {
-                            html! {
-                                <div class="empty-episodes-container" id="episode-container">
-                                    <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                    <h1 class="page-subtitles">{&i18n.t("person.no_episodes_found")}</h1>
-                                    <p class="page-paragraphs">{&i18n.t("person.no_episodes_message")}</p>
-                                </div>
-                            }
-                        }
-                    }
-                    </div>
-                </div>
-
+                <div class="pp-page">{ body }</div>
                 {
                     if let Some(audio_props) = &audio_state.currently_playing {
                         html! {
@@ -958,7 +360,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 end_pos_sec={audio_props.end_pos_sec.clone()}
                                 offline={audio_props.offline.clone()}
                                 is_youtube={audio_props.is_youtube.clone()}
-                        is_video={audio_props.is_video.clone()}
+                                is_video={audio_props.is_video.clone()}
                             />
                         }
                     } else {

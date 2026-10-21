@@ -10,13 +10,14 @@ import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pending_action.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
-import 'package:pinepods_mobile/entities/person.dart';
+import 'package:pinepods_mobile/entities/people.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_html.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_description.dart';
-import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_ai_section.dart';
+import 'package:pinepods_mobile/ui/pinepods/people/add_people_sheet.dart';
+import 'package:pinepods_mobile/ui/pinepods/people/people_widgets.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
@@ -43,7 +44,9 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
   PinepodsEpisode? _episode;
   bool _isLoading = true;
   String _errorMessage = '';
-  List<Person> _persons = [];
+  List<CreditedPerson> _people = [];
+  // True once people loaded from a server that supports adding them.
+  bool _canAddPeople = false;
   bool _isDownloadedLocally = false;
   int? _userId; // set once credentials are established in _loadEpisodeDetails
 
@@ -254,46 +257,20 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
       final userId = settings.pinepodsUserId!;
       _userId = userId;
 
-      // Fetch episode metadata and podcast 2.0 data (persons) in parallel -
-      // neither depends on the other's result, and fetching them sequentially
-      // only adds latency before the page can render.
-      final results = await Future.wait<dynamic>([
-        _pinepodsService.getEpisodeMetadata(
-          _episode!.episodeId,
-          userId,
-          isYoutube: _episode!.isYoutube,
-          personEpisode: false, // Adjust if needed
-        ),
-        _pinepodsService.fetchPodcasting2Data(_episode!.episodeId, userId),
-      ]);
-      final episodeDetails = results[0] as PinepodsEpisode?;
-      final podcast2Data = results[1] as Map<String, dynamic>?;
+      // People load on their own: they're a quick database read, while the
+      // metadata can wait on the server.
+      unawaited(_loadPeople(userId));
+
+      final episodeDetails = await _pinepodsService.getEpisodeMetadata(
+        _episode!.episodeId,
+        userId,
+        isYoutube: _episode!.isYoutube,
+        personEpisode: false, // Adjust if needed
+      );
 
       if (episodeDetails != null) {
-        List<Person> persons = [];
-        if (podcast2Data != null) {
-          final personsData = podcast2Data['people'] as List<dynamic>?;
-          if (personsData != null) {
-            try {
-              persons = personsData.map((personData) {
-                return Person(
-                  name: personData['name'] ?? '',
-                  role: personData['role'] ?? '',
-                  group: personData['group'] ?? '',
-                  image: personData['img'],
-                  link: personData['href'],
-                );
-              }).toList();
-              print('Loaded ${persons.length} persons from episode 2.0 data');
-            } catch (e) {
-              print('Error parsing persons data: $e');
-            }
-          }
-        }
-        
         setState(() {
           _episode = episodeDetails;
-          _persons = persons;
           _isLoading = false;
         });
       } else {
@@ -313,6 +290,39 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _loadPeople(int userId) async {
+    final episode = _episode;
+    if (episode == null || episode.episodeId <= 0 || episode.isYoutube) return;
+    try {
+      final people = await _pinepodsService.getEpisodePeople(episode.episodeId);
+      if (people != null) {
+        if (mounted) {
+          setState(() {
+            _people = people;
+            _canAddPeople = true;
+          });
+        }
+        return;
+      }
+      // Servers before the people endpoints: read-only, from the 2.0 data.
+      final data = await _pinepodsService.fetchPodcasting2Data(episode.episodeId, userId);
+      final legacy = (data?['people'] as List<dynamic>? ?? const [])
+          .map((e) => CreditedPerson.fromJson(e as Map<String, dynamic>))
+          .where((p) => p.name.isNotEmpty && p.name != 'Unknown Host')
+          .toList();
+      if (mounted) setState(() => _people = legacy);
+    } catch (e) {
+      debugPrint('Error loading episode people: $e');
+    }
+  }
+
+  Future<void> _addPeople() async {
+    final podcastId = _episode?.podcastId;
+    if (podcastId == null || podcastId <= 0) return;
+    final added = await showAddPeopleSheet(context, podcastId: podcastId, episodeId: _episode!.episodeId);
+    if (added != null && mounted) setState(() => _people = added);
   }
 
   bool _isCurrentEpisodePlaying() {
@@ -1054,70 +1064,17 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
               ],
             ),
 
-            // Hosts/Guests section
-            if (_persons.isNotEmpty) ...[
+            // People in this episode
+            if (_people.isNotEmpty || _canAddPeople) ...[
               const SizedBox(height: 24),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Hosts & Guests',
-                  style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 80,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _persons.length,
-                  itemBuilder: (context, index) {
-                    final person = _persons[index];
-                    return Container(
-                      width: 70,
-                      margin: const EdgeInsets.only(right: 12),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.grey[300],
-                            ),
-                            child: person.image != null && person.image!.isNotEmpty
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(25),
-                                    child: PodcastImage(
-                                      url: person.image!,
-                                      width: 50,
-                                      height: 50,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.person,
-                                    size: 30,
-                                    color: Colors.grey,
-                                  ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            person.name,
-                            style: Theme.of(context).textTheme.bodySmall,
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+              PeopleStrip(
+                title: 'In This Episode',
+                people: _people,
+                onAdd: _canAddPeople && (_episode!.podcastId ?? 0) > 0 ? _addPeople : null,
+                emptyPrompt: 'Know who\'s in this episode? Add the hosts and guests.',
               ),
             ],
-            
+
             const SizedBox(height: 32),
             
             // Episode description

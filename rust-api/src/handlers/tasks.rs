@@ -186,136 +186,44 @@ pub async fn refresh_hosts(
         return Err(AppError::forbidden("This endpoint requires system API key"));
     }
 
-    // Run host refresh in background
     let db_pool = state.db_pool.clone();
+    let api = crate::services::people::Endpoints::from_config(&state.config);
     let task_id = state.task_spawner.spawn_progress_task(
         "refresh_hosts".to_string(),
         0, // System user
         move |reporter| async move {
-            reporter.update_progress(10.0, Some("Getting all people/hosts...".to_string())).await?;
-            
-            let all_people = db_pool.get_all_people_for_refresh().await
-                .map_err(|e| AppError::internal(&format!("Failed to get people: {}", e)))?;
-            
-            tracing::info!("Found {} people/hosts to refresh", all_people.len());
-            
-            let mut successful_refreshes = 0;
-            let mut failed_refreshes = 0;
-            
-            for (index, (person_id, person_name, user_id)) in all_people.iter().enumerate() {
-                let progress = 10.0 + (80.0 * (index as f64) / (all_people.len() as f64));
-                reporter.update_progress(progress, Some(format!("Refreshing host: {} ({}/{})", person_name, index + 1, all_people.len()))).await?;
-                
-                tracing::info!("Starting refresh for host: {} (ID: {}, User: {})", person_name, person_id, user_id);
-                
-                match process_person_refresh(&db_pool, *person_id, person_name, *user_id).await {
-                    Ok(_) => {
-                        successful_refreshes += 1;
-                        tracing::info!("Successfully refreshed host: {}", person_name);
-                    }
-                    Err(e) => {
-                        failed_refreshes += 1;
-                        tracing::error!("Failed to refresh host {}: {}", person_name, e);
-                    }
-                }
-            }
-            
-            // After processing all people, trigger the regular podcast refresh
-            tracing::info!("Person subscription processed, initiating server refresh...");
-            match trigger_podcast_refresh(&db_pool).await {
-                Ok(_) => {
-                    tracing::info!("Server refresh completed successfully");
-                }
-                Err(e) => {
-                    tracing::error!("Error during server refresh: {}", e);
-                }
-            }
-            
-            tracing::info!("Host refresh completed: {}/{} successful, {} failed", 
-                successful_refreshes, all_people.len(), failed_refreshes);
-            
-            reporter.update_progress(100.0, Some(format!(
-                "Host refresh completed: {}/{} successful", 
-                successful_refreshes, all_people.len()
-            ))).await?;
-            
-            Ok(serde_json::json!({
-                "success": true,
-                "hosts_refreshed": successful_refreshes,
-                "hosts_failed": failed_refreshes,
-                "total_hosts": all_people.len()
-            }))
+            reporter.update_progress(10.0, Some("Syncing people from PodPeopleDB...".to_string())).await?;
+            let result = people_sync_internal(&db_pool, &api).await?;
+            reporter.update_progress(100.0, Some("People sync completed".to_string())).await?;
+            Ok(result)
         },
     ).await?;
 
     Ok(Json(serde_json::json!({
-        "detail": "Host refresh initiated.",
+        "detail": "People sync initiated.",
         "task_id": task_id
     })))
 }
 
-// Helper function to process individual person refresh - matches Python process_person_subscription
-async fn process_person_refresh(
+/// Pull community credits from PodPeopleDB for every podcast, then refresh the episodes that
+/// followed people appear in on shows outside each user's library.
+pub async fn people_sync_internal(
     db_pool: &crate::database::DatabasePool,
-    person_id: i32,
-    person_name: &str,
-    user_id: i32,
-) -> AppResult<()> {
-    tracing::info!("Processing person subscription for: {} (ID: {}, User: {})", person_name, person_id, user_id);
-    
-    // Get person details and refresh their content
-    match db_pool.process_person_subscription(user_id, person_id, person_name.to_string()).await {
-        Ok(_) => {
-            tracing::info!("Successfully processed person subscription for {}", person_name);
-            Ok(())
-        }
-        Err(e) => {
-            tracing::error!("Error processing person subscription for {}: {}", person_name, e);
-            Err(e)
-        }
-    }
-}
-
-// Helper function to trigger podcast refresh after person processing - matches Python refresh_pods_task
-async fn trigger_podcast_refresh(db_pool: &crate::database::DatabasePool) -> AppResult<()> {
-    // Get all users with podcasts and refresh them
-    let all_users = db_pool.get_all_users_with_podcasts().await?;
-    
-    for user_id in all_users {
-        match refresh_user_podcasts(db_pool, user_id).await {
-            Ok((podcast_count, episode_count)) => {
-                tracing::info!("Successfully refreshed user {}: {} podcasts, {} new episodes", 
-                    user_id, podcast_count, episode_count);
-            }
-            Err(e) => {
-                tracing::error!("Failed to refresh user {}: {}", user_id, e);
-            }
-        }
-    }
-    
-    Ok(())
-}
-
-// Helper function to refresh podcasts for a single user
-async fn refresh_user_podcasts(db_pool: &crate::database::DatabasePool, user_id: i32) -> AppResult<(i32, i32)> {
-    let podcasts = db_pool.get_user_podcasts_for_refresh(user_id).await?;
-    let mut successful_podcasts = 0;
-    let mut total_new_episodes = 0;
-    
-    for podcast in podcasts {
-        match refresh_single_podcast(db_pool, &podcast).await {
-            Ok(new_episode_count) => {
-                successful_podcasts += 1;
-                total_new_episodes += new_episode_count;
-                tracing::info!("Refreshed podcast '{}': {} new episodes", podcast.name, new_episode_count);
-            }
-            Err(e) => {
-                tracing::error!("Failed to refresh podcast '{}': {}", podcast.name, e);
-            }
-        }
-    }
-    
-    Ok((successful_podcasts, total_new_episodes))
+    api: &crate::services::people::Endpoints,
+) -> AppResult<serde_json::Value> {
+    use crate::services::people::{external, podpeople};
+    let podcasts_updated = if podpeople::sync_enabled() { podpeople::sync(db_pool, api, None).await? } else { 0 };
+    let people_refreshed = external::refresh_followed(db_pool, api).await?;
+    tracing::info!(
+        "People sync: {} podcasts got new PodPeopleDB credits, {} followed people refreshed",
+        podcasts_updated,
+        people_refreshed
+    );
+    Ok(serde_json::json!({
+        "success": true,
+        "podcasts_updated": podcasts_updated,
+        "people_refreshed": people_refreshed,
+    }))
 }
 
 // Auto-complete episodes based on user settings - nightly task
@@ -363,17 +271,6 @@ pub async fn auto_complete_episodes(
     })))
 }
 
-// Helper function to refresh a single podcast
-async fn refresh_single_podcast(
-    _db_pool: &crate::database::DatabasePool,
-    podcast: &crate::handlers::refresh::PodcastForRefresh,
-) -> AppResult<i32> {
-    tracing::info!("Refreshing podcast: {} (ID: {})", podcast.name, podcast.id);
-    // This would normally refresh the podcast feed and return new episode count
-    // For now return 0 as placeholder since we need the podcast refresh system to be implemented
-    Ok(0)
-}
-
 // Internal functions for scheduler (no HTTP context needed)
 pub async fn cleanup_tasks_internal(state: &AppState) -> AppResult<()> {
     tracing::info!("Starting internal cleanup tasks (scheduler)");
@@ -391,44 +288,7 @@ pub async fn cleanup_tasks_internal(state: &AppState) -> AppResult<()> {
 }
 
 pub async fn refresh_hosts_internal(state: &AppState) -> AppResult<()> {
-    tracing::info!("Starting internal host refresh (scheduler)");
-    
-    let all_people = state.db_pool.get_all_people_for_refresh().await?;
-    tracing::info!("Found {} people/hosts to refresh", all_people.len());
-    
-    let mut successful_refreshes = 0;
-    let mut failed_refreshes = 0;
-    
-    for (person_id, person_name, user_id) in all_people.iter() {
-        tracing::info!("Starting refresh for host: {} (ID: {}, User: {})", person_name, person_id, user_id);
-        
-        match process_person_refresh(&state.db_pool, *person_id, person_name, *user_id).await {
-            Ok(_) => {
-                successful_refreshes += 1;
-                tracing::info!("Successfully refreshed host: {}", person_name);
-            }
-            Err(e) => {
-                failed_refreshes += 1;
-                tracing::error!("Failed to refresh host {}: {}", person_name, e);
-            }
-        }
-    }
-    
-    // After processing all people, trigger the regular podcast refresh
-    tracing::info!("Person subscription processed, initiating server refresh...");
-    match trigger_podcast_refresh(&state.db_pool).await {
-        Ok(_) => {
-            tracing::info!("Server refresh completed successfully");
-        }
-        Err(e) => {
-            tracing::error!("Error during server refresh: {}", e);
-        }
-    }
-    
-    tracing::info!("Host refresh completed: {}/{} successful, {} failed", 
-        successful_refreshes, all_people.len(), failed_refreshes);
-    
-    Ok(())
+    people_sync_internal(&state.db_pool, &crate::services::people::Endpoints::from_config(&state.config)).await.map(|_| ())
 }
 
 pub async fn auto_complete_episodes_internal(state: &AppState) -> AppResult<()> {

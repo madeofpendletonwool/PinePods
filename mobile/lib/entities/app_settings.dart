@@ -4,6 +4,18 @@
 
 import 'package:pinepods_mobile/entities/search_providers.dart';
 
+/// Every bottom-bar page, in the default order.
+const List<String> defaultBottomBarOrder = [
+  'Home', 'Feed', 'Saved', 'Podcasts', 'People', 'Downloads', 'History', 'Playlists', 'Search',
+];
+
+/// A saved bar order made usable: pages it doesn't know are dropped, and pages
+/// added since it was saved are appended, so updates don't hide new tabs.
+List<String> normalizeBottomBarOrder(List<String> saved) {
+  final known = saved.where(defaultBottomBarOrder.contains).toSet().toList();
+  return [...known, ...defaultBottomBarOrder.where((p) => !known.contains(p))];
+}
+
 class AppSettings {
   /// The current theme name.
   final String theme;
@@ -130,7 +142,7 @@ class AppSettings {
         pinepodsUserId = null,
         pinepodsUsername = null,
         pinepodsEmail = null,
-        bottomBarOrder = const ['Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists', 'Search'],
+        bottomBarOrder = defaultBottomBarOrder,
         autoDownloadWifiOnly = true,
         preferServerDownloadSource = true,
         autoDownloadQueueCount = 0,

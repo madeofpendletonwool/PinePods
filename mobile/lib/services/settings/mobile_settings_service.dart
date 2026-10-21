@@ -280,9 +280,9 @@ class MobileSettingsService extends SettingsService {
   List<String> get bottomBarOrder {
     final orderString = _sharedPreferences.getString('bottom_bar_order');
     if (orderString != null) {
-      return orderString.split(',');
+      return normalizeBottomBarOrder(orderString.split(','));
     }
-    return ['Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists', 'Search'];
+    return defaultBottomBarOrder;
   }
 
   @override

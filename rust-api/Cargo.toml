@@ -68,6 +68,9 @@ regex = "1.13.1"
 id3 = "1.17.2"
 mp3-metadata = "0.4.0"
 quick-xml = "0.42.0"
+unicode-normalization = "0.1.26"
+sha2 = "0.10.9"
+hex = "0.4.3"
 
 # Email
 lettre = { version = "0.11.23", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }

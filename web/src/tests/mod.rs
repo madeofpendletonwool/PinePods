@@ -36,14 +36,14 @@ fn test_route_variants_exist() {
 #[wasm_bindgen_test]
 fn test_route_variants() {
     let person_route = Route::Person {
-        name: "test_user".to_string(),
+        key: "12".to_string(),
     };
     let shared_ep_route = Route::SharedEpisode {
         url_key: "test_key".to_string(),
     };
 
     match person_route {
-        Route::Person { name } => assert_eq!(name, "test_user"),
+        Route::Person { key } => assert_eq!(key, "12"),
         _ => panic!("Wrong route type"),
     }
 

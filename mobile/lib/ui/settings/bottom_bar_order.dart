@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
 
 /// A widget that allows users to reorder the bottom navigation bar items
@@ -98,7 +99,7 @@ class _BottomBarOrderWidgetState extends State<BottomBarOrderWidget> {
                   child: ElevatedButton(
                     onPressed: () {
                       setState(() {
-                        _currentOrder = ['Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists', 'Search'];
+                        _currentOrder = List.from(defaultBottomBarOrder);
                       });
                     },
                     child: const Text('Reset to Default'),
@@ -118,6 +119,7 @@ class _BottomBarOrderWidgetState extends State<BottomBarOrderWidget> {
       case 'Feed': return Icons.rss_feed;
       case 'Saved': return Icons.bookmark;
       case 'Podcasts': return Icons.podcasts;
+      case 'People': return Icons.people;
       case 'Downloads': return Icons.download;
       case 'History': return Icons.history;
       case 'Playlists': return Icons.playlist_play;

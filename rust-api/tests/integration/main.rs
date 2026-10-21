@@ -12,6 +12,7 @@ mod feeds;
 mod foreign_resources;
 mod library;
 mod opml;
+mod people;
 mod playback;
 mod podcasting20;
 mod podcasts;
