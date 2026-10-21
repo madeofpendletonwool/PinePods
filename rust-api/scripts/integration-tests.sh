@@ -4,6 +4,9 @@
 #   scripts/integration-tests.sh                 # Postgres + MariaDB, all tests
 #   scripts/integration-tests.sh --db postgres   # one backend only (postgres | mariadb)
 #   scripts/integration-tests.sh -- queue        # extra args go to `cargo test` (name filter, etc.)
+#   scripts/integration-tests.sh --gpodder go -- gpodder
+#                                                # gpodder protocol tests against go | rust | mock
+#                                                # (default go), then print the known-failure report
 #   scripts/integration-tests.sh down            # stop the throwaway containers
 #
 # Containers come from tests/docker-compose.yml (off-default ports, tmpfs data). A Python venv
@@ -28,6 +31,12 @@ while [[ $# -gt 0 ]]; do
         mariadb|mysql) DBS=(mariadb) ;;
         all) DBS=(postgresql mariadb) ;;
         *) echo "unknown --db '${2:-}' (postgres | mariadb | all)" >&2; exit 2 ;;
+      esac
+      shift 2 ;;
+    --gpodder)
+      case "${2:-}" in
+        go|rust|mock) export PINEPODS_TEST_GPODDER="$2" ;;
+        *) echo "unknown --gpodder '${2:-}' (go | rust | mock)" >&2; exit 2 ;;
       esac
       shift 2 ;;
     --) shift; CARGO_ARGS+=("$@"); break ;;
@@ -55,9 +64,18 @@ if [[ -z "${PINEPODS_TEST_PYTHON:-}" ]]; then
 fi
 
 cd "$API_DIR"
+# Known gpodder protocol failures are appended here by the tests (harness/gpodder.rs).
+REPORT_DIR="$API_DIR/target/gpodder-conformance"
+rm -rf "$REPORT_DIR"
 status=0
 for db in "${DBS[@]}"; do
   echo "=== integration tests: $db ==="
   PINEPODS_TEST_DB_TYPE="$db" cargo test --test integration ${CARGO_ARGS[@]+"${CARGO_ARGS[@]}"} || status=$?
 done
+if compgen -G "$REPORT_DIR/*.txt" > /dev/null; then
+  for f in "$REPORT_DIR"/*.txt; do
+    echo "=== known gpodder failures: $(basename "$f" .txt) ==="
+    sort "$f"
+  done
+fi
 exit $status
