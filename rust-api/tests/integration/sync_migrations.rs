@@ -443,3 +443,21 @@ async fn sessions_end_with_the_app_password_that_opened_them() {
     let gone = int(&app, r#"SELECT COUNT(*) FROM "GpodderSessions" WHERE SessionToken = 'by-phone'"#).await;
     assert_eq!((count, gone), (Some(2), Some(0)), "only the revoked password's session ends");
 }
+
+#[tokio::test]
+async fn device_names_set_in_pinepods_get_their_own_column() {
+    let app = TestApp::new().await;
+    let user = app.user("captions").await;
+    exec(&app, &format!(r#"INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, DeviceCaption) VALUES ({}, 'phone', 'mobile', 'Pixel')"#, user.id)).await;
+    exec(&app, r#"ALTER TABLE "GpodderDevices" DROP COLUMN UserCaption"#).await;
+
+    rerun_migrations(&app, &["070"]).await;
+    rerun_migrations(&app, &["070"]).await; // idempotent
+
+    let caption = |sql: &'static str| {
+        let app = &app;
+        async move { text(app, sql).await }
+    };
+    assert_eq!(caption(r#"SELECT DeviceCaption FROM "GpodderDevices" WHERE DeviceName = 'phone'"#).await.as_deref(), Some("Pixel"));
+    assert_eq!(caption(r#"SELECT UserCaption FROM "GpodderDevices" WHERE DeviceName = 'phone'"#).await, None);
+}

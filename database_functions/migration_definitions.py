@@ -1011,6 +1011,7 @@ def migration_008_gpodder_tables(conn, db_type: str):
                     DeviceName VARCHAR(255) NOT NULL,
                     DeviceType VARCHAR(50) DEFAULT 'desktop',
                     DeviceCaption VARCHAR(255),
+                    UserCaption VARCHAR(255),
                     IsDefault BOOLEAN DEFAULT FALSE,
                     LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     IsActive BOOLEAN DEFAULT TRUE,
@@ -1046,6 +1047,7 @@ def migration_008_gpodder_tables(conn, db_type: str):
                     DeviceName VARCHAR(255) NOT NULL,
                     DeviceType VARCHAR(50) DEFAULT 'desktop',
                     DeviceCaption VARCHAR(255),
+                    UserCaption VARCHAR(255),
                     IsDefault BOOLEAN DEFAULT FALSE,
                     LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     IsActive BOOLEAN DEFAULT TRUE,
@@ -6720,6 +6722,23 @@ def migration_069_unique_listen_history_per_episode(conn, db_type: str) -> None:
             cursor.execute(f"ALTER TABLE {qt} ADD CONSTRAINT {constraint} UNIQUE (UserID, {item_col})")
             logger.info(f"Migration 069: added {constraint}")
         logger.info("Migration 069 completed")
+    finally:
+        cursor.close()
+
+
+@register_migration("070", "gpodder_device_user_caption", "GpodderDevices.UserCaption: a name set in Pinepods that apps don't overwrite", requires=["008"])
+def migration_070_gpodder_device_user_caption(conn, db_type: str) -> None:
+    """Apps send their own caption whenever they configure their device, which replaced a name the
+    user had given the device in Pinepods. The user's name now has its own column and wins."""
+    cursor = conn.cursor()
+    table = '"GpodderDevices"' if db_type == "postgresql" else "GpodderDevices"
+    try:
+        if not _column_exists(cursor, db_type, "GpodderDevices", "UserCaption"):
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN UserCaption VARCHAR(255) NULL")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cursor.close()
 

@@ -125,7 +125,7 @@ async fn pg_ensure_device(conn: &mut PgConnection, user_id: i32, name: &str) -> 
            VALUES ($1, $2, 'other', FALSE, TRUE, CURRENT_TIMESTAMP)
            ON CONFLICT (userid, devicename) DO UPDATE SET isactive = TRUE, lastsync = CURRENT_TIMESTAMP
              WHERE "GpodderDevices".systemrole IS NULL
-           RETURNING deviceid, devicename, devicecaption, devicetype, subsdownloadcursor"#,
+           RETURNING deviceid, devicename, COALESCE(usercaption, devicecaption) AS devicecaption, devicetype, subsdownloadcursor"#,
     )
     .bind(user_id)
     .bind(name)
@@ -154,7 +154,7 @@ async fn mysql_ensure_device(conn: &mut MySqlConnection, user_id: i32, name: &st
     .execute(&mut *conn)
     .await?;
     let r = sqlx::query(
-        "SELECT DeviceID, DeviceName, DeviceCaption, DeviceType, SubsDownloadCursor, SystemRole
+        "SELECT DeviceID, DeviceName, COALESCE(UserCaption, DeviceCaption) AS DeviceCaption, DeviceType, SubsDownloadCursor, SystemRole
          FROM GpodderDevices WHERE UserID = ? AND DeviceName = ?",
     )
     .bind(user_id)
@@ -445,7 +445,7 @@ impl DatabasePool {
     pub(crate) async fn gpodder_devices(&self, user_id: i32) -> AppResult<Vec<Device>> {
         let rows = match self {
             DatabasePool::Postgres(pool) => sqlx::query(
-                r#"SELECT deviceid AS id, devicename AS name, devicecaption AS caption, devicetype AS kind, subsdownloadcursor AS subs_cursor
+                r#"SELECT deviceid AS id, devicename AS name, COALESCE(usercaption, devicecaption) AS caption, devicetype AS kind, subsdownloadcursor AS subs_cursor
                    FROM "GpodderDevices" WHERE userid = $1 AND COALESCE(isactive, TRUE) ORDER BY deviceid"#,
             )
             .bind(user_id)
@@ -455,7 +455,7 @@ impl DatabasePool {
             .map(|r| device_row(r))
             .collect::<AppResult<Vec<_>>>()?,
             DatabasePool::MySQL(pool) => sqlx::query(
-                "SELECT DeviceID AS id, DeviceName AS name, DeviceCaption AS caption, DeviceType AS kind, SubsDownloadCursor AS subs_cursor
+                "SELECT DeviceID AS id, DeviceName AS name, COALESCE(UserCaption, DeviceCaption) AS caption, DeviceType AS kind, SubsDownloadCursor AS subs_cursor
                  FROM GpodderDevices WHERE UserID = ? AND COALESCE(IsActive, TRUE) ORDER BY DeviceID",
             )
             .bind(user_id)
@@ -1276,7 +1276,7 @@ impl DatabasePool {
     pub async fn gpodder_device_list(&self, user_id: i32) -> AppResult<Vec<DeviceInfo>> {
         let rows: Vec<DeviceInfoRow> = match self {
             DatabasePool::Postgres(pool) => sqlx::query_as(
-                r#"SELECT deviceid, devicename, devicecaption, devicetype,
+                r#"SELECT deviceid, devicename, COALESCE(usercaption, devicecaption), devicetype,
                           EXTRACT(EPOCH FROM lastsync::timestamptz)::BIGINT, systemrole
                    FROM "GpodderDevices" WHERE userid = $1 AND COALESCE(isactive, TRUE) ORDER BY deviceid"#,
             )
@@ -1284,7 +1284,7 @@ impl DatabasePool {
             .fetch_all(pool)
             .await?,
             DatabasePool::MySQL(pool) => sqlx::query_as(
-                "SELECT DeviceID, DeviceName, DeviceCaption, DeviceType, CAST(UNIX_TIMESTAMP(LastSync) AS SIGNED), SystemRole
+                "SELECT DeviceID, DeviceName, COALESCE(UserCaption, DeviceCaption), DeviceType, CAST(UNIX_TIMESTAMP(LastSync) AS SIGNED), SystemRole
                  FROM GpodderDevices WHERE UserID = ? AND COALESCE(IsActive, TRUE) ORDER BY DeviceID",
             )
             .bind(user_id)
@@ -1299,11 +1299,12 @@ impl DatabasePool {
         Ok(self.gpodder_device_list(user_id).await?.into_iter().find(|d| d.id == device_id))
     }
 
-    /// Set a client device's caption. Pinepods' own device is left alone (false).
+    /// Name a client device in Pinepods. Its own caption stays underneath, so the app
+    /// configuring the device again doesn't undo it. Pinepods' own device is left alone (false).
     pub async fn gpodder_rename_device(&self, user_id: i32, device_id: i32, caption: &str) -> AppResult<bool> {
         let n = match self {
             DatabasePool::Postgres(pool) => sqlx::query(
-                r#"UPDATE "GpodderDevices" SET devicecaption = $1 WHERE deviceid = $2 AND userid = $3 AND systemrole IS NULL"#,
+                r#"UPDATE "GpodderDevices" SET usercaption = $1 WHERE deviceid = $2 AND userid = $3 AND systemrole IS NULL"#,
             )
             .bind(caption)
             .bind(device_id)
@@ -1312,7 +1313,7 @@ impl DatabasePool {
             .await?
             .rows_affected(),
             DatabasePool::MySQL(pool) => sqlx::query(
-                "UPDATE GpodderDevices SET DeviceCaption = ? WHERE DeviceID = ? AND UserID = ? AND SystemRole IS NULL",
+                "UPDATE GpodderDevices SET UserCaption = ? WHERE DeviceID = ? AND UserID = ? AND SystemRole IS NULL",
             )
             .bind(caption)
             .bind(device_id)

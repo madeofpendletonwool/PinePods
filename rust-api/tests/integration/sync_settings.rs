@@ -111,6 +111,13 @@ async fn devices_can_be_renamed_and_removed_except_pinepods_own() {
     let devices = app.get("/api/sync/devices").key(&user).send().await.ok_json();
     assert!(devices.as_array().unwrap().iter().any(|d| d["id"].as_i64() == Some(phone_id) && d["caption"] == "My phone"), "{devices}");
 
+    // The app configuring its device again doesn't undo the name, and it sees the name too.
+    phone.configure_device("Pixel 9", "mobile").await.assert_ok();
+    let devices = app.get("/api/sync/devices").key(&user).send().await.ok_json();
+    assert!(devices.as_array().unwrap().iter().any(|d| d["id"].as_i64() == Some(phone_id) && d["caption"] == "My phone"), "{devices}");
+    let listed = phone.get(&format!("/api/2/devices/{}.json", user.username)).await.ok_json();
+    assert!(listed.as_array().unwrap().iter().any(|d| d["id"] == "phone" && d["caption"] == "My phone"), "{listed}");
+
     app.delete(&format!("/api/sync/devices/{phone_id}")).key(&user).send().await.assert_ok();
     let devices = app.get("/api/sync/devices").key(&user).send().await.ok_json();
     assert_eq!(devices.as_array().unwrap().len(), 1, "{devices}");
