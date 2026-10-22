@@ -8,6 +8,8 @@ use crate::{
     error::AppError,
     handlers::{extract_api_key, require_valid_api_key, check_user_access},
     models::{AvailableLanguage, LanguageUpdateRequest, UserLanguageResponse, AvailableLanguagesResponse},
+    services::sync::engine::{self, RunMode},
+    services::sync::targets::gpodder::GpodderTarget,
     AppState,
 };
 use tracing::{debug, error, info, warn};
@@ -2287,8 +2289,7 @@ pub async fn add_nextcloud_server(
         return Err(AppError::forbidden("You are not authorized to access these user details"));
     }
 
-    // Reset gPodder settings to default like Python version
-    state.db_pool.remove_podcast_sync(request.user_id).await?;
+    // The current setup stays until the login completes; saving the Nextcloud target replaces it.
 
     // Create a task for the Nextcloud authentication polling  
     let task_id = state.task_manager.create_task("nextcloud_auth".to_string(), request.user_id).await?;
@@ -2314,7 +2315,7 @@ async fn poll_for_auth_completion_background(state: AppState, request: AddNextcl
 
     match poll_for_auth_completion(&request.poll_endpoint, &request.token, &state.task_manager, &task_id).await {
         Ok(credentials) => {
-            info!("Nextcloud authentication successful: {:?}", credentials);
+            debug!("Nextcloud authentication completed for user {}", request.user_id);
             
             // Update task progress
             if let Err(e) = state.task_manager.update_task_progress(&task_id, 90.0, Some("Authentication successful, saving credentials...".to_string())).await {
@@ -2335,6 +2336,8 @@ async fn poll_for_auth_completion_background(state: AppState, request: AddNextcl
                             Some("Nextcloud authentication completed successfully".to_string())).await {
                             error!("Failed to complete task: {}", e);
                         }
+                        // First sync with the new server; a failure is recorded on the target.
+                        let _ = engine::run_for_user(&state.db_pool, &state.task_spawner, request.user_id, RunMode::Full).await;
                     }
                     Err(e) => {
                         error!("Failed to add Nextcloud settings: {}", e);
@@ -2395,7 +2398,6 @@ async fn poll_for_auth_completion(
                 match response.status().as_u16() {
                     200 => {
                         let credentials = response.json::<serde_json::Value>().await?;
-                        info!("Authentication successful: {:?}", credentials);
                         return Ok(credentials);
                     }
                     404 => {
@@ -2447,27 +2449,14 @@ pub async fn verify_gpodder_auth(
     let api_key = extract_api_key(&headers)?;
     require_valid_api_key(&state, &api_key).await?;
 
-    // Direct HTTP call to match Python implementation exactly
-    let client = reqwest::Client::new();
-    let auth_url = format!("{}/api/2/auth/{}/login.json", 
-                          request.gpodder_url.trim_end_matches('/'), 
-                          request.gpodder_username);
-    
-    match client
-        .post(&auth_url)
-        .basic_auth(&request.gpodder_username, Some(&request.gpodder_password))
-        .send()
-        .await
-    {
-        Ok(response) => {
-            if response.status().is_success() {
-                Ok(Json(serde_json::json!({"status": "success", "message": "Logged in!"})))
-            } else {
-                Err(AppError::unauthorized("Authentication failed"))
-            }
-        }
-        Err(_) => {
-            Err(AppError::internal("Internal Server Error"))
+    // The same login the sync engine does.
+    match GpodderTarget::verify(&request.gpodder_url, &request.gpodder_username, &request.gpodder_password).await {
+        Ok(()) => Ok(Json(serde_json::json!({"status": "success", "message": "Logged in!"}))),
+        Err(AppError::Auth(_)) => Err(AppError::unauthorized("Authentication failed")),
+        Err(AppError::BadRequest(m)) => Err(AppError::bad_request(m)),
+        Err(e) => {
+            warn!("Checking gpodder server credentials failed: {}", e);
+            Err(AppError::internal("Couldn't reach the gpodder server"))
         }
     }
 }
@@ -2505,6 +2494,11 @@ pub async fn add_gpodder_server(
     let success = state.db_pool.add_gpodder_server(user_id, &request.gpodder_url, &request.gpodder_username, &request.gpodder_password).await?;
     
     if success {
+        // First sync in the background; a failure is recorded on the target.
+        let (db, tasks) = (state.db_pool.clone(), state.task_spawner.clone());
+        tokio::spawn(async move {
+            let _ = engine::run_for_user(&db, &tasks, user_id, RunMode::Full).await;
+        });
         Ok(Json(serde_json::json!({ "status": "success" })))
     } else {
         Err(AppError::internal("Failed to add gPodder server"))
@@ -2780,7 +2774,7 @@ pub async fn add_custom_podcast(
 
     // Regular podcast feed handling
     // Get podcast values from feed URL
-    let podcast_values = state.db_pool.get_podcast_values(
+    let (podcast_values, feed_body) = state.db_pool.get_podcast_values_with_body(
         &request.feed_url,
         request.user_id,
         request.username.as_deref(),
@@ -2793,7 +2787,9 @@ pub async fn add_custom_podcast(
         request.user_id,
         30,
         request.username.as_deref(),
-        request.password.as_deref()
+        request.password.as_deref(),
+        Some(&feed_body),
+        crate::services::sync::SyncOrigin::Pinepods,
     ).await?;
 
     // Get complete podcast details for response

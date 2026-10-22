@@ -14,19 +14,19 @@ fn ep(n: usize) -> String {
     format!("https://cdn.example.test/show/ep{n}.mp3")
 }
 
-// ---- cursors (G1, D2) ---------------------------------------------------------------------
+// ---- cursors -----------------------------------------------------------------------------
 
 /// A device that was offline uploads an action stamped an hour ago, after another device has
 /// already synced. The other device's next sync must still get it.
 #[tokio::test(flavor = "multi_thread")]
 async fn late_upload_reaches_other_devices() {
-    conformance("G1 late upload", Known::GoMariaDb, async {
+    conformance("late upload", async {
         let s = GpodderScene::start().await;
         let phone = s.device("phone").await;
         let tablet = s.device("tablet").await;
         let cursor_b = cursor(&tablet.episode_actions(0).await.ok_json());
 
-        // Clear of the cursor's second even if the server rounds it up (the Go one does).
+        // Clear of the cursor's second even if the server rounds it up.
         tokio::time::sleep(Duration::from_millis(2100)).await;
         let an_hour_ago = Utc::now() - chrono::Duration::hours(1);
         phone.upload_episode_actions(&[play_action(POD, &ep(1), an_hour_ago, 0, 300, 1800)]).await;
@@ -41,7 +41,7 @@ async fn late_upload_reaches_other_devices() {
 /// cursor boundary.
 #[tokio::test(flavor = "multi_thread")]
 async fn same_second_episode_upload_is_not_lost() {
-    conformance("D2 same-second actions", Known::Go, async {
+    conformance("same-second actions", async {
         let s = GpodderScene::start().await;
         let phone = s.device("phone").await;
         let tablet = s.device("tablet").await;
@@ -57,7 +57,7 @@ async fn same_second_episode_upload_is_not_lost() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn same_second_subscription_change_is_not_lost() {
-    conformance("D2 same-second subscriptions", Known::Go, async {
+    conformance("same-second subscriptions", async {
         let s = GpodderScene::start().await;
         let feed = s.app.feed("same-second.xml", &Feed::with_episodes("Same second", 1));
         let phone = s.device("phone").await;
@@ -78,7 +78,7 @@ async fn same_second_subscription_change_is_not_lost() {
 /// A change another device makes in between must still reach it.
 #[tokio::test(flavor = "multi_thread")]
 async fn change_between_download_and_upload_still_arrives() {
-    conformance("D2 download-upload window", Known::Go, async {
+    conformance("download-upload window", async {
         let s = GpodderScene::start().await;
         let phone = s.device("phone").await;
         let tablet = s.device("tablet").await;
@@ -109,11 +109,11 @@ async fn change_between_download_and_upload_still_arrives() {
     .await;
 }
 
-// ---- subscription folding (G6) ------------------------------------------------------------
+// ---- subscription folding ----------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread")]
 async fn unsubscribe_then_resubscribe_shows_only_add() {
-    conformance("G6 fold", Known::Go, async {
+    conformance("fold", async {
         let s = GpodderScene::start().await;
         let feed = s.app.feed("flip.xml", &Feed::with_episodes("Flip", 1));
         let phone = s.device("phone").await;
@@ -136,14 +136,14 @@ async fn unsubscribe_then_resubscribe_shows_only_add() {
     .await;
 }
 
-// ---- scale and feed fetching (G4, D6) -----------------------------------------------------
+// ---- scale and feed fetching -------------------------------------------------------------
 
 /// AntennaPod's first sync of a big library: 500 subscriptions in one POST, then 5,000
 /// actions in POSTs of 30. Every request answers in under 2s, and the server fetches no feed
 /// while answering.
 #[tokio::test(flavor = "multi_thread")]
 async fn big_first_sync_is_fast_and_fetches_nothing_inline() {
-    conformance("G4 big first sync", Known::Go, async {
+    conformance("big first sync", async {
         let s = GpodderScene::start().await;
         let phone = s.device("phone").await;
         let feeds: Vec<String> = (0..500).map(|i| s.app.fixtures().url(&format!("big/{i}.xml"))).collect();
@@ -177,7 +177,7 @@ async fn big_first_sync_is_fast_and_fetches_nothing_inline() {
 /// A subscription upload never waits on the feed host: here every host hangs forever.
 #[tokio::test(flavor = "multi_thread")]
 async fn subscription_upload_never_waits_on_feed_hosts() {
-    conformance("G4 no inline fetch", Known::Go, async {
+    conformance("no inline fetch", async {
         let s = GpodderScene::start().await;
         let host = stalled_host().await;
         let feeds: Vec<String> = (0..3).map(|i| format!("{host}/feed{i}.xml")).collect();
@@ -192,14 +192,14 @@ async fn subscription_upload_never_waits_on_feed_hosts() {
     .await;
 }
 
-// ---- transactions (G2) --------------------------------------------------------------------
+// ---- transactions ------------------------------------------------------------------------
 
 /// A batch with an action the database can't store is handled atomically, and nothing the
 /// failed batch left behind (open transactions, held connections, row locks) blocks the next
 /// upload. Twelve failures in a row outlast any reasonably sized connection pool.
 #[tokio::test(flavor = "multi_thread")]
 async fn failed_batch_rolls_back_and_blocks_nothing() {
-    conformance("G2 rollback", Known::Go, async {
+    conformance("rollback", async {
         let s = GpodderScene::start().await;
         // A real Pinepods episode, so servers that mirror plays into listen history touch it.
         let feed_url = s.app.feed("rollback.xml", &Feed::with_episodes("Rollback", 1));
@@ -250,13 +250,13 @@ async fn failed_batch_rolls_back_and_blocks_nothing() {
     .await;
 }
 
-// ---- PUT semantics (G5) -------------------------------------------------------------------
+// ---- PUT semantics -----------------------------------------------------------------------
 
 /// A device PUTting its own (short) list only changes what that device reported: other
 /// devices' subscriptions survive.
 #[tokio::test(flavor = "multi_thread")]
 async fn put_from_one_device_keeps_other_devices_subscriptions() {
-    conformance("G5 put", Known::Go, async {
+    conformance("put", async {
         let s = GpodderScene::start().await;
         let a = s.app.feed("put-a.xml", &Feed::with_episodes("Put A", 1));
         let b = s.app.feed("put-b.xml", &Feed::with_episodes("Put B", 1));
@@ -278,7 +278,7 @@ async fn put_from_one_device_keeps_other_devices_subscriptions() {
 /// The same for podcasts added in Pinepods itself, which no gpodder device ever reported.
 #[tokio::test(flavor = "multi_thread")]
 async fn put_keeps_podcasts_added_in_pinepods() {
-    conformance("G5 put library", Known::Go, async {
+    conformance("put library", async {
         let s = GpodderScene::start().await;
         if !s.has_library() {
             return;
@@ -309,12 +309,12 @@ async fn put_keeps_podcasts_added_in_pinepods() {
     .await;
 }
 
-// ---- devices (G8) -------------------------------------------------------------------------
+// ---- devices -----------------------------------------------------------------------------
 
 /// An episode upload naming a device the server has never seen creates that device.
 #[tokio::test(flavor = "multi_thread")]
 async fn episode_upload_creates_unknown_device() {
-    conformance("G8 device auto-create", Known::GoMariaDb, async {
+    conformance("device auto-create", async {
         let s = GpodderScene::start().await;
         let car = s.device("car").await;
         car.upload_episode_actions(&[play_action(POD, &ep(1), Utc::now(), 0, 30, 1800)]).await;

@@ -5,8 +5,7 @@ permissions:
 
 # Unit tests plus the integration suite (rust-api/tests/integration): the real router
 # against real, freshly migrated Postgres and MariaDB databases and Valkey. Also triggered
-# by migration changes, since the suite builds its schema from database_functions/, and by
-# gpodder-api changes, since the gpodder protocol tests run against the Go service.
+# by migration changes, since the suite builds its schema from database_functions/.
 on:
   push:
     branches:
@@ -15,14 +14,12 @@ on:
       - 'rust-api/**'
       - 'database_functions/**'
       - 'startup/setup_database_new.py'
-      - 'gpodder-api/**'
       - '.github/workflows/rust-api-tests.yml'
   pull_request:
     paths:
       - 'rust-api/**'
       - 'database_functions/**'
       - 'startup/setup_database_new.py'
-      - 'gpodder-api/**'
       - '.github/workflows/rust-api-tests.yml'
   workflow_dispatch:
 
@@ -82,16 +79,6 @@ jobs:
         with:
           workspaces: rust-api
 
-      - name: Set up Go (gpodder protocol tests run against gpodder-api)
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: gpodder-api/go.mod
-          cache-dependency-path: gpodder-api/go.sum
-
-      - name: Build gpodder-api for the protocol tests
-        working-directory: gpodder-api
-        run: go build -o "$RUNNER_TEMP/gpodder-api" ./cmd/server
-
       - name: Set up Python (schema migrations)
         uses: actions/setup-python@v7
         with:
@@ -114,5 +101,4 @@ jobs:
         env:
           PINEPODS_TEST_EXTERNAL_SERVICES: "1"
           PINEPODS_TEST_PYTHON: python
-          PINEPODS_TEST_GPODDER_BIN: ${{ runner.temp }}/gpodder-api
         run: scripts/integration-tests.sh --db ${{ matrix.db }}

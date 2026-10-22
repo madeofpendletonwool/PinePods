@@ -2,9 +2,9 @@
 //!
 //! Two jobs:
 //! - **Reference server** for the protocol tests (`PINEPODS_TEST_GPODDER=mock`): it follows
-//!   the sync plan's rules (SYNC_REFRESH_PLAN.md D2), so the tests are checked against
+//!   the cursor rules below, so the tests are checked against
 //!   something correct while the Rust port doesn't exist yet.
-//! - **Stand-in external server** for the external sync engine (Phase 6): Pinepods talks to
+//! - **Stand-in external server** for the external sync engine: Pinepods talks to
 //!   it as it would to oPodSync or a Nextcloud with the gpoddersync app. Every request is
 //!   recorded, and failures can be injected.
 //!
@@ -73,11 +73,20 @@ struct Inner {
     users: HashMap<String, UserData>,
     sessions: HashMap<String, String>,
     log: Vec<Recorded>,
-    /// (path prefix, status, remaining count)
-    failures: Vec<(String, u16, usize)>,
+    failures: Vec<Failure>,
 }
 
 type Reply = (u16, Value, Option<String>);
+
+/// Injected failure: requests matching `method` (any if None) and `prefix` pass `skip` times,
+/// then the next `count` get `status`.
+struct Failure {
+    method: Option<String>,
+    prefix: String,
+    skip: usize,
+    status: u16,
+    count: usize,
+}
 
 #[derive(Clone)]
 pub struct MockGpodder {
@@ -125,7 +134,19 @@ impl MockGpodder {
 
     /// Answer the next `count` requests whose path starts with `path_prefix` with `status`.
     pub fn fail_next(&self, path_prefix: &str, status: u16, count: usize) {
-        self.inner.lock().unwrap().failures.push((path_prefix.to_string(), status, count));
+        self.fail_after(None, path_prefix, 0, status, count);
+    }
+
+    /// Let `skip` requests with `method` (any if None) to paths starting with `path_prefix`
+    /// through, then answer the next `count` with `status`.
+    pub fn fail_after(&self, method: Option<&str>, path_prefix: &str, skip: usize, status: u16, count: usize) {
+        self.inner.lock().unwrap().failures.push(Failure {
+            method: method.map(str::to_string),
+            prefix: path_prefix.to_string(),
+            skip,
+            status,
+            count,
+        });
     }
 
     /// The user's current subscriptions, folded from every device's changes.
@@ -303,10 +324,18 @@ async fn handle(State(inner): State<Arc<Mutex<Inner>>>, req: Request) -> Respons
     let body_text = String::from_utf8_lossy(&body).into_owned();
 
     let mut inner = inner.lock().unwrap();
-    let injected = inner.failures.iter_mut().find(|(p, _, n)| *n > 0 && path.starts_with(p.as_str())).map(|f| {
-        f.2 -= 1;
-        f.1
-    });
+    let injected = inner
+        .failures
+        .iter_mut()
+        .find(|f| f.count > 0 && path.starts_with(f.prefix.as_str()) && f.method.as_deref().is_none_or(|m| m == method.as_str()))
+        .and_then(|f| {
+            if f.skip > 0 {
+                f.skip -= 1;
+                return None;
+            }
+            f.count -= 1;
+            Some(f.status)
+        });
     let (status, out, cookie) = match injected {
         Some(status) => reply(status, json!({ "error": "injected failure" })),
         None => route(&mut inner, &method, &path, query.as_deref(), &headers, &body_text),

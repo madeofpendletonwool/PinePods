@@ -14,6 +14,15 @@ pub struct UserStats {
     pub EpisodesDownloaded: i32,
     pub GpodderUrl: String,
     pub Pod_Sync_Type: String,
+    // Newer servers also describe the current sync setup.
+    #[serde(default)]
+    pub SyncServerEnabled: Option<bool>,
+    #[serde(default)]
+    pub SyncServerUrl: Option<String>,
+    #[serde(default)]
+    pub SyncTargetKind: Option<String>,
+    #[serde(default)]
+    pub SyncTargetUrl: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]

@@ -7,6 +7,7 @@ use crate::components::context::{
 use crate::components::episode_list_item::EpisodeListItem;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::loading::Loading;
+use crate::components::setting_components::nextcloud_options::SyncNoticeBanner;
 use crate::pages::routes::Route;
 use crate::requests::episode::Episode;
 use crate::requests::pod_req::Playlist;
@@ -472,6 +473,7 @@ pub fn home() -> Html {
         <div class="main-container">
             <Search_nav />
             <UseScrollToTop />
+            <SyncNoticeBanner />
 
             if *loading {
                 {

@@ -145,7 +145,7 @@ fn task_icon(task_type: &str) -> &'static str {
         "youtube_download" | "download_video" | "download_all_videos" => "ph-youtube-logo",
         "playlist_generation" | "update_playlists" => "ph-list-checks",
         "opml_import" | "add_podcast_episodes" => "ph-upload-simple",
-        "refresh_gpodder_subscriptions" | "gpodder_subscription_refresh" => "ph-arrows-left-right",
+        "refresh_gpodder_subscriptions" | "gpodder_subscription_refresh" | "sync_setup" => "ph-arrows-left-right",
         "refresh_nextcloud_subscriptions" | "nextcloud_auth" => "ph-cloud",
         "manual_backup_to_directory" => "ph-floppy-disk",
         "restore_from_backup_file" => "ph-clock-counter-clockwise",
@@ -287,6 +287,7 @@ pub fn notification_center() -> Html {
     let l_backup = i18n.t("notification_center.task_backup").to_string();
     let l_restore = i18n.t("notification_center.task_restore").to_string();
     let l_gpodder = i18n.t("notification_center.task_gpodder_sync").to_string();
+    let l_sync_setup = i18n.t("sync_settings.task_first_sync").to_string();
     let l_nextcloud = i18n.t("notification_center.task_nextcloud_sync").to_string();
     let l_nextcloud_auth = i18n.t("notification_center.task_nextcloud_auth").to_string();
     let l_playlist_update = i18n.t("notification_center.task_playlist_update").to_string();
@@ -318,6 +319,7 @@ pub fn notification_center() -> Html {
                 "manual_backup_to_directory" => l_backup.clone(),
                 "restore_from_backup_file" => l_restore.clone(),
                 "refresh_gpodder_subscriptions" | "gpodder_subscription_refresh" => l_gpodder.clone(),
+                "sync_setup" => l_sync_setup.clone(),
                 "refresh_nextcloud_subscriptions" => l_nextcloud.clone(),
                 "nextcloud_auth" => l_nextcloud_auth.clone(),
                 "cleanup_tasks" => l_cleanup.clone(),
@@ -671,6 +673,26 @@ pub fn notification_center() -> Html {
         let (kind, icon) = msg_kind(&m.severity);
         let id = m.id.clone();
         let on_dismiss = dismiss_message.clone();
+        // Feed problem messages carry a name/URL and an error kind; the text is ours.
+        let kind_text = |k: &Option<String>| {
+            i18n.t(crate::components::setting_components::feed_problems::kind_key(k.as_deref().unwrap_or("other"))).to_string()
+        };
+        let (line1, line2) = match m.category.as_str() {
+            "feed_problem" => (i18n.t("feed_problems.msg_problem").replace("{name}", &m.title), Some(kind_text(&m.body))),
+            "feed_recovered" => (i18n.t("feed_problems.msg_recovered").replace("{name}", &m.title), None),
+            "sync_import_failed" => (
+                i18n.t("feed_problems.msg_import_failed").to_string(),
+                Some(format!("{} · {}", m.title, kind_text(&m.body))),
+            ),
+            _ => (m.title.clone(), m.body.clone()),
+        };
+        let open_link = m.link.clone().map(|link| {
+            let close = close_drawer.clone();
+            Callback::from(move |e: MouseEvent| {
+                yew_router::history::History::push(&yew_router::history::BrowserHistory::new(), link.clone());
+                close.emit(e);
+            })
+        });
         let rel = parse_rfc3339_ms(&m.created_at).map(rel_time).unwrap_or_default();
         html! {
             <div class={classes!("nc-card", format!("k-{kind}"))}>
@@ -683,11 +705,11 @@ pub fn notification_center() -> Html {
                         }
                     }
                 </span>
-                <div class="nc-main-col">
-                    <div class="nc-line1" style="white-space:normal;line-height:1.4">{ m.title.clone() }</div>
+                <div class="nc-main-col" onclick={open_link.clone()} style={open_link.as_ref().map(|_| "cursor:pointer")}>
+                    <div class="nc-line1" style="white-space:normal;line-height:1.4">{ line1 }</div>
                     {
-                        if let Some(body) = &m.body {
-                            html! { <div class="nc-line2" style="white-space:normal">{ body.clone() }</div> }
+                        if let Some(body) = line2 {
+                            html! { <div class="nc-line2" style="white-space:normal">{ body }</div> }
                         } else { html! {} }
                     }
                     <div class="nc-line2"><span class="nc-time" style="opacity:.7">{ rel }</span></div>

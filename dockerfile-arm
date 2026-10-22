@@ -31,25 +31,6 @@ WORKDIR /app
 # Build the Yew application in release mode
 RUN RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" trunk build --features server_build --release
 
-# Go builder stage for the gpodder API
-FROM golang:alpine AS go-builder
-WORKDIR /gpodder-api
-
-# Install build dependencies
-RUN apk add --no-cache git
-
-# Copy go module files first for better layer caching
-COPY ./gpodder-api/go.mod ./gpodder-api/go.sum ./
-RUN go mod download
-
-# Copy the rest of the source code
-COPY ./gpodder-api/cmd ./cmd
-COPY ./gpodder-api/config ./config
-COPY ./gpodder-api/internal ./internal
-
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o gpodder-api ./cmd/server/
-
 # Python builder stage for database setup
 FROM python:3.14-alpine AS python-builder
 WORKDIR /build
@@ -127,8 +108,6 @@ COPY --from=python-builder /build/dist/pinepods-db-setup /usr/local/bin/
 COPY --from=builder /app/dist /var/www/html/
 # Copy translation files for the Rust API to access
 COPY ./web/src/translations /var/www/html/static/translations
-# Copy Go API binary from the go-builder stage
-COPY --from=go-builder /gpodder-api/gpodder-api /usr/local/bin/
 # Copy Rust API binary from the rust-api-builder stage
 COPY --from=rust-api-builder /rust-api/target/release/pinepods-api /usr/local/bin/
 # Move to the root directory to execute the startup script
@@ -161,15 +140,11 @@ LABEL org.opencontainers.image.title="PinePods" \
 # Configure Nginx
 COPY startup/nginx.conf /etc/nginx/nginx.conf
 
-# Copy script to start gpodder API
-COPY ./gpodder-api/start-gpodder.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/start-gpodder.sh
-
 RUN cp /usr/share/zoneinfo/UTC /etc/localtime && \
     echo "UTC" > /etc/timezone
 
-# Expose ports (nginx web UI + gpodder API)
-EXPOSE 8040 8042
+# Expose the nginx port (web UI, API and gpodder sync)
+EXPOSE 8040
 
 # Container health: nginx proxies /api -> Rust API, which verifies DB connectivity.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

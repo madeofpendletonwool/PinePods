@@ -131,7 +131,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
     }
   }
 
-  Widget _buildStatCard(String label, String value, {IconData? icon, Color? iconColor}) {
+  Widget _buildStatCard(String label, String value, {IconData? icon, Color? iconColor, List<String> details = const []}) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -166,6 +166,16 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
               ),
               textAlign: TextAlign.center,
             ),
+            for (final detail in details) ...[
+              const SizedBox(height: 2),
+              Text(
+                detail,
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ],
         ),
       ),
@@ -177,67 +187,14 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
     if (_userStats == null) return const SizedBox.shrink();
 
     final stats = _userStats!;
-    final isNotSyncing = stats.podSyncType.toLowerCase() == 'none';
+    final isNotSyncing = !stats.isSyncing;
 
     return _buildStatCard(
       'Sync Status',
       stats.syncStatusDescription,
       icon: isNotSyncing ? Icons.sync_disabled : Icons.sync,
       iconColor: isNotSyncing ? Colors.grey : null,
-    );
-  }
-
-  Widget _buildSyncStatusCard() {
-    if (_userStats == null) return const SizedBox.shrink();
-
-    final stats = _userStats!;
-    final isNotSyncing = stats.podSyncType.toLowerCase() == 'none';
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Icon(
-              isNotSyncing ? Icons.sync_disabled : Icons.sync,
-              size: 32,
-              color: isNotSyncing ? Colors.grey : Theme.of(context).primaryColor,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Podcast Sync Status',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[600],
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              stats.syncStatusDescription,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (!isNotSyncing && stats.gpodderUrl.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                stats.gpodderUrl,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ],
-        ),
-      ),
+      details: stats.syncUrls(_pinepodsService.server),
     );
   }
 

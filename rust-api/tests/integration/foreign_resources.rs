@@ -44,6 +44,8 @@ const VICTIM_VIEWS: &[&str] = &[
     "GET /api/data/saved_episode_list/{user_id}",
     "GET /api/data/user_history/{user_id}",
     "GET /api/data/get_user_shared_links/{user_id}",
+    "GET /api/sync/devices",
+    "GET /api/sync/server/app-passwords",
 ];
 
 /// Where the victim's episodes would surface if they leaked into the attacker's account.
@@ -65,6 +67,8 @@ struct Ids {
     playlist: i32,
     theme: i32,
     api_key: i32,
+    device: i32,
+    app_password: i32,
 }
 
 fn overrides(ids: Ids) -> impl Fn(&str) -> Option<Value> {
@@ -78,6 +82,8 @@ fn overrides(ids: Ids) -> impl Fn(&str) -> Option<Value> {
         "playlist_id" => Some(json!(ids.playlist)),
         "theme_id" => Some(json!(ids.theme)),
         "api_id" => Some(json!(ids.api_key)),
+        "device_id" => Some(json!(ids.device)),
+        "app_password_id" => Some(json!(ids.app_password)),
         "limit" => Some(json!(100)),
         "offset" => Some(json!(0)),
         "sort_by" => Some(json!("date")),
@@ -165,7 +171,7 @@ async fn snapshot(app: &TestApp, spec: &Spec, labels: &[&str], who: &TestUser, i
 fn resource_addressed(spec: &Spec, op: &Operation) -> bool {
     let marker = |name: &str| match name {
         "podcast_id" | "target_podcast_id" | "episode_id" | "playing_episode_id" | "collection_id" | "playlist_id"
-        | "theme_id" | "api_id" => Some(json!(-777)),
+        | "theme_id" | "api_id" | "device_id" | "app_password_id" => Some(json!(-777)),
         "episode_ids" | "podcast_ids" | "secondary_podcast_ids" => Some(json!([-777])),
         _ => None,
     };
@@ -200,7 +206,7 @@ async fn users_cannot_reach_each_others_resources_by_id() {
     let podcast = app.subscribe(&victim, &url, 2).await;
     let episode = app.episode_id(&victim, podcast, &format!("Private episode 1 {secret}")).await;
 
-    let partial = Ids { user: victim.id, podcast, episode, collection: 0, playlist: 0, theme: 0, api_key: 0 };
+    let partial = Ids { user: victim.id, podcast, episode, collection: 0, playlist: 0, theme: 0, api_key: 0, device: 0, app_password: 0 };
     for label in [
         "POST /api/data/collections/create",
         "POST /api/data/create_playlist",
@@ -229,11 +235,22 @@ async fn users_cannot_reach_each_others_resources_by_id() {
     let playlists = fetch("/api/data/get_playlists".into()).await;
     let themes = fetch(format!("/api/data/user/custom_themes/{}", victim.id)).await;
     let keys = fetch(format!("/api/data/get_api_info/{}", victim.id)).await;
+    // A gpodder app on the victim's PinePods server, and an app password for it.
+    app.put("/api/sync/server").key(&victim).json(&json!({ "enabled": true })).send().await.assert_ok();
+    exec(&app, &format!(r#"INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType) VALUES ({}, 'victim-phone', 'mobile')"#, victim.id)).await;
+    let app_password = app.post("/api/sync/server/app-passwords").key(&victim).json(&json!({ "label": "victim" })).send().await.ok_json();
+    let devices = fetch("/api/sync/devices".into()).await;
     let v_ids = Ids {
         collection: id_of_named(&collections, &marker).unwrap_or_else(|| panic!("collection id in {collections}")),
         playlist: id_of_named(&playlists, &marker).unwrap_or_else(|| panic!("playlist id in {playlists}")),
         theme: id_of_named(&themes, &marker).unwrap_or_else(|| panic!("theme id in {themes}")),
         api_key: newest_api_id(&keys).unwrap_or_else(|| panic!("api key id in {keys}")),
+        device: devices
+            .as_array()
+            .and_then(|d| d.iter().find(|d| d["name"] == "victim-phone"))
+            .and_then(|d| d["id"].as_i64())
+            .unwrap_or_else(|| panic!("device id in {devices}")) as i32,
+        app_password: app_password["id"].as_i64().unwrap() as i32,
         ..partial
     };
     // Put the private episode in the victim's queue/saved/collection so tampering is visible.
@@ -242,7 +259,7 @@ async fn users_cannot_reach_each_others_resources_by_id() {
 
     // --- probe ---------------------------------------------------------------------------
     let a_ids = Ids { user: attacker.id, ..v_ids };
-    let attacker_self = Ids { user: attacker.id, podcast: 0, episode: 0, collection: 0, playlist: 0, theme: 0, api_key: 0 };
+    let attacker_self = Ids { user: attacker.id, podcast: 0, episode: 0, collection: 0, playlist: 0, theme: 0, api_key: 0, device: 0, app_password: 0 };
 
     let mut ops: Vec<Operation> =
         spec.operations().into_iter().filter(|o| o.secured && resource_addressed(&spec, o)).collect();

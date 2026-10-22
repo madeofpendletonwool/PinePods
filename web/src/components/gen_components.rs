@@ -217,6 +217,8 @@ pub fn search_bar() -> Html {
         let history = history_clone.clone();
         let podcast_value = podcast_value_clone.clone();
         let search_index = search_index_clone.clone();
+        let search_unavailable_msg = i18n.t("update_services.search_unavailable").to_string();
+        let search_failed_msg = i18n.t("update_services.search_failed").to_string();
 
         move || {
             if *is_submitting {
@@ -235,6 +237,7 @@ pub fn search_bar() -> Html {
             let search_value = podcast_value.clone();
             let search_index = search_index.clone();
             let is_submitting_clone = is_submitting.clone();
+            let (search_unavailable_msg, search_failed_msg) = (search_unavailable_msg.clone(), search_failed_msg.clone());
 
             wasm_bindgen_futures::spawn_local(async move {
                 Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
@@ -279,9 +282,15 @@ pub fn search_bar() -> Html {
                                 .reduce_mut(|state| state.is_loading = Some(false));
                             history.push("/pod_layout");
                         }
-                        Err(_) => {
+                        Err(e) => {
                             Dispatch::<PageLoadState>::global()
                                 .reduce_mut(|state| state.is_loading = Some(false));
+                            let message = if e.downcast_ref::<crate::requests::search_pods::SearchUnavailable>().is_some() {
+                                search_unavailable_msg.clone()
+                            } else {
+                                format!("{}: {}", search_failed_msg, e)
+                            };
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Some(message));
                         }
                     }
                 }

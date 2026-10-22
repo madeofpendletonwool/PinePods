@@ -172,6 +172,10 @@ impl TaskSpawner {
         Self { task_manager, db_pool }
     }
 
+    pub fn db_pool(&self) -> &DatabasePool {
+        &self.db_pool
+    }
+
     pub async fn spawn_task<F, Fut>(
         &self,
         task_type: String,
@@ -1170,6 +1174,8 @@ impl TaskSpawner {
         user_id: i32,
         username: Option<String>,
         password: Option<String>,
+        // The feed as already fetched by the caller; fetched again only when None.
+        feed_body: Option<String>,
     ) -> AppResult<String> {
         let task_type = "add_podcast_episodes".to_string();
         
@@ -1191,6 +1197,7 @@ impl TaskSpawner {
                         false, // auto_download
                         username.as_deref(),
                         password.as_deref(),
+                        feed_body.as_deref(),
                     ).await {
                         Ok(first_episode_id) => {
                             // Update progress - fetching count
@@ -1234,5 +1241,36 @@ impl TaskSpawner {
                 })
             },
         ).await
+    }
+}
+
+impl TaskSpawner {
+    /// Import a feed a sync source subscribed to (sync::apply_subscription_changes; never
+    /// fetched inside the sync request). `claim` marks the (user, url) as in flight until
+    /// the task ends; at most a few of these fetch at once. Failures are kept for retrying.
+    pub async fn spawn_sync_add_podcast(
+        &self,
+        user_id: i32,
+        feed_url: String,
+        origin: crate::services::sync::SyncOrigin,
+        claim: crate::services::sync::apply::InFlightAdd,
+    ) -> AppResult<String> {
+        self.spawn_task("sync_add_podcast".to_string(), user_id, move |task_id, task_manager, db_pool| {
+            Box::pin(async move {
+                let _claim = claim;
+                let _permit = crate::services::sync::apply::add_permit().await;
+                task_manager.update_task_progress(&task_id, 10.0, Some("Fetching podcast feed...".to_string())).await?;
+                if let Err(e) = db_pool.add_podcast_from_url(user_id, &feed_url, None, origin).await {
+                    warn!("Sync subscription add of {} for user {} failed: {}", feed_url, user_id, e);
+                    crate::services::sync::imports::failed(&db_pool, &task_manager, user_id, &feed_url, origin, &e).await;
+                    return Err(e);
+                }
+                if let Err(e) = db_pool.sync_import_succeeded(user_id, &feed_url).await {
+                    warn!("Clearing the failed import of {} for user {} failed: {}", feed_url, user_id, e);
+                }
+                Ok(serde_json::json!({ "user_id": user_id, "feed_url": feed_url, "status": "completed" }))
+            })
+        })
+        .await
     }
 }

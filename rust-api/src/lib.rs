@@ -18,6 +18,7 @@ use tower_http::{
 pub mod config;
 pub mod database;
 pub mod error;
+pub mod gpodder;
 pub mod handlers;
 pub mod models;
 pub mod openapi;
@@ -81,6 +82,7 @@ pub fn openapi_router() -> OpenApiRouter<AppState> {
         .nest("/api/async", OpenApiRouter::from(create_async_routes()))
         .nest("/api/proxy", create_proxy_routes())
         .nest("/api/gpodder", create_gpodder_routes())
+        .nest("/api/sync", create_sync_routes())
         .nest("/api/feed", create_feed_routes())
         .nest("/api/auth", create_auth_routes())
         .nest("/ws", OpenApiRouter::from(create_websocket_routes()))
@@ -93,6 +95,7 @@ pub fn create_app(state: AppState) -> Router {
     router
         // Routes/services that intentionally stay out of the API spec
         .route("/api/placeholder/{width}/{height}", get(handlers::proxy::placeholder_image))
+        .merge(gpodder::router())
         .nest_service("/api/local-media", ServeDir::new("/opt/pinepods/local-media"))
         // Raw spec for tooling/docs builds, plus the interactive Scalar UI at /api/docs
         .route("/api/openapi.json", get(move || {
@@ -118,6 +121,15 @@ pub fn create_app(state: AppState) -> Router {
 
 fn create_data_routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
+        // Feeds that keep failing and failed sync imports
+        .routes(routes!(handlers::feed_problems::get_feed_problems))
+        .routes(routes!(handlers::feed_problems::refresh_failing_feed))
+        .routes(routes!(handlers::feed_problems::retry_import))
+        .routes(routes!(handlers::feed_problems::remove_import))
+        .routes(routes!(handlers::feed_problems::dismiss_import))
+        // Search service and Podping (admin)
+        .routes(routes!(handlers::update_services::get_update_services))
+        .routes(routes!(handlers::update_services::set_podping))
         // Durable in-app notifications (Activity center messages)
         .routes(routes!(handlers::notifications::list_notifications))
         .routes(routes!(handlers::notifications::mark_notification_read))
@@ -434,6 +446,21 @@ fn create_gpodder_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::sync::gpodder_force_sync))
         .routes(routes!(handlers::sync::gpodder_sync))
         .routes(routes!(handlers::sync::gpodder_get_statistics))
+}
+
+fn create_sync_routes() -> OpenApiRouter<AppState> {
+    use handlers::sync_settings as s;
+    OpenApiRouter::new()
+        .routes(routes!(s::get_server, s::put_server))
+        .routes(routes!(s::list_app_passwords, s::create_app_password))
+        .routes(routes!(s::revoke_app_password))
+        .routes(routes!(s::dismiss_notice))
+        .routes(routes!(s::list_devices))
+        .routes(routes!(s::rename_device, s::remove_device))
+        .routes(routes!(s::get_target, s::put_target, s::delete_target))
+        .routes(routes!(s::test_target))
+        .routes(routes!(s::run_sync))
+        .routes(routes!(s::get_stats))
 }
 
 fn create_init_routes() -> OpenApiRouter<AppState> {

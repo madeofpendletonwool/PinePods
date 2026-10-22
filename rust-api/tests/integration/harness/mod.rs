@@ -10,6 +10,7 @@ pub mod gpodder;
 pub mod http;
 pub mod mock_gpodder;
 pub mod rss;
+pub mod sql;
 
 #[allow(unused_imports)]
 pub use app::{hash_password, TestApp, TestUser};
@@ -23,3 +24,5 @@ pub use rss::{Episode, Feed};
 pub use flows::eventually;
 #[allow(unused_imports)]
 pub use serde_json::{json, Value};
+#[allow(unused_imports)]
+pub use sql::{exec, int, rerun_migrations, text};

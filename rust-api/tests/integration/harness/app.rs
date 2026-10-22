@@ -61,6 +61,7 @@ impl TestApp {
 
     /// Build an app after letting the test tweak the server config (e.g. OIDC settings).
     pub async fn with_config(tweak: impl FnOnce(&mut Config)) -> TestApp {
+        init_logging();
         let env = env::env();
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let pid = std::process::id();
@@ -386,4 +387,18 @@ async fn clone_template(env: &TestEnv, db_name: &str, id_base: i64) {
             c.execute("SET FOREIGN_KEY_CHECKS = 1").await.unwrap();
         }
     }
+}
+
+/// `PINEPODS_TEST_LOG=<filter>` (e.g. `warn` or `pinepods_api=debug`) prints the server's logs,
+/// for finding out why a request failed. Run with `-- --nocapture`.
+fn init_logging() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        if let Ok(filter) = std::env::var("PINEPODS_TEST_LOG") {
+            let _ = tracing_subscriber::fmt()
+                .with_env_filter(tracing_subscriber::EnvFilter::new(filter))
+                .with_test_writer()
+                .try_init();
+        }
+    });
 }

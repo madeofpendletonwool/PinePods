@@ -8,9 +8,12 @@ pub mod websocket;
 pub mod notifications;
 // pub mod async_tasks_examples;  // File was deleted
 pub mod refresh;
+pub mod feed_problems;
+pub mod update_services;
 pub mod proxy;
 pub mod settings;
 pub mod sync;
+pub mod sync_settings;
 pub mod youtube;
 pub mod tasks;
 pub mod feed;

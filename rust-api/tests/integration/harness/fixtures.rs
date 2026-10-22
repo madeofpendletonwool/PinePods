@@ -26,6 +26,8 @@ pub struct Fixture {
     /// When set, served as `ETag` and honoured for `If-None-Match` → 304.
     pub etag: Option<String>,
     pub extra_headers: Vec<(String, String)>,
+    /// Wait this long before answering.
+    pub delay: Option<std::time::Duration>,
 }
 
 impl Fixture {
@@ -36,6 +38,7 @@ impl Fixture {
             body: body.into(),
             etag: None,
             extra_headers: Vec::new(),
+            delay: None,
         }
     }
     pub fn status(mut self, status: u16) -> Self {
@@ -48,6 +51,10 @@ impl Fixture {
     }
     pub fn header(mut self, k: &str, v: &str) -> Self {
         self.extra_headers.push((k.to_string(), v.to_string()));
+        self
+    }
+    pub fn delay(mut self, d: std::time::Duration) -> Self {
+        self.delay = Some(d);
         self
     }
 }
@@ -64,6 +71,8 @@ pub struct RecordedRequest {
 struct Inner {
     routes: HashMap<String, Fixture>,
     log: Vec<RecordedRequest>,
+    /// Requests being answered right now, and the most at once, per path.
+    in_flight: HashMap<String, (usize, usize)>,
 }
 
 #[derive(Clone)]
@@ -109,6 +118,24 @@ impl FixtureServer {
         self.inner.lock().unwrap().routes.remove(path);
     }
 
+    /// Paths requested under `/{namespace}{prefix}`, in arrival order, with that prefix removed.
+    pub fn request_order(&self, namespace: &str, prefix: &str) -> Vec<String> {
+        let full = format!("/{namespace}{prefix}");
+        self.inner
+            .lock()
+            .unwrap()
+            .log
+            .iter()
+            .filter_map(|r| r.path.strip_prefix(&full).map(str::to_string))
+            .collect()
+    }
+
+    /// The most requests to `path` that were being answered at the same time (only tracked
+    /// for fixtures with a delay).
+    pub fn max_in_flight(&self, path: &str) -> usize {
+        self.inner.lock().unwrap().in_flight.get(path).map_or(0, |c| c.1)
+    }
+
     pub fn requests_to(&self, path: &str) -> Vec<RecordedRequest> {
         self.inner
             .lock()
@@ -121,7 +148,15 @@ impl FixtureServer {
     }
 }
 
-async fn serve(
+// No keep-alive: the server's HTTP clients are process-wide statics, so a pooled connection could
+// be reused by another test after the test whose runtime drives it has ended.
+async fn serve(state: State<Arc<Mutex<Inner>>>, method: Method, uri: Uri, headers: HeaderMap) -> Response {
+    let mut resp = respond(state, method, uri, headers).await;
+    resp.headers_mut().insert("connection", HeaderValue::from_static("close"));
+    resp
+}
+
+async fn respond(
     State(inner): State<Arc<Mutex<Inner>>>,
     method: Method,
     uri: Uri,
@@ -148,6 +183,17 @@ async fn serve(
             .body(Body::from(format!("no fixture registered for {path}")))
             .unwrap();
     };
+
+    if let Some(d) = f.delay {
+        {
+            let mut inner = inner.lock().unwrap();
+            let c = inner.in_flight.entry(path.clone()).or_default();
+            c.0 += 1;
+            c.1 = c.1.max(c.0);
+        }
+        tokio::time::sleep(d).await;
+        inner.lock().unwrap().in_flight.entry(path.clone()).or_default().0 -= 1;
+    }
 
     if let (Some(etag), Some(inm)) = (&f.etag, headers.get("if-none-match")) {
         if inm.to_str().ok() == Some(etag.as_str()) {
@@ -203,6 +249,11 @@ impl Fixtures {
 
     pub fn hits(&self, path: &str) -> Vec<RecordedRequest> {
         self.server.requests_to(&self.full_path(path))
+    }
+
+    /// See [`FixtureServer::max_in_flight`].
+    pub fn max_in_flight(&self, path: &str) -> usize {
+        self.server.max_in_flight(&self.full_path(path))
     }
 
     /// Serve an RSS document (see [`super::rss::Feed`]); returns the feed URL.

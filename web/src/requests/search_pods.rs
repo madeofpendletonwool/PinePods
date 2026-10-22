@@ -258,12 +258,29 @@ pub async fn call_get_podcast_info(
                 )))
             }
         }
+    } else if response.status() == 503 {
+        // The server couldn't reach the search service; its message says which and why.
+        let detail = response.text().await.unwrap_or_default();
+        web_sys::console::log_1(&JsValue::from_str(&format!("Search service unavailable: {}", detail)));
+        Err(anyhow::Error::new(SearchUnavailable))
     } else {
         let error_msg = format!("Failed to fetch podcast info: {}", response.status_text());
         web_sys::console::log_1(&JsValue::from_str(&error_msg));
         Err(anyhow::Error::msg(error_msg))
     }
 }
+
+/// The server answered that the search service can't be reached.
+#[derive(Debug)]
+pub struct SearchUnavailable;
+
+impl std::fmt::Display for SearchUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the search service isn't reachable")
+    }
+}
+
+impl std::error::Error for SearchUnavailable {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[allow(non_snake_case)]

@@ -16,6 +16,8 @@ use axum::http::Method;
 use crate::harness::*;
 use crate::support::openapi::{Operation, Spec};
 
+// The strings say why a route is public; only the variant is checked.
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 enum Public {
     /// Anyone may call it.

@@ -3,7 +3,6 @@ use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
 use web_sys::FormData;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
@@ -1371,486 +1370,6 @@ pub async fn call_add_nextcloud_server(
     }
 }
 
-#[derive(Serialize)]
-pub struct GpodderCheckRequest {
-    pub gpodder_url: String,
-    pub gpodder_username: String,
-    pub gpodder_password: String,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Debug)]
-pub struct GpodderCheckResponse {
-    pub status: String,
-    pub message: String,
-}
-
-pub async fn call_verify_gpodder_auth(
-    server_name: &String,
-    api_key: &String,
-    auth_request: GpodderCheckRequest,
-) -> Result<GpodderCheckResponse, Error> {
-    let url = format!("{}/api/data/verify_gpodder_auth", server_name);
-    let request_body = serde_json::to_string(&auth_request)?;
-
-    let response = Request::post(&url)
-        .header("Api-Key", api_key)
-        .header("Content-Type", "application/json")
-        .body(request_body)?
-        .send()
-        .await?;
-
-    if response.ok() {
-        let response_body = response.json::<GpodderCheckResponse>().await?;
-        Ok(response_body)
-    } else {
-        Err(Error::msg(format!(
-            "Error verifying gPodder auth. Is the server reachable? Server Response: {}",
-            response.status_text()
-        )))
-    }
-}
-
-#[derive(Serialize)]
-pub struct GpodderAuthRequest {
-    pub(crate) user_id: i32,
-    pub(crate) gpodder_url: String,
-    pub(crate) gpodder_username: String,
-    pub(crate) gpodder_password: String,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct GpodderAuthResponse {
-    // Define additional fields as needed
-}
-
-pub async fn call_add_gpodder_server(
-    server_name: &String,
-    api_key: &String,
-    auth_request: GpodderAuthRequest,
-) -> Result<NextcloudAuthResponse, anyhow::Error> {
-    let url = format!("{}/api/data/add_gpodder_server", server_name);
-    let api_key_ref = api_key.as_str();
-    let request_body = serde_json::to_string(&auth_request)?;
-
-    let response = Request::post(&url)
-        .header("Content-Type", "application/json")
-        .header("Api-Key", api_key_ref)
-        .body(request_body)?
-        .send()
-        .await?;
-
-    if response.ok() {
-        let response_body = response.json::<NextcloudAuthResponse>().await?;
-        Ok(response_body)
-    } else {
-        Err(Error::msg(format!(
-            "Error saving Nextcloud Server Info. Is the server reachable? Server Response: {}",
-            response.status_text()
-        )))
-    }
-}
-
-// Get user's default GPodder device - matches the EXACT route in your backend
-pub async fn call_get_default_gpodder_device(
-    server_name: &str,
-    api_key: &str,
-) -> Result<GpodderDevice, gloo::net::Error> {
-    // Use the exact same route as defined in your backend
-    let url = format!("{}/api/gpodder/default_device", server_name);
-
-    // Log the request URL for debugging
-    web_sys::console::log_1(&format!("Fetching default device from: {}", url).into());
-
-    let response = gloo::net::http::Request::get(&url)
-        .header("Api-Key", api_key)
-        .send()
-        .await?
-        .json::<GpodderDevice>()
-        .await?;
-
-    Ok(response)
-}
-
-// Set a device as the default - with support for remote devices
-pub async fn call_set_default_gpodder_device(
-    server_name: &str,
-    api_key: &str,
-    device_id: String,
-    device_name: Option<String>,
-    is_remote: bool,
-) -> Result<ApiResponse<()>, gloo::net::Error> {
-    let mut url = format!("{}/api/gpodder/set_default/{}", server_name, device_id);
-
-    // Add query parameters for remote devices
-    if is_remote {
-        if let Some(name) = &device_name {
-            url = format!(
-                "{}?device_name={}&is_remote=true",
-                url,
-                js_sys::encode_uri_component(name)
-            );
-        }
-    }
-
-    // Log the request URL for debugging
-    web_sys::console::log_1(&format!("Setting default device at: {}", url).into());
-
-    let response = gloo::net::http::Request::post(&url)
-        .header("Api-Key", api_key)
-        .send()
-        .await?
-        .json::<ApiResponse<()>>()
-        .await?;
-
-    Ok(response)
-}
-
-// API structures
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct GpodderDevice {
-    pub id: String, // GPodder API uses string device IDs, not integers
-    pub name: String,
-    pub r#type: String, // Using r# prefix because "type" is a reserved keyword
-    pub caption: Option<String>,
-    pub last_sync: Option<String>,
-    pub is_active: bool,
-    pub is_remote: Option<bool>,
-    pub is_default: Option<bool>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct CreateDeviceRequest {
-    pub user_id: i32,
-    pub device_name: String,
-    pub device_type: String,
-    pub device_caption: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SyncRequest {
-    pub user_id: i32,
-    pub device_id: Option<String>,
-    pub device_name: Option<String>,
-    pub is_remote: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ApiResponse<T> {
-    pub success: bool,
-    pub message: String,
-    pub data: Option<T>,
-}
-
-// Get user's GPodder devices
-pub async fn call_get_gpodder_devices(
-    server_name: &str,
-    api_key: &str,
-    user_id: i32,
-) -> Result<Vec<GpodderDevice>, gloo::net::Error> {
-    let url = format!("{}/api/gpodder/devices/{}", server_name, user_id);
-
-    let response = gloo::net::http::Request::get(&url)
-        .header("Api-Key", api_key)
-        .send()
-        .await?
-        .json::<Vec<GpodderDevice>>()
-        .await?;
-
-    Ok(response)
-}
-
-// Create a new GPodder device
-pub async fn call_create_gpodder_device(
-    server_name: &str,
-    api_key: &str,
-    request: CreateDeviceRequest,
-) -> Result<GpodderDevice, gloo::net::Error> {
-    let url = format!("{}/api/gpodder/devices", server_name);
-
-    let response = gloo::net::http::Request::post(&url)
-        .header("Api-Key", api_key)
-        .header("Content-Type", "application/json")
-        .json(&request)?
-        .send()
-        .await?
-        .json::<GpodderDevice>()
-        .await?;
-
-    Ok(response)
-}
-
-// Force full sync with GPodder
-pub async fn call_force_full_sync(
-    server_name: &str,
-    api_key: &str,
-    user_id: i32,
-    device_id: Option<String>,
-    device_name: Option<String>,
-    is_remote: bool,
-) -> Result<ApiResponse<()>, gloo::net::Error> {
-    let url = format!("{}/api/gpodder/sync/force", server_name);
-
-    let request = SyncRequest {
-        user_id,
-        device_id,
-        device_name,
-        is_remote,
-    };
-
-    let response = gloo::net::http::Request::post(&url)
-        .header("Api-Key", api_key)
-        .header("Content-Type", "application/json")
-        .json(&request)?
-        .send()
-        .await?
-        .json::<ApiResponse<()>>()
-        .await?;
-
-    Ok(response)
-}
-
-// Sync from GPodder
-pub async fn call_sync_with_gpodder(
-    server_name: &str,
-    api_key: &str,
-    user_id: i32,
-    device_id: Option<String>,
-    device_name: Option<String>,
-    is_remote: bool,
-) -> Result<ApiResponse<()>, gloo::net::Error> {
-    let url = format!("{}/api/gpodder/sync", server_name);
-
-    // Create the request with all necessary fields
-    let request = SyncRequest {
-        user_id,
-        device_id,
-        device_name,
-        is_remote,
-    };
-
-    // Log the request for debugging
-    web_sys::console::log_1(&format!("Sending sync request: {:?}", &request).into());
-
-    let response = gloo::net::http::Request::post(&url)
-        .header("Api-Key", api_key)
-        .header("Content-Type", "application/json")
-        .json(&request)?
-        .send()
-        .await?
-        .json::<ApiResponse<()>>()
-        .await?;
-
-    Ok(response)
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GpodderApiToggleRequest {
-    pub enabled: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GpodderApiStatusResponse {
-    pub sync_type: String,
-    pub gpodder_enabled: bool,
-    pub external_enabled: bool,
-    pub external_url: Option<String>,
-    pub api_url: Option<String>, // Changed to Option<String>
-}
-
-// Get GPodder API status
-pub async fn call_get_gpodder_api_status(
-    server_name: &str,
-    api_key: &str,
-) -> Result<GpodderApiStatusResponse, gloo::net::Error> {
-    let url = format!("{}/api/data/gpodder/status", server_name);
-
-    let response = gloo::net::http::Request::get(&url)
-        .header("Api-Key", api_key)
-        .header("Content-Type", "application/json")
-        .send()
-        .await?
-        .json::<GpodderApiStatusResponse>()
-        .await?;
-
-    Ok(response)
-}
-
-// Toggle GPodder API
-pub async fn call_toggle_gpodder_api(
-    server_name: &str,
-    api_key: &str,
-    enabled: bool,
-) -> Result<GpodderApiStatusResponse, gloo::net::Error> {
-    let url = format!("{}/api/data/gpodder/toggle", server_name);
-
-    let request = GpodderApiToggleRequest { enabled };
-
-    let response = gloo::net::http::Request::post(&url)
-        .header("Api-Key", api_key)
-        .header("Content-Type", "application/json")
-        .json(&request)?
-        .send()
-        .await?
-        .json::<GpodderApiStatusResponse>()
-        .await?;
-
-    Ok(response)
-}
-
-// Test GPodder connection
-pub async fn call_test_gpodder_connection(
-    server_name: &str,
-    api_key: &str,
-    user_id: i32,
-    gpodder_url: &str,
-    gpodder_username: &str,
-    gpodder_password: &str,
-) -> Result<ApiResponse<serde_json::Value>, gloo::net::Error> {
-    let url = format!(
-        "{}/api/gpodder/test-connection?user_id={}&gpodder_url={}&gpodder_username={}&gpodder_password={}",
-        server_name,
-        user_id,
-        urlencoding::encode(gpodder_url),
-        urlencoding::encode(gpodder_username),
-        urlencoding::encode(gpodder_password)
-    );
-
-    let response = gloo::net::http::Request::get(&url)
-        .header("Api-Key", api_key)
-        .send()
-        .await?
-        .json::<ApiResponse<serde_json::Value>>()
-        .await?;
-
-    Ok(response)
-}
-
-#[derive(Deserialize, Debug)]
-pub struct NextcloudCheckResponse {
-    pub(crate) data: bool,
-    // Define additional fields as needed
-}
-
-pub async fn call_check_nextcloud_server(
-    server_name: &String,
-    api_key: &String,
-    user_id: i32,
-) -> Result<NextcloudCheckResponse, anyhow::Error> {
-    let url = format!(
-        "{}/api/data/check_gpodder_settings/{}",
-        server_name, user_id
-    );
-    let api_key_ref = api_key.as_str();
-
-    let response = Request::get(&url)
-        .header("Content-Type", "application/json")
-        .header("Api-Key", api_key_ref)
-        .send()
-        .await?;
-
-    if response.ok() {
-        let response_body = response.json::<NextcloudCheckResponse>().await?;
-        Ok(response_body)
-    } else {
-        Err(Error::msg(format!(
-            "Error pulling Nextcloud Server Info. Is the server reachable? Server Response: {}",
-            response.status_text()
-        )))
-    }
-}
-
-#[derive(Deserialize, Debug, Serialize)]
-pub struct NextcloudGetResponse {
-    pub data: GpodderData,
-}
-
-#[derive(Deserialize, Debug, Serialize)]
-pub struct GpodderData {
-    pub gpodderurl: String,
-    pub gpoddertoken: String,
-}
-pub async fn call_get_nextcloud_server(
-    server_name: &String,
-    api_key: &String,
-    user_id: i32,
-) -> Result<String, anyhow::Error> {
-    let url = format!("{}/api/data/get_gpodder_settings/{}", server_name, user_id);
-    let api_key_ref = api_key.as_str();
-
-    let response = Request::get(&url)
-        .header("Content-Type", "application/json")
-        .header("Api-Key", api_key_ref)
-        .send()
-        .await?;
-
-    let status_text = response.status_text();
-    let response_text = response.text().await.unwrap_or_default();
-
-    if response.ok() {
-        match serde_json::from_str::<NextcloudGetResponse>(&response_text) {
-            Ok(response_body) => {
-                if !response_body.data.gpodderurl.trim().is_empty() {
-                    Ok(response_body.data.gpodderurl.clone())
-                } else {
-                    Ok(String::from("Not currently syncing with Nextcloud server"))
-                }
-            }
-            Err(e) => {
-                web_sys::console::error_1(&JsValue::from_str(&format!(
-                    "Error parsing JSON: {:?}",
-                    e
-                )));
-                Err(anyhow::Error::new(e))
-            }
-        }
-    } else {
-        Err(anyhow::Error::msg(format!(
-            "Failed to get Nextcloud settings: {}",
-            status_text
-        )))
-    }
-}
-
-#[derive(Serialize)]
-pub struct RemoveSyncRequest {
-    pub user_id: i32,
-}
-
-#[derive(Deserialize)]
-#[allow(dead_code)]
-struct RemoveSyncResponse {
-    success: bool,
-    message: String,
-}
-
-// Function to remove podcast sync settings (Nextcloud or gPodder)
-pub async fn call_remove_podcast_sync(
-    server_name: &str,
-    api_key: &str,
-    user_id: i32,
-) -> Result<bool, Error> {
-    let url = format!("{}/api/data/remove_podcast_sync", server_name);
-
-    let request_data = RemoveSyncRequest { user_id };
-
-    let response = Request::delete(&url)
-        .header("Api-Key", api_key)
-        .json(&request_data)?
-        .send()
-        .await?;
-
-    if response.ok() {
-        let response_data: RemoveSyncResponse = response.json().await?;
-        Ok(response_data.success)
-    } else {
-        Err(Error::msg(format!(
-            "Failed to remove podcast sync settings: {}",
-            response.status_text()
-        )))
-    }
-}
-
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
 pub struct AdminCheckResponse {
@@ -2850,85 +2369,6 @@ pub async fn call_update_default_volume(
     }
 }
 
-// GPodder Statistics
-#[derive(Deserialize, Debug, Clone)]
-#[allow(dead_code)]
-pub struct GpodderStatistics {
-    pub server_url: String,
-    pub sync_type: String,
-    pub sync_enabled: bool,
-    pub server_devices: Vec<ServerDevice>,
-    pub total_devices: i32,
-    pub server_subscriptions: Vec<ServerSubscription>,
-    pub total_subscriptions: i32,
-    pub recent_episode_actions: Vec<ServerEpisodeAction>,
-    pub total_episode_actions: i32,
-    pub connection_status: String,
-    pub last_sync_timestamp: Option<String>,
-    pub api_endpoints_tested: Vec<EndpointTest>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-#[allow(dead_code)]
-pub struct ServerDevice {
-    pub id: String,
-    pub caption: String,
-    pub device_type: String,
-    pub subscriptions: i32,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-#[allow(dead_code)]
-pub struct ServerSubscription {
-    pub url: String,
-    pub title: Option<String>,
-    pub description: Option<String>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-#[allow(dead_code)]
-pub struct ServerEpisodeAction {
-    pub podcast: String,
-    pub episode: String,
-    pub action: String,
-    pub timestamp: String,
-    pub position: Option<i32>,
-    pub device: Option<String>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-#[allow(dead_code)]
-pub struct EndpointTest {
-    pub endpoint: String,
-    pub status: String,
-    pub response_time_ms: Option<i64>,
-    pub error: Option<String>,
-}
-
-pub async fn call_get_gpodder_statistics(
-    server_name: &str,
-    api_key: &str,
-) -> Result<GpodderStatistics, Error> {
-    let url = format!("{}/api/gpodder/gpodder_statistics", server_name);
-
-    let response = Request::get(&url)
-        .header("Api-Key", api_key)
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
-
-    if response.ok() {
-        let statistics = response.json::<GpodderStatistics>().await?;
-        Ok(statistics)
-    } else {
-        Err(Error::msg(format!(
-            "Error getting GPodder statistics: {}",
-            response.status_text()
-        )))
-    }
-}
-
 // Scheduled backup functions
 #[derive(Serialize, Deserialize)]
 pub struct ScheduleBackupRequest {
@@ -3787,4 +3227,336 @@ pub async fn call_delete_custom_theme(
             .unwrap_or(error_text);
         Err(Error::msg(msg))
     }
+}
+
+// ---- Sync settings (/api/sync) -------------------------------------------------------------
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct SyncServerInfo {
+    pub enabled: bool,
+    pub username: String,
+    pub server_url: String,
+    pub server_url_configured: bool,
+    pub notice: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct AppPasswordEntry {
+    pub id: i32,
+    pub label: String,
+    pub created_at: Option<i64>,
+    pub last_used_at: Option<i64>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct CreatedAppPassword {
+    pub id: i32,
+    pub label: String,
+    pub password: String,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct SyncDeviceEntry {
+    pub id: i32,
+    pub name: String,
+    pub caption: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub last_seen: Option<i64>,
+    pub protected: bool,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct SyncTargetInfo {
+    pub kind: String,
+    pub url: String,
+    pub username: String,
+    pub device_name: Option<String>,
+    pub enabled: bool,
+    pub needs_full_sync: bool,
+    pub last_attempt_at: Option<i64>,
+    pub last_success_at: Option<i64>,
+    pub last_error: Option<String>,
+    pub consecutive_failures: i32,
+    pub in_backoff: bool,
+    pub retry_at: Option<i64>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct SyncTargetResponse {
+    pub target: Option<SyncTargetInfo>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct SyncTargetCredentials {
+    pub kind: String,
+    pub url: String,
+    pub username: String,
+    pub password: Option<String>,
+    pub device_name: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct RemoteSyncDevice {
+    pub id: String,
+    pub caption: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct SyncTestResponse {
+    pub success: bool,
+    pub message: String,
+    pub devices: Vec<RemoteSyncDevice>,
+    pub device_name: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct SaveSyncTargetResponse {
+    pub target: SyncTargetInfo,
+    pub task_id: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct SyncRunResponse {
+    pub success: bool,
+    pub message: Option<String>,
+    pub target: Option<SyncTargetInfo>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct SyncActionEntry {
+    pub podcast: String,
+    pub episode: String,
+    pub action: String,
+    pub timestamp: i64,
+    pub position: Option<i32>,
+    pub device: Option<String>,
+    pub origin: String,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct SyncTargetQueue {
+    pub kind: String,
+    pub url: String,
+    pub last_success_at: Option<i64>,
+    pub pending_subscriptions: Option<i64>,
+    pub pending_actions: Option<i64>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct SyncStats {
+    pub server_enabled: bool,
+    pub subscriptions: i64,
+    pub devices: i64,
+    pub total_episode_actions: i64,
+    pub last_change: Option<i64>,
+    pub recent_episode_actions: Vec<SyncActionEntry>,
+    pub target: Option<SyncTargetQueue>,
+}
+
+/// The server's error message, or the HTTP status.
+async fn sync_error(response: gloo_net::http::Response) -> Error {
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    let message = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| v.get("message").and_then(|m| m.as_str()).map(str::to_string))
+        .map(|m| m.split_once(": ").map(|(_, rest)| rest.to_string()).unwrap_or(m))
+        .unwrap_or_else(|| format!("HTTP {status}"));
+    Error::msg(message)
+}
+
+async fn sync_send<T: serde::de::DeserializeOwned>(request: Result<Request, gloo_net::Error>) -> Result<T, Error> {
+    let response = request?.send().await?;
+    if response.ok() {
+        Ok(response.json::<T>().await?)
+    } else {
+        Err(sync_error(response).await)
+    }
+}
+
+fn sync_request(method: &str, server_name: &str, api_key: &str, path: &str) -> gloo_net::http::RequestBuilder {
+    let url = format!("{}/api/sync{}", server_name, path);
+    let builder = match method {
+        "PUT" => Request::put(&url),
+        "POST" => Request::post(&url),
+        "DELETE" => Request::delete(&url),
+        _ => Request::get(&url),
+    };
+    builder.header("Api-Key", api_key).header("Content-Type", "application/json")
+}
+
+pub async fn call_get_sync_server(server_name: &str, api_key: &str) -> Result<SyncServerInfo, Error> {
+    sync_send(sync_request("GET", server_name, api_key, "/server").build()).await
+}
+
+pub async fn call_set_sync_server(server_name: &str, api_key: &str, enabled: bool) -> Result<SyncServerInfo, Error> {
+    sync_send(sync_request("PUT", server_name, api_key, "/server").json(&serde_json::json!({ "enabled": enabled }))).await
+}
+
+pub async fn call_dismiss_sync_notice(server_name: &str, api_key: &str) -> Result<serde_json::Value, Error> {
+    sync_send(sync_request("DELETE", server_name, api_key, "/notice").build()).await
+}
+
+pub async fn call_list_app_passwords(server_name: &str, api_key: &str) -> Result<Vec<AppPasswordEntry>, Error> {
+    sync_send(sync_request("GET", server_name, api_key, "/server/app-passwords").build()).await
+}
+
+pub async fn call_create_app_password(server_name: &str, api_key: &str, label: &str) -> Result<CreatedAppPassword, Error> {
+    sync_send(sync_request("POST", server_name, api_key, "/server/app-passwords").json(&serde_json::json!({ "label": label }))).await
+}
+
+pub async fn call_revoke_app_password(server_name: &str, api_key: &str, id: i32) -> Result<serde_json::Value, Error> {
+    sync_send(sync_request("DELETE", server_name, api_key, &format!("/server/app-passwords/{id}")).build()).await
+}
+
+pub async fn call_list_sync_devices(server_name: &str, api_key: &str) -> Result<Vec<SyncDeviceEntry>, Error> {
+    sync_send(sync_request("GET", server_name, api_key, "/devices").build()).await
+}
+
+pub async fn call_rename_sync_device(server_name: &str, api_key: &str, id: i32, caption: &str) -> Result<serde_json::Value, Error> {
+    sync_send(sync_request("PUT", server_name, api_key, &format!("/devices/{id}")).json(&serde_json::json!({ "caption": caption }))).await
+}
+
+pub async fn call_remove_sync_device(server_name: &str, api_key: &str, id: i32) -> Result<serde_json::Value, Error> {
+    sync_send(sync_request("DELETE", server_name, api_key, &format!("/devices/{id}")).build()).await
+}
+
+pub async fn call_get_sync_target(server_name: &str, api_key: &str) -> Result<SyncTargetResponse, Error> {
+    sync_send(sync_request("GET", server_name, api_key, "/target").build()).await
+}
+
+pub async fn call_test_sync_target(server_name: &str, api_key: &str, creds: &SyncTargetCredentials) -> Result<SyncTestResponse, Error> {
+    sync_send(sync_request("POST", server_name, api_key, "/target/test").json(creds)).await
+}
+
+pub async fn call_save_sync_target(server_name: &str, api_key: &str, creds: &SyncTargetCredentials) -> Result<SaveSyncTargetResponse, Error> {
+    sync_send(sync_request("PUT", server_name, api_key, "/target").json(creds)).await
+}
+
+pub async fn call_delete_sync_target(server_name: &str, api_key: &str) -> Result<serde_json::Value, Error> {
+    sync_send(sync_request("DELETE", server_name, api_key, "/target").build()).await
+}
+
+pub async fn call_run_sync(server_name: &str, api_key: &str, full: bool) -> Result<SyncRunResponse, Error> {
+    let path = if full { "/run?full=true" } else { "/run" };
+    sync_send(sync_request("POST", server_name, api_key, path).build()).await
+}
+
+pub async fn call_get_sync_stats(server_name: &str, api_key: &str) -> Result<SyncStats, Error> {
+    sync_send(sync_request("GET", server_name, api_key, "/stats").build()).await
+}
+
+// ---- feed problems (/api/data/feed_problems) ----------------------------------------------------
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct FailingFeed {
+    pub podcast_id: i32,
+    pub name: String,
+    pub feed_url: String,
+    pub artwork: Option<String>,
+    /// gone | auth | not_feed | unreachable | server | throttled | other
+    pub kind: String,
+    pub error: Option<String>,
+    pub failures: i32,
+    pub failing_since: Option<i64>,
+    pub last_attempt: Option<i64>,
+    pub reported: bool,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct ImportFailure {
+    pub id: i32,
+    pub feed_url: String,
+    /// client | target
+    pub source: String,
+    pub kind: String,
+    pub error: Option<String>,
+    pub attempts: i32,
+    pub first_failed_at: i64,
+    pub last_attempt_at: i64,
+    pub next_attempt_at: Option<i64>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct FeedProblems {
+    pub feeds: Vec<FailingFeed>,
+    pub imports: Vec<ImportFailure>,
+}
+
+fn feed_problems_request(method: &str, server_name: &str, api_key: &str, path: &str) -> gloo_net::http::RequestBuilder {
+    let url = format!("{}/api/data/feed_problems{}", server_name, path);
+    let builder = match method {
+        "POST" => Request::post(&url),
+        "DELETE" => Request::delete(&url),
+        _ => Request::get(&url),
+    };
+    builder.header("Api-Key", api_key).header("Content-Type", "application/json")
+}
+
+pub async fn call_get_feed_problems(server_name: &str, api_key: &str) -> Result<FeedProblems, Error> {
+    sync_send(feed_problems_request("GET", server_name, api_key, "").build()).await
+}
+
+pub async fn call_refresh_failing_feed(server_name: &str, api_key: &str, podcast_id: i32) -> Result<FeedProblems, Error> {
+    sync_send(feed_problems_request("POST", server_name, api_key, &format!("/{podcast_id}/refresh")).build()).await
+}
+
+pub async fn call_retry_import(server_name: &str, api_key: &str, id: i32) -> Result<serde_json::Value, Error> {
+    sync_send(feed_problems_request("POST", server_name, api_key, &format!("/imports/{id}/retry")).build()).await
+}
+
+pub async fn call_remove_import(server_name: &str, api_key: &str, id: i32) -> Result<serde_json::Value, Error> {
+    sync_send(feed_problems_request("POST", server_name, api_key, &format!("/imports/{id}/remove")).build()).await
+}
+
+pub async fn call_dismiss_import(server_name: &str, api_key: &str, id: i32) -> Result<serde_json::Value, Error> {
+    sync_send(feed_problems_request("DELETE", server_name, api_key, &format!("/imports/{id}")).build()).await
+}
+
+// ---- search service and Podping (/api/data/update_services, admin) -------------------------------
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct SearchServiceStatus {
+    pub url: String,
+    pub reachable: bool,
+    pub latency_ms: Option<u64>,
+    pub error: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct PodpingClientStatus {
+    pub last_poll_at: Option<i64>,
+    pub last_success_at: Option<i64>,
+    pub last_error: Option<String>,
+    pub pings_seen: u64,
+    pub feeds_refreshed: u64,
+    pub last_refresh_at: Option<i64>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct PodpingInfo {
+    pub enabled: bool,
+    pub relay_url: String,
+    pub relay: Option<serde_json::Value>,
+    pub relay_error: Option<String>,
+    pub client: PodpingClientStatus,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct UpdateServices {
+    pub search: SearchServiceStatus,
+    pub podping: PodpingInfo,
+}
+
+pub async fn call_get_update_services(server_name: &str, api_key: &str) -> Result<UpdateServices, Error> {
+    let url = format!("{}/api/data/update_services", server_name);
+    sync_send(Request::get(&url).header("Api-Key", api_key).build()).await
+}
+
+pub async fn call_set_podping(server_name: &str, api_key: &str, enabled: bool) -> Result<UpdateServices, Error> {
+    let url = format!("{}/api/data/update_services/podping", server_name);
+    sync_send(Request::put(&url).header("Api-Key", api_key).header("Content-Type", "application/json").json(&serde_json::json!({ "enabled": enabled }))).await
 }

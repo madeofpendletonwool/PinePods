@@ -1,5 +1,5 @@
 //! The mock's Nextcloud side and failure injection, which the external sync engine tests
-//! (Phase 6) rely on. These run regardless of `PINEPODS_TEST_GPODDER`.
+//! rely on. These run regardless of `PINEPODS_TEST_GPODDER`.
 
 use crate::harness::gpodder::GpodderClient;
 use crate::harness::mock_gpodder::MockGpodder;
