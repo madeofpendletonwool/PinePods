@@ -36,8 +36,8 @@ pub enum SyncOrigin {
     Client,
     /// Pulled from an external sync target (`SyncTargets.TargetID`). Logged by apply.
     Target(i32),
-    /// Not a change other devices should hear about: the pre-overhaul sync paths, account
-    /// deletion, housekeeping. Never logged.
+    /// Not a change other devices should hear about: account deletion, housekeeping, rows that
+    /// are already in the log. Never logged.
     Unlogged,
 }
 

@@ -897,30 +897,6 @@ impl DatabasePool {
         Ok(urls.into_iter().flatten().collect())
     }
 
-    /// Names of the user's Pinepods devices: the role device and the pre-overhaul internal one.
-    /// The old sync paths use this to skip Pinepods' own log rows.
-    pub async fn sync_pinepods_device_names(&self, user_id: i32) -> AppResult<Vec<String>> {
-        let mut names: Vec<String> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query_scalar(
-                r#"SELECT devicename FROM "GpodderDevices" WHERE userid = $1 AND systemrole = 'pinepods'"#,
-            )
-            .bind(user_id)
-            .fetch_all(pool)
-            .await?,
-            DatabasePool::MySQL(pool) => sqlx::query_scalar(
-                "SELECT DeviceName FROM GpodderDevices WHERE UserID = ? AND SystemRole = 'pinepods'",
-            )
-            .bind(user_id)
-            .fetch_all(pool)
-            .await?,
-        };
-        let legacy = legacy_device_name(user_id);
-        if !names.contains(&legacy) {
-            names.push(legacy);
-        }
-        Ok(names)
-    }
-
     /// The user's pinepods device name, creating the device if needed.
     pub async fn sync_ensure_pinepods_device(&self, user_id: i32) -> AppResult<String> {
         match self {
