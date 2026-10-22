@@ -649,6 +649,25 @@
     "banner": "Tämä podcast ei ole päivittynyt vähään aikaan.",
     "open": "Tiedot"
   },
+  "update_services": {
+    "title": "Podcast-päivityspalvelut",
+    "description": "Hakupalvelu, jolla Pinepods löytää podcasteja, ja Podping, joka kertoo Pinepodsille, kun syötteessä on uusi jakso.",
+    "search_title": "Hakupalvelu",
+    "reachable": "Vastaa ({ms} ms)",
+    "unreachable": "Ei vastaa:",
+    "check_again": "Tarkista uudelleen",
+    "podping_toggle": "Päivitä syötteet Podpingin kautta",
+    "podping_desc": "Podcast-palvelut ilmoittavat uusista jaksoista Podpingin kautta. Kun tämä on päällä, Pinepods päivittää nämä syötteet minuutin sisällä seuraavan ajastetun päivityksen sijaan. Pinepods vain lukee ilmoitukset hakupalvelusta; tilauksiasi ei koskaan lähetetä.",
+    "relay": "Ilmoitukset lähteestä:",
+    "relay_following": "Välityspalvelin pysyy Podpingin tahdissa.",
+    "relay_behind": "Välityspalvelin ei juuri nyt pysy Podpingin tahdissa.",
+    "relay_unavailable": "Välityspalvelin ei ole käytettävissä:",
+    "client_stats": "{pings} ilmoitusta luettu ja {feeds} syötettä päivitetty Pinepodsin käynnistyksen jälkeen. Viimeksi luettu: {time}",
+    "last_error": "Viimeisin virhe:",
+    "never": "ei koskaan",
+    "search_unavailable": "Haku ei ole käytettävissä: Pinepods ei tavoita hakupalvelua. Ylläpitäjä voi tarkistaa sen kohdasta Asetukset → Ylläpito → Podcast-päivityspalvelut.",
+    "search_failed": "Haku epäonnistui"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

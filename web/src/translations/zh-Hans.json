@@ -649,6 +649,25 @@
     "banner": "此播客已有一段时间未更新。",
     "open": "详情"
   },
+  "update_services": {
+    "title": "播客更新服务",
+    "description": "Pinepods 用来查找播客的搜索服务，以及在订阅源有新单集时通知 Pinepods 的 Podping。",
+    "search_title": "搜索服务",
+    "reachable": "正常响应（{ms} 毫秒）",
+    "unreachable": "无响应：",
+    "check_again": "重新检查",
+    "podping_toggle": "通过 Podping 更新订阅源",
+    "podping_desc": "播客托管方通过 Podping 发布新单集。开启后，Pinepods 会在一分钟内刷新这些订阅源，而不是等到下一次定时刷新。Pinepods 只从搜索服务读取通知，绝不会发送你的订阅内容。",
+    "relay": "通知来源：",
+    "relay_following": "中继正跟上 Podping。",
+    "relay_behind": "中继目前跟不上 Podping。",
+    "relay_unavailable": "中继不可用：",
+    "client_stats": "自 Pinepods 启动以来已读取 {pings} 条通知，刷新了 {feeds} 个订阅源。上次读取：{time}",
+    "last_error": "上次错误：",
+    "never": "从未",
+    "search_unavailable": "搜索不可用：Pinepods 无法连接搜索服务。管理员可在 设置 → 管理 → 播客更新服务 中检查。",
+    "search_failed": "搜索失败"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

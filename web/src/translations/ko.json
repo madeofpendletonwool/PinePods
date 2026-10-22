@@ -649,6 +649,25 @@
     "banner": "이 팟캐스트는 한동안 업데이트되지 않았습니다.",
     "open": "자세히"
   },
+  "update_services": {
+    "title": "팟캐스트 업데이트 서비스",
+    "description": "Pinepods가 팟캐스트를 찾는 데 쓰는 검색 서비스와, 피드에 새 에피소드가 올라오면 Pinepods에 알려 주는 Podping입니다.",
+    "search_title": "검색 서비스",
+    "reachable": "응답 중 ({ms} ms)",
+    "unreachable": "응답 없음:",
+    "check_again": "다시 확인",
+    "podping_toggle": "Podping으로 피드 업데이트",
+    "podping_desc": "팟캐스트 호스트는 Podping으로 새 에피소드를 알립니다. 이 옵션을 켜면 Pinepods가 다음 예약 새로 고침을 기다리지 않고 1분 안에 해당 피드를 새로 고칩니다. Pinepods는 검색 서비스에서 알림만 읽으며, 구독 정보는 절대 전송되지 않습니다.",
+    "relay": "알림 출처:",
+    "relay_following": "릴레이가 Podping을 따라가고 있습니다.",
+    "relay_behind": "릴레이가 지금 Podping을 따라가지 못하고 있습니다.",
+    "relay_unavailable": "릴레이를 사용할 수 없습니다:",
+    "client_stats": "Pinepods 시작 이후 알림 {pings}개를 읽고 피드 {feeds}개를 새로 고쳤습니다. 마지막 읽기: {time}",
+    "last_error": "마지막 오류:",
+    "never": "없음",
+    "search_unavailable": "검색을 사용할 수 없습니다: Pinepods가 검색 서비스에 연결할 수 없습니다. 관리자는 설정 → 관리 → 팟캐스트 업데이트 서비스에서 확인할 수 있습니다.",
+    "search_failed": "검색 실패"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

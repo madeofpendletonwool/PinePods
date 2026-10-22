@@ -649,6 +649,25 @@
     "banner": "Tento podcast sa už nejaký čas neaktualizuje.",
     "open": "Podrobnosti"
   },
+  "update_services": {
+    "title": "Služby aktualizácie podcastov",
+    "description": "Vyhľadávacia služba, ktorú Pinepods používa na hľadanie podcastov, a Podping, ktorý Pinepods dá vedieť, keď má kanál novú epizódu.",
+    "search_title": "Vyhľadávacia služba",
+    "reachable": "Odpovedá ({ms} ms)",
+    "unreachable": "Neodpovedá:",
+    "check_again": "Skontrolovať znova",
+    "podping_toggle": "Aktualizovať kanály cez Podping",
+    "podping_desc": "Hostingy podcastov oznamujú nové epizódy cez Podping. Keď je to zapnuté, Pinepods tieto kanály aktualizuje do minúty namiesto pri ďalšej plánovanej aktualizácii. Pinepods iba číta oznámenia z vyhľadávacej služby; čo odoberáte, sa nikdy neodosiela.",
+    "relay": "Oznámenia z:",
+    "relay_following": "Relay drží krok s Podpingom.",
+    "relay_behind": "Relay teraz s Podpingom nedrží krok.",
+    "relay_unavailable": "Relay nie je dostupné:",
+    "client_stats": "Od spustenia Pinepods prečítaných {pings} oznámení a aktualizovaných {feeds} kanálov. Naposledy prečítané: {time}",
+    "last_error": "Posledná chyba:",
+    "never": "nikdy",
+    "search_unavailable": "Vyhľadávanie nie je dostupné: Pinepods sa nemôže spojiť s vyhľadávacou službou. Správca ju môže skontrolovať v Nastavenia → Admin → Služby aktualizácie podcastov.",
+    "search_failed": "Vyhľadávanie zlyhalo"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

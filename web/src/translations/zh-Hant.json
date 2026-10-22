@@ -649,6 +649,25 @@
     "banner": "此 Podcast 已有一段時間未更新。",
     "open": "詳細資料"
   },
+  "update_services": {
+    "title": "Podcast 更新服務",
+    "description": "Pinepods 用來尋找 Podcast 的搜尋服務，以及在訂閱來源有新單集時通知 Pinepods 的 Podping。",
+    "search_title": "搜尋服務",
+    "reachable": "正常回應（{ms} 毫秒）",
+    "unreachable": "沒有回應：",
+    "check_again": "重新檢查",
+    "podping_toggle": "透過 Podping 更新訂閱來源",
+    "podping_desc": "Podcast 託管方會透過 Podping 公告新單集。開啟後，Pinepods 會在一分鐘內重新整理這些訂閱來源，而不必等到下一次排程重新整理。Pinepods 只會從搜尋服務讀取公告，絕不會傳送你的訂閱內容。",
+    "relay": "公告來源：",
+    "relay_following": "中繼正跟上 Podping。",
+    "relay_behind": "中繼目前跟不上 Podping。",
+    "relay_unavailable": "中繼無法使用：",
+    "client_stats": "自 Pinepods 啟動以來已讀取 {pings} 則公告，重新整理 {feeds} 個訂閱來源。上次讀取：{time}",
+    "last_error": "上次錯誤：",
+    "never": "從未",
+    "search_unavailable": "無法搜尋：Pinepods 無法連線到搜尋服務。管理員可在 設定 → 管理 → Podcast 更新服務 中檢查。",
+    "search_failed": "搜尋失敗"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

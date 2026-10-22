@@ -25,3 +25,4 @@ pub mod user_self_service;
 pub mod user_self_settings;
 pub mod user_settings;
 pub mod shared_links;
+pub mod update_services;

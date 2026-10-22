@@ -3515,3 +3515,48 @@ pub async fn call_remove_import(server_name: &str, api_key: &str, id: i32) -> Re
 pub async fn call_dismiss_import(server_name: &str, api_key: &str, id: i32) -> Result<serde_json::Value, Error> {
     sync_send(feed_problems_request("DELETE", server_name, api_key, &format!("/imports/{id}")).build()).await
 }
+
+// ---- search service and Podping (/api/data/update_services, admin) -------------------------------
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct SearchServiceStatus {
+    pub url: String,
+    pub reachable: bool,
+    pub latency_ms: Option<u64>,
+    pub error: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct PodpingClientStatus {
+    pub last_poll_at: Option<i64>,
+    pub last_success_at: Option<i64>,
+    pub last_error: Option<String>,
+    pub pings_seen: u64,
+    pub feeds_refreshed: u64,
+    pub last_refresh_at: Option<i64>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct PodpingInfo {
+    pub enabled: bool,
+    pub relay_url: String,
+    pub relay: Option<serde_json::Value>,
+    pub relay_error: Option<String>,
+    pub client: PodpingClientStatus,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct UpdateServices {
+    pub search: SearchServiceStatus,
+    pub podping: PodpingInfo,
+}
+
+pub async fn call_get_update_services(server_name: &str, api_key: &str) -> Result<UpdateServices, Error> {
+    let url = format!("{}/api/data/update_services", server_name);
+    sync_send(Request::get(&url).header("Api-Key", api_key).build()).await
+}
+
+pub async fn call_set_podping(server_name: &str, api_key: &str, enabled: bool) -> Result<UpdateServices, Error> {
+    let url = format!("{}/api/data/update_services/podping", server_name);
+    sync_send(Request::put(&url).header("Api-Key", api_key).header("Content-Type", "application/json").json(&serde_json::json!({ "enabled": enabled }))).await
+}

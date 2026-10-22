@@ -649,6 +649,25 @@
     "banner": "Aquest pòdcast fa temps que no s'actualitza.",
     "open": "Detalls"
   },
+  "update_services": {
+    "title": "Serveis d'actualització de pòdcasts",
+    "description": "El servei de cerca que Pinepods fa servir per trobar pòdcasts i Podping, que avisa Pinepods quan un canal té un episodi nou.",
+    "search_title": "Servei de cerca",
+    "reachable": "Respon ({ms} ms)",
+    "unreachable": "No respon:",
+    "check_again": "Torna-ho a comprovar",
+    "podping_toggle": "Actualitza els canals amb Podping",
+    "podping_desc": "Els allotjaments de pòdcasts anuncien episodis nous per Podping. Amb això activat, Pinepods actualitza aquests canals en menys d'un minut en lloc d'esperar la propera actualització programada. Pinepods només llegeix els anuncis del servei de cerca; mai s'envia a què estàs subscrit.",
+    "relay": "Anuncis de:",
+    "relay_following": "El relé va al dia amb Podping.",
+    "relay_behind": "El relé ara no va al dia amb Podping.",
+    "relay_unavailable": "El relé no està disponible:",
+    "client_stats": "{pings} anuncis llegits i {feeds} canals actualitzats des que es va iniciar Pinepods. Darrera lectura: {time}",
+    "last_error": "Darrer error:",
+    "never": "mai",
+    "search_unavailable": "La cerca no està disponible: Pinepods no pot contactar amb el servei de cerca. Un administrador ho pot comprovar a Configuració → Admin → Serveis d'actualització de pòdcasts.",
+    "search_failed": "La cerca ha fallat"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

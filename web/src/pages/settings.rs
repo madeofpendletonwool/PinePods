@@ -534,6 +534,20 @@ pub fn settings() -> Html {
                             </div>
                             <div class="settings-section">
                                 <div class="settings-section-head">
+                                    <i class="ph ph-broadcast"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("update_services.title") }</div>
+                                            <button class="info-btn" title={i18n.t("update_services.description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::update_services::UpdateServicesSection />
+                                </div>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-section-head">
                                     <i class="ph ph-download-simple"></i>
                                     <div>
                                         <div class="settings-section-title-row">

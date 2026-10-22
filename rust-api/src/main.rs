@@ -105,6 +105,9 @@ async fn main() -> AppResult<()> {
     // Push local changes to users' external sync servers shortly after they happen.
     services::sync::push::init(&app_state.task_spawner, services::sync::push::PushDelays::from_env());
 
+    // Refresh feeds Podping announces, when an admin turned it on.
+    services::podping::init(app_state.clone());
+
     // Build the application with routes
     let app = create_app(app_state.clone());
 

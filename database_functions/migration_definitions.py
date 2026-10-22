@@ -352,7 +352,8 @@ def migration_002_app_settings(conn, db_type: str):
                     DownloadEpisodeCover BOOLEAN DEFAULT false,
                     DownloadMetadataSidecar BOOLEAN DEFAULT false,
                     DownloadMetadataFormat VARCHAR(20) DEFAULT 'both',
-                    DownloadMetadataSubfolder BOOLEAN DEFAULT true
+                    DownloadMetadataSubfolder BOOLEAN DEFAULT true,
+                    PodpingEnabled BOOLEAN NOT NULL DEFAULT false
                 )
             """)
             
@@ -393,7 +394,8 @@ def migration_002_app_settings(conn, db_type: str):
                     DownloadEpisodeCover TINYINT(1) DEFAULT 0,
                     DownloadMetadataSidecar TINYINT(1) DEFAULT 0,
                     DownloadMetadataFormat VARCHAR(20) DEFAULT 'both',
-                    DownloadMetadataSubfolder TINYINT(1) DEFAULT 1
+                    DownloadMetadataSubfolder TINYINT(1) DEFAULT 1,
+                    PodpingEnabled TINYINT(1) NOT NULL DEFAULT 0
                 )
             """)
             
@@ -6811,6 +6813,25 @@ def migration_071_feed_health(conn, db_type: str) -> None:
                     CONSTRAINT fk_sync_import_failures_user FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                 )
             """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("072", "podping_setting", "AppSettings.PodpingEnabled: refresh feeds when Podping announces an update (off by default)", requires=["002"])
+def migration_072_podping_setting(conn, db_type: str) -> None:
+    """Podping is opt-in per server: when on, Pinepods asks the search service which feeds Podping
+    announced and refreshes the ones it has right away."""
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    table = '"AppSettings"' if pg else "AppSettings"
+    try:
+        if not _column_exists(cursor, db_type, "AppSettings", "PodpingEnabled"):
+            ddl = "BOOLEAN NOT NULL DEFAULT false" if pg else "TINYINT(1) NOT NULL DEFAULT 0"
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN PodpingEnabled {ddl}")
         conn.commit()
     except Exception:
         conn.rollback()

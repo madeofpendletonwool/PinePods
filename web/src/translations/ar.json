@@ -649,6 +649,25 @@
     "banner": "لم يُحدَّث هذا البودكاست منذ مدة.",
     "open": "التفاصيل"
   },
+  "update_services": {
+    "title": "خدمات تحديث البودكاست",
+    "description": "خدمة البحث التي يستخدمها Pinepods للعثور على البودكاستات، وPodping الذي يُعلم Pinepods عندما تحتوي خلاصة على حلقة جديدة.",
+    "search_title": "خدمة البحث",
+    "reachable": "تستجيب ({ms} ms)",
+    "unreachable": "لا تستجيب:",
+    "check_again": "تحقق مرة أخرى",
+    "podping_toggle": "حدّث الخلاصات عبر Podping",
+    "podping_desc": "تعلن جهات استضافة البودكاست عن الحلقات الجديدة عبر Podping. عند التفعيل، يحدّث Pinepods هذه الخلاصات خلال دقيقة بدلًا من انتظار التحديث المجدول التالي. يقرأ Pinepods الإعلانات فقط من خدمة البحث؛ ولا تُرسل اشتراكاتك أبدًا.",
+    "relay": "الإعلانات من:",
+    "relay_following": "المُرحِّل يواكب Podping.",
+    "relay_behind": "المُرحِّل لا يواكب Podping حاليًا.",
+    "relay_unavailable": "المُرحِّل غير متاح:",
+    "client_stats": "منذ بدء Pinepods: قراءة {pings} إعلانًا وتحديث {feeds} خلاصة. آخر قراءة: {time}",
+    "last_error": "آخر خطأ:",
+    "never": "أبدًا",
+    "search_unavailable": "البحث غير متاح: لا يستطيع Pinepods الوصول إلى خدمة البحث. يمكن للمسؤول التحقق منها في الإعدادات ← المسؤول ← خدمات تحديث البودكاست.",
+    "search_failed": "فشل البحث"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

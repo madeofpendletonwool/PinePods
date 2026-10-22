@@ -649,6 +649,25 @@
     "banner": "הפודקאסט הזה לא התעדכן כבר זמן מה.",
     "open": "פרטים"
   },
+  "update_services": {
+    "title": "שירותי עדכון פודקאסטים",
+    "description": "שירות החיפוש ש-Pinepods משתמש בו כדי למצוא פודקאסטים, ו-Podping, שמודיע ל-Pinepods כשבפיד יש פרק חדש.",
+    "search_title": "שירות חיפוש",
+    "reachable": "עונה ({ms} ms)",
+    "unreachable": "לא עונה:",
+    "check_again": "בדיקה חוזרת",
+    "podping_toggle": "עדכון פידים דרך Podping",
+    "podping_desc": "מארחי פודקאסטים מכריזים על פרקים חדשים דרך Podping. כשזה פעיל, Pinepods מרענן את הפידים האלה תוך דקה במקום ברענון המתוזמן הבא. Pinepods רק קורא את ההכרזות משירות החיפוש; המינויים שלך אף פעם לא נשלחים.",
+    "relay": "הכרזות מ:",
+    "relay_following": "הממסר עומד בקצב של Podping.",
+    "relay_behind": "הממסר לא עומד כרגע בקצב של Podping.",
+    "relay_unavailable": "הממסר לא זמין:",
+    "client_stats": "מאז ש-Pinepods הופעל נקראו {pings} הכרזות ורועננו {feeds} פידים. קריאה אחרונה: {time}",
+    "last_error": "שגיאה אחרונה:",
+    "never": "אף פעם",
+    "search_unavailable": "החיפוש לא זמין: Pinepods לא מצליח להגיע לשירות החיפוש. מנהל יכול לבדוק אותו בהגדרות ← ניהול ← שירותי עדכון פודקאסטים.",
+    "search_failed": "החיפוש נכשל"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

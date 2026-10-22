@@ -649,6 +649,25 @@
     "banner": "Podcast này đã lâu không cập nhật.",
     "open": "Chi tiết"
   },
+  "update_services": {
+    "title": "Dịch vụ cập nhật podcast",
+    "description": "Dịch vụ tìm kiếm mà Pinepods dùng để tìm podcast, và Podping, thông báo cho Pinepods khi một nguồn cấp có tập mới.",
+    "search_title": "Dịch vụ tìm kiếm",
+    "reachable": "Đang phản hồi ({ms} ms)",
+    "unreachable": "Không phản hồi:",
+    "check_again": "Kiểm tra lại",
+    "podping_toggle": "Cập nhật nguồn cấp qua Podping",
+    "podping_desc": "Các dịch vụ lưu trữ podcast thông báo tập mới qua Podping. Khi bật, Pinepods làm mới các nguồn cấp đó trong vòng một phút thay vì chờ lần làm mới theo lịch tiếp theo. Pinepods chỉ đọc các thông báo từ dịch vụ tìm kiếm; danh sách đăng ký của bạn không bao giờ được gửi đi.",
+    "relay": "Thông báo từ:",
+    "relay_following": "Bộ chuyển tiếp đang theo kịp Podping.",
+    "relay_behind": "Bộ chuyển tiếp hiện không theo kịp Podping.",
+    "relay_unavailable": "Bộ chuyển tiếp không khả dụng:",
+    "client_stats": "Đã đọc {pings} thông báo và làm mới {feeds} nguồn cấp kể từ khi Pinepods khởi động. Lần đọc cuối: {time}",
+    "last_error": "Lỗi gần nhất:",
+    "never": "chưa bao giờ",
+    "search_unavailable": "Không thể tìm kiếm: Pinepods không kết nối được với dịch vụ tìm kiếm. Quản trị viên có thể kiểm tra trong Cài đặt → Quản trị → Dịch vụ cập nhật podcast.",
+    "search_failed": "Tìm kiếm thất bại"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

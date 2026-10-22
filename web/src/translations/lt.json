@@ -649,6 +649,25 @@
     "banner": "Ši tinklalaidė jau kurį laiką neatnaujinama.",
     "open": "Išsami informacija"
   },
+  "update_services": {
+    "title": "Tinklalaidžių atnaujinimo paslaugos",
+    "description": "Paieškos paslauga, kuria Pinepods randa tinklalaides, ir Podping, kuris praneša Pinepods apie naują epizodą sklaidos kanale.",
+    "search_title": "Paieškos paslauga",
+    "reachable": "Atsako ({ms} ms)",
+    "unreachable": "Neatsako:",
+    "check_again": "Tikrinti dar kartą",
+    "podping_toggle": "Atnaujinti sklaidos kanalus per Podping",
+    "podping_desc": "Tinklalaidžių talpintojai apie naujus epizodus praneša per Podping. Įjungus Pinepods atnaujina tuos kanalus per minutę, o ne per kitą suplanuotą atnaujinimą. Pinepods tik skaito pranešimus iš paieškos paslaugos; jūsų prenumeratos niekada nesiunčiamos.",
+    "relay": "Pranešimai iš:",
+    "relay_following": "Retransliatorius neatsilieka nuo Podping.",
+    "relay_behind": "Retransliatorius šiuo metu atsilieka nuo Podping.",
+    "relay_unavailable": "Retransliatorius nepasiekiamas:",
+    "client_stats": "Nuo Pinepods paleidimo perskaityta pranešimų: {pings}, atnaujinta kanalų: {feeds}. Paskutinį kartą skaityta: {time}",
+    "last_error": "Paskutinė klaida:",
+    "never": "niekada",
+    "search_unavailable": "Paieška nepasiekiama: Pinepods negali pasiekti paieškos paslaugos. Administratorius gali ją patikrinti skiltyje Nustatymai → Administravimas → Tinklalaidžių atnaujinimo paslaugos.",
+    "search_failed": "Paieška nepavyko"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

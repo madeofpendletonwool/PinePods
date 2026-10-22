@@ -19,6 +19,7 @@ mod people;
 mod playback;
 mod podcasting20;
 mod podcasts;
+mod podping;
 mod queue;
 mod refresh;
 mod scheduling;

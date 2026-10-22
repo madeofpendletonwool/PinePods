@@ -649,6 +649,25 @@
     "banner": "Ovaj se podcast već neko vrijeme ne ažurira.",
     "open": "Pojedinosti"
   },
+  "update_services": {
+    "title": "Usluge ažuriranja podcasta",
+    "description": "Usluga pretraživanja kojom Pinepods pronalazi podcaste i Podping, koji javlja Pinepodsu kad izvor ima novu epizodu.",
+    "search_title": "Usluga pretraživanja",
+    "reachable": "Odgovara ({ms} ms)",
+    "unreachable": "Ne odgovara:",
+    "check_again": "Provjeri ponovno",
+    "podping_toggle": "Ažuriraj izvore putem Podpinga",
+    "podping_desc": "Hostovi podcasta najavljuju nove epizode putem Podpinga. Kad je ovo uključeno, Pinepods osvježava te izvore unutar minute umjesto pri sljedećem zakazanom osvježavanju. Pinepods samo čita najave s usluge pretraživanja; ono na što ste pretplaćeni nikad se ne šalje.",
+    "relay": "Najave s:",
+    "relay_following": "Relej prati Podping.",
+    "relay_behind": "Relej trenutačno ne prati Podping.",
+    "relay_unavailable": "Relej nije dostupan:",
+    "client_stats": "Od pokretanja Pinepodsa pročitano {pings} najava i osvježeno {feeds} izvora. Zadnje čitanje: {time}",
+    "last_error": "Zadnja pogreška:",
+    "never": "nikad",
+    "search_unavailable": "Pretraživanje nije dostupno: Pinepods ne može doći do usluge pretraživanja. Administrator je može provjeriti u Postavke → Admin → Usluge ažuriranja podcasta.",
+    "search_failed": "Pretraživanje nije uspjelo"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

@@ -649,6 +649,25 @@
     "banner": "Ten podcast od jakiegoś czasu się nie aktualizuje.",
     "open": "Szczegóły"
   },
+  "update_services": {
+    "title": "Usługi aktualizacji podcastów",
+    "description": "Usługa wyszukiwania, której Pinepods używa do znajdowania podcastów, oraz Podping, który informuje Pinepods o nowym odcinku w kanale.",
+    "search_title": "Usługa wyszukiwania",
+    "reachable": "Odpowiada ({ms} ms)",
+    "unreachable": "Nie odpowiada:",
+    "check_again": "Sprawdź ponownie",
+    "podping_toggle": "Aktualizuj kanały przez Podping",
+    "podping_desc": "Serwisy hostujące podcasty ogłaszają nowe odcinki przez Podping. Gdy ta opcja jest włączona, Pinepods odświeża te kanały w ciągu minuty zamiast przy następnym zaplanowanym odświeżaniu. Pinepods tylko odczytuje ogłoszenia z usługi wyszukiwania; Twoje subskrypcje nigdy nie są wysyłane.",
+    "relay": "Ogłoszenia z:",
+    "relay_following": "Przekaźnik nadąża za Podpingiem.",
+    "relay_behind": "Przekaźnik nie nadąża teraz za Podpingiem.",
+    "relay_unavailable": "Przekaźnik jest niedostępny:",
+    "client_stats": "Od uruchomienia Pinepods odczytano {pings} ogłoszeń i odświeżono {feeds} kanałów. Ostatni odczyt: {time}",
+    "last_error": "Ostatni błąd:",
+    "never": "nigdy",
+    "search_unavailable": "Wyszukiwanie jest niedostępne: Pinepods nie może połączyć się z usługą wyszukiwania. Administrator może to sprawdzić w Ustawienia → Admin → Usługi aktualizacji podcastów.",
+    "search_failed": "Wyszukiwanie nie powiodło się"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

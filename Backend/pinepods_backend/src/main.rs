@@ -13,6 +13,8 @@ use std::collections::{HashMap, HashSet};
 use tokio::process::Command;
 use chrono;
 
+mod podping;
+
 #[derive(Deserialize)]
 struct SearchQuery {
     query: Option<String>,
@@ -651,6 +653,9 @@ async fn main() -> std::io::Result<()> {
     println!("Starting the Actix Web server with yt-dlp YouTube search");
 
     let hit_counters = web::Data::new(HitCounters::new());
+    let podping = podping::Podping::from_env();
+    podping.start();
+    let podping = web::Data::new(podping);
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -662,6 +667,7 @@ async fn main() -> std::io::Result<()> {
 
         App::new()
             .app_data(hit_counters.clone())
+            .app_data(podping.clone())
             .wrap(cors)
             .route("/api/search", web::get().to(search_handler))
             .route("/api/podcast", web::get().to(podcast_handler))
@@ -669,6 +675,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/categories", web::get().to(categories_handler))
             .route("/api/youtube/channel", web::get().to(youtube_channel_handler))
             .route("/api/stats", web::get().to(stats_handler))
+            .route("/api/podping/updates", web::get().to(podping::updates_handler))
+            .route("/api/podping/status", web::get().to(podping::status_handler))
     })
     .bind("0.0.0.0:5000")?
     .run()

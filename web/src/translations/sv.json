@@ -649,6 +649,25 @@
     "banner": "Den här podden har inte uppdaterats på ett tag.",
     "open": "Detaljer"
   },
+  "update_services": {
+    "title": "Tjänster för poddaruppdateringar",
+    "description": "Söktjänsten som Pinepods använder för att hitta poddar, och Podping, som meddelar Pinepods när ett flöde har ett nytt avsnitt.",
+    "search_title": "Söktjänst",
+    "reachable": "Svarar ({ms} ms)",
+    "unreachable": "Svarar inte:",
+    "check_again": "Kontrollera igen",
+    "podping_toggle": "Uppdatera flöden via Podping",
+    "podping_desc": "Poddvärdar annonserar nya avsnitt via Podping. När detta är på uppdaterar Pinepods de flödena inom en minut i stället för vid nästa schemalagda uppdatering. Pinepods läser bara annonserna från söktjänsten; vad du prenumererar på skickas aldrig.",
+    "relay": "Annonser från:",
+    "relay_following": "Reläet hänger med i Podping.",
+    "relay_behind": "Reläet hänger inte med i Podping just nu.",
+    "relay_unavailable": "Reläet är inte tillgängligt:",
+    "client_stats": "{pings} annonser lästa och {feeds} flöden uppdaterade sedan Pinepods startade. Senast läst: {time}",
+    "last_error": "Senaste fel:",
+    "never": "aldrig",
+    "search_unavailable": "Sökningen är inte tillgänglig: Pinepods når inte söktjänsten. En administratör kan kontrollera den under Inställningar → Admin → Tjänster för poddaruppdateringar.",
+    "search_failed": "Sökningen misslyckades"
+  },
   "notification_center": {
     "active_tasks": "Aktiva uppgifter",
     "all_tasks": "Alla uppgifter",

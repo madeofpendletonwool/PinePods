@@ -649,6 +649,25 @@
     "banner": "Ez a podcast egy ideje nem frissül.",
     "open": "Részletek"
   },
+  "update_services": {
+    "title": "Podcastfrissítési szolgáltatások",
+    "description": "A keresőszolgáltatás, amellyel a Pinepods podcastokat talál, és a Podping, amely szól a Pinepodsnak, ha egy hírcsatornában új epizód van.",
+    "search_title": "Keresőszolgáltatás",
+    "reachable": "Válaszol ({ms} ms)",
+    "unreachable": "Nem válaszol:",
+    "check_again": "Ellenőrzés újra",
+    "podping_toggle": "Hírcsatornák frissítése Podpingen keresztül",
+    "podping_desc": "A podcastszolgáltatók a Podpingen jelentik be az új epizódokat. Ha ez be van kapcsolva, a Pinepods egy percen belül frissíti ezeket a hírcsatornákat a következő ütemezett frissítés helyett. A Pinepods csak olvassa a bejelentéseket a keresőszolgáltatástól; az előfizetéseid sosem kerülnek elküldésre.",
+    "relay": "Bejelentések innen:",
+    "relay_following": "A közvetítő lépést tart a Podpinggel.",
+    "relay_behind": "A közvetítő most nem tart lépést a Podpinggel.",
+    "relay_unavailable": "A közvetítő nem érhető el:",
+    "client_stats": "A Pinepods indulása óta {pings} bejelentés olvasva, {feeds} hírcsatorna frissítve. Utolsó olvasás: {time}",
+    "last_error": "Utolsó hiba:",
+    "never": "soha",
+    "search_unavailable": "A keresés nem érhető el: a Pinepods nem éri el a keresőszolgáltatást. Egy rendszergazda ellenőrizheti a Beállítások → Admin → Podcastfrissítési szolgáltatások alatt.",
+    "search_failed": "A keresés sikertelen"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

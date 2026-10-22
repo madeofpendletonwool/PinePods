@@ -649,6 +649,25 @@
     "banner": "See taskuhääling pole tükk aega värskenenud.",
     "open": "Üksikasjad"
   },
+  "update_services": {
+    "title": "Taskuhäälingute värskendusteenused",
+    "description": "Otsinguteenus, millega Pinepods taskuhäälinguid leiab, ja Podping, mis annab Pinepodsile teada, kui voos on uus osa.",
+    "search_title": "Otsinguteenus",
+    "reachable": "Vastab ({ms} ms)",
+    "unreachable": "Ei vasta:",
+    "check_again": "Kontrolli uuesti",
+    "podping_toggle": "Värskenda vooge Podpingi kaudu",
+    "podping_desc": "Taskuhäälingute majutajad teatavad uutest osadest Podpingi kaudu. Kui see on sees, värskendab Pinepods neid vooge minuti jooksul, mitte järgmise ajastatud värskenduse ajal. Pinepods ainult loeb teateid otsinguteenusest; sinu tellimusi ei saadeta kunagi.",
+    "relay": "Teated allikast:",
+    "relay_following": "Relee peab Podpingiga sammu.",
+    "relay_behind": "Relee ei pea praegu Podpingiga sammu.",
+    "relay_unavailable": "Relee pole saadaval:",
+    "client_stats": "Pinepodsi käivitamisest alates loetud {pings} teadet ja värskendatud {feeds} voogu. Viimati loetud: {time}",
+    "last_error": "Viimane viga:",
+    "never": "mitte kunagi",
+    "search_unavailable": "Otsing pole saadaval: Pinepods ei saa otsinguteenusega ühendust. Administraator saab seda kontrollida jaotises Seaded → Admin → Taskuhäälingute värskendusteenused.",
+    "search_failed": "Otsing ebaõnnestus"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

@@ -649,6 +649,25 @@
     "banner": "Deze podcast is al een tijd niet bijgewerkt.",
     "open": "Details"
   },
+  "update_services": {
+    "title": "Diensten voor podcastupdates",
+    "description": "De zoekdienst waarmee Pinepods podcasts vindt, en Podping, dat Pinepods laat weten wanneer een feed een nieuwe aflevering heeft.",
+    "search_title": "Zoekdienst",
+    "reachable": "Antwoordt ({ms} ms)",
+    "unreachable": "Antwoordt niet:",
+    "check_again": "Opnieuw controleren",
+    "podping_toggle": "Feeds bijwerken via Podping",
+    "podping_desc": "Podcasthosts kondigen nieuwe afleveringen aan via Podping. Als dit aan staat, vernieuwt Pinepods die feeds binnen een minuut in plaats van bij de volgende geplande vernieuwing. Pinepods leest alleen de aankondigingen van de zoekdienst; waarop je geabonneerd bent, wordt nooit verstuurd.",
+    "relay": "Aankondigingen van:",
+    "relay_following": "De relay houdt Podping bij.",
+    "relay_behind": "De relay houdt Podping op dit moment niet bij.",
+    "relay_unavailable": "De relay is niet beschikbaar:",
+    "client_stats": "{pings} aankondigingen gelezen en {feeds} feeds vernieuwd sinds Pinepods is gestart. Laatst gelezen: {time}",
+    "last_error": "Laatste fout:",
+    "never": "nooit",
+    "search_unavailable": "Zoeken is niet beschikbaar: Pinepods kan de zoekdienst niet bereiken. Een beheerder kan dit controleren onder Instellingen → Admin → Diensten voor podcastupdates.",
+    "search_failed": "Zoeken mislukt"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

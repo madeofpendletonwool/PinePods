@@ -649,6 +649,25 @@
     "banner": "Acest podcast nu s-a mai actualizat de ceva vreme.",
     "open": "Detalii"
   },
+  "update_services": {
+    "title": "Servicii de actualizare a podcasturilor",
+    "description": "Serviciul de căutare pe care Pinepods îl folosește pentru a găsi podcasturi și Podping, care anunță Pinepods când un flux are un episod nou.",
+    "search_title": "Serviciu de căutare",
+    "reachable": "Răspunde ({ms} ms)",
+    "unreachable": "Nu răspunde:",
+    "check_again": "Verifică din nou",
+    "podping_toggle": "Actualizează fluxurile prin Podping",
+    "podping_desc": "Gazdele de podcasturi anunță episoadele noi prin Podping. Cu această opțiune activă, Pinepods actualizează acele fluxuri în mai puțin de un minut, în loc să aștepte următoarea actualizare programată. Pinepods doar citește anunțurile de la serviciul de căutare; abonamentele tale nu sunt trimise niciodată.",
+    "relay": "Anunțuri de la:",
+    "relay_following": "Releul ține pasul cu Podping.",
+    "relay_behind": "Releul nu ține pasul cu Podping acum.",
+    "relay_unavailable": "Releul nu este disponibil:",
+    "client_stats": "{pings} anunțuri citite și {feeds} fluxuri actualizate de la pornirea Pinepods. Ultima citire: {time}",
+    "last_error": "Ultima eroare:",
+    "never": "niciodată",
+    "search_unavailable": "Căutarea nu este disponibilă: Pinepods nu poate contacta serviciul de căutare. Un administrator îl poate verifica în Setări → Admin → Servicii de actualizare a podcasturilor.",
+    "search_failed": "Căutarea a eșuat"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

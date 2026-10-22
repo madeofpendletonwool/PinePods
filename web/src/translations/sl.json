@@ -649,6 +649,25 @@
     "banner": "Ta podcast se že nekaj časa ne posodablja.",
     "open": "Podrobnosti"
   },
+  "update_services": {
+    "title": "Storitve za posodobitve podcastov",
+    "description": "Iskalna storitev, s katero Pinepods najde podcaste, in Podping, ki Pinepods sporoči, ko ima vir novo epizodo.",
+    "search_title": "Iskalna storitev",
+    "reachable": "Odgovarja ({ms} ms)",
+    "unreachable": "Ne odgovarja:",
+    "check_again": "Preveri znova",
+    "podping_toggle": "Posodabljaj vire prek Podpinga",
+    "podping_desc": "Gostitelji podcastov napovedujejo nove epizode prek Podpinga. Ko je to vklopljeno, Pinepods te vire osveži v minuti namesto ob naslednji načrtovani osvežitvi. Pinepods samo bere napovedi iz iskalne storitve; česa ste naročeni, se nikoli ne pošlje.",
+    "relay": "Napovedi iz:",
+    "relay_following": "Posrednik sledi Podpingu.",
+    "relay_behind": "Posrednik trenutno ne sledi Podpingu.",
+    "relay_unavailable": "Posrednik ni na voljo:",
+    "client_stats": "Od zagona Pinepods prebranih {pings} napovedi in osveženih {feeds} virov. Nazadnje prebrano: {time}",
+    "last_error": "Zadnja napaka:",
+    "never": "nikoli",
+    "search_unavailable": "Iskanje ni na voljo: Pinepods ne more doseči iskalne storitve. Skrbnik jo lahko preveri v Nastavitve → Skrbnik → Storitve za posodobitve podcastov.",
+    "search_failed": "Iskanje ni uspelo"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

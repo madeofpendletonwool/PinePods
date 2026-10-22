@@ -649,6 +649,25 @@
     "banner": "Este podcast não atualiza há algum tempo.",
     "open": "Detalhes"
   },
+  "update_services": {
+    "title": "Serviços de atualização de podcasts",
+    "description": "O serviço de pesquisa que o Pinepods usa para encontrar podcasts e o Podping, que avisa o Pinepods quando um feed tem um episódio novo.",
+    "search_title": "Serviço de pesquisa",
+    "reachable": "A responder ({ms} ms)",
+    "unreachable": "Não responde:",
+    "check_again": "Verificar novamente",
+    "podping_toggle": "Atualizar feeds através do Podping",
+    "podping_desc": "Os alojamentos de podcasts anunciam episódios novos através do Podping. Com isto ativo, o Pinepods atualiza esses feeds em menos de um minuto em vez de esperar pela próxima atualização agendada. O Pinepods só lê os anúncios do serviço de pesquisa; as suas subscrições nunca são enviadas.",
+    "relay": "Anúncios de:",
+    "relay_following": "O relay está a acompanhar o Podping.",
+    "relay_behind": "O relay não está a acompanhar o Podping neste momento.",
+    "relay_unavailable": "O relay não está disponível:",
+    "client_stats": "{pings} anúncios lidos e {feeds} feeds atualizados desde que o Pinepods arrancou. Última leitura: {time}",
+    "last_error": "Último erro:",
+    "never": "nunca",
+    "search_unavailable": "A pesquisa não está disponível: o Pinepods não consegue contactar o serviço de pesquisa. Um administrador pode verificá-lo em Definições → Admin → Serviços de atualização de podcasts.",
+    "search_failed": "A pesquisa falhou"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

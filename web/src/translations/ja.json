@@ -649,6 +649,25 @@
     "banner": "このポッドキャストはしばらく更新されていません。",
     "open": "詳細"
   },
+  "update_services": {
+    "title": "ポッドキャスト更新サービス",
+    "description": "Pinepods がポッドキャストを探すのに使う検索サービスと、フィードに新しいエピソードが出たことを Pinepods に知らせる Podping。",
+    "search_title": "検索サービス",
+    "reachable": "応答あり（{ms} ms）",
+    "unreachable": "応答なし:",
+    "check_again": "再確認",
+    "podping_toggle": "Podping でフィードを更新",
+    "podping_desc": "ポッドキャストのホストは Podping で新しいエピソードを告知します。オンにすると、Pinepods は次の定期更新を待たずに 1 分以内にそのフィードを更新します。Pinepods は検索サービスから告知を読むだけで、購読内容が送信されることはありません。",
+    "relay": "告知の取得元:",
+    "relay_following": "リレーは Podping に追いついています。",
+    "relay_behind": "リレーは現在 Podping に追いついていません。",
+    "relay_unavailable": "リレーを利用できません:",
+    "client_stats": "Pinepods の起動以来、告知 {pings} 件を読み、フィード {feeds} 件を更新しました。最終取得: {time}",
+    "last_error": "最後のエラー:",
+    "never": "なし",
+    "search_unavailable": "検索を利用できません: Pinepods が検索サービスに接続できません。管理者は 設定 → 管理 → ポッドキャスト更新サービス で確認できます。",
+    "search_failed": "検索に失敗しました"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

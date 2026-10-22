@@ -649,6 +649,25 @@
     "banner": "Podcast hau aspaldi ez da eguneratu.",
     "open": "Xehetasunak"
   },
+  "update_services": {
+    "title": "Podcastak eguneratzeko zerbitzuak",
+    "description": "Pinepods-ek podcastak aurkitzeko erabiltzen duen bilaketa-zerbitzua, eta Podping, jario batek atal berri bat duenean Pinepods-i jakinarazten diona.",
+    "search_title": "Bilaketa-zerbitzua",
+    "reachable": "Erantzuten ari da ({ms} ms)",
+    "unreachable": "Ez du erantzuten:",
+    "check_again": "Egiaztatu berriro",
+    "podping_toggle": "Eguneratu jarioak Podping bidez",
+    "podping_desc": "Podcast-ostalariek atal berriak Podping bidez iragartzen dituzte. Hau aktibatuta, Pinepods-ek minutu batean eguneratzen ditu jario horiek, hurrengo eguneratze programatuaren zain egon gabe. Pinepods-ek bilaketa-zerbitzuko iragarkiak irakurtzen ditu soilik; zure harpidetzak ez dira inoiz bidaltzen.",
+    "relay": "Iragarkien iturria:",
+    "relay_following": "Errelea Podping-en erritmoan dabil.",
+    "relay_behind": "Errelea ez dabil orain Podping-en erritmoan.",
+    "relay_unavailable": "Errelea ez dago erabilgarri:",
+    "client_stats": "Pinepods abiarazi zenetik {pings} iragarki irakurri eta {feeds} jario eguneratu dira. Azken irakurketa: {time}",
+    "last_error": "Azken errorea:",
+    "never": "inoiz ez",
+    "search_unavailable": "Bilaketa ez dago erabilgarri: Pinepods-ek ezin du bilaketa-zerbitzura iritsi. Administratzaile batek egiazta dezake Ezarpenak → Admin → Podcastak eguneratzeko zerbitzuak atalean.",
+    "search_failed": "Bilaketak huts egin du"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

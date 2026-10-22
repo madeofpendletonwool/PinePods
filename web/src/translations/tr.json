@@ -649,6 +649,25 @@
     "banner": "Bu podcast bir süredir güncellenmiyor.",
     "open": "Ayrıntılar"
   },
+  "update_services": {
+    "title": "Podcast güncelleme hizmetleri",
+    "description": "Pinepods'un podcast bulmak için kullandığı arama hizmeti ve bir akışta yeni bölüm olduğunda Pinepods'a haber veren Podping.",
+    "search_title": "Arama hizmeti",
+    "reachable": "Yanıt veriyor ({ms} ms)",
+    "unreachable": "Yanıt vermiyor:",
+    "check_again": "Yeniden denetle",
+    "podping_toggle": "Akışları Podping ile güncelle",
+    "podping_desc": "Podcast barındırıcıları yeni bölümleri Podping üzerinden duyurur. Bu açıkken Pinepods bu akışları bir sonraki zamanlanmış yenilemeyi beklemeden bir dakika içinde yeniler. Pinepods yalnızca arama hizmetindeki duyuruları okur; abone olduklarınız asla gönderilmez.",
+    "relay": "Duyuruların kaynağı:",
+    "relay_following": "Aktarıcı Podping'e yetişiyor.",
+    "relay_behind": "Aktarıcı şu anda Podping'e yetişemiyor.",
+    "relay_unavailable": "Aktarıcı kullanılamıyor:",
+    "client_stats": "Pinepods başladığından beri {pings} duyuru okundu ve {feeds} akış yenilendi. Son okuma: {time}",
+    "last_error": "Son hata:",
+    "never": "hiç",
+    "search_unavailable": "Arama kullanılamıyor: Pinepods arama hizmetine ulaşamıyor. Bir yönetici bunu Ayarlar → Yönetici → Podcast güncelleme hizmetleri altında denetleyebilir.",
+    "search_failed": "Arama başarısız oldu"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

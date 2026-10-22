@@ -649,6 +649,25 @@
     "banner": "Este pódcast lleva un tiempo sin actualizarse.",
     "open": "Detalles"
   },
+  "update_services": {
+    "title": "Servicios de actualización de pódcasts",
+    "description": "El servicio de búsqueda que Pinepods usa para encontrar pódcasts y Podping, que avisa a Pinepods cuando un feed tiene un episodio nuevo.",
+    "search_title": "Servicio de búsqueda",
+    "reachable": "Responde ({ms} ms)",
+    "unreachable": "No responde:",
+    "check_again": "Comprobar de nuevo",
+    "podping_toggle": "Actualizar feeds mediante Podping",
+    "podping_desc": "Los alojamientos de pódcasts anuncian episodios nuevos por Podping. Con esto activado, Pinepods actualiza esos feeds en menos de un minuto en lugar de esperar a la siguiente actualización programada. Pinepods solo lee los anuncios del servicio de búsqueda; nunca se envía a qué estás suscrito.",
+    "relay": "Anuncios de:",
+    "relay_following": "El relé está al día con Podping.",
+    "relay_behind": "El relé no está al día con Podping ahora mismo.",
+    "relay_unavailable": "El relé no está disponible:",
+    "client_stats": "{pings} anuncios leídos y {feeds} feeds actualizados desde que se inició Pinepods. Última lectura: {time}",
+    "last_error": "Último error:",
+    "never": "nunca",
+    "search_unavailable": "La búsqueda no está disponible: Pinepods no puede contactar con el servicio de búsqueda. Un administrador puede comprobarlo en Ajustes → Admin → Servicios de actualización de pódcasts.",
+    "search_failed": "La búsqueda falló"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

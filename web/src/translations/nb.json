@@ -649,6 +649,25 @@
     "banner": "Denne podkasten har ikke blitt oppdatert på en stund.",
     "open": "Detaljer"
   },
+  "update_services": {
+    "title": "Tjenester for podkastoppdateringer",
+    "description": "Søketjenesten Pinepods bruker til å finne podkaster, og Podping, som sier fra til Pinepods når en feed har en ny episode.",
+    "search_title": "Søketjeneste",
+    "reachable": "Svarer ({ms} ms)",
+    "unreachable": "Svarer ikke:",
+    "check_again": "Sjekk igjen",
+    "podping_toggle": "Oppdater feeder via Podping",
+    "podping_desc": "Podkastverter annonserer nye episoder via Podping. Når dette er på, oppdaterer Pinepods de feedene innen ett minutt i stedet for ved neste planlagte oppdatering. Pinepods leser bare annonseringene fra søketjenesten; hva du abonnerer på, sendes aldri.",
+    "relay": "Annonseringer fra:",
+    "relay_following": "Reléet holder følge med Podping.",
+    "relay_behind": "Reléet holder ikke følge med Podping akkurat nå.",
+    "relay_unavailable": "Reléet er ikke tilgjengelig:",
+    "client_stats": "{pings} annonseringer lest og {feeds} feeder oppdatert siden Pinepods startet. Sist lest: {time}",
+    "last_error": "Siste feil:",
+    "never": "aldri",
+    "search_unavailable": "Søk er ikke tilgjengelig: Pinepods når ikke søketjenesten. En administrator kan sjekke den under Innstillinger → Admin → Tjenester for podkastoppdateringer.",
+    "search_failed": "Søket mislyktes"
+  },
   "notification_center": {
     "active_tasks": "",
     "all_tasks": "",

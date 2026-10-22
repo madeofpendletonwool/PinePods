@@ -877,6 +877,25 @@
     "banner": "This podcast hasn't been updating.",
     "open": "Details"
   },
+  "update_services": {
+    "title": "Podcast update services",
+    "description": "The search service Pinepods uses to find podcasts, and Podping, which tells Pinepods when a feed has a new episode.",
+    "search_title": "Search service",
+    "reachable": "Answering ({ms} ms)",
+    "unreachable": "Not answering:",
+    "check_again": "Check again",
+    "podping_toggle": "Update feeds through Podping",
+    "podping_desc": "Podcast hosts announce new episodes over Podping. With this on, Pinepods refreshes those feeds within a minute instead of at the next scheduled refresh. Pinepods only reads the announcements from the search service; what you subscribe to is never sent.",
+    "relay": "Announcements from:",
+    "relay_following": "The relay is keeping up with Podping.",
+    "relay_behind": "The relay isn't keeping up with Podping right now.",
+    "relay_unavailable": "The relay isn't available:",
+    "client_stats": "{pings} announcements read and {feeds} feeds refreshed since Pinepods started. Last read: {time}",
+    "last_error": "Last error:",
+    "never": "never",
+    "search_unavailable": "Search isn't available: Pinepods can't reach the search service. An admin can check it under Settings → Admin → Podcast update services.",
+    "search_failed": "Search failed"
+  },
   "notification_center": {
     "active_tasks": "Active Tasks",
     "activity": "Activity",

@@ -465,33 +465,12 @@ async fn refresh_youtube_item(state: &AppState, item: &PodcastRefreshItem) {
     }
 }
 
-// Background refresh of every user's podcasts (no WebSocket). `min_age_minutes` skips feeds that
-// refreshed successfully more recently than that (startup).
-async fn refresh_all_podcasts_background(state: &AppState, min_age_minutes: Option<i64>) -> AppResult<()> {
-    info!("Running refresh");
+/// The podcast rows to refresh, skipping feeds a host asked us to leave alone (Retry-After) and,
+/// unless `only` names the feeds, feeds in failure backoff. `min_age_minutes` skips feeds that
+/// refreshed successfully more recently than that (startup).
+async fn load_refresh_items(state: &AppState, min_age_minutes: Option<i64>, only: Option<&[String]>) -> AppResult<Vec<PodcastRefreshItem>> {
     use crate::services::scheduler::{BACKOFF_MAX_STEPS, BACKOFF_STEP_MINUTES};
-    
-    // Get ALL podcasts from ALL users - matches Python exactly
-    // Handle the different database types properly
-    let total_podcasts = match &state.db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            let count_row = sqlx::query(r#"SELECT COUNT(*) as total FROM "Podcasts""#)
-                .fetch_one(pool)
-                .await?;
-            count_row.try_get::<i64, _>("total")? as usize
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
-            let count_row = sqlx::query("SELECT COUNT(*) as total FROM Podcasts")
-                .fetch_one(pool)
-                .await?;
-            count_row.try_get::<i64, _>("total")? as usize
-        }
-    };
-    
-    // Collect podcast rows into owned structs, skipping feeds that are in failure backoff. The
-    // backoff window grows with the consecutive-failure count (`scheduler::failure_backoff`) and
-    // is computed in SQL so we don't have to read/normalize timestamps across Postgres/MySQL.
-    let mut refresh_items: Vec<PodcastRefreshItem> = Vec::with_capacity(total_podcasts);
+    let mut refresh_items: Vec<PodcastRefreshItem> = Vec::new();
 
     match &state.db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
@@ -501,12 +480,15 @@ async fn refresh_all_podcasts_background(state: &AppState, min_age_minutes: Opti
                    FROM "Podcasts"
                    WHERE COALESCE(refreshpodcast, TRUE) = TRUE
                      AND (refreshnotbefore IS NULL OR refreshnotbefore <= NOW())
-                     AND (COALESCE(consecutivefailures, 0) = 0
+                     AND ($2 OR COALESCE(consecutivefailures, 0) = 0
                           OR lastrefreshattempt IS NULL
                           OR lastrefreshattempt < NOW() - (INTERVAL '1 minute' * ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(consecutivefailures, 0), {BACKOFF_MAX_STEPS}))))
-                     AND ($1::BIGINT IS NULL OR lastrefreshsuccess IS NULL OR lastrefreshsuccess < NOW() - make_interval(mins => $1::INT))"#
+                     AND ($1::BIGINT IS NULL OR lastrefreshsuccess IS NULL OR lastrefreshsuccess < NOW() - make_interval(mins => $1::INT))
+                     AND ($3::TEXT[] IS NULL OR feedurl = ANY($3))"#
             )))
             .bind(min_age_minutes)
+            .bind(only.is_some())
+            .bind(only)
             .fetch_all(pool)
             .await?;
 
@@ -530,21 +512,30 @@ async fn refresh_all_podcasts_background(state: &AppState, min_age_minutes: Opti
             }
         }
         crate::database::DatabasePool::MySQL(pool) => {
-            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+            let feeds = match only {
+                Some(urls) if !urls.is_empty() => format!("AND FeedURL IN ({})", vec!["?"; urls.len()].join(", ")),
+                Some(_) => "AND FALSE".to_string(),
+                None => String::new(),
+            };
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(format!(
                 "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, AutoQueue, Username, Password,
                         IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified, FeedContentHash
                  FROM Podcasts
                  WHERE COALESCE(RefreshPodcast, 1) = 1
                    AND (RefreshNotBefore IS NULL OR RefreshNotBefore <= NOW())
-                   AND (COALESCE(ConsecutiveFailures, 0) = 0
+                   AND (? OR COALESCE(ConsecutiveFailures, 0) = 0
                         OR LastRefreshAttempt IS NULL
                         OR LastRefreshAttempt < NOW() - INTERVAL ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(ConsecutiveFailures, 0), {BACKOFF_MAX_STEPS})) MINUTE)
-                   AND (? IS NULL OR LastRefreshSuccess IS NULL OR LastRefreshSuccess < NOW() - INTERVAL ? MINUTE)"
+                   AND (? IS NULL OR LastRefreshSuccess IS NULL OR LastRefreshSuccess < NOW() - INTERVAL ? MINUTE)
+                   {feeds}"
             )))
+            .bind(only.is_some())
             .bind(min_age_minutes)
-            .bind(min_age_minutes)
-            .fetch_all(pool)
-            .await?;
+            .bind(min_age_minutes);
+            for url in only.unwrap_or_default() {
+                query = query.bind(url);
+            }
+            let rows = query.fetch_all(pool).await?;
 
             for result in rows {
                 let podcast_id: i32 = result.try_get("PodcastID")?;
@@ -567,6 +558,34 @@ async fn refresh_all_podcasts_background(state: &AppState, min_age_minutes: Opti
         }
     }
 
+
+    Ok(refresh_items)
+}
+
+// Background refresh of every user's podcasts (no WebSocket). `min_age_minutes` skips feeds that
+// refreshed successfully more recently than that (startup).
+async fn refresh_all_podcasts_background(state: &AppState, min_age_minutes: Option<i64>) -> AppResult<()> {
+    info!("Running refresh");
+    let items = load_refresh_items(state, min_age_minutes, None).await?;
+    refresh_items(state, items).await;
+    info!("Refresh completed");
+    Ok(())
+}
+
+/// Refresh these feeds for every subscriber now (a Podping announced an update). Failure backoff
+/// is skipped: the host says there's something new. Returns how many feeds were refreshed.
+pub async fn refresh_feed_urls(state: &AppState, urls: &[String]) -> AppResult<usize> {
+    if urls.is_empty() {
+        return Ok(0);
+    }
+    let items = load_refresh_items(state, None, Some(urls)).await?;
+    Ok(refresh_items(state, items).await)
+}
+
+/// Refresh podcast rows: RSS feeds once per (feed, credentials) for all their subscribers,
+/// YouTube channels one by one, then playlist counts of users with new episodes. Returns the
+/// number of feeds and channels refreshed.
+async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>) -> usize {
     // Partition into YouTube items (refreshed per-podcast) and RSS feeds grouped by
     // (feed_url, username, password) so a feed subscribed by many users is fetched + parsed ONCE.
     use std::collections::HashMap;
@@ -591,6 +610,7 @@ async fn refresh_all_podcasts_background(state: &AppState, min_age_minutes: Opti
 
     // Refresh unique RSS feeds with bounded concurrency.
     let groups: Vec<Vec<PodcastRefreshItem>> = feed_groups.into_values().collect();
+    let feeds = groups.len() + youtube_items.len();
     let subscription_count: usize = groups.iter().map(|g| g.len()).sum();
     info!(
         "Running refresh: {} unique RSS feeds ({} subscriptions), {} YouTube channels (concurrency={})",
@@ -630,8 +650,7 @@ async fn refresh_all_podcasts_background(state: &AppState, min_age_minutes: Opti
         }
     }
 
-    info!("Refresh completed");
-    Ok(())
+    feeds
 }
 
 // Sync one user with their external server through the sync engine. Users of the internal

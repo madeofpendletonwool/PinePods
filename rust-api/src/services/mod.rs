@@ -8,6 +8,7 @@ pub mod feed_health;
 pub mod http;
 pub mod people;
 pub mod podcasting2;
+pub mod podping;
 pub mod recommendations;
 pub mod scheduler;
 pub mod sync;

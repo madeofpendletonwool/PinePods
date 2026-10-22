@@ -9809,6 +9809,82 @@
         ]
       }
     },
+    "/api/data/update_services": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Search service and Podping status",
+        "description": "Admin only. Checks that the search service answers and reports Podping: whether it's on, the relay's state and what this server did with its announcements.",
+        "operationId": "get_update_services",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateServices"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Not an admin"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/update_services/podping": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Turn Podping on or off",
+        "description": "Admin only. When on, Pinepods reads which feeds Podping announced from the relay and refreshes the ones it has right away. Only announcements are fetched; what this server subscribes to is never sent.",
+        "operationId": "set_podping",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPodping"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateServices"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Not an admin"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/update_time_format": {
       "put": {
         "tags": [
@@ -13225,6 +13301,56 @@
           }
         }
       },
+      "ClientStatus": {
+        "type": "object",
+        "description": "What this server's Podping client has done, for the admin settings.",
+        "required": [
+          "pings_seen",
+          "feeds_refreshed"
+        ],
+        "properties": {
+          "last_poll_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unix seconds."
+          },
+          "last_success_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pings_seen": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Announcements seen since this server started.",
+            "minimum": 0
+          },
+          "feeds_refreshed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Feeds refreshed because of one.",
+            "minimum": 0
+          },
+          "last_refresh_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "Collection": {
         "type": "object",
         "required": [
@@ -16447,6 +16573,40 @@
           }
         }
       },
+      "PodpingInfo": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "relay_url",
+          "client"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "relay_url": {
+            "type": "string",
+            "description": "Where announcements are read from (`PINEPODS_PODPING_URL`, else the search service)."
+          },
+          "relay": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The relay's own status (`following`: it keeps up with Hive), when it answered."
+          },
+          "relay_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the relay's status couldn't be read (e.g. a search service without the relay)."
+          },
+          "client": {
+            "$ref": "#/components/schemas/ClientStatus"
+          }
+        }
+      },
       "PublicOidcProviderResponse": {
         "type": "object",
         "required": [
@@ -17325,6 +17485,36 @@
           }
         }
       },
+      "SearchServiceStatus": {
+        "type": "object",
+        "required": [
+          "url",
+          "reachable"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The search service's address (`SEARCH_API_URL` without its path)."
+          },
+          "reachable": {
+            "type": "boolean"
+          },
+          "latency_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "SelfServiceStatusResponse": {
         "type": "object",
         "required": [
@@ -17668,6 +17858,17 @@
             "format": "int32"
           },
           "use_podcast_covers": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SetPodping": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
             "type": "boolean"
           }
         }
@@ -18748,6 +18949,21 @@
           },
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "UpdateServices": {
+        "type": "object",
+        "required": [
+          "search",
+          "podping"
+        ],
+        "properties": {
+          "search": {
+            "$ref": "#/components/schemas/SearchServiceStatus"
+          },
+          "podping": {
+            "$ref": "#/components/schemas/PodpingInfo"
           }
         }
       },
