@@ -1157,31 +1157,36 @@ impl DatabasePool {
                 Ok(delay(attempts).is_none() && delay(attempts - 1).is_some())
             }
             DatabasePool::MySQL(pool) => {
+                // Upsert first: SELECT ... FOR UPDATE on a row that isn't there yet takes a gap
+                // lock, and two imports failing at once then deadlock on their inserts.
                 let mut tx = pool.begin().await?;
-                let before: Option<i32> = sqlx::query_scalar(
-                    "SELECT Attempts FROM SyncImportFailures WHERE UserID = ? AND FeedURLHash = SHA2(?, 256) FOR UPDATE",
-                )
-                .bind(user_id)
-                .bind(feed_url)
-                .fetch_optional(&mut *tx)
-                .await?;
-                let attempts = before.unwrap_or(0) + 1;
                 sqlx::query(
-                    "INSERT INTO SyncImportFailures (UserID, FeedURL, Origin, ErrorKind, LastError, Attempts, NextAttemptAt)
-                     VALUES (?, ?, ?, ?, ?, ?, NOW() + INTERVAL ? SECOND)
+                    "INSERT INTO SyncImportFailures (UserID, FeedURL, Origin, ErrorKind, LastError, Attempts)
+                     VALUES (?, ?, ?, ?, ?, 1)
                      ON DUPLICATE KEY UPDATE
                        Origin = VALUES(Origin), ErrorKind = VALUES(ErrorKind), LastError = VALUES(LastError),
-                       Attempts = VALUES(Attempts), LastAttemptAt = NOW(), NextAttemptAt = VALUES(NextAttemptAt)",
+                       Attempts = Attempts + 1, LastAttemptAt = NOW()",
                 )
                 .bind(user_id)
                 .bind(feed_url)
                 .bind(origin)
                 .bind(kind.as_str())
                 .bind(error)
-                .bind(attempts)
-                .bind(delay(attempts)) // NOW() + INTERVAL NULL SECOND is NULL: given up
                 .execute(&mut *tx)
                 .await?;
+                let attempts: i32 =
+                    sqlx::query_scalar("SELECT Attempts FROM SyncImportFailures WHERE UserID = ? AND FeedURLHash = SHA2(?, 256)")
+                        .bind(user_id)
+                        .bind(feed_url)
+                        .fetch_one(&mut *tx)
+                        .await?;
+                // NOW() + INTERVAL NULL SECOND is NULL: given up
+                sqlx::query("UPDATE SyncImportFailures SET NextAttemptAt = NOW() + INTERVAL ? SECOND WHERE UserID = ? AND FeedURLHash = SHA2(?, 256)")
+                    .bind(delay(attempts))
+                    .bind(user_id)
+                    .bind(feed_url)
+                    .execute(&mut *tx)
+                    .await?;
                 tx.commit().await?;
                 Ok(delay(attempts).is_none() && delay(attempts - 1).is_some())
             }
