@@ -10,6 +10,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
+use chrono::{NaiveDateTime, Utc};
+use futures::stream::{self, StreamExt};
 use serde::Serialize;
 use tracing::{debug, warn};
 
@@ -23,6 +25,7 @@ use super::targets::SyncTarget;
 use super::SyncOrigin;
 use crate::database::DatabasePool;
 use crate::error::{AppError, AppResult};
+use crate::services::scheduler::failure_backoff;
 use crate::services::tasks::TaskSpawner;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +83,52 @@ pub async fn run_for_user(db: &DatabasePool, tasks: &TaskSpawner, user_id: i32, 
         Some(e) => Err(e),
         None => Ok(Some(total)),
     }
+}
+
+impl SyncTargetRow {
+    /// Still waiting out its failure backoff. Only automatic runs honour it.
+    pub fn in_backoff(&self, now: NaiveDateTime) -> bool {
+        self.consecutive_failures > 0 && self.last_attempt_at.is_some_and(|at| at + failure_backoff(self.consecutive_failures) > now)
+    }
+}
+
+/// Users synced at once by the scheduled sync.
+const SCHEDULED_CONCURRENCY: usize = 4;
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ScheduledSummary {
+    pub synced: usize,
+    pub failed: usize,
+    /// Skipped while in failure backoff.
+    pub held: usize,
+}
+
+/// The scheduled sync: every enabled target that isn't in failure backoff, a few users at a time.
+pub async fn run_due(db: &DatabasePool, tasks: &TaskSpawner) -> AppResult<ScheduledSummary> {
+    let now = Utc::now().naive_utc();
+    let (held, due): (Vec<_>, Vec<_>) = db.sync_enabled_targets().await?.into_iter().partition(|t| t.in_backoff(now));
+    for t in &held {
+        debug!("Sync for user {} held back after {} failures", t.user_id, t.consecutive_failures);
+    }
+    let ok: Vec<bool> = stream::iter(due)
+        .map(|t| async move { run(db, tasks, t.user_id, t.target_id, RunMode::Incremental).await.is_ok() })
+        .buffer_unordered(SCHEDULED_CONCURRENCY)
+        .collect()
+        .await;
+    let synced = ok.iter().filter(|o| **o).count();
+    Ok(ScheduledSummary { synced, failed: ok.len() - synced, held: held.len() })
+}
+
+/// An incremental run of the user's targets that aren't in failure backoff (the push after a
+/// local change). Failures are recorded and logged by `run`.
+pub async fn run_due_for_user(db: &DatabasePool, tasks: &TaskSpawner, user_id: i32) -> AppResult<()> {
+    let now = Utc::now().naive_utc();
+    for t in db.sync_targets_for_user(user_id).await? {
+        if t.enabled && !t.in_backoff(now) {
+            let _ = run(db, tasks, user_id, t.target_id, RunMode::Incremental).await;
+        }
+    }
+    Ok(())
 }
 
 /// One run against one of the user's targets. Records LastAttemptAt, then LastSuccessAt or

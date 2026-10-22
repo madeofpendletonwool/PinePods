@@ -207,6 +207,28 @@ impl DatabasePool {
         }
     }
 
+    /// Every enabled target, all users.
+    pub async fn sync_enabled_targets(&self) -> AppResult<Vec<SyncTargetRow>> {
+        match self {
+            DatabasePool::Postgres(pool) => sqlx::query(sqlx::AssertSqlSafe(format!(
+                r#"SELECT {TARGET_COLUMNS} FROM "SyncTargets" WHERE enabled ORDER BY userid, targetid"#
+            )))
+            .fetch_all(pool)
+            .await?
+            .iter()
+            .map(target_row)
+            .collect(),
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(sqlx::AssertSqlSafe(format!("SELECT {TARGET_COLUMNS} FROM SyncTargets WHERE Enabled ORDER BY UserID, TargetID")))
+                    .fetch_all(pool)
+                    .await?
+                    .iter()
+                    .map(target_row)
+                    .collect()
+            }
+        }
+    }
+
     /// Users with an enabled target, optionally of one kind.
     pub async fn sync_target_users(&self, kind: Option<TargetKind>) -> AppResult<Vec<i32>> {
         let kind = kind.map(TargetKind::as_str);

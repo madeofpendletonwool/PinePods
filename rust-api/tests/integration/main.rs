@@ -20,6 +20,7 @@ mod podcasting20;
 mod podcasts;
 mod queue;
 mod refresh;
+mod scheduling;
 mod settings;
 mod smoke;
 mod sync_core;

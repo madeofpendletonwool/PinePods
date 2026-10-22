@@ -627,10 +627,10 @@ impl DatabasePool {
         let mut urls: Vec<&str> = add.iter().map(String::as_str).collect();
         urls.extend(remove.iter().map(String::as_str));
         let actions: Vec<&str> = add.iter().map(|_| "add").chain(remove.iter().map(|_| "remove")).collect();
-        match self {
+        let push = match self {
             DatabasePool::Postgres(pool) => {
                 let mut tx = pool.begin().await?;
-                crate::services::sync::db::pg_lock_targets_shared(&mut tx, user_id).await?;
+                let targets = crate::services::sync::db::pg_lock_targets_shared(&mut tx, user_id).await?;
                 let now: i64 = sqlx::query_scalar(PG_NOW).fetch_one(&mut *tx).await?;
                 sqlx::query(
                     r#"INSERT INTO "GpodderSyncSubscriptions" (userid, deviceid, podcasturl, action, timestamp, serverts, origin)
@@ -657,10 +657,11 @@ impl DatabasePool {
                     .execute(&mut *tx)
                     .await?;
                 tx.commit().await?;
+                targets.any_enabled
             }
             DatabasePool::MySQL(pool) => {
                 let mut tx = pool.begin().await?;
-                crate::services::sync::db::mysql_lock_targets_shared(&mut tx, user_id).await?;
+                let targets = crate::services::sync::db::mysql_lock_targets_shared(&mut tx, user_id).await?;
                 let now: i64 = sqlx::query_scalar(MYSQL_NOW).fetch_one(&mut *tx).await?;
                 for chunk in urls.iter().zip(&actions).collect::<Vec<_>>().chunks(500) {
                     let values = vec!["(?, ?, ?, ?, ?, ?, 'client')"; chunk.len()].join(", ");
@@ -692,7 +693,12 @@ impl DatabasePool {
                     q.execute(&mut *tx).await?;
                 }
                 tx.commit().await?;
+                targets.any_enabled
             }
+        };
+        // Client rows go to the external target too.
+        if push {
+            crate::services::sync::push::schedule(self, user_id);
         }
         Ok(())
     }
@@ -784,10 +790,10 @@ impl DatabasePool {
             let mut seen = HashSet::new();
             actions.iter().filter_map(|a| a.device.as_deref()).filter(|d| seen.insert(*d)).collect()
         };
-        match self {
+        let push = match self {
             DatabasePool::Postgres(pool) => {
                 let mut tx = pool.begin().await?;
-                crate::services::sync::db::pg_lock_targets_shared(&mut tx, user_id).await?;
+                let targets = crate::services::sync::db::pg_lock_targets_shared(&mut tx, user_id).await?;
                 let mut ids = HashMap::new();
                 for name in names {
                     ids.insert(name, pg_ensure_device(&mut tx, user_id, name).await?.id);
@@ -816,10 +822,11 @@ impl DatabasePool {
                 .execute(&mut *tx)
                 .await?;
                 tx.commit().await?;
+                targets.any_enabled
             }
             DatabasePool::MySQL(pool) => {
                 let mut tx = pool.begin().await?;
-                crate::services::sync::db::mysql_lock_targets_shared(&mut tx, user_id).await?;
+                let targets = crate::services::sync::db::mysql_lock_targets_shared(&mut tx, user_id).await?;
                 let mut ids = HashMap::new();
                 for name in names {
                     ids.insert(name, mysql_ensure_device(&mut tx, user_id, name).await?.id);
@@ -851,7 +858,12 @@ impl DatabasePool {
                     q.execute(&mut *tx).await?;
                 }
                 tx.commit().await?;
+                targets.any_enabled
             }
+        };
+        // Client rows go to the external target too.
+        if push {
+            crate::services::sync::push::schedule(self, user_id);
         }
         Ok(())
     }

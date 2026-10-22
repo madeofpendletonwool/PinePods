@@ -72,24 +72,40 @@ fn legacy_device_name(user_id: i32) -> String {
 // Events (inside the caller's transaction)
 // ---------------------------------------------------------------------------------------------
 
-/// Share-lock the user's sync targets until the caller commits, and return the highest
-/// ActionsPushCursor (0 without targets). Every writer to the log calls this first: the external
-/// sync engine advances a push cursor under an exclusive lock on the same rows, after re-reading
-/// what it sent, so a row written or rewritten while it pushed is never skipped.
-pub async fn pg_lock_targets_shared(conn: &mut PgConnection, user_id: i32) -> AppResult<i64> {
-    let cursors: Vec<i64> = sqlx::query_scalar(r#"SELECT actionspushcursor FROM "SyncTargets" WHERE userid = $1 FOR SHARE"#)
-        .bind(user_id)
-        .fetch_all(&mut *conn)
-        .await?;
-    Ok(cursors.into_iter().max().unwrap_or(0))
+/// The user's sync targets, share-locked by a log writer.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LockedTargets {
+    /// The highest ActionsPushCursor (0 without targets).
+    pub max_push_cursor: i64,
+    /// An enabled target exists, so a new row is waiting to be pushed.
+    pub any_enabled: bool,
 }
 
-pub async fn mysql_lock_targets_shared(conn: &mut MySqlConnection, user_id: i32) -> AppResult<i64> {
-    let cursors: Vec<i64> = sqlx::query_scalar("SELECT ActionsPushCursor FROM SyncTargets WHERE UserID = ? LOCK IN SHARE MODE")
+/// Share-lock the user's sync targets until the caller commits. Every writer to the log calls
+/// this first: the external sync engine advances a push cursor under an exclusive lock on the
+/// same rows, after re-reading what it sent, so a row written or rewritten while it pushed is
+/// never skipped.
+pub async fn pg_lock_targets_shared(conn: &mut PgConnection, user_id: i32) -> AppResult<LockedTargets> {
+    let rows: Vec<(i64, bool)> = sqlx::query_as(r#"SELECT actionspushcursor, enabled FROM "SyncTargets" WHERE userid = $1 FOR SHARE"#)
         .bind(user_id)
         .fetch_all(&mut *conn)
         .await?;
-    Ok(cursors.into_iter().max().unwrap_or(0))
+    Ok(locked(rows))
+}
+
+pub async fn mysql_lock_targets_shared(conn: &mut MySqlConnection, user_id: i32) -> AppResult<LockedTargets> {
+    let rows: Vec<(i64, bool)> = sqlx::query_as("SELECT ActionsPushCursor, Enabled FROM SyncTargets WHERE UserID = ? LOCK IN SHARE MODE")
+        .bind(user_id)
+        .fetch_all(&mut *conn)
+        .await?;
+    Ok(locked(rows))
+}
+
+fn locked(rows: Vec<(i64, bool)>) -> LockedTargets {
+    LockedTargets {
+        max_push_cursor: rows.iter().map(|r| r.0).max().unwrap_or(0),
+        any_enabled: rows.iter().any(|r| r.1),
+    }
 }
 
 /// The user's pinepods device, created on first use. The pre-overhaul internal device
@@ -183,8 +199,8 @@ pub async fn mysql_pinepods_device(conn: &mut MySqlConnection, user_id: i32) -> 
     Err(AppError::internal(&format!("no free device name for user {user_id}'s pinepods device")))
 }
 
-pub async fn pg_log_subscription(conn: &mut PgConnection, user_id: i32, feed_url: &str, action: &str) -> AppResult<()> {
-    pg_lock_targets_shared(conn, user_id).await?;
+pub async fn pg_log_subscription(conn: &mut PgConnection, user_id: i32, feed_url: &str, action: &str) -> AppResult<bool> {
+    let targets = pg_lock_targets_shared(conn, user_id).await?;
     let device_id = pg_pinepods_device(conn, user_id).await?;
     sqlx::query(sqlx::AssertSqlSafe(format!(
         r#"INSERT INTO "GpodderSyncSubscriptions" (userid, deviceid, podcasturl, action, timestamp, serverts, origin)
@@ -196,11 +212,11 @@ pub async fn pg_log_subscription(conn: &mut PgConnection, user_id: i32, feed_url
     .bind(action)
     .execute(&mut *conn)
     .await?;
-    Ok(())
+    Ok(targets.any_enabled)
 }
 
-pub async fn mysql_log_subscription(conn: &mut MySqlConnection, user_id: i32, feed_url: &str, action: &str) -> AppResult<()> {
-    mysql_lock_targets_shared(conn, user_id).await?;
+pub async fn mysql_log_subscription(conn: &mut MySqlConnection, user_id: i32, feed_url: &str, action: &str) -> AppResult<bool> {
+    let targets = mysql_lock_targets_shared(conn, user_id).await?;
     let device_id = mysql_pinepods_device(conn, user_id).await?;
     sqlx::query(
         "INSERT INTO GpodderSyncSubscriptions (UserID, DeviceID, PodcastURL, Action, Timestamp, ServerTs, Origin)
@@ -212,7 +228,7 @@ pub async fn mysql_log_subscription(conn: &mut MySqlConnection, user_id: i32, fe
     .bind(action)
     .execute(&mut *conn)
     .await?;
-    Ok(())
+    Ok(targets.any_enabled)
 }
 
 pub async fn pg_episode_for_event(conn: &mut PgConnection, user_id: i32, episode_id: i32) -> AppResult<Option<EpisodeForEvent>> {
@@ -280,8 +296,9 @@ fn play_values(ep: &EpisodeForEvent, event: EpisodeEvent) -> Option<(i32, i32)> 
 /// row for the episode (coalescing: playback saves every few seconds) and bump its timestamps so
 /// cursor readers see it again; otherwise a new row is inserted. "Unpushed" means above every
 /// target's ActionsPushCursor, so an external target never misses a position.
-pub async fn pg_log_episode(conn: &mut PgConnection, user_id: i32, episode_id: i32, ep: &EpisodeForEvent, event: EpisodeEvent) -> AppResult<()> {
-    let pushed = pg_lock_targets_shared(conn, user_id).await?;
+pub async fn pg_log_episode(conn: &mut PgConnection, user_id: i32, episode_id: i32, ep: &EpisodeForEvent, event: EpisodeEvent) -> AppResult<bool> {
+    let targets = pg_lock_targets_shared(conn, user_id).await?;
+    let pushed = targets.max_push_cursor;
     let device_id = pg_pinepods_device(conn, user_id).await?;
     if let EpisodeEvent::New = event {
         sqlx::query(sqlx::AssertSqlSafe(format!(
@@ -297,9 +314,9 @@ pub async fn pg_log_episode(conn: &mut PgConnection, user_id: i32, episode_id: i
         .bind(episode_id)
         .execute(&mut *conn)
         .await?;
-        return Ok(());
+        return Ok(targets.any_enabled);
     }
-    let Some((position, total)) = play_values(ep, event) else { return Ok(()) };
+    let Some((position, total)) = play_values(ep, event) else { return Ok(false) };
     let latest = sqlx::query(
         r#"SELECT a.actionid, a.action FROM "GpodderSyncEpisodeActions" a
            WHERE a.episodeid = $1 AND a.userid = $2 AND a.origin = 'pinepods' AND a.actionid > $3
@@ -329,7 +346,7 @@ pub async fn pg_log_episode(conn: &mut PgConnection, user_id: i32, episode_id: i
             .bind(action_id)
             .execute(&mut *conn)
             .await?;
-            return Ok(());
+            return Ok(targets.any_enabled);
         }
     }
     sqlx::query(sqlx::AssertSqlSafe(format!(
@@ -347,11 +364,12 @@ pub async fn pg_log_episode(conn: &mut PgConnection, user_id: i32, episode_id: i
     .bind(episode_id)
     .execute(&mut *conn)
     .await?;
-    Ok(())
+    Ok(targets.any_enabled)
 }
 
-pub async fn mysql_log_episode(conn: &mut MySqlConnection, user_id: i32, episode_id: i32, ep: &EpisodeForEvent, event: EpisodeEvent) -> AppResult<()> {
-    let pushed = mysql_lock_targets_shared(conn, user_id).await?;
+pub async fn mysql_log_episode(conn: &mut MySqlConnection, user_id: i32, episode_id: i32, ep: &EpisodeForEvent, event: EpisodeEvent) -> AppResult<bool> {
+    let targets = mysql_lock_targets_shared(conn, user_id).await?;
+    let pushed = targets.max_push_cursor;
     let device_id = mysql_pinepods_device(conn, user_id).await?;
     if let EpisodeEvent::New = event {
         sqlx::query(
@@ -367,9 +385,9 @@ pub async fn mysql_log_episode(conn: &mut MySqlConnection, user_id: i32, episode
         .bind(episode_id)
         .execute(&mut *conn)
         .await?;
-        return Ok(());
+        return Ok(targets.any_enabled);
     }
-    let Some((position, total)) = play_values(ep, event) else { return Ok(()) };
+    let Some((position, total)) = play_values(ep, event) else { return Ok(false) };
     let latest = sqlx::query(
         "SELECT a.ActionID, a.Action FROM GpodderSyncEpisodeActions a
          WHERE a.EpisodeID = ? AND a.UserID = ? AND a.Origin = 'pinepods' AND a.ActionID > ?
@@ -399,7 +417,7 @@ pub async fn mysql_log_episode(conn: &mut MySqlConnection, user_id: i32, episode
             .bind(action_id)
             .execute(&mut *conn)
             .await?;
-            return Ok(());
+            return Ok(targets.any_enabled);
         }
     }
     sqlx::query(
@@ -417,7 +435,7 @@ pub async fn mysql_log_episode(conn: &mut MySqlConnection, user_id: i32, episode
     .bind(episode_id)
     .execute(&mut *conn)
     .await?;
-    Ok(())
+    Ok(targets.any_enabled)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -614,12 +632,12 @@ impl DatabasePool {
                 .execute(&mut *tx)
                 .await?;
                 if log {
-                    super::events::episode_pg(&mut tx, user_id, episode_id, EpisodeEvent::Progress(position)).await;
+                    super::events::episode_pg(self, &mut tx, user_id, episode_id, EpisodeEvent::Progress(position)).await;
                 }
                 tx.commit().await?;
             }
             DatabasePool::MySQL(pool) => {
-                let mut tx = pool.begin().await?;
+                let mut tx = super::events::begin_mysql(pool, user_id, log).await?;
                 sqlx::query(
                     "INSERT INTO UserEpisodeHistory (UserID, EpisodeID, ListenDate, ListenDuration)
                      VALUES (?, ?, ?, ?)
@@ -632,7 +650,7 @@ impl DatabasePool {
                 .execute(&mut *tx)
                 .await?;
                 if log {
-                    super::events::episode_mysql(&mut tx, user_id, episode_id, EpisodeEvent::Progress(position)).await;
+                    super::events::episode_mysql(self, &mut tx, user_id, episode_id, EpisodeEvent::Progress(position)).await;
                 }
                 tx.commit().await?;
             }

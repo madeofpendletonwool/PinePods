@@ -203,6 +203,10 @@ async fn category_collections_backfill_and_auto_add_after_refresh() {
     let l = setup(&app).await; // "Library Show" is Technology
     let other_url = app.feed("cooking.xml", &Feed::with_episodes("Cooking Show", 2).categories(&["Food"]));
     let cooking = app.subscribe(&l.user, &other_url, 2).await;
+    // Someone else's Technology show stays out of this user's collection.
+    let neighbour = app.user("neighbour").await;
+    let theirs_url = app.feed("theirs.xml", &Feed::with_episodes("Their Tech Show", 1).categories(&["Technology"]));
+    let theirs = app.subscribe(&neighbour, &theirs_url, 1).await;
 
     let cats = app.get(&format!("/api/data/collections/categories/{}", l.user.id)).key(&l.user).send().await.ok_json();
     let cats = cats["categories"].to_string();
@@ -216,14 +220,16 @@ async fn category_collections_backfill_and_auto_add_after_refresh() {
     // New episodes on both shows; only the Technology one should be auto-added.
     app.feed("lib.xml", &Feed::with_episodes("Library Show", 5).categories(&["Technology"]));
     app.feed("cooking.xml", &Feed::with_episodes("Cooking Show", 3).categories(&["Food"]));
+    app.feed("theirs.xml", &Feed::with_episodes("Their Tech Show", 2).categories(&["Technology"]));
     app.refresh().await;
-    app.db().refresh_category_collections().await.expect("category auto-add");
 
     let new_tech = app.episode_id(&l.user, l.pod, "Episode 5").await;
     let in_col = collection_episode_ids(&app, &l.user, c).await;
-    assert!(in_col.contains(&new_tech), "new Technology episode auto-added: {in_col:?}");
+    assert!(in_col.contains(&new_tech), "new Technology episode auto-added by the refresh: {in_col:?}");
     let new_food = app.episode_id(&l.user, cooking, "Episode 3").await;
     assert!(!in_col.contains(&new_food), "other categories stay out");
+    let stored = int(&app, &format!(r#"SELECT COUNT(*) FROM "CollectionEpisodes" ce JOIN "Episodes" e ON e.EpisodeID = ce.EpisodeID WHERE ce.CollectionID = {c} AND e.PodcastID = {theirs}"#)).await;
+    assert_eq!(stored, Some(0), "another user's episodes are never added");
 }
 
 // ---- playlists ---------------------------------------------------------------------------

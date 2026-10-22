@@ -172,6 +172,10 @@ impl TaskSpawner {
         Self { task_manager, db_pool }
     }
 
+    pub fn db_pool(&self) -> &DatabasePool {
+        &self.db_pool
+    }
+
     pub async fn spawn_task<F, Fut>(
         &self,
         task_type: String,

@@ -102,6 +102,9 @@ async fn main() -> AppResult<()> {
     // broadcast so sockets on this replica see tasks/messages raised elsewhere.
     handlers::websocket::spawn_task_bridge(app_state.clone());
 
+    // Push local changes to users' external sync servers shortly after they happen.
+    services::sync::push::init(&app_state.task_spawner, services::sync::push::PushDelays::from_env());
+
     // Build the application with routes
     let app = create_app(app_state.clone());
 
@@ -133,6 +136,9 @@ async fn main() -> AppResult<()> {
     // Start the server
     let listener = tokio::net::TcpListener::bind(addr).await?;
     debug!("✅ PinePods Rust API server started successfully!");
+
+    // The startup refresh runs in the background once requests are accepted.
+    tokio::spawn(BackgroundScheduler::run_startup_refresh(scheduler_state.clone()));
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;

@@ -15,6 +15,11 @@ lazy_static! {
     static ref TEMP_MFA_SECRETS: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
+// When each user's playlist counts were last computed, per database (in-process).
+static PLAYLIST_COUNTS_AT: std::sync::LazyLock<std::sync::Mutex<HashMap<(String, i32), std::time::Instant>>> =
+    std::sync::LazyLock::new(Default::default);
+const PLAYLIST_COUNTS_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
 #[derive(Clone)]
 pub enum DatabasePool {
     Postgres(Pool<Postgres>),
@@ -68,6 +73,20 @@ fn is_write_conflict(e: &AppError) -> bool {
 pub const INTERNAL_GPODDER_URL: &str = "http://localhost:8042";
 
 impl DatabasePool {
+    /// Identifies the database this pool points at (for in-process state kept per database).
+    pub fn instance_key(&self) -> String {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let o = pool.connect_options();
+                format!("pg:{}:{}/{}", o.get_host(), o.get_port(), o.get_database().unwrap_or_default())
+            }
+            DatabasePool::MySQL(pool) => {
+                let o = pool.connect_options();
+                format!("mysql:{}:{}/{}", o.get_host(), o.get_port(), o.get_database().unwrap_or_default())
+            }
+        }
+    }
+
     pub async fn new(config: &Config) -> AppResult<Self> {
         let db = &config.database;
         // A DB_HOST beginning with '/' is treated as a Unix domain socket
@@ -835,7 +854,7 @@ impl DatabasePool {
                     .execute(&mut *tx)
                     .await?;
                 if log {
-                    crate::services::sync::events::subscription_pg(&mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
+                    crate::services::sync::events::subscription_pg(self, &mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
                 }
                 tx.commit().await?;
                 
@@ -888,7 +907,7 @@ impl DatabasePool {
                 
                 // Insert new podcast
                 // The subscription and its sync event commit together.
-                let mut tx = pool.begin().await?;
+                let mut tx = crate::services::sync::events::begin_mysql(pool, podcast_values.user_id, log).await?;
                 let result = sqlx::query(
                     "INSERT INTO Podcasts 
                      (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, 
@@ -920,7 +939,7 @@ impl DatabasePool {
                     .execute(&mut *tx)
                     .await?;
                 if log {
-                    crate::services::sync::events::subscription_mysql(&mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
+                    crate::services::sync::events::subscription_mysql(self, &mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
                 }
                 tx.commit().await?;
                 
@@ -1006,7 +1025,7 @@ impl DatabasePool {
                     .execute(&mut *tx)
                     .await?;
                 if log {
-                    crate::services::sync::events::subscription_pg(&mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
+                    crate::services::sync::events::subscription_pg(self, &mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
                 }
                 tx.commit().await?;
                 
@@ -1033,7 +1052,7 @@ impl DatabasePool {
                 
                 // Insert new podcast without episodes
                 // The subscription and its sync event commit together.
-                let mut tx = pool.begin().await?;
+                let mut tx = crate::services::sync::events::begin_mysql(pool, podcast_values.user_id, log).await?;
                 let result = sqlx::query(
                     "INSERT INTO Podcasts 
                      (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, 
@@ -1065,7 +1084,7 @@ impl DatabasePool {
                     .execute(&mut *tx)
                     .await?;
                 if log {
-                    crate::services::sync::events::subscription_mysql(&mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
+                    crate::services::sync::events::subscription_mysql(self, &mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
                 }
                 tx.commit().await?;
                 
@@ -1228,13 +1247,13 @@ impl DatabasePool {
                     .await?;
 
                 if log && shareable {
-                    events::subscription_pg(&mut tx, user_id, &feed_url, "remove").await;
+                    events::subscription_pg(self, &mut tx, user_id, &feed_url, "remove").await;
                 }
                 tx.commit().await?;
                 Ok(true)
             }
             DatabasePool::MySQL(pool) => {
-                let mut tx = pool.begin().await?;
+                let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
                 let podcast = sqlx::query(
                     "SELECT FeedURL, Username, Password, IsYouTubeChannel AS yt FROM Podcasts WHERE PodcastID = ?"
                 )
@@ -1321,7 +1340,7 @@ impl DatabasePool {
                     .await?;
 
                 if log && shareable {
-                    events::subscription_mysql(&mut tx, user_id, &feed_url, "remove").await;
+                    events::subscription_mysql(self, &mut tx, user_id, &feed_url, "remove").await;
                 }
                 tx.commit().await?;
                 Ok(true)
@@ -3094,7 +3113,7 @@ impl DatabasePool {
                             .execute(&mut *tx)
                             .await?;
                             if log {
-                                crate::services::sync::events::episode_pg(&mut tx, user_id, episode_id, crate::services::sync::events::EpisodeEvent::Completed).await;
+                                crate::services::sync::events::episode_pg(self, &mut tx, user_id, episode_id, crate::services::sync::events::EpisodeEvent::Completed).await;
                             }
                             tx.commit().await?;
                         }
@@ -3153,7 +3172,7 @@ impl DatabasePool {
                         let duration: Option<i32> = row.try_get("EpisodeDuration").ok();
                         
                         if let Some(duration) = duration {
-                            let mut tx = pool.begin().await?;
+                            let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
                             // Update completion status
                             sqlx::query(
                                 "UPDATE Episodes SET Completed = 1 WHERE EpisodeID = ?"
@@ -3177,7 +3196,7 @@ impl DatabasePool {
                             .execute(&mut *tx)
                             .await?;
                             if log {
-                                crate::services::sync::events::episode_mysql(&mut tx, user_id, episode_id, crate::services::sync::events::EpisodeEvent::Completed).await;
+                                crate::services::sync::events::episode_mysql(self, &mut tx, user_id, episode_id, crate::services::sync::events::EpisodeEvent::Completed).await;
                             }
                             tx.commit().await?;
                         }
@@ -4709,6 +4728,11 @@ impl DatabasePool {
 
     // Get playlists - matches Python get_playlists function
     pub async fn get_playlists(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
+        if self.playlist_counts_stale(user_id) {
+            if let Err(e) = self.update_user_playlist_counts(user_id).await {
+                warn!("Updating playlist counts for user {} failed: {}", user_id, e);
+            }
+        }
         match self {
             DatabasePool::Postgres(pool) => {
                 let query = r#"
@@ -5082,14 +5106,14 @@ impl DatabasePool {
                         .await?;
                 }
                 if log {
-                    crate::services::sync::events::episode_pg(&mut transaction, user_id, episode_id, crate::services::sync::events::EpisodeEvent::New).await;
+                    crate::services::sync::events::episode_pg(self, &mut transaction, user_id, episode_id, crate::services::sync::events::EpisodeEvent::New).await;
                 }
                 
                 transaction.commit().await?;
                 Ok(())
             }
             DatabasePool::MySQL(pool) => {
-                let mut transaction = pool.begin().await?;
+                let mut transaction = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
                 
                 if is_youtube {
                     // Handle YouTube video
@@ -5117,7 +5141,7 @@ impl DatabasePool {
                         .await?;
                 }
                 if log {
-                    crate::services::sync::events::episode_mysql(&mut transaction, user_id, episode_id, crate::services::sync::events::EpisodeEvent::New).await;
+                    crate::services::sync::events::episode_mysql(self, &mut transaction, user_id, episode_id, crate::services::sync::events::EpisodeEvent::New).await;
                 }
                 
                 transaction.commit().await?;
@@ -5792,15 +5816,16 @@ impl DatabasePool {
         Ok(seen.into_iter().collect())
     }
 
-    /// Auto-add every episode from podcasts in the collection's category rule that isn't already
-    /// a member. Idempotent (skips existing rows); no-op for the default collection or when the
-    /// collection has no category rule. Categories are OR-matched as case-insensitive substrings.
+    /// Auto-add every episode from the owner's podcasts in the collection's category rule that
+    /// isn't already a member. Idempotent (skips existing rows); no-op for the default collection
+    /// or when the collection has no category rule. Categories are OR-matched as case-insensitive
+    /// substrings.
     pub async fn auto_add_category_episodes(&self, collection_id: i32) -> AppResult<()> {
         // Load the collection's owner, default flag, and category rule in one shot.
-        let (is_default, categories) = match self {
+        let (is_default, categories, owner) = match self {
             DatabasePool::Postgres(pool) => {
                 let row = sqlx::query(
-                    r#"SELECT isdefault, autoaddcategories FROM "Collections" WHERE collectionid = $1"#,
+                    r#"SELECT isdefault, autoaddcategories, userid FROM "Collections" WHERE collectionid = $1"#,
                 )
                 .bind(collection_id)
                 .fetch_optional(pool)
@@ -5809,13 +5834,14 @@ impl DatabasePool {
                     Some(r) => (
                         r.try_get::<bool, _>("isdefault")?,
                         parse_auto_add_categories(r.try_get("autoaddcategories").ok()),
+                        r.try_get::<i32, _>("userid")?,
                     ),
                     None => return Ok(()),
                 }
             }
             DatabasePool::MySQL(pool) => {
                 let row = sqlx::query(
-                    "SELECT IsDefault, AutoAddCategories as autoaddcategories FROM Collections WHERE CollectionID = ?",
+                    "SELECT IsDefault, AutoAddCategories as autoaddcategories, UserID FROM Collections WHERE CollectionID = ?",
                 )
                 .bind(collection_id)
                 .fetch_optional(pool)
@@ -5824,6 +5850,7 @@ impl DatabasePool {
                     Some(r) => (
                         r.try_get::<i8, _>("IsDefault")? != 0,
                         parse_auto_add_categories(r.try_get("autoaddcategories").ok()),
+                        r.try_get::<i32, _>("UserID")?,
                     ),
                     None => return Ok(()),
                 }
@@ -5845,12 +5872,14 @@ impl DatabasePool {
                     .map(|i| format!("LOWER(p.categories) LIKE LOWER(${})", i + 2))
                     .collect::<Vec<_>>()
                     .join(" OR ");
+                let owner_param = categories.len() + 2;
                 let sql = format!(
                     r#"INSERT INTO "CollectionEpisodes" (collectionid, episodeid)
                        SELECT $1, e.episodeid
                        FROM "Episodes" e
                        JOIN "Podcasts" p ON e.podcastid = p.podcastid
                        WHERE ({cat_clause})
+                         AND p.userid = ${owner_param}
                          AND NOT EXISTS (
                              SELECT 1 FROM "CollectionEpisodes" ce
                              WHERE ce.collectionid = $1 AND ce.episodeid = e.episodeid
@@ -5860,7 +5889,7 @@ impl DatabasePool {
                 for cat in &categories {
                     q = q.bind(format!("%{}%", cat));
                 }
-                q.execute(pool).await?;
+                q.bind(owner).execute(pool).await?;
 
                 sqlx::query(r#"UPDATE "Collections" SET lastupdated = CURRENT_TIMESTAMP WHERE collectionid = $1"#)
                     .bind(collection_id)
@@ -5878,6 +5907,7 @@ impl DatabasePool {
                      FROM Episodes e
                      JOIN Podcasts p ON e.PodcastID = p.PodcastID
                      WHERE ({cat_clause})
+                       AND p.UserID = ?
                        AND NOT EXISTS (
                            SELECT 1 FROM CollectionEpisodes ce
                            WHERE ce.CollectionID = ? AND ce.EpisodeID = e.EpisodeID
@@ -5887,7 +5917,7 @@ impl DatabasePool {
                 for cat in &categories {
                     q = q.bind(format!("%{}%", cat));
                 }
-                q = q.bind(collection_id);
+                q = q.bind(owner).bind(collection_id);
                 q.execute(pool).await?;
 
                 sqlx::query("UPDATE Collections SET LastUpdated = CURRENT_TIMESTAMP WHERE CollectionID = ?")
@@ -5899,31 +5929,86 @@ impl DatabasePool {
         Ok(())
     }
 
-    /// Run auto-add for every collection that has a category rule. Called after the scheduled
-    /// podcast refresh so freshly-ingested episodes flow into their matching collections.
-    pub async fn refresh_category_collections(&self) -> AppResult<()> {
-        let ids: Vec<i32> = match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query_scalar(
-                    r#"SELECT collectionid FROM "Collections"
-                       WHERE isdefault = FALSE AND autoaddcategories IS NOT NULL AND autoaddcategories <> ''"#,
+    /// Add new episodes of one of the user's podcasts to the user's collections whose category
+    /// rule matches the podcast (same matching as `auto_add_category_episodes`). Called by the
+    /// refresh with the episodes it just inserted.
+    pub async fn auto_add_category_episodes_for(&self, user_id: i32, podcast_id: i32, episode_ids: &[i32]) -> AppResult<()> {
+        if episode_ids.is_empty() {
+            return Ok(());
+        }
+        let (rules, categories): (Vec<(i32, Option<String>)>, Option<String>) = match self {
+            DatabasePool::Postgres(pool) => (
+                sqlx::query_as(
+                    r#"SELECT collectionid, autoaddcategories FROM "Collections"
+                       WHERE userid = $1 AND isdefault = FALSE AND autoaddcategories IS NOT NULL AND autoaddcategories <> ''"#,
                 )
+                .bind(user_id)
                 .fetch_all(pool)
-                .await?
-            }
-            DatabasePool::MySQL(pool) => {
-                sqlx::query_scalar(
-                    "SELECT CollectionID FROM Collections
-                     WHERE IsDefault = FALSE AND AutoAddCategories IS NOT NULL AND AutoAddCategories <> ''",
+                .await?,
+                sqlx::query_scalar(r#"SELECT categories FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+                    .flatten(),
+            ),
+            DatabasePool::MySQL(pool) => (
+                sqlx::query_as(
+                    "SELECT CollectionID, AutoAddCategories FROM Collections
+                     WHERE UserID = ? AND IsDefault = FALSE AND AutoAddCategories IS NOT NULL AND AutoAddCategories <> ''",
                 )
+                .bind(user_id)
                 .fetch_all(pool)
-                .await?
-            }
+                .await?,
+                sqlx::query_scalar("SELECT Categories FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+                    .flatten(),
+            ),
         };
-
-        for id in ids {
-            if let Err(e) = self.auto_add_category_episodes(id).await {
-                tracing::warn!("Auto-add for collection {} failed: {}", id, e);
+        let podcast_categories = categories.unwrap_or_default().to_lowercase();
+        let matching = rules.into_iter().filter_map(|(id, rule)| {
+            parse_auto_add_categories(rule)?.iter().any(|c| podcast_categories.contains(&c.to_lowercase())).then_some(id)
+        });
+        for collection_id in matching {
+            match self {
+                DatabasePool::Postgres(pool) => {
+                    sqlx::query(
+                        r#"INSERT INTO "CollectionEpisodes" (collectionid, episodeid)
+                           SELECT $1, e.episodeid FROM "Episodes" e
+                           WHERE e.episodeid = ANY($2) AND e.podcastid = $3
+                             AND NOT EXISTS (SELECT 1 FROM "CollectionEpisodes" ce WHERE ce.collectionid = $1 AND ce.episodeid = e.episodeid)"#,
+                    )
+                    .bind(collection_id)
+                    .bind(episode_ids)
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                    sqlx::query(r#"UPDATE "Collections" SET lastupdated = CURRENT_TIMESTAMP WHERE collectionid = $1"#)
+                        .bind(collection_id)
+                        .execute(pool)
+                        .await?;
+                }
+                DatabasePool::MySQL(pool) => {
+                    let ids = vec!["?"; episode_ids.len()].join(", ");
+                    let sql = format!(
+                        "INSERT INTO CollectionEpisodes (CollectionID, EpisodeID)
+                         SELECT ?, e.EpisodeID FROM Episodes e
+                         WHERE e.EpisodeID IN ({ids}) AND e.PodcastID = ?
+                           AND NOT EXISTS (SELECT 1 FROM CollectionEpisodes ce WHERE ce.CollectionID = ? AND ce.EpisodeID = e.EpisodeID)"
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql)).bind(collection_id);
+                    for id in episode_ids {
+                        q = q.bind(id);
+                    }
+                    q.bind(podcast_id).bind(collection_id).execute(pool).await?;
+                    sqlx::query("UPDATE Collections SET LastUpdated = CURRENT_TIMESTAMP WHERE CollectionID = ?")
+                        .bind(collection_id)
+                        .execute(pool)
+                        .await?;
+                }
             }
         }
         Ok(())
@@ -12215,12 +12300,12 @@ impl DatabasePool {
                     true
                 };
                 if changed && log {
-                    events::episode_pg(&mut tx, user_id, episode_id, EpisodeEvent::Progress(listen_duration_int)).await;
+                    events::episode_pg(self, &mut tx, user_id, episode_id, EpisodeEvent::Progress(listen_duration_int)).await;
                 }
                 tx.commit().await?;
             }
             DatabasePool::MySQL(pool) => {
-                let mut tx = pool.begin().await?;
+                let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
                 // Check if record exists and get existing duration
                 let existing_row = sqlx::query("SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = ? AND EpisodeID = ?")
                     .bind(user_id)
@@ -12258,7 +12343,7 @@ impl DatabasePool {
                     true
                 };
                 if changed && log {
-                    events::episode_mysql(&mut tx, user_id, episode_id, EpisodeEvent::Progress(listen_duration_int)).await;
+                    events::episode_mysql(self, &mut tx, user_id, episode_id, EpisodeEvent::Progress(listen_duration_int)).await;
                 }
                 tx.commit().await?;
             }
@@ -18289,7 +18374,8 @@ impl DatabasePool {
         }
     }
 
-    // Auto-complete episodes for a user based on their setting
+    // Auto-complete episodes listened to in the last 7 days (the nightly sweep; progress saves
+    // and sync already complete at write time).
     pub async fn auto_complete_user_episodes(&self, user_id: i32, auto_complete_seconds: i32) -> AppResult<i32> {
         if auto_complete_seconds <= 0 {
             return Ok(0);
@@ -18307,6 +18393,7 @@ impl DatabasePool {
                     WHERE e.completed = false 
                       AND e.episodeduration > 0 
                       AND h.listenduration > 0
+                      AND h.listendate >= NOW() - INTERVAL '7 days'
                       AND (e.episodeduration - h.listenduration) <= $2
                 "#)
                 .bind(user_id)
@@ -18328,6 +18415,7 @@ impl DatabasePool {
                     WHERE v.completed = false 
                       AND v.duration > 0 
                       AND h.listenduration > 0
+                      AND h.listendate >= NOW() - INTERVAL '7 days'
                       AND (v.duration - h.listenduration) <= $2
                 "#)
                 .bind(user_id)
@@ -18350,6 +18438,7 @@ impl DatabasePool {
                     WHERE e.Completed = 0 
                       AND e.EpisodeDuration > 0 
                       AND h.ListenDuration > 0
+                      AND h.ListenDate >= NOW() - INTERVAL 7 DAY
                       AND (e.EpisodeDuration - h.ListenDuration) <= ?
                 ")
                 .bind(user_id)
@@ -18371,6 +18460,7 @@ impl DatabasePool {
                     WHERE v.Completed = 0 
                       AND v.Duration > 0 
                       AND h.ListenDuration > 0
+                      AND h.ListenDate >= NOW() - INTERVAL 7 DAY
                       AND (v.Duration - h.ListenDuration) <= ?
                 ")
                 .bind(user_id)
@@ -27248,97 +27338,56 @@ impl DatabasePool {
         Ok(())
     }
 
-    // Update episode counts for all playlists - replaces complex playlist content updates
-    pub async fn update_playlist_episode_counts(&self) -> AppResult<()> {
-        
-        info!("📊 Starting playlist episode count updates...");
-        
-        match self {
-            DatabasePool::Postgres(pool) => {
-                // Get all playlists
-                let playlists = sqlx::query(
-                    r#"SELECT playlistid, userid, name FROM "Playlists" ORDER BY userid, playlistid"#
-                ).fetch_all(pool).await?;
-                
-                info!("Found {} playlists to update counts for", playlists.len());
-                
-                let mut updated_count = 0;
-                let mut failed_count = 0;
-                
-                for playlist in playlists {
-                    let playlist_id: i32 = playlist.try_get("playlistid")?;
-                    let user_id: i32 = playlist.try_get("userid")?;
-                    let name: String = playlist.try_get("name")?;
-                    
-                    match self.count_playlist_episodes_dynamic(playlist_id, user_id).await {
-                        Ok(count) => {
-                            // Update the episode_count in the playlist
-                            match sqlx::query(
-                                r#"UPDATE "Playlists" SET episodecount = $1 WHERE playlistid = $2"#
-                            ).bind(count).bind(playlist_id).execute(pool).await {
-                                Ok(_) => {
-                                    debug!("Updated playlist '{}' (ID: {}) count to {}", name, playlist_id, count);
-                                    updated_count += 1;
-                                }
-                                Err(e) => {
-                                    warn!("Failed to update count for playlist '{}' (ID: {}): {}", name, playlist_id, e);
-                                    failed_count += 1;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            warn!("Failed to count episodes for playlist '{}' (ID: {}): {}", name, playlist_id, e);
-                            failed_count += 1;
-                        }
-                    }
+    /// Recompute the stored episode counts of the user's playlists. The refresh calls it for users
+    /// whose podcasts got new episodes; `get_playlists` when the counts are older than
+    /// `PLAYLIST_COUNTS_MAX_AGE` (listening and time filters change them too).
+    pub async fn update_user_playlist_counts(&self, user_id: i32) -> AppResult<()> {
+        PLAYLIST_COUNTS_AT.lock().unwrap().insert((self.instance_key(), user_id), std::time::Instant::now());
+        let playlists: Vec<i32> = match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT playlistid FROM "Playlists" WHERE userid = $1"#)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT PlaylistID FROM Playlists WHERE UserID = ?")
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?,
+        };
+        for playlist_id in playlists {
+            let count = match self.count_playlist_episodes_dynamic(playlist_id, user_id).await {
+                Ok(count) => count,
+                Err(e) => {
+                    warn!("Failed to count episodes for playlist {}: {}", playlist_id, e);
+                    continue;
                 }
-                
-                info!("✅ Playlist count update completed: {} updated, {} failed", updated_count, failed_count);
-            }
-            DatabasePool::MySQL(pool) => {
-                // Get all playlists
-                let playlists = sqlx::query(
-                    r#"SELECT PlaylistID, UserID, Name FROM Playlists ORDER BY UserID, PlaylistID"#
-                ).fetch_all(pool).await?;
-                
-                info!("Found {} playlists to update counts for (MySQL)", playlists.len());
-                
-                let mut updated_count = 0;
-                let mut failed_count = 0;
-                
-                for playlist in playlists {
-                    let playlist_id: i32 = playlist.try_get("PlaylistID")?;
-                    let user_id: i32 = playlist.try_get("UserID")?;
-                    let name: String = playlist.try_get("Name")?;
-                    
-                    match self.count_playlist_episodes_dynamic(playlist_id, user_id).await {
-                        Ok(count) => {
-                            // Update the episode_count in the playlist
-                            match sqlx::query(
-                                r#"UPDATE Playlists SET EpisodeCount = ? WHERE PlaylistID = ?"#
-                            ).bind(count).bind(playlist_id).execute(pool).await {
-                                Ok(_) => {
-                                    debug!("Updated MySQL playlist '{}' (ID: {}) count to {}", name, playlist_id, count);
-                                    updated_count += 1;
-                                }
-                                Err(e) => {
-                                    warn!("Failed to update MySQL count for playlist '{}' (ID: {}): {}", name, playlist_id, e);
-                                    failed_count += 1;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            warn!("Failed to count MySQL episodes for playlist '{}' (ID: {}): {}", name, playlist_id, e);
-                            failed_count += 1;
-                        }
-                    }
-                }
-                
-                info!("✅ MySQL playlist count update completed: {} updated, {} failed", updated_count, failed_count);
+            };
+            let updated = match self {
+                DatabasePool::Postgres(pool) => sqlx::query(r#"UPDATE "Playlists" SET episodecount = $1 WHERE playlistid = $2"#)
+                    .bind(count)
+                    .bind(playlist_id)
+                    .execute(pool)
+                    .await
+                    .map(|_| ()),
+                DatabasePool::MySQL(pool) => sqlx::query("UPDATE Playlists SET EpisodeCount = ? WHERE PlaylistID = ?")
+                    .bind(count)
+                    .bind(playlist_id)
+                    .execute(pool)
+                    .await
+                    .map(|_| ()),
+            };
+            if let Err(e) = updated {
+                warn!("Failed to update the count of playlist {}: {}", playlist_id, e);
             }
         }
-        
         Ok(())
+    }
+
+    fn playlist_counts_stale(&self, user_id: i32) -> bool {
+        PLAYLIST_COUNTS_AT
+            .lock()
+            .unwrap()
+            .get(&(self.instance_key(), user_id))
+            .is_none_or(|at| at.elapsed() > PLAYLIST_COUNTS_MAX_AGE)
     }
 
     // Count episodes for a playlist using the same dynamic logic (without pagination)

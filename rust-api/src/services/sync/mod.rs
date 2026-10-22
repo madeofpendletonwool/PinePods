@@ -13,6 +13,7 @@ pub mod engine;
 pub mod engine_db;
 pub mod events;
 pub mod model;
+pub mod push;
 pub mod resolver;
 pub mod targets;
 
