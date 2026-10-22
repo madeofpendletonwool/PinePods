@@ -866,5 +866,9 @@ mod tests {
         h.insert("x-forwarded-host", "pods.example.com".parse().unwrap());
         h.insert("x-forwarded-proto", "https".parse().unwrap());
         assert_eq!(public_server_url(&h).0, "https://pods.example.com");
+        // Chained proxies: the first entry is the client-facing one.
+        h.insert("x-forwarded-host", "pods.example.com:8443, pinepods:8040".parse().unwrap());
+        h.insert("x-forwarded-proto", "https, http".parse().unwrap());
+        assert_eq!(public_server_url(&h).0, "https://pods.example.com:8443");
     }
 }

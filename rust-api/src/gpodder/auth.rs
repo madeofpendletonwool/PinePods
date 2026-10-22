@@ -152,6 +152,12 @@ fn header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name).and_then(|v| v.to_str().ok()).map(str::trim).filter(|s| !s.is_empty())
 }
 
+/// The client reached us over https (the first `X-Forwarded-Proto` entry, set by the bundled
+/// nginx or an outer proxy).
+fn forwarded_https(headers: &HeaderMap) -> bool {
+    header_str(headers, "x-forwarded-proto").and_then(|v| v.split(',').next()).is_some_and(|p| p.trim().eq_ignore_ascii_case("https"))
+}
+
 /// POST /api/2/auth/{user}/login.json. A request that already has a valid session keeps it.
 pub(crate) async fn login(State(state): State<AppState>, Path(user): Path<String>, headers: HeaderMap) -> GResult<Response> {
     let user = NameExt::json_only(&user)?;
@@ -166,7 +172,7 @@ pub(crate) async fn login(State(state): State<AppState>, Path(user): Path<String
         .db_pool
         .gpodder_create_session(authed.user_id, &token, header_str(&headers, "user-agent"), client_ip, authed.app_password)
         .await?;
-    let secure = header_str(&headers, "x-forwarded-proto").is_some_and(|p| p.eq_ignore_ascii_case("https"));
+    let secure = forwarded_https(&headers);
     let cookie = format!(
         "{SESSION_COOKIE}={token}; Path=/; Max-Age={SESSION_MAX_AGE}; HttpOnly; SameSite=Lax{}",
         if secure { "; Secure" } else { "" }
@@ -204,6 +210,16 @@ mod tests {
         assert_eq!(session_cookie(&h), None);
         h.insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer xyz"));
         assert_eq!(basic_credentials(&h), None);
+    }
+
+    #[test]
+    fn https_from_forwarded_proto() {
+        let mut h = HeaderMap::new();
+        assert!(!forwarded_https(&h));
+        h.insert("x-forwarded-proto", HeaderValue::from_static("http"));
+        assert!(!forwarded_https(&h));
+        h.insert("x-forwarded-proto", HeaderValue::from_static("HTTPS, http"));
+        assert!(forwarded_https(&h));
     }
 
     #[test]
