@@ -6840,6 +6840,25 @@ def migration_072_podping_setting(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("073", "podcasts_feedurl_index", "Index Podcasts.FeedURL, for finding a feed's subscriptions across users", requires=["001"])
+def migration_073_podcasts_feedurl_index(conn, db_type: str) -> None:
+    """Podping and the shared refresh look podcasts up by feed URL for every user. The
+    (UserID, FeedURL) unique key can't serve that on Postgres and MySQL had no index at all.
+    Postgres gets a hash index, which takes URLs of any length."""
+    cursor = conn.cursor()
+    try:
+        if db_type == "postgresql":
+            safe_add_index(cursor, db_type, 'CREATE INDEX idx_podcasts_feedurl ON "Podcasts" USING hash (feedurl)', "idx_podcasts_feedurl")
+        else:
+            safe_add_index(cursor, db_type, "CREATE INDEX idx_podcasts_feedurl ON Podcasts (FeedURL(255))", "idx_podcasts_feedurl")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("111", "gpodder_episode_action_log", "Episode action log: Guid, resolved EpisodeID, Origin, indexes; keep actions when a device is removed", requires=["066", "110"])
 def migration_111_gpodder_episode_action_log(conn, db_type: str) -> None:
     """Turn GpodderSyncEpisodeActions into the sync log/outbox (sync overhaul 3.2).

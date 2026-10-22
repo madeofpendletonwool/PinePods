@@ -669,6 +669,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(hit_counters.clone())
             .app_data(podping.clone())
             .wrap(cors)
+            .wrap(actix_web::middleware::Compress::default())
             .route("/api/search", web::get().to(search_handler))
             .route("/api/podcast", web::get().to(podcast_handler))
             .route("/api/trending", web::get().to(trending_handler))

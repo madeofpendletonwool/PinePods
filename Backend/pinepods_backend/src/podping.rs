@@ -19,7 +19,7 @@ const KEEP_SECS: i64 = 24 * 3600;
 const MAX_KEPT: usize = 500_000;
 /// Blocks fetched per request (Hive makes one every 3 seconds).
 const BATCH: u64 = 50;
-const MAX_PAGE: usize = 5_000;
+const MAX_PAGE: usize = 1_000;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Ping {
@@ -146,18 +146,18 @@ impl Podping {
 
     /// Pings after `after`, oldest first, and the cursor to ask with next.
     pub fn since(&self, after: u64, limit: usize) -> Value {
-        let inner = self.inner.lock().unwrap();
-        let oldest = inner.pings.front().map(|p| p.seq).unwrap_or(inner.next_seq);
-        let pings: Vec<&Ping> = inner.pings.iter().filter(|p| p.seq > after).take(limit).collect();
-        let next = pings.last().map(|p| p.seq).unwrap_or_else(|| after.max(inner.next_seq.saturating_sub(1)));
-        json!({
-            "epoch": self.epoch,
-            "pings": pings,
-            "next": next,
+        let (pings, next, gap, more) = {
+            let inner = self.inner.lock().unwrap();
+            let oldest = inner.pings.front().map(|p| p.seq).unwrap_or(inner.next_seq);
+            // Sequence numbers are consecutive, so the first one after `after` is found by position
+            // instead of scanning the day of pings kept.
+            let start = ((after + 1).saturating_sub(oldest) as usize).min(inner.pings.len());
+            let pings: Vec<Ping> = inner.pings.range(start..).take(limit).cloned().collect();
+            let next = pings.last().map(|p| p.seq).unwrap_or_else(|| after.max(inner.next_seq.saturating_sub(1)));
             // The client asked for pings this relay no longer has (or never saw): it missed some.
-            "gap": after > 0 && after + 1 < oldest,
-            "more": inner.pings.back().is_some_and(|p| p.seq > next),
-        })
+            (pings, next, after > 0 && after + 1 < oldest, inner.pings.back().is_some_and(|p| p.seq > next))
+        };
+        json!({ "epoch": self.epoch, "pings": pings, "next": next, "gap": gap, "more": more })
     }
 
     pub fn status(&self) -> Value {
@@ -230,7 +230,10 @@ pub async fn updates_handler(podping: web::Data<Podping>, query: web::Query<Upda
     if !podping.enabled {
         return HttpResponse::NotFound().json(json!({ "error": "podping relay is off" }));
     }
-    HttpResponse::Ok().json(podping.since(query.after, query.limit.unwrap_or(MAX_PAGE).min(MAX_PAGE)))
+    // Servers that are caught up all ask for the same URL, so a cache in front can answer them.
+    HttpResponse::Ok()
+        .insert_header(("Cache-Control", "public, max-age=10"))
+        .json(podping.since(query.after, query.limit.unwrap_or(MAX_PAGE).min(MAX_PAGE)))
 }
 
 /// GET /api/podping/status

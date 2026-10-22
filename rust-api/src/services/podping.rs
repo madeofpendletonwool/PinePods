@@ -1,11 +1,11 @@
 // Podping: podcast hosts announce feed updates on the Hive blockchain, and the search service
-// relays them. When an admin turns it on, Pinepods asks the relay every half minute which feeds
+// relays them. When an admin turns it on, Pinepods asks the relay every minute which feeds
 // were announced, matches them against its own subscriptions locally (the relay never learns
 // what this server follows) and refreshes the matches straight away.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
@@ -14,7 +14,9 @@ use crate::database::DatabasePool;
 use crate::error::AppResult;
 use crate::AppState;
 
-const DEFAULT_INTERVAL: Duration = Duration::from_secs(30);
+const DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
+/// A feed announced again this soon after a Podping refresh waits until the time is up.
+const COOLDOWN: Duration = Duration::from_secs(5 * 60);
 /// Pages fetched per poll when the relay has a backlog.
 const MAX_PAGES: usize = 10;
 
@@ -52,6 +54,29 @@ struct Client {
     status: ClientStatus,
     /// (relay epoch, last sequence seen); None until joined.
     cursor: Option<(i64, u64)>,
+    /// When each feed was last refreshed because of an announcement.
+    refreshed_at: HashMap<String, Instant>,
+    /// Feeds announced again during their cooldown.
+    deferred: HashSet<String>,
+}
+
+impl Client {
+    /// Of the feeds announced (plus the deferred ones), those to refresh now; the others are
+    /// deferred.
+    fn due(&mut self, announced: Vec<String>) -> Vec<String> {
+        let now = Instant::now();
+        self.refreshed_at.retain(|_, at| now.duration_since(*at) < COOLDOWN);
+        let mut due = Vec::new();
+        for url in announced.into_iter().chain(std::mem::take(&mut self.deferred)) {
+            if self.refreshed_at.contains_key(&url) {
+                self.deferred.insert(url);
+            } else {
+                self.refreshed_at.insert(url.clone(), now);
+                due.push(url);
+            }
+        }
+        due
+    }
 }
 
 static CLIENT: LazyLock<Mutex<Client>> = LazyLock::new(|| Mutex::new(Client::default()));
@@ -161,6 +186,7 @@ pub async fn poll_relay(state: &AppState, base: &str) -> AppResult<usize> {
         }
         let urls: Vec<String> = updates.pings.into_iter().map(|p| p.url).collect();
         let feeds = state.db_pool.subscribed_feeds_among(&urls).await?;
+        let feeds = CLIENT.lock().unwrap().due(feeds);
         if !feeds.is_empty() {
             debug!("Podping: refreshing {} announced feeds", feeds.len());
             let n = crate::handlers::refresh::refresh_feed_urls(state, &feeds).await?;
@@ -265,5 +291,17 @@ mod tests {
             assert!(v.contains(&u.to_string()), "{u} in {v:?}");
         }
         assert_eq!(url_variants("ftp://x"), vec!["ftp://x".to_string()]);
+    }
+
+    #[test]
+    fn feeds_announced_again_wait_for_the_cooldown() {
+        let mut c = Client::default();
+        assert_eq!(c.due(vec!["a".into(), "b".into()]), ["a", "b"]);
+        assert!(c.due(vec!["a".into()]).is_empty());
+        assert!(c.deferred.contains("a"));
+        // Once the cooldown is over the deferred feed goes, even without a new announcement.
+        c.refreshed_at.insert("a".into(), Instant::now() - COOLDOWN);
+        assert_eq!(c.due(vec![]), ["a"]);
+        assert!(c.deferred.is_empty());
     }
 }
