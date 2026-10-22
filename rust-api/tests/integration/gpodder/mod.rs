@@ -1,12 +1,10 @@
 //! gpodder protocol conformance.
 //!
 //! These tests speak HTTP to whichever gpodder server `PINEPODS_TEST_GPODDER` selects (see
-//! `harness/gpodder.rs`): the Go service today, the Rust port once it exists, or the in-memory
-//! reference server that keeps the tests themselves honest. Each test names what it
-//! covers and where it is known to fail.
+//! `harness/gpodder.rs`): the rust-api router, or the in-memory reference server that keeps
+//! the tests themselves honest.
 //!
-//! `scripts/integration-tests.sh --gpodder go -- gpodder` runs only these and prints the
-//! known-failure report.
+//! `scripts/integration-tests.sh --gpodder mock -- gpodder::` runs only these against the mock.
 
 mod antennapod_rules;
 mod mock_server;

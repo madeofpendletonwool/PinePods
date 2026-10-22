@@ -2930,7 +2930,7 @@ def migration_032_create_user_default_playlists(conn, db_type: str):
 
 # ============================================================================
 # GPODDER SYNC MIGRATIONS
-# These migrations match the gpodder-api service migrations from Go code
+# The gpodder sync tables (the gpodder server in rust-api serves them)
 # ============================================================================
 
 @register_migration("100", "gpodder_initial_schema", "Create initial gpodder sync tables")

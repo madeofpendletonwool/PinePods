@@ -12,7 +12,7 @@ scripts/integration-tests.sh --db postgres      # one backend (postgres | mariad
 scripts/integration-tests.sh -- queue           # extra args go to `cargo test` (name filter)
 scripts/integration-tests.sh -- accounts -- --nocapture
 scripts/integration-tests.sh down               # stop the throwaway containers
-scripts/integration-tests.sh --gpodder go -- gpodder   # gpodder protocol tests (go | rust | mock)
+scripts/integration-tests.sh --gpodder mock -- gpodder # gpodder protocol tests (rust | mock)
 ```
 
 The script starts Postgres, MariaDB and Valkey from `tests/docker-compose.yml` (off-default
@@ -30,9 +30,7 @@ Useful environment variables:
 | `PINEPODS_TEST_PYTHON` | Python used to run `startup/setup_database_new.py` |
 | `PINEPODS_TEST_KEEP_DB` | keep each test's database afterwards for inspection |
 | `PINEPODS_TEST_EXTERNAL_SERVICES` | don't start containers; use the ones above |
-| `PINEPODS_TEST_GPODDER` | gpodder server the protocol tests talk to: `go` (default), `rust`, `mock` |
-| `PINEPODS_TEST_GPODDER_BIN` | prebuilt `gpodder-api` binary instead of `go build` |
-| `PINEPODS_TEST_GPODDER_STRICT` | fail on known gpodder failures instead of recording them |
+| `PINEPODS_TEST_GPODDER` | gpodder server the protocol tests talk to: `rust` (default), `mock` |
 
 ## How it works
 
