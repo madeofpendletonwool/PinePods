@@ -176,10 +176,10 @@ async fn uploads_from_internal_server_clients_reach_the_target() {
     let s = scene().await;
     s.enable_push(300, 1_000);
     let server = s.app.rust_gpodder_server().await;
-    s.app.enable_gpodder(&server, &s.user).await;
+    let password = s.app.enable_gpodder(&server, &s.user).await;
     let (_, url) = s.episode("Episode 3").await;
 
-    let antennapod = GpodderClient::new(&server.base_url, &s.user.username, &s.user.password, "antennapod");
+    let antennapod = GpodderClient::new(&server.base_url, &s.user.username, &password, "antennapod");
     antennapod.login().await.assert_ok();
     antennapod.configure_device("AntennaPod", "mobile").await.assert_ok();
     let other_feed = s.app.feed("other.xml", &Feed::with_episodes("Other", 1));
@@ -331,9 +331,9 @@ async fn auto_complete_happens_at_write_time_and_the_sweep_only_looks_back_a_wee
 
     // A client of the internal server reports a position near the end: completed on upload.
     let server = app.rust_gpodder_server().await;
-    app.enable_gpodder(&server, &s.user).await;
+    let password = app.enable_gpodder(&server, &s.user).await;
     let (e1, url1) = s.episode("Episode 1").await;
-    let client = GpodderClient::new(&server.base_url, &s.user.username, &s.user.password, "antennapod");
+    let client = GpodderClient::new(&server.base_url, &s.user.username, &password, "antennapod");
     client.login().await.assert_ok();
     client.upload_episode_batch(&[play_action(&s.feed, &url1, Utc::now(), 0, 1770, 1801)]).await.assert_ok();
     assert!(completed(e1).await, "completed when the position was written");

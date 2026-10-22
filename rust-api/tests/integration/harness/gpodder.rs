@@ -85,14 +85,25 @@ impl TestApp {
         GpodderServer { imp: Impl::Rust, base_url: format!("http://127.0.0.1:{port}"), serve: Some(serve), mock: None }
     }
 
-    /// Turn on the gpodder server for `user` the way the Settings page does.
-    pub async fn enable_gpodder(&self, server: &GpodderServer, user: &TestUser) {
+    /// Turn on the gpodder server for `user` the way the Settings page does. Returns the
+    /// password apps sign in with: a new app password (the mock takes the account password).
+    pub async fn enable_gpodder(&self, server: &GpodderServer, user: &TestUser) -> String {
         match server.imp {
             Impl::Rust => {
                 self.post("/api/data/gpodder/toggle").key(user).json(&json!({ "enabled": true })).send().await.assert_ok();
+                self.app_password(user).await
             }
-            Impl::Mock => server.mock.as_ref().unwrap().add_user(&user.username, &user.password),
+            Impl::Mock => {
+                server.mock.as_ref().unwrap().add_user(&user.username, &user.password);
+                user.password.clone()
+            }
         }
+    }
+
+    /// A new app password for `user`'s gpodder apps.
+    pub async fn app_password(&self, user: &TestUser) -> String {
+        let created = self.post("/api/sync/server/app-passwords").key(user).json(&json!({ "label": "test app" })).send().await.ok_json();
+        created["password"].as_str().unwrap_or_else(|| panic!("no password in {created}")).to_string()
     }
 }
 
@@ -124,10 +135,12 @@ impl TestApp {
 // ---- scene ------------------------------------------------------------------------------
 
 /// One Pinepods instance with a user who has the internal gpodder server switched on.
+/// `password` is what that user's apps sign in with.
 pub struct GpodderScene {
     pub server: GpodderServer,
     pub app: TestApp,
     pub user: TestUser,
+    pub password: String,
 }
 
 impl GpodderScene {
@@ -135,8 +148,8 @@ impl GpodderScene {
         let app = TestApp::new().await;
         let user = app.user("listener").await;
         let server = app.gpodder_server().await;
-        app.enable_gpodder(&server, &user).await;
-        GpodderScene { server, app, user }
+        let password = app.enable_gpodder(&server, &user).await;
+        GpodderScene { server, app, user, password }
     }
 
     /// True when the server shares Pinepods' database, so library state can be asserted.
@@ -146,16 +159,16 @@ impl GpodderScene {
 
     /// A logged-in client for `device`, as AntennaPod sets one up.
     pub async fn device(&self, device: &str) -> GpodderClient {
-        let c = GpodderClient::new(&self.server.base_url, &self.user.username, &self.user.password, device);
+        let c = GpodderClient::new(&self.server.base_url, &self.user.username, &self.password, device);
         c.login().await.assert_ok();
         c
     }
 
-    /// A second Pinepods user with gpodder enabled, on the same server.
-    pub async fn other_user(&self, name: &str) -> TestUser {
+    /// A second Pinepods user with gpodder enabled, on the same server, and their app password.
+    pub async fn other_user(&self, name: &str) -> (TestUser, String) {
         let u = self.app.user(name).await;
-        self.app.enable_gpodder(&self.server, &u).await;
-        u
+        let password = self.app.enable_gpodder(&self.server, &u).await;
+        (u, password)
     }
 }
 

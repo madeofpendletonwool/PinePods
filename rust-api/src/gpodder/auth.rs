@@ -1,6 +1,6 @@
-// Authentication: the `sessionid` cookie from login.json, or HTTP Basic with the user's
-// password or one of their app passwords. Only users with the server enabled get in, and only
-// to their own paths.
+// Authentication: the `sessionid` cookie from login.json, or HTTP Basic with one of the user's
+// app passwords (never the account password). Only users with the server enabled get in, and
+// only to their own paths.
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -31,7 +31,7 @@ type Verified = (i32, Option<i32>);
 static BASIC_CACHE: LazyLock<Mutex<HashMap<[u8; 32], (Verified, Instant)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Who a request is from. `session` is set when it came with a valid session cookie,
-/// `app_password` when Basic credentials were one of the user's app passwords.
+/// `app_password` when it came with Basic credentials.
 #[derive(Debug, Clone)]
 pub(crate) struct Authed {
     pub user_id: i32,
@@ -92,7 +92,7 @@ async fn verify_hash(password: String, hash: String) -> bool {
         .unwrap_or(false)
 }
 
-/// Basic credentials checked against the user's password, then their app passwords.
+/// Basic credentials checked against the user's app passwords.
 async fn basic_user(db: &DatabasePool, username: &str, password: &str, path_user: &str) -> GResult<Option<Verified>> {
     if !username.eq_ignore_ascii_case(path_user) {
         return Ok(None);
@@ -106,10 +106,6 @@ async fn basic_user(db: &DatabasePool, username: &str, password: &str, path_user
     if let Some(verified) = cached(&key).filter(|v| v.0 == user.user_id) {
         return Ok(Some(verified));
     }
-    if !user.password_hash.is_empty() && verify_hash(password.to_string(), user.password_hash.clone()).await {
-        remember(key, (user.user_id, None));
-        return Ok(Some((user.user_id, None)));
-    }
     for (id, hash) in db.gpodder_app_passwords(user.user_id).await? {
         if verify_hash(password.to_string(), hash).await {
             if let Err(e) = db.gpodder_touch_app_password(id).await {
@@ -119,7 +115,7 @@ async fn basic_user(db: &DatabasePool, username: &str, password: &str, path_user
             return Ok(Some((user.user_id, Some(id))));
         }
     }
-    warn!("gpodder login for user {} failed: wrong password", user.user_id);
+    warn!("gpodder login for user {} failed: not one of their app passwords", user.user_id);
     Ok(None)
 }
 

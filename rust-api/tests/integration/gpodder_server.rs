@@ -19,8 +19,8 @@ async fn scene() -> GpodderScene {
     let app = TestApp::new().await;
     let user = app.user("srv").await;
     let server = app.rust_gpodder_server().await;
-    app.enable_gpodder(&server, &user).await;
-    GpodderScene { server, app, user }
+    let password = app.enable_gpodder(&server, &user).await;
+    GpodderScene { server, app, user, password }
 }
 
 /// A client that never logs in and sends HTTP Basic with every request.
@@ -42,7 +42,7 @@ async fn session_count(s: &GpodderScene) -> i64 {
 // ---- authentication -----------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread")]
-async fn app_passwords_and_the_user_password_both_log_in() {
+async fn only_app_passwords_log_in() {
     let s = scene().await;
     let uid = s.user.id;
     exec(&s.app, &format!(
@@ -54,11 +54,24 @@ async fn app_passwords_and_the_user_password_both_log_in() {
     devices_with(&s, "app-secret-1").await.assert_ok();
     let used = int(&s.app, &format!(r#"SELECT COUNT(*) FROM "GpodderAppPasswords" WHERE UserID = {uid} AND LastUsedAt IS NOT NULL"#)).await;
     assert_eq!(used, Some(1), "LastUsedAt is recorded");
-    devices_with(&s, &s.user.password).await.assert_ok();
+
+    // The account password is refused, over Basic and for login.
+    devices_with(&s, &s.user.password).await.assert_status(401);
+    GpodderClient::new(&s.server.base_url, &s.user.username, &s.user.password, "phone").login().await.assert_status(401);
 
     let bad = devices_with(&s, "app-secret-2").await;
     bad.assert_status(401);
     bad.json(); // one JSON document
+}
+
+/// Sessions opened with the account password, before apps needed an app password, are ignored.
+#[tokio::test(flavor = "multi_thread")]
+async fn sessions_without_an_app_password_are_refused() {
+    let s = scene().await;
+    let phone = s.device("phone").await;
+    phone.episode_actions(0).await.assert_ok();
+    exec(&s.app, &format!(r#"UPDATE "GpodderSessions" SET AppPasswordID = NULL WHERE UserID = {}"#, s.user.id)).await;
+    phone.episode_actions(0).await.assert_status(401);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -98,12 +111,12 @@ async fn the_session_cookie_authenticates_and_login_is_idempotent() {
 #[tokio::test(flavor = "multi_thread")]
 async fn verified_basic_credentials_are_cached() {
     let s = scene().await;
-    let old = s.user.password.clone();
+    let old = s.password.clone();
     devices_with(&s, &old).await.assert_ok();
 
     // With the stored hash replaced, the old password still works from the cache (it expires
     // after 10 minutes) and the new one is verified against the database.
-    exec(&s.app, &format!(r#"UPDATE "Users" SET Hashed_PW = '{}' WHERE UserID = {}"#, hash_password("changed-pw"), s.user.id)).await;
+    exec(&s.app, &format!(r#"UPDATE "GpodderAppPasswords" SET PasswordHash = '{}' WHERE UserID = {}"#, hash_password("changed-pw"), s.user.id)).await;
     devices_with(&s, &old).await.assert_ok();
     devices_with(&s, "changed-pw").await.assert_ok();
     devices_with(&s, "neither").await.assert_status(401);
@@ -116,7 +129,7 @@ async fn a_user_without_the_server_enabled_is_refused() {
     s.app.post("/api/data/gpodder/toggle").key(&s.user).json(&json!({ "enabled": false })).send().await.assert_ok();
 
     phone.episode_actions(0).await.assert_status(401);
-    devices_with(&s, &s.user.password).await.assert_status(401);
+    devices_with(&s, &s.password).await.assert_status(401);
     phone.login().await.assert_status(401);
 }
 
@@ -144,7 +157,7 @@ async fn episode_upload_returns_this_sessions_download_cursor() {
     let up = tablet.upload_episode_actions(&[play_action(POD, &ep(2), Utc::now(), 0, 60, 600)]).await;
     assert_eq!(cursor(&up[0].json()), c_tablet);
 
-    let (c, auth) = basic_client(&s, &s.user.password);
+    let (c, auth) = basic_client(&s, &s.password);
     let r = c
         .send(reqwest::Method::POST, &format!("/api/2/episodes/{}.json", s.user.username), Some(&json!([play_action(POD, &ep(3), Utc::now(), 0, 60, 600)])), auth)
         .await;
@@ -234,7 +247,8 @@ async fn enabling_the_server_from_settings_publishes_the_library_and_progress() 
     assert_eq!(resp["gpodder_enabled"], true, "{resp}");
     assert_eq!(int(&app, &format!(r#"SELECT COUNT(*) FROM "GpodderDevices" WHERE UserID = {} AND SystemRole = 'pinepods'"#, user.id)).await, Some(1));
 
-    let s = GpodderScene { server, app, user };
+    let password = app.app_password(&user).await;
+    let s = GpodderScene { server, app, user, password };
     let phone = s.device("phone").await;
     let subs = phone.subscription_changes(0).await.ok_json();
     assert!(strings(&subs, "add").contains(&feed_url), "{subs}");

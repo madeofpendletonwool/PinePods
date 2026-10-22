@@ -25,7 +25,6 @@ pub(crate) struct GpodderUser {
     pub user_id: i32,
     pub username: String,
     pub enabled: bool,
-    pub password_hash: String,
 }
 
 #[derive(Debug, Clone)]
@@ -199,7 +198,7 @@ impl DatabasePool {
     pub(crate) async fn gpodder_user(&self, name: &str) -> AppResult<Option<GpodderUser>> {
         let rows: Vec<GpodderUser> = match self {
             DatabasePool::Postgres(pool) => sqlx::query(
-                r#"SELECT userid, username, hashed_pw, gpodderserverenabled FROM "Users" WHERE LOWER(username) = LOWER($1)"#,
+                r#"SELECT userid, username, gpodderserverenabled FROM "Users" WHERE LOWER(username) = LOWER($1)"#,
             )
             .bind(name)
             .fetch_all(pool)
@@ -210,12 +209,11 @@ impl DatabasePool {
                     user_id: r.try_get("userid")?,
                     username: r.try_get("username")?,
                     enabled: r.try_get("gpodderserverenabled")?,
-                    password_hash: r.try_get::<Option<String>, _>("hashed_pw")?.unwrap_or_default(),
                 })
             })
             .collect::<AppResult<_>>()?,
             DatabasePool::MySQL(pool) => sqlx::query(
-                "SELECT UserID, Username, Hashed_PW, GpodderServerEnabled FROM Users WHERE LOWER(Username) = LOWER(?)",
+                "SELECT UserID, Username, GpodderServerEnabled FROM Users WHERE LOWER(Username) = LOWER(?)",
             )
             .bind(name)
             .fetch_all(pool)
@@ -226,7 +224,6 @@ impl DatabasePool {
                     user_id: r.try_get("UserID")?,
                     username: r.try_get("Username")?,
                     enabled: r.try_get("GpodderServerEnabled")?,
-                    password_hash: r.try_get::<Option<String>, _>("Hashed_PW")?.unwrap_or_default(),
                 })
             })
             .collect::<AppResult<_>>()?,
@@ -315,13 +312,13 @@ impl DatabasePool {
         Ok(())
     }
 
-    /// The unexpired session with this token.
+    /// The unexpired session with this token. Only sessions opened with an app password count.
     pub(crate) async fn gpodder_session(&self, token: &str) -> AppResult<Option<SessionUser>> {
         Ok(match self {
             DatabasePool::Postgres(pool) => sqlx::query(
                 r#"SELECT s.sessionid, s.userid, u.username, u.gpodderserverenabled
                    FROM "GpodderSessions" s JOIN "Users" u ON u.userid = s.userid
-                   WHERE s.sessiontoken = $1 AND s.expiresat > NOW()"#,
+                   WHERE s.sessiontoken = $1 AND s.expiresat > NOW() AND s.apppasswordid IS NOT NULL"#,
             )
             .bind(token)
             .fetch_optional(pool)
@@ -338,7 +335,7 @@ impl DatabasePool {
             DatabasePool::MySQL(pool) => sqlx::query(
                 "SELECT s.SessionID, s.UserID, u.Username, u.GpodderServerEnabled
                  FROM GpodderSessions s JOIN Users u ON u.UserID = s.UserID
-                 WHERE s.SessionToken = ? AND s.ExpiresAt > NOW()",
+                 WHERE s.SessionToken = ? AND s.ExpiresAt > NOW() AND s.AppPasswordID IS NOT NULL",
             )
             .bind(token)
             .fetch_optional(pool)

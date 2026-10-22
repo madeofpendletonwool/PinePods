@@ -48,7 +48,10 @@ async fn server_toggle_and_app_passwords() {
     assert_eq!(list.as_array().unwrap().len(), 1);
     assert_eq!((list[0]["id"].as_i64(), list[0]["last_used_at"].clone()), (Some(id), Value::Null));
 
-    // It works for a gpodder app, and its use is recorded.
+    // Apps can't sign in with the account password.
+    GpodderClient::new(&server.base_url, &user.username, &user.password, "laptop").login().await.assert_status(401);
+
+    // The app password works for a gpodder app, and its use is recorded.
     let phone = GpodderClient::new(&server.base_url, &user.username, &password, "phone");
     phone.login().await.assert_ok();
     phone.subscription_changes(0).await.assert_ok();
@@ -67,11 +70,12 @@ async fn server_toggle_and_app_passwords() {
     phone.subscription_changes(0).await.assert_status(401);
     assert_eq!(app.get("/api/sync/server/app-passwords").key(&user).send().await.ok_json(), json!([]));
 
-    // Off again: the user's own password stops working for apps too.
+    // Off again: app passwords stop working too.
+    let spare = app.app_password(&user).await;
     let off = app.put("/api/sync/server").key(&user).json(&json!({ "enabled": false })).send().await.ok_json();
     assert_eq!(off["enabled"], false);
     assert_eq!(sync_type(&app, &user).await, "None");
-    GpodderClient::new(&server.base_url, &user.username, &user.password, "laptop").login().await.assert_status(401);
+    GpodderClient::new(&server.base_url, &user.username, &spare, "laptop").login().await.assert_status(401);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -81,7 +85,8 @@ async fn devices_can_be_renamed_and_removed_except_pinepods_own() {
     let other = app.user("devices-other").await;
     let server = app.rust_gpodder_server().await;
     app.put("/api/sync/server").key(&user).json(&json!({ "enabled": true })).send().await.assert_ok();
-    let phone = GpodderClient::new(&server.base_url, &user.username, &user.password, "phone");
+    let password = app.app_password(&user).await;
+    let phone = GpodderClient::new(&server.base_url, &user.username, &password, "phone");
     phone.login().await.assert_ok();
     phone.subscription_changes(0).await.assert_ok();
 

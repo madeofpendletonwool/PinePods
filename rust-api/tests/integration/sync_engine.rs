@@ -417,7 +417,7 @@ async fn a_row_rewritten_during_a_push_is_sent_again() {
 async fn changes_cross_between_the_internal_server_and_nextcloud_without_echoes() {
     let base = setup().await;
     let server = base.0.rust_gpodder_server().await;
-    base.0.enable_gpodder(&server, &base.1).await;
+    let password = base.0.enable_gpodder(&server, &base.1).await;
     let feed = base.0.feed("both.xml", &Feed::with_episodes("Both Show", 2));
     base.0.subscribe(&base.1, &feed, 2).await;
     let s = with_target(base, TargetKind::Nextcloud).await;
@@ -425,7 +425,7 @@ async fn changes_cross_between_the_internal_server_and_nextcloud_without_echoes(
 
     let feed_client = s.app.feed("from-antennapod.xml", &Feed::with_episodes("AntennaPod Pick", 1));
     let feed_phone = s.app.feed("from-phone.xml", &Feed::with_episodes("Phone Pick", 1));
-    let antennapod = GpodderClient::new(&server.base_url, &s.user.username, &s.user.password, "antennapod");
+    let antennapod = GpodderClient::new(&server.base_url, &s.user.username, &password, "antennapod");
     antennapod.login().await.assert_ok();
     antennapod.upload_subscription_changes(&[&feed_client], &[]).await.assert_ok();
     antennapod.upload_episode_actions(&[play_action(&feed, &ep_url(1), Utc::now() - Duration::seconds(30), 0, 400, 1801)]).await;

@@ -222,11 +222,11 @@ async fn other_users_credentials_are_refused() {
         let owner = s.device("phone").await;
         owner.upload_episode_actions(&[play_action(POD, EP, t0(), 0, 600, 1800)]).await;
 
-        let mallory = s.other_user("mallory").await;
-        let m = GpodderClient::new(&s.server.base_url, &mallory.username, &mallory.password, "evil");
+        let (mallory, mallory_password) = s.other_user("mallory").await;
+        let m = GpodderClient::new(&s.server.base_url, &mallory.username, &mallory_password, "evil");
         m.login().await.assert_ok(); // a valid session, for mallory
         let victim = &s.user.username;
-        let basic = || Some(GpodderClient::basic_header(&mallory.username, &mallory.password));
+        let basic = || Some(GpodderClient::basic_header(&mallory.username, &mallory_password));
 
         // Session cookie on the victim's paths.
         let r = m.episode_actions_of(victim).await;
