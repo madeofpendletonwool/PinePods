@@ -1239,3 +1239,30 @@ impl TaskSpawner {
         ).await
     }
 }
+
+impl TaskSpawner {
+    /// Import a feed a sync source subscribed to (sync::apply_subscription_changes; never
+    /// fetched inside the sync request, D6). `claim` marks the (user, url) as in flight until
+    /// the task ends; at most a few of these fetch at once.
+    pub async fn spawn_sync_add_podcast(
+        &self,
+        user_id: i32,
+        feed_url: String,
+        origin: crate::services::sync::SyncOrigin,
+        claim: crate::services::sync::apply::InFlightAdd,
+    ) -> AppResult<String> {
+        self.spawn_task("sync_add_podcast".to_string(), user_id, move |task_id, task_manager, db_pool| {
+            Box::pin(async move {
+                let _claim = claim;
+                let _permit = crate::services::sync::apply::add_permit().await;
+                task_manager.update_task_progress(&task_id, 10.0, Some("Fetching podcast feed...".to_string())).await?;
+                if let Err(e) = db_pool.add_podcast_from_url(user_id, &feed_url, None, origin).await {
+                    warn!("Sync subscription add of {} for user {} failed: {}", feed_url, user_id, e);
+                    return Err(e);
+                }
+                Ok(serde_json::json!({ "user_id": user_id, "feed_url": feed_url, "status": "completed" }))
+            })
+        })
+        .await
+    }
+}

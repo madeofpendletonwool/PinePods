@@ -1007,7 +1007,7 @@ async fn process_opml_import(
         match get_podcast_values_from_url(podcast_url, &db_pool).await {
             Ok((mut podcast_values, feed_body)) => {
                 podcast_values.user_id = import_request.user_id;
-                match db_pool.add_podcast_with_feed(&podcast_values, 0, None, None, Some(&feed_body)).await {
+                match db_pool.add_podcast_with_feed(&podcast_values, 0, None, None, Some(&feed_body), crate::services::sync::SyncOrigin::Pinepods).await {
                     Ok(_) => {
                         tracing::info!("✅ Successfully imported podcast: {}", podcast_url);
                     }

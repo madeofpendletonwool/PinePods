@@ -2794,7 +2794,8 @@ pub async fn add_custom_podcast(
         30,
         request.username.as_deref(),
         request.password.as_deref(),
-        Some(&feed_body)
+        Some(&feed_body),
+        crate::services::sync::SyncOrigin::Pinepods,
     ).await?;
 
     // Get complete podcast details for response

@@ -737,7 +737,7 @@ impl DatabasePool {
         username: Option<&str>,
         password: Option<&str>,
     ) -> AppResult<(i32, Option<i32>)> {
-        self.add_podcast_with_feed(podcast_values, podcast_index_id, username, password, None).await
+        self.add_podcast_with_feed(podcast_values, podcast_index_id, username, password, None, crate::services::sync::SyncOrigin::Pinepods).await
     }
 
     /// `add_podcast`, importing episodes from `feed_body` when the caller already fetched the
@@ -749,7 +749,10 @@ impl DatabasePool {
         username: Option<&str>,
         password: Option<&str>,
         feed_body: Option<&str>,
+        origin: crate::services::sync::SyncOrigin,
     ) -> AppResult<(i32, Option<i32>)> {
+        let log = crate::services::sync::events::should_log(self, podcast_values.user_id, origin).await
+            && crate::services::sync::shareable_feed(&podcast_values.pod_feed_url, username, password, false);
         match self {
             DatabasePool::Postgres(pool) => {
                 // Check if podcast already exists
@@ -783,6 +786,8 @@ impl DatabasePool {
                 let category_list = serde_json::to_string(&clean_categories(podcast_values.categories.clone()))?;
                 
                 // Insert new podcast
+                // The subscription and its sync event commit together.
+                let mut tx = pool.begin().await?;
                 let row = sqlx::query(
                     r#"INSERT INTO "Podcasts" 
                        (podcastname, artworkurl, author, categories, description, episodecount, 
@@ -804,7 +809,7 @@ impl DatabasePool {
                 .bind(username)
                 .bind(password)
                 .bind(podcast_index_id)
-                .fetch_one(pool)
+                .fetch_one(&mut *tx)
                 .await?;
                 
                 let podcast_id: i32 = row.try_get("podcastid")?;
@@ -812,8 +817,12 @@ impl DatabasePool {
                 // Update UserStats table
                 sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded + 1 WHERE userid = $1"#)
                     .bind(podcast_values.user_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
+                if log {
+                    crate::services::sync::events::subscription_pg(&mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
+                }
+                tx.commit().await?;
                 
                 // Add episodes
                 let first_episode_id = self.add_episodes(podcast_id, &podcast_values.pod_feed_url, 
@@ -863,6 +872,8 @@ impl DatabasePool {
                 let category_list = serde_json::to_string(&clean_categories(podcast_values.categories.clone()))?;
                 
                 // Insert new podcast
+                // The subscription and its sync event commit together.
+                let mut tx = pool.begin().await?;
                 let result = sqlx::query(
                     "INSERT INTO Podcasts 
                      (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, 
@@ -883,7 +894,7 @@ impl DatabasePool {
                 .bind(username)
                 .bind(password)
                 .bind(podcast_index_id)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
                 
                 let podcast_id = result.last_insert_id() as i32;
@@ -891,8 +902,12 @@ impl DatabasePool {
                 // Update UserStats table
                 sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = ?")
                     .bind(podcast_values.user_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
+                if log {
+                    crate::services::sync::events::subscription_mysql(&mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
+                }
+                tx.commit().await?;
                 
                 // Add episodes
                 let first_episode_id = self.add_episodes(podcast_id, &podcast_values.pod_feed_url, 
@@ -920,7 +935,10 @@ impl DatabasePool {
         podcast_index_id: i64,
         username: Option<&str>,
         password: Option<&str>,
+        origin: crate::services::sync::SyncOrigin,
     ) -> AppResult<i32> {
+        let log = crate::services::sync::events::should_log(self, podcast_values.user_id, origin).await
+            && crate::services::sync::shareable_feed(&podcast_values.pod_feed_url, username, password, false);
         match self {
             DatabasePool::Postgres(pool) => {
                 // Check if podcast already exists
@@ -939,6 +957,8 @@ impl DatabasePool {
                 let category_list = serde_json::to_string(&clean_categories(podcast_values.categories.clone()))?;
                 
                 // Insert new podcast without episodes
+                // The subscription and its sync event commit together.
+                let mut tx = pool.begin().await?;
                 let row = sqlx::query(
                     r#"INSERT INTO "Podcasts" 
                        (podcastname, artworkurl, author, categories, description, episodecount, 
@@ -960,7 +980,7 @@ impl DatabasePool {
                 .bind(username)
                 .bind(password)
                 .bind(podcast_index_id)
-                .fetch_one(pool)
+                .fetch_one(&mut *tx)
                 .await?;
                 
                 let podcast_id: i32 = row.try_get("podcastid")?;
@@ -968,8 +988,12 @@ impl DatabasePool {
                 // Update UserStats table
                 sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded + 1 WHERE userid = $1"#)
                     .bind(podcast_values.user_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
+                if log {
+                    crate::services::sync::events::subscription_pg(&mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
+                }
+                tx.commit().await?;
                 
                 debug!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
                     podcast_values.pod_title, podcast_values.user_id);
@@ -993,6 +1017,8 @@ impl DatabasePool {
                 let category_list = serde_json::to_string(&clean_categories(podcast_values.categories.clone()))?;
                 
                 // Insert new podcast without episodes
+                // The subscription and its sync event commit together.
+                let mut tx = pool.begin().await?;
                 let result = sqlx::query(
                     "INSERT INTO Podcasts 
                      (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, 
@@ -1013,7 +1039,7 @@ impl DatabasePool {
                 .bind(username)
                 .bind(password)
                 .bind(podcast_index_id)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
                 
                 let podcast_id = result.last_insert_id() as i32;
@@ -1021,8 +1047,12 @@ impl DatabasePool {
                 // Update UserStats table
                 sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = ?")
                     .bind(podcast_values.user_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
+                if log {
+                    crate::services::sync::events::subscription_mysql(&mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
+                }
+                tx.commit().await?;
                 
                 debug!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
                     podcast_values.pod_title, podcast_values.user_id);
@@ -1038,349 +1068,233 @@ impl DatabasePool {
         podcast_name: &str,
         podcast_url: &str,
         user_id: i32,
+        origin: crate::services::sync::SyncOrigin,
     ) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                // First get the podcast ID to cascade delete properly
-                let podcast_row = sqlx::query(
-                    r#"SELECT podcastid FROM "Podcasts"
-                       WHERE podcastname = $1 AND feedurl = $2 AND userid = $3"#
-                )
-                .bind(podcast_name)
-                .bind(podcast_url)
-                .bind(user_id)
-                .fetch_optional(pool)
-                .await?;
-
-                if let Some(row) = podcast_row {
-                    let podcast_id: i32 = row.try_get("podcastid")?;
-
-                    // Run all cascading deletes in one transaction so a partial failure
-                    // can't leave orphaned rows or a wrong UserStats count.
-                    let mut tx = pool.begin().await?;
-
-                    // Delete in the proper order to handle foreign key constraints
-                    // 1. PlaylistContents first
-                    sqlx::query(r#"DELETE FROM "PlaylistContents" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 2. UserEpisodeHistory
-                    sqlx::query(r#"DELETE FROM "UserEpisodeHistory" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 3. DownloadedEpisodes
-                    sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 4. SavedEpisodes
-                    sqlx::query(r#"DELETE FROM "SavedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 5. EpisodeQueue
-                    sqlx::query(r#"DELETE FROM "EpisodeQueue" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6. Episodes
-                    sqlx::query(r#"DELETE FROM "Episodes" WHERE podcastid = $1"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6a. YouTubeVideos dependents (NO ACTION FKs) before the videos themselves
-                    sqlx::query(r#"DELETE FROM "UserVideoHistory" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-                    sqlx::query(r#"DELETE FROM "SavedVideos" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-                    sqlx::query(r#"DELETE FROM "DownloadedVideos" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6a2. YouTubeVideos — references Podcasts (NO ACTION), so must go before the podcast
-                    sqlx::query(r#"DELETE FROM "YouTubeVideos" WHERE podcastid = $1"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-
-                    // 7. Finally delete the podcast itself
-                    sqlx::query(r#"DELETE FROM "Podcasts" WHERE podcastid = $1"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // Update user stats
-                    sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = $1"#)
-                        .bind(user_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    tx.commit().await?;
-                }
-                Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
-                // First get the podcast ID to cascade delete properly
-                let podcast_row = sqlx::query(
-                    "SELECT PodcastID FROM Podcasts 
-                     WHERE PodcastName = ? AND FeedURL = ? AND UserID = ?"
-                )
-                .bind(podcast_name)
-                .bind(podcast_url)
-                .bind(user_id)
-                .fetch_optional(pool)
-                .await?;
-                
-                if let Some(row) = podcast_row {
-                    let podcast_id: i32 = row.try_get("PodcastID")?;
-
-                    // Run all cascading deletes in one transaction so a partial failure
-                    // can't leave orphaned rows or a wrong UserStats count.
-                    let mut tx = pool.begin().await?;
-
-                    // Delete in the proper order to handle foreign key constraints
-                    // 1. PlaylistContents first
-                    sqlx::query("DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 2. UserEpisodeHistory
-                    sqlx::query("DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 3. DownloadedEpisodes
-                    sqlx::query("DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 4. SavedEpisodes
-                    sqlx::query("DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 5. EpisodeQueue
-                    sqlx::query("DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6. Episodes
-                    sqlx::query("DELETE FROM Episodes WHERE PodcastID = ?")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6a. YouTubeVideos dependents (NO ACTION FKs) before the videos themselves
-                    sqlx::query("DELETE FROM UserVideoHistory WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-                    sqlx::query("DELETE FROM SavedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-                    sqlx::query("DELETE FROM DownloadedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6a2. YouTubeVideos — references Podcasts (NO ACTION), so must go before the podcast
-                    sqlx::query("DELETE FROM YouTubeVideos WHERE PodcastID = ?")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-
-                    // 7. Finally delete the podcast itself
-                    sqlx::query("DELETE FROM Podcasts WHERE PodcastID = ?")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // Update user stats
-                    sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = ?")
-                        .bind(user_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    tx.commit().await?;
-                }
-                Ok(())
-            }
+        let podcast_id: Option<i32> = match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(
+                r#"SELECT podcastid FROM "Podcasts" WHERE podcastname = $1 AND feedurl = $2 AND userid = $3"#
+            )
+            .bind(podcast_name)
+            .bind(podcast_url)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_scalar(
+                "SELECT PodcastID FROM Podcasts WHERE PodcastName = ? AND FeedURL = ? AND UserID = ?"
+            )
+            .bind(podcast_name)
+            .bind(podcast_url)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?,
+        };
+        if let Some(podcast_id) = podcast_id {
+            self.remove_podcast_cascade(podcast_id, user_id, origin).await?;
         }
+        Ok(())
     }
 
     // Remove podcast by ID - matches Python remove_podcast_id function
-    pub async fn remove_podcast_id(&self, podcast_id: i32, user_id: i32) -> AppResult<()> {
+    pub async fn remove_podcast_id(&self, podcast_id: i32, user_id: i32, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
         if podcast_id == 0 {
             return Err(AppError::bad_request("Invalid podcast ID"));
         }
+        self.remove_podcast_cascade(podcast_id, user_id, origin).await?;
+        Ok(())
+    }
 
+    /// Unsubscribe: delete a podcast and everything that depends on it in one transaction, and
+    /// log the `remove` for sync. Every unsubscribe path (by id, by name, by URL, sync apply)
+    /// goes through here. Returns false if the podcast doesn't exist.
+    async fn remove_podcast_cascade(&self, podcast_id: i32, user_id: i32, origin: crate::services::sync::SyncOrigin) -> AppResult<bool> {
+        use crate::services::sync::{events, shareable_feed};
+        let log = events::should_log(self, user_id, origin).await;
         match self {
             DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                let podcast = sqlx::query(
+                    r#"SELECT feedurl, username, password, COALESCE(isyoutubechannel, FALSE) AS yt FROM "Podcasts" WHERE podcastid = $1"#
+                )
+                .bind(podcast_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+                let Some(podcast) = podcast else { return Ok(false) };
+                let feed_url: String = podcast.try_get::<Option<String>, _>("feedurl")?.unwrap_or_default();
+                let shareable = shareable_feed(
+                    &feed_url,
+                    podcast.try_get::<Option<String>, _>("username")?.as_deref(),
+                    podcast.try_get::<Option<String>, _>("password")?.as_deref(),
+                    podcast.try_get("yt")?,
+                );
+
                 // Delete in the proper order to handle foreign key constraints
                 // 1. PlaylistContents first
                 sqlx::query(r#"DELETE FROM "PlaylistContents" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
-                
+
                 // 2. UserEpisodeHistory
                 sqlx::query(r#"DELETE FROM "UserEpisodeHistory" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
-                
+
                 // 3. DownloadedEpisodes
                 sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
-                
+
                 // 4. SavedEpisodes
                 sqlx::query(r#"DELETE FROM "SavedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
-                
+
                 // 5. EpisodeQueue
                 sqlx::query(r#"DELETE FROM "EpisodeQueue" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
-                
+
                 // 6. Episodes
                 sqlx::query(r#"DELETE FROM "Episodes" WHERE podcastid = $1"#)
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
 
                 // 6a. YouTubeVideos dependents (NO ACTION FKs) before the videos themselves
                 sqlx::query(r#"DELETE FROM "UserVideoHistory" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#)
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
                 sqlx::query(r#"DELETE FROM "SavedVideos" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#)
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
                 sqlx::query(r#"DELETE FROM "DownloadedVideos" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#)
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
 
-                // 6b. YouTubeVideos — references Podcasts (NO ACTION), so must go before the podcast
+                // 6a2. YouTubeVideos — references Podcasts (NO ACTION), so must go before the podcast
                 sqlx::query(r#"DELETE FROM "YouTubeVideos" WHERE podcastid = $1"#)
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
 
 
                 // 7. Finally delete the podcast itself
                 sqlx::query(r#"DELETE FROM "Podcasts" WHERE podcastid = $1"#)
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
 
                 // Update user stats
                 sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = $1"#)
                     .bind(user_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
 
-                Ok(())
+                if log && shareable {
+                    events::subscription_pg(&mut tx, user_id, &feed_url, "remove").await;
+                }
+                tx.commit().await?;
+                Ok(true)
             }
             DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                let podcast = sqlx::query(
+                    "SELECT FeedURL, Username, Password, IsYouTubeChannel AS yt FROM Podcasts WHERE PodcastID = ?"
+                )
+                .bind(podcast_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+                let Some(podcast) = podcast else { return Ok(false) };
+                let feed_url: String = podcast.try_get::<Option<String>, _>("FeedURL")?.unwrap_or_default();
+                let shareable = shareable_feed(
+                    &feed_url,
+                    podcast.try_get::<Option<String>, _>("Username")?.as_deref(),
+                    podcast.try_get::<Option<String>, _>("Password")?.as_deref(),
+                    podcast.try_get::<Option<bool>, _>("yt")?.unwrap_or(false),
+                );
+
                 // Delete in the proper order to handle foreign key constraints
                 // 1. PlaylistContents first
                 sqlx::query("DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
-                
+
                 // 2. UserEpisodeHistory
                 sqlx::query("DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
-                
+
                 // 3. DownloadedEpisodes
                 sqlx::query("DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
-                
+
                 // 4. SavedEpisodes
                 sqlx::query("DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
-                
+
                 // 5. EpisodeQueue
                 sqlx::query("DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
-                
+
                 // 6. Episodes
                 sqlx::query("DELETE FROM Episodes WHERE PodcastID = ?")
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
 
                 // 6a. YouTubeVideos dependents (NO ACTION FKs) before the videos themselves
                 sqlx::query("DELETE FROM UserVideoHistory WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)")
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
                 sqlx::query("DELETE FROM SavedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)")
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
                 sqlx::query("DELETE FROM DownloadedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)")
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
 
-                // 6b. YouTubeVideos — references Podcasts (NO ACTION), so must go before the podcast
+                // 6a2. YouTubeVideos — references Podcasts (NO ACTION), so must go before the podcast
                 sqlx::query("DELETE FROM YouTubeVideos WHERE PodcastID = ?")
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
 
 
                 // 7. Finally delete the podcast itself
                 sqlx::query("DELETE FROM Podcasts WHERE PodcastID = ?")
                     .bind(podcast_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
 
                 // Update user stats
                 sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = ?")
                     .bind(user_id)
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await?;
 
-                Ok(())
+                if log && shareable {
+                    events::subscription_mysql(&mut tx, user_id, &feed_url, "remove").await;
+                }
+                tx.commit().await?;
+                Ok(true)
             }
         }
     }
@@ -3068,12 +2982,13 @@ impl DatabasePool {
     }
 
     // Mark episode as completed - matches Python mark_episode_completed function
-    pub async fn mark_episode_completed(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<()> {
+    pub async fn mark_episode_completed(&self, episode_id: i32, user_id: i32, is_youtube: bool, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
         // Completing an episode also removes it from the queue (if present) so a
         // finished item never lingers in "up next". Runs for both podcast and
         // YouTube completions; no-op when not queued. Doing this here makes queue
         // removal reliable regardless of which client auto-advance path fired.
         self.remove_queued_episode(episode_id, user_id, is_youtube).await?;
+        let log = !is_youtube && crate::services::sync::events::should_log(self, user_id, origin).await;
 
         match self {
             DatabasePool::Postgres(pool) => {
@@ -3126,12 +3041,13 @@ impl DatabasePool {
                         let duration: Option<i32> = row.try_get("episodeduration").ok();
                         
                         if let Some(duration) = duration {
+                            let mut tx = pool.begin().await?;
                             // Update completion status
                             sqlx::query(
                                 r#"UPDATE "Episodes" SET completed = TRUE WHERE episodeid = $1"#
                             )
                             .bind(episode_id)
-                            .execute(pool)
+                            .execute(&mut *tx)
                             .await?;
 
                             // Update history
@@ -3145,8 +3061,12 @@ impl DatabasePool {
                             .bind(episode_id)
                             .bind(duration)
                             .bind(duration)
-                            .execute(pool)
+                            .execute(&mut *tx)
                             .await?;
+                            if log {
+                                crate::services::sync::events::episode_pg(&mut tx, user_id, episode_id, crate::services::sync::events::EpisodeEvent::Completed).await;
+                            }
+                            tx.commit().await?;
                         }
                     }
                 }
@@ -3203,12 +3123,13 @@ impl DatabasePool {
                         let duration: Option<i32> = row.try_get("EpisodeDuration").ok();
                         
                         if let Some(duration) = duration {
+                            let mut tx = pool.begin().await?;
                             // Update completion status
                             sqlx::query(
                                 "UPDATE Episodes SET Completed = 1 WHERE EpisodeID = ?"
                             )
                             .bind(episode_id)
-                            .execute(pool)
+                            .execute(&mut *tx)
                             .await?;
 
                             // Update history
@@ -3223,8 +3144,12 @@ impl DatabasePool {
                             .bind(episode_id)
                             .bind(duration)
                             .bind(duration)
-                            .execute(pool)
+                            .execute(&mut *tx)
                             .await?;
+                            if log {
+                                crate::services::sync::events::episode_mysql(&mut tx, user_id, episode_id, crate::services::sync::events::EpisodeEvent::Completed).await;
+                            }
+                            tx.commit().await?;
                         }
                     }
                 }
@@ -5095,7 +5020,8 @@ impl DatabasePool {
     }
 
     // Mark episode as uncompleted - matches Python mark_episode_uncompleted function
-    pub async fn mark_episode_uncompleted(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<()> {
+    pub async fn mark_episode_uncompleted(&self, episode_id: i32, user_id: i32, is_youtube: bool, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
+        let log = !is_youtube && crate::services::sync::events::should_log(self, user_id, origin).await;
         match self {
             DatabasePool::Postgres(pool) => {
                 let mut transaction = pool.begin().await?;
@@ -5124,6 +5050,9 @@ impl DatabasePool {
                         .bind(episode_id)
                         .execute(&mut *transaction)
                         .await?;
+                }
+                if log {
+                    crate::services::sync::events::episode_pg(&mut transaction, user_id, episode_id, crate::services::sync::events::EpisodeEvent::New).await;
                 }
                 
                 transaction.commit().await?;
@@ -5156,6 +5085,9 @@ impl DatabasePool {
                         .bind(episode_id)
                         .execute(&mut *transaction)
                         .await?;
+                }
+                if log {
+                    crate::services::sync::events::episode_mysql(&mut transaction, user_id, episode_id, crate::services::sync::events::EpisodeEvent::New).await;
                 }
                 
                 transaction.commit().await?;
@@ -7376,6 +7308,10 @@ impl DatabasePool {
         // Only recount when something actually changed.
         if !new_episodes.is_empty() {
             self.update_episode_count(podcast_id).await?;
+            // Sync actions that arrived before these episodes existed can be applied now.
+            if let Err(e) = crate::services::sync::rematch(self, podcast_id).await {
+                warn!("Matching logged sync actions for podcast {} failed: {}", podcast_id, e);
+            }
         }
 
         Ok(new_episodes)
@@ -12199,7 +12135,8 @@ impl DatabasePool {
     }
 
     // Record listen duration - matches Python record_listen_duration function exactly
-    pub async fn record_listen_duration(&self, episode_id: i32, user_id: i32, listen_duration: f64) -> AppResult<()> {
+    pub async fn record_listen_duration(&self, episode_id: i32, user_id: i32, listen_duration: f64, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
+        use crate::services::sync::events::{self, EpisodeEvent};
         debug!("Recording listen duration: episode_id={}, user_id={}, duration={}", episode_id, user_id, listen_duration);
         
         if listen_duration < 0.0 {
@@ -12208,17 +12145,19 @@ impl DatabasePool {
         }
         
         let listen_duration_int = listen_duration as i32;
+        let log = events::should_log(self, user_id, origin).await;
         
         match self {
             DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
                 // Check if record exists and get existing duration
                 let existing_row = sqlx::query(r#"SELECT listenduration FROM "UserEpisodeHistory" WHERE userid = $1 AND episodeid = $2"#)
                     .bind(user_id)
                     .bind(episode_id)
-                    .fetch_optional(pool)
+                    .fetch_optional(&mut *tx)
                     .await?;
                 
-                if let Some(row) = existing_row {
+                let changed = if let Some(row) = existing_row {
                     let existing_duration: Option<i32> = row.try_get("listenduration")?;
                     let existing_duration = existing_duration.unwrap_or(0);
                     
@@ -12228,11 +12167,13 @@ impl DatabasePool {
                             .bind(listen_duration_int)
                             .bind(user_id)
                             .bind(episode_id)
-                            .execute(pool)
+                            .execute(&mut *tx)
                             .await?;
                         debug!("Updated listen duration for user {} episode {} from {} to {}", user_id, episode_id, existing_duration, listen_duration_int);
+                        true
                     } else {
                         debug!("No update required for user {} and episode {} as existing duration {} is greater than or equal to new duration {}", user_id, episode_id, existing_duration, listen_duration_int);
+                        false
                     }
                 } else {
                     // Insert new record
@@ -12240,20 +12181,26 @@ impl DatabasePool {
                         .bind(user_id)
                         .bind(episode_id)
                         .bind(listen_duration_int)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
                     debug!("Inserted new listen duration record for user {} episode {} with duration {}", user_id, episode_id, listen_duration_int);
+                    true
+                };
+                if changed && log {
+                    events::episode_pg(&mut tx, user_id, episode_id, EpisodeEvent::Progress(listen_duration_int)).await;
                 }
+                tx.commit().await?;
             }
             DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
                 // Check if record exists and get existing duration
                 let existing_row = sqlx::query("SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = ? AND EpisodeID = ?")
                     .bind(user_id)
                     .bind(episode_id)
-                    .fetch_optional(pool)
+                    .fetch_optional(&mut *tx)
                     .await?;
                 
-                if let Some(row) = existing_row {
+                let changed = if let Some(row) = existing_row {
                     let existing_duration: Option<i32> = row.try_get("ListenDuration")?;
                     let existing_duration = existing_duration.unwrap_or(0);
                     
@@ -12263,11 +12210,13 @@ impl DatabasePool {
                             .bind(listen_duration_int)
                             .bind(user_id)
                             .bind(episode_id)
-                            .execute(pool)
+                            .execute(&mut *tx)
                             .await?;
                         debug!("Updated listen duration for user {} episode {} from {} to {}", user_id, episode_id, existing_duration, listen_duration_int);
+                        true
                     } else {
                         debug!("No update required for user {} and episode {} as existing duration {} is greater than or equal to new duration {}", user_id, episode_id, existing_duration, listen_duration_int);
+                        false
                     }
                 } else {
                     // Insert new record
@@ -12275,10 +12224,15 @@ impl DatabasePool {
                         .bind(user_id)
                         .bind(episode_id)
                         .bind(listen_duration_int)
-                        .execute(pool)
+                        .execute(&mut *tx)
                         .await?;
                     debug!("Inserted new listen duration record for user {} episode {} with duration {}", user_id, episode_id, listen_duration_int);
+                    true
+                };
+                if changed && log {
+                    events::episode_mysql(&mut tx, user_id, episode_id, EpisodeEvent::Progress(listen_duration_int)).await;
                 }
+                tx.commit().await?;
             }
         }
         Ok(())
@@ -12893,7 +12847,7 @@ impl DatabasePool {
             }
         };
         for podcast_id in podcast_ids {
-            self.remove_podcast_id(podcast_id, user_id).await?;
+            self.remove_podcast_id(podcast_id, user_id, crate::services::sync::SyncOrigin::Unlogged).await?;
         }
 
         // Tables that reference Users without ON DELETE CASCADE.
@@ -14780,18 +14734,20 @@ impl DatabasePool {
     pub async fn remove_podcast_sync(&self, user_id: i32) -> AppResult<bool> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"UPDATE "Users" SET gpodderurl = NULL, gpodderloginname = NULL, gpoddertoken = NULL, pod_sync_type = 'None' WHERE userid = $1"#)
+                let result = sqlx::query(r#"UPDATE "Users" SET gpodderurl = NULL, gpodderloginname = NULL, gpoddertoken = NULL, pod_sync_type = 'None', gpodderserverenabled = FALSE WHERE userid = $1"#)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
+                crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 
                 Ok(result.rows_affected() > 0)
             }
             DatabasePool::MySQL(pool) => {
-                let result = sqlx::query("UPDATE Users SET GpodderUrl = NULL, GpodderLoginName = NULL, GpodderToken = NULL, Pod_Sync_Type = 'None' WHERE UserID = ?")
+                let result = sqlx::query("UPDATE Users SET GpodderUrl = NULL, GpodderLoginName = NULL, GpodderToken = NULL, Pod_Sync_Type = 'None', GpodderServerEnabled = FALSE WHERE UserID = ?")
                     .bind(user_id)
                     .execute(pool)
                     .await?;
+                crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 
                 Ok(result.rows_affected() > 0)
             }
@@ -15212,6 +15168,17 @@ impl DatabasePool {
         let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
         let mut all_subscriptions = std::collections::HashSet::new();
         let mut all_removals = std::collections::HashSet::new();
+
+        // The internal server shares Pinepods' database, and Pinepods' own changes are logged
+        // there as they happen (sync events) under its own device. Asking as that device returns
+        // every other device's changes folded to the final action per feed, without Pinepods'
+        // own rows. Asking as each device and merging could report a feed as both added and
+        // removed (this loop applies adds, then removes) and re-applies Pinepods' own changes.
+        let devices = if gpodder_url == "http://localhost:8042" {
+            vec![self.sync_ensure_pinepods_device(user_id).await?]
+        } else {
+            devices
+        };
         
         for device_id in &devices {
             tracing::info!("Getting subscriptions from device: {}", device_id);
@@ -15871,7 +15838,7 @@ impl DatabasePool {
             tracing::info!("Processing podcast {} for user {}", feed_url, user_id);
             
             // Use the existing add_podcast_from_url function which handles duplicates and fetching
-            match self.add_podcast_from_url(user_id, feed_url, None).await {
+            match self.add_podcast_from_url(user_id, feed_url, None, crate::services::sync::SyncOrigin::Unlogged).await {
                 Ok(_) => {
                     added += 1;
                     tracing::info!("Successfully added podcast: {}", feed_url);
@@ -15905,7 +15872,7 @@ impl DatabasePool {
             // Check if the podcast exists locally first
             if self.podcast_exists_for_user(user_id, feed_url).await.unwrap_or(false) {
                 // Remove the podcast using existing function
-                match self.remove_podcast_by_url(user_id, feed_url).await {
+                match self.remove_podcast_by_url(user_id, feed_url, crate::services::sync::SyncOrigin::Unlogged).await {
                     Ok(_) => {
                         removed += 1;
                         tracing::info!("Successfully removed podcast: {}", feed_url);
@@ -16107,6 +16074,14 @@ impl DatabasePool {
 
     // Apply remote episode actions locally - matches Python apply_episode_actions function exactly
     async fn apply_remote_episode_actions(&self, user_id: i32, actions: &[serde_json::Value]) -> AppResult<()> {
+        // Pinepods' own actions (sync events, earlier uploads) already reflect local state.
+        // Applying them again would only roll it back, e.g. restore a position after the episode
+        // was marked unplayed.
+        let own_devices = self.sync_pinepods_device_names(user_id).await?;
+        let actions: Vec<&serde_json::Value> = actions
+            .iter()
+            .filter(|a| !a["device"].as_str().is_some_and(|d| own_devices.iter().any(|own| own == d)))
+            .collect();
         let total_actions = actions.len();
         tracing::info!("Processing {} episode actions for user {}", total_actions, user_id);
 
@@ -16169,7 +16144,7 @@ impl DatabasePool {
                                     // Mark complete if position is at/beyond the end OR within the threshold
                                     if episode_duration > 0 && (position_sec >= episode_duration || remaining_time <= complete_within) {
                                         // GPodder sync only handles regular podcast episodes, never YouTube videos
-                                        match self.mark_episode_completed(episode_id, user_id, false).await {
+                                        match self.mark_episode_completed(episode_id, user_id, false, crate::services::sync::SyncOrigin::Unlogged).await {
                                             Ok(_) => {
                                                 applied_count += 1;
                                             }
@@ -16466,7 +16441,7 @@ impl DatabasePool {
     }
 
     // Check if podcast exists for user
-    async fn podcast_exists_for_user(&self, user_id: i32, feed_url: &str) -> AppResult<bool> {
+    pub(crate) async fn podcast_exists_for_user(&self, user_id: i32, feed_url: &str) -> AppResult<bool> {
         match self {
             DatabasePool::Postgres(pool) => {
                 let row = sqlx::query(r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#)
@@ -17355,7 +17330,7 @@ impl DatabasePool {
     // Add podcast from RSS values - wrapper function for custom podcast addition
     /// `feed_body`: the feed as fetched for `podcast_values` (`get_podcast_values_with_body`), so
     /// episodes are imported without downloading it again.
-    pub async fn add_podcast_from_values(&self, podcast_values: &std::collections::HashMap<String, String>, user_id: i32, _feed_cutoff: i32, username: Option<&str>, password: Option<&str>, feed_body: Option<&str>) -> AppResult<(i32, Option<i32>)> {
+    pub async fn add_podcast_from_values(&self, podcast_values: &std::collections::HashMap<String, String>, user_id: i32, _feed_cutoff: i32, username: Option<&str>, password: Option<&str>, feed_body: Option<&str>, origin: crate::services::sync::SyncOrigin) -> AppResult<(i32, Option<i32>)> {
         // Convert HashMap values to PodcastValues struct
         let podcast_data = crate::handlers::podcasts::PodcastValues {
             user_id,
@@ -17375,7 +17350,7 @@ impl DatabasePool {
             .parse::<i64>()
             .unwrap_or(0);
 
-        self.add_podcast_with_feed(&podcast_data, podcast_index_id, username, password, feed_body).await
+        self.add_podcast_with_feed(&podcast_data, podcast_index_id, username, password, feed_body, origin).await
     }
     
     // // Get podcast details - matches Python get_podcast_details function exactly
@@ -18459,7 +18434,7 @@ impl DatabasePool {
 
                 for row in episode_rows {
                     let episode_id: i32 = row.try_get("episodeid")?;
-                    let _ = self.mark_episode_completed(episode_id, user_id, false).await;
+                    let _ = self.mark_episode_completed(episode_id, user_id, false, crate::services::sync::SyncOrigin::Pinepods).await;
                     completed_count += 1;
                 }
 
@@ -18480,7 +18455,7 @@ impl DatabasePool {
 
                 for row in youtube_rows {
                     let video_id: i32 = row.try_get("videoid")?;
-                    let _ = self.mark_episode_completed(video_id, user_id, true).await;
+                    let _ = self.mark_episode_completed(video_id, user_id, true, crate::services::sync::SyncOrigin::Pinepods).await;
                     completed_count += 1;
                 }
             }
@@ -18502,7 +18477,7 @@ impl DatabasePool {
 
                 for row in episode_rows {
                     let episode_id: i32 = row.try_get("EpisodeID")?;
-                    let _ = self.mark_episode_completed(episode_id, user_id, false).await;
+                    let _ = self.mark_episode_completed(episode_id, user_id, false, crate::services::sync::SyncOrigin::Pinepods).await;
                     completed_count += 1;
                 }
 
@@ -18523,7 +18498,7 @@ impl DatabasePool {
 
                 for row in youtube_rows {
                     let video_id: i32 = row.try_get("VideoID")?;
-                    let _ = self.mark_episode_completed(video_id, user_id, true).await;
+                    let _ = self.mark_episode_completed(video_id, user_id, true, crate::services::sync::SyncOrigin::Pinepods).await;
                     completed_count += 1;
                 }
             }
@@ -22036,7 +22011,7 @@ impl DatabasePool {
                 match self.get_podcast_values_with_body(feed_url, user_id, None, None).await {
                     Ok((podcast_values, body)) => {
                         let feed_cutoff = 30; // Default cutoff like Python
-                        if let Err(e) = self.add_podcast_from_values(&podcast_values, user_id, feed_cutoff, None, None, Some(&body)).await {
+                        if let Err(e) = self.add_podcast_from_values(&podcast_values, user_id, feed_cutoff, None, None, Some(&body), crate::services::sync::SyncOrigin::Pinepods).await {
                             error!("Failed to add PinePods news feed for user {}: {}", user_id, e);
                             // Continue with other users even if one fails
                         }
@@ -24090,7 +24065,7 @@ impl DatabasePool {
                 
                 if is_youtube {
                     for episode_id in episode_ids {
-                        match self.mark_episode_completed(episode_id, user_id, is_youtube).await {
+                        match self.mark_episode_completed(episode_id, user_id, is_youtube, crate::services::sync::SyncOrigin::Pinepods).await {
                             Ok(_) => processed += 1,
                             Err(_) => failed += 1,
                         }
@@ -24116,7 +24091,7 @@ impl DatabasePool {
                 
                 if is_youtube {
                     for episode_id in episode_ids {
-                        match self.mark_episode_completed(episode_id, user_id, is_youtube).await {
+                        match self.mark_episode_completed(episode_id, user_id, is_youtube, crate::services::sync::SyncOrigin::Pinepods).await {
                             Ok(_) => processed += 1,
                             Err(_) => failed += 1,
                         }
@@ -24567,7 +24542,7 @@ impl DatabasePool {
                 // Update user with internal gpodder settings and set default device
                 sqlx::query(r#"
                     UPDATE "Users" 
-                    SET gpodderurl = $1, gpoddertoken = $2, gpodderloginname = $3, pod_sync_type = $4, defaultgpodderdevice = $6
+                    SET gpodderurl = $1, gpoddertoken = $2, gpodderloginname = $3, pod_sync_type = $4, defaultgpodderdevice = $6, gpodderserverenabled = TRUE
                     WHERE userid = $5
                 "#)
                 .bind(local_gpodder_url)
@@ -24578,6 +24553,7 @@ impl DatabasePool {
                 .bind(&default_device_name)
                 .execute(pool)
                 .await?;
+            crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 
                 // Create device via gPodder API (matches Python version exactly)
                 let device_result = match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
@@ -24645,7 +24621,7 @@ impl DatabasePool {
                 // Update user with internal gpodder settings and set default device
                 sqlx::query("
                     UPDATE Users 
-                    SET GpodderUrl = ?, GpodderToken = ?, GpodderLoginName = ?, Pod_Sync_Type = ?, DefaultGpodderDevice = ?
+                    SET GpodderUrl = ?, GpodderToken = ?, GpodderLoginName = ?, Pod_Sync_Type = ?, DefaultGpodderDevice = ?, GpodderServerEnabled = TRUE
                     WHERE UserID = ?
                 ")
                 .bind(local_gpodder_url)
@@ -24656,6 +24632,7 @@ impl DatabasePool {
                 .bind(user_id)
                 .execute(pool)
                 .await?;
+            crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 
                 // Create device via gPodder API (matches Python version exactly)
                 let device_result = match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
@@ -24707,20 +24684,22 @@ impl DatabasePool {
                 if user_status.gpodder_url.as_deref() == Some("http://localhost:8042") {
                     sqlx::query(r#"
                         UPDATE "Users" 
-                        SET gpodderurl = '', gpoddertoken = '', gpodderloginname = '', pod_sync_type = $1
+                        SET gpodderurl = '', gpoddertoken = '', gpodderloginname = '', pod_sync_type = $1, gpodderserverenabled = FALSE
                         WHERE userid = $2
                     "#)
                     .bind(new_sync_type)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
+                crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 } else {
                     // Just update the sync type
-                    sqlx::query(r#"UPDATE "Users" SET pod_sync_type = $1 WHERE userid = $2"#)
+                    sqlx::query(r#"UPDATE "Users" SET pod_sync_type = $1, gpodderserverenabled = FALSE WHERE userid = $2"#)
                         .bind(new_sync_type)
                         .bind(user_id)
                         .execute(pool)
                         .await?;
+                    crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 }
             }
             DatabasePool::MySQL(pool) => {
@@ -24728,20 +24707,22 @@ impl DatabasePool {
                 if user_status.gpodder_url.as_deref() == Some("http://localhost:8042") {
                     sqlx::query("
                         UPDATE Users 
-                        SET GpodderUrl = '', GpodderToken = '', GpodderLoginName = '', Pod_Sync_Type = ?
+                        SET GpodderUrl = '', GpodderToken = '', GpodderLoginName = '', Pod_Sync_Type = ?, GpodderServerEnabled = FALSE
                         WHERE UserID = ?
                     ")
                     .bind(new_sync_type)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
+                crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 } else {
                     // Just update the sync type
-                    sqlx::query("UPDATE Users SET Pod_Sync_Type = ? WHERE UserID = ?")
+                    sqlx::query("UPDATE Users SET Pod_Sync_Type = ?, GpodderServerEnabled = FALSE WHERE UserID = ?")
                         .bind(new_sync_type)
                         .bind(user_id)
                         .execute(pool)
                         .await?;
+                    crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 }
             }
         }
@@ -25599,11 +25580,8 @@ impl DatabasePool {
     }
 }
 
-/// One episode action for upload to a gpodder server, shaped so AntennaPod applies it.
-/// AntennaPod resets the episode to the start for a `play` without `started >= 0`,
-/// `position > 0` and `total > 0`, so a play with no position is skipped and an unknown
-/// duration is sent as `total = position` (AntennaPod uses its own duration for "almost
-/// finished"). AntennaPod also ignores any UTC offset, so the timestamp is plain UTC.
+/// One episode action for upload to a gpodder server, shaped so AntennaPod applies it (the
+/// rules are in `sync::model::EpisodeAction::outbound`).
 fn outbound_episode_action(
     podcast: String,
     episode: String,
@@ -25612,19 +25590,18 @@ fn outbound_episode_action(
     total: Option<i32>,
     timestamp: chrono::NaiveDateTime,
 ) -> Option<serde_json::Value> {
-    let mut action_json = serde_json::json!({
-        "podcast": podcast,
-        "episode": episode,
-        "action": action,
-        "timestamp": timestamp.format("%Y-%m-%dT%H:%M:%S").to_string(),
-    });
-    if action == "play" {
-        let position = position.filter(|p| *p > 0)?;
-        action_json["started"] = serde_json::json!(0);
-        action_json["position"] = serde_json::json!(position);
-        action_json["total"] = serde_json::json!(total.filter(|t| *t > 0).unwrap_or(position));
-    }
-    Some(action_json)
+    let action = crate::services::sync::model::EpisodeAction {
+        podcast_url: podcast,
+        episode_url: episode,
+        guid: None,
+        action: crate::services::sync::ActionKind::parse(&action)?,
+        timestamp: timestamp.and_utc(),
+        started: None,
+        position,
+        total,
+        device: None,
+    };
+    serde_json::to_value(action.outbound(None)?).ok()
 }
 
 #[derive(Debug)]
@@ -25764,7 +25741,7 @@ impl DatabasePool {
                     if let Some(podcast_url) = url.as_str() {
                         tracing::info!("Adding Nextcloud subscription: {}", podcast_url);
                         server_added.insert(podcast_url.to_string());
-                        if let Err(e) = self.add_podcast_from_url(user_id, podcast_url, None).await {
+                        if let Err(e) = self.add_podcast_from_url(user_id, podcast_url, None, crate::services::sync::SyncOrigin::Unlogged).await {
                             tracing::error!("Failed to add podcast {}: {}", podcast_url, e);
                         } else {
                             has_changes = true;
@@ -25778,7 +25755,7 @@ impl DatabasePool {
                     if let Some(podcast_url) = url.as_str() {
                         tracing::info!("Removing Nextcloud subscription: {}", podcast_url);
                         server_removed.insert(podcast_url.to_string());
-                        if let Err(e) = self.remove_podcast_by_url(user_id, podcast_url).await {
+                        if let Err(e) = self.remove_podcast_by_url(user_id, podcast_url, crate::services::sync::SyncOrigin::Unlogged).await {
                             tracing::error!("Failed to remove podcast {}: {}", podcast_url, e);
                         } else {
                             has_changes = true;
@@ -25849,7 +25826,7 @@ impl DatabasePool {
     }
 
     // Add podcast from URL - used by Nextcloud sync
-    pub async fn add_podcast_from_url(&self, user_id: i32, feed_url: &str, _feed_cutoff: Option<i32>) -> AppResult<()> {
+    pub async fn add_podcast_from_url(&self, user_id: i32, feed_url: &str, _feed_cutoff: Option<i32>, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
         // Check if podcast already exists for this user
         if self.podcast_exists_for_user(user_id, feed_url).await? {
             tracing::info!("Podcast {} already exists for user {}", feed_url, user_id);
@@ -25860,237 +25837,31 @@ impl DatabasePool {
         let (podcast_values, body) = self.get_podcast_values_with_body(feed_url, user_id, None, None).await?;
         
         // Add podcast using existing function
-        let _result = self.add_podcast_from_values(&podcast_values, user_id, 30, None, None, Some(&body)).await?;
+        let _result = self.add_podcast_from_values(&podcast_values, user_id, 30, None, None, Some(&body), origin).await?;
         
         tracing::info!("Successfully added podcast {} for user {}", feed_url, user_id);
         Ok(())
     }
 
-    // Remove podcast by URL - used by Nextcloud sync  
-    pub async fn remove_podcast_by_url(&self, user_id: i32, feed_url: &str) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                // First get the podcast ID to cascade delete properly
-                let podcast_row = sqlx::query(
-                    r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#
-                )
+    // Remove podcast by URL - used by sync (subscription removes)
+    pub async fn remove_podcast_by_url(&self, user_id: i32, feed_url: &str, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
+        let podcast_id: Option<i32> = match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#)
                 .bind(feed_url)
                 .bind(user_id)
                 .fetch_optional(pool)
-                .await?;
-
-                if let Some(row) = podcast_row {
-                    let podcast_id: i32 = row.try_get("podcastid")?;
-
-                    // Run all cascading deletes in one transaction so a partial failure
-                    // can't leave orphaned rows or a wrong UserStats count.
-                    let mut tx = pool.begin().await?;
-
-                    // Delete in the proper order to handle foreign key constraints
-                    // 1. PlaylistContents first
-                    sqlx::query(r#"DELETE FROM "PlaylistContents" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 2. UserEpisodeHistory
-                    sqlx::query(r#"DELETE FROM "UserEpisodeHistory" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 3. DownloadedEpisodes
-                    sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 4. SavedEpisodes
-                    sqlx::query(r#"DELETE FROM "SavedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 5. EpisodeQueue
-                    sqlx::query(r#"DELETE FROM "EpisodeQueue" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6. Episodes
-                    sqlx::query(r#"DELETE FROM "Episodes" WHERE podcastid = $1"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6a. YouTubeVideos dependents (NO ACTION FKs) before the videos themselves
-                    sqlx::query(r#"DELETE FROM "UserVideoHistory" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-                    sqlx::query(r#"DELETE FROM "SavedVideos" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-                    sqlx::query(r#"DELETE FROM "DownloadedVideos" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6a2. YouTubeVideos — references Podcasts (NO ACTION), so must go before the podcast
-                    sqlx::query(r#"DELETE FROM "YouTubeVideos" WHERE podcastid = $1"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-
-                    // 7. Finally delete the podcast itself
-                    sqlx::query(r#"DELETE FROM "Podcasts" WHERE podcastid = $1"#)
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // Update user stats
-                    sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = $1"#)
-                        .bind(user_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    tx.commit().await?;
-                    tracing::info!("Successfully removed podcast {} for user {}", feed_url, user_id);
-                } else {
-                    tracing::info!("Podcast {} not found for user {}", feed_url, user_id);
-                }
-            }
-            DatabasePool::MySQL(pool) => {
-                // First get the podcast ID to cascade delete properly
-                let podcast_row = sqlx::query(
-                    "SELECT PodcastID FROM Podcasts WHERE FeedURL = ? AND UserID = ?"
-                )
+                .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT PodcastID FROM Podcasts WHERE FeedURL = ? AND UserID = ?")
                 .bind(feed_url)
                 .bind(user_id)
                 .fetch_optional(pool)
-                .await?;
-
-                if let Some(row) = podcast_row {
-                    let podcast_id: i32 = row.try_get("PodcastID")?;
-
-                    // Run all cascading deletes in one transaction so a partial failure
-                    // can't leave orphaned rows or a wrong UserStats count.
-                    let mut tx = pool.begin().await?;
-
-                    // Delete in the proper order to handle foreign key constraints
-                    // 1. PlaylistContents first
-                    sqlx::query("DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 2. UserEpisodeHistory
-                    sqlx::query("DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 3. DownloadedEpisodes
-                    sqlx::query("DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 4. SavedEpisodes
-                    sqlx::query("DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 5. EpisodeQueue
-                    sqlx::query("DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6. Episodes
-                    sqlx::query("DELETE FROM Episodes WHERE PodcastID = ?")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6a. YouTubeVideos dependents (NO ACTION FKs) before the videos themselves
-                    sqlx::query("DELETE FROM UserVideoHistory WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-                    sqlx::query("DELETE FROM SavedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-                    sqlx::query("DELETE FROM DownloadedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // 6a2. YouTubeVideos — references Podcasts (NO ACTION), so must go before the podcast
-                    sqlx::query("DELETE FROM YouTubeVideos WHERE PodcastID = ?")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-
-                    // 7. Finally delete the podcast itself
-                    sqlx::query("DELETE FROM Podcasts WHERE PodcastID = ?")
-                        .bind(podcast_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    // Update user stats
-                    sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = ?")
-                        .bind(user_id)
-                        .execute(&mut *tx)
-                        .await?;
-
-                    tx.commit().await?;
-                    tracing::info!("Successfully removed podcast {} for user {}", feed_url, user_id);
-                } else {
-                    tracing::info!("Podcast {} not found for user {}", feed_url, user_id);
-                }
+                .await?,
+        };
+        match podcast_id {
+            Some(podcast_id) if self.remove_podcast_cascade(podcast_id, user_id, origin).await? => {
+                tracing::info!("Successfully removed podcast {} for user {}", feed_url, user_id);
             }
-        }
-        Ok(())
-    }
-
-    // Save episode history - used by Nextcloud episode actions  
-    pub async fn save_episode_history(&self, user_id: i32, episode_id: i32, position: i32, _total_time: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"
-                    INSERT INTO "UserEpisodeHistory" (userid, episodeid, listenduration, episodecompleted, episodeprogress)
-                    VALUES ($1, $2, $3, FALSE, $4)
-                    ON CONFLICT (userid, episodeid) 
-                    DO UPDATE SET listenduration = $3, episodeprogress = $4
-                "#)
-                .bind(user_id)
-                .bind(episode_id)
-                .bind(position)
-                .bind(position)
-                .execute(pool)
-                .await?;
-            }
-            DatabasePool::MySQL(pool) => {
-                sqlx::query(r#"
-                    INSERT INTO UserEpisodeHistory (UserID, EpisodeID, ListenDuration, EpisodeCompleted, EpisodeProgress)
-                    VALUES (?, ?, ?, FALSE, ?)
-                    ON DUPLICATE KEY UPDATE ListenDuration = ?, EpisodeProgress = ?
-                "#)
-                .bind(user_id)
-                .bind(episode_id)
-                .bind(position)
-                .bind(position)
-                .bind(position)
-                .bind(position)
-                .execute(pool)
-                .await?;
-            }
+            _ => tracing::info!("Podcast {} not found for user {}", feed_url, user_id),
         }
         Ok(())
     }
@@ -26136,7 +25907,7 @@ impl DatabasePool {
                 // Then clear GPodder settings from user record
                 sqlx::query(r#"
                     UPDATE "Users"
-                    SET gpodderurl = '', gpodderloginname = '', gpoddertoken = '', pod_sync_type = 'None'
+                    SET gpodderurl = '', gpodderloginname = '', gpoddertoken = '', pod_sync_type = 'None', gpodderserverenabled = FALSE
                     WHERE userid = $1
                 "#)
                     .bind(user_id)
@@ -26144,6 +25915,7 @@ impl DatabasePool {
                     .await?;
                 
                 tx.commit().await?;
+                crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 Ok(true)
             }
             DatabasePool::MySQL(pool) => {
@@ -26163,7 +25935,7 @@ impl DatabasePool {
                 // Then clear GPodder settings from user record
                 sqlx::query(r#"
                     UPDATE Users
-                    SET GpodderUrl = '', GpodderLoginName = '', GpodderToken = '', Pod_Sync_Type = 'None'
+                    SET GpodderUrl = '', GpodderLoginName = '', GpodderToken = '', Pod_Sync_Type = 'None', GpodderServerEnabled = FALSE
                     WHERE UserID = ?
                 "#)
                     .bind(user_id)
@@ -26171,6 +25943,7 @@ impl DatabasePool {
                     .await?;
                 
                 tx.commit().await?;
+                crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
                 Ok(true)
             }
         }

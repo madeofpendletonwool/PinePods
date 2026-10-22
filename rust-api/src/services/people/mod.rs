@@ -155,7 +155,7 @@ pub async fn startup(db: crate::database::DatabasePool, api: Endpoints) {
         Ok(ids) if !ids.is_empty() => {
             let mut removed = 0;
             for id in &ids {
-                match db.remove_podcast_id(*id, 1).await {
+                match db.remove_podcast_id(*id, 1, crate::services::sync::SyncOrigin::Unlogged).await {
                     Ok(()) => removed += 1,
                     Err(e) => tracing::warn!("Removing old host-feed podcast {} failed: {}", id, e),
                 }

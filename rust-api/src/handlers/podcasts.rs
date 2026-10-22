@@ -319,6 +319,7 @@ pub async fn add_podcast(
         request.podcast_index_id.unwrap_or(0),
         None, // username
         None, // password
+        crate::services::sync::SyncOrigin::Pinepods,
     ).await?;
     
     // Spawn background task to add episodes
@@ -375,6 +376,7 @@ pub async fn remove_podcast(
         &request.podcast_name,
         &request.podcast_url,
         request.user_id,
+        crate::services::sync::SyncOrigin::Pinepods,
     ).await?;
     
     Ok(Json(RemovePodcastResponse { success: true }))
@@ -419,7 +421,7 @@ pub async fn remove_podcast_id(
     }
 
     // Remove podcast from database
-    state.db_pool.remove_podcast_id(request.podcast_id, request.user_id).await?;
+    state.db_pool.remove_podcast_id(request.podcast_id, request.user_id, crate::services::sync::SyncOrigin::Pinepods).await?;
     
     Ok(Json(RemovePodcastResponse { success: true }))
 }
@@ -2324,7 +2326,8 @@ pub async fn mark_episode_completed(
         state.db_pool.mark_episode_completed(
             request.episode_id,
             request.user_id,
-            request.is_youtube.unwrap_or(false)
+            request.is_youtube.unwrap_or(false),
+            crate::services::sync::SyncOrigin::Pinepods,
         ).await?;
         
         Ok(Json(serde_json::json!({ "detail": "Episode marked as completed." })))
@@ -2802,7 +2805,7 @@ pub async fn mark_episode_uncompleted(
     }
     require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube).await?;
 
-    state.db_pool.mark_episode_uncompleted(request.episode_id, request.user_id, request.is_youtube).await?;
+    state.db_pool.mark_episode_uncompleted(request.episode_id, request.user_id, request.is_youtube, crate::services::sync::SyncOrigin::Pinepods).await?;
     
     Ok(Json(serde_json::json!({ "detail": "Episode marked as uncompleted." })))
 }
@@ -2859,7 +2862,7 @@ pub async fn record_listen_duration(
     if data.is_youtube {
         state.db_pool.record_youtube_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
     } else {
-        state.db_pool.record_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
+        state.db_pool.record_listen_duration(data.episode_id, data.user_id, data.listen_duration, crate::services::sync::SyncOrigin::Pinepods).await?;
         if let Some(d) = data.episode_duration.filter(|d| d.is_finite() && *d >= 1.0) {
             state.db_pool.set_episode_duration_if_missing(data.episode_id, d.round() as i32).await?;
         }
@@ -2882,7 +2885,7 @@ pub async fn record_listen_duration(
             // Auto-complete if remaining time <= auto_complete_seconds
             // Also handle cases where listen_duration exceeds episode_duration (dynamic ads, etc.)
             if remaining_time <= auto_complete_seconds as f64 || data.listen_duration >= episode_duration as f64 {
-                let _ = state.db_pool.mark_episode_completed(data.episode_id, data.user_id, data.is_youtube).await;
+                let _ = state.db_pool.mark_episode_completed(data.episode_id, data.user_id, data.is_youtube, crate::services::sync::SyncOrigin::Pinepods).await;
             }
         }
     }

@@ -1,7 +1,8 @@
 //! Sync data model migrations (SYNC_REFRESH_PLAN.md Phase 3): old-shape data is seeded, the
 //! migrations are forgotten and re-run through the real runner, and the result is checked.
 //! 068 moves Users.Pod_Sync_Type to GpodderServerEnabled / SyncTargets / app passwords; 111/112
-//! extend the action and subscription logs; 113 marks Pinepods' own device.
+//! extend the action and subscription logs; 113 marks Pinepods' own device; 069 makes listen
+//! history one row per user and episode on MySQL.
 
 use pinepods_api::services::auth::verify_password;
 
@@ -302,5 +303,62 @@ async fn expired_gpodder_sessions_are_cleaned_up() {
     assert_eq!(
         text(&app, &format!(r#"SELECT SessionToken FROM "GpodderSessions" WHERE UserID = {uid}"#)).await,
         Some(format!("live-{uid}"))
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn listen_history_duplicates_are_merged_and_made_unique() {
+    let app = TestApp::new().await;
+    let user = app.user("dupes").await;
+    let url = app.feed("dupes.xml", &Feed::with_episodes("Dupes", 2));
+    let pod = app.subscribe(&user, &url, 2).await;
+    let e1 = app.episode_id(&user, pod, "Episode 1").await;
+    let e2 = app.episode_id(&user, pod, "Episode 2").await;
+
+    // The pre-069 MySQL shape: no unique key, so upserts inserted duplicates.
+    exec_per_backend(
+        &app,
+        r#"ALTER TABLE "UserEpisodeHistory" DROP CONSTRAINT user_episode_unique"#,
+        "ALTER TABLE UserEpisodeHistory DROP INDEX user_episode_unique",
+    )
+    .await;
+    let uid = user.id;
+    exec(
+        &app,
+        &format!(
+            r#"INSERT INTO "UserEpisodeHistory" (UserID, EpisodeID, ListenDate, ListenDuration) VALUES
+               ({uid}, {e1}, '2026-01-01 00:00:00', 100),
+               ({uid}, {e1}, '2026-03-01 00:00:00', 300),
+               ({uid}, {e1}, '2026-03-01 00:00:00', 250),
+               ({uid}, {e1}, NULL, 900),
+               ({uid}, {e2}, '2026-02-01 00:00:00', 42)"#
+        ),
+    )
+    .await;
+
+    rerun_migrations(&app, &["069"]).await;
+
+    let rows = |ep: i32| {
+        let sql = format!(r#"SELECT COUNT(*) FROM "UserEpisodeHistory" WHERE UserID = {uid} AND EpisodeID = {ep}"#);
+        let app = &app;
+        async move { int(app, &sql).await }
+    };
+    assert_eq!(rows(e1).await, Some(1));
+    assert_eq!(rows(e2).await, Some(1));
+    // The most recent row survives; on a tie, the one written last.
+    let kept = int(&app, &format!(r#"SELECT ListenDuration FROM "UserEpisodeHistory" WHERE UserID = {uid} AND EpisodeID = {e1}"#)).await;
+    assert_eq!(kept, Some(250));
+
+    // Upserts now update in place on both backends.
+    app.post("/api/data/mark_episode_completed")
+        .key(&user)
+        .json(&json!({ "episode_id": e2, "user_id": uid, "is_youtube": false }))
+        .send()
+        .await
+        .assert_ok();
+    assert_eq!(rows(e2).await, Some(1));
+    assert_eq!(
+        int(&app, &format!(r#"SELECT ListenDuration FROM "UserEpisodeHistory" WHERE UserID = {uid} AND EpisodeID = {e2}"#)).await,
+        Some(1802)
     );
 }

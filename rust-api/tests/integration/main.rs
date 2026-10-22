@@ -21,4 +21,5 @@ mod queue;
 mod refresh;
 mod settings;
 mod smoke;
+mod sync_core;
 mod sync_migrations;

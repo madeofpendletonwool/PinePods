@@ -828,7 +828,8 @@ def migration_006_user_activity_tables(conn, db_type: str):
                     ListenDate DATETIME,
                     ListenDuration INT,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID),
-                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID),
+                    CONSTRAINT user_episode_unique UNIQUE (UserID, EpisodeID)
                 )
             """)
             
@@ -841,7 +842,8 @@ def migration_006_user_activity_tables(conn, db_type: str):
                     ListenDate TIMESTAMP,
                     ListenDuration INT DEFAULT 0,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID),
-                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID)
+                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID),
+                    CONSTRAINT user_video_unique UNIQUE (UserID, VideoID)
                 )
             """)
         
@@ -6671,6 +6673,48 @@ def _ensure_fk_set_null(cursor, db_type: str, table: str, column: str, ref_table
         f"REFERENCES {qr}({ref_column}) ON DELETE SET NULL"
     )
     logger.info(f"Added FK {name} on {table}.{column} ON DELETE SET NULL")
+
+
+@register_migration("069", "unique_listen_history_per_episode", "Make UserEpisodeHistory (UserID, EpisodeID) and UserVideoHistory (UserID, VideoID) unique on MySQL, merging duplicates", requires=["006"])
+def migration_069_unique_listen_history_per_episode(conn, db_type: str) -> None:
+    """One history row per user and episode/video.
+
+    Migration 006 added these UNIQUE constraints on PostgreSQL only, so on MySQL/MariaDB every
+    `INSERT ... ON DUPLICATE KEY UPDATE` on the history tables (marking an episode completed, for
+    one) inserted another row instead of updating, and readers saw whichever row came first.
+    The sync core compares remote actions with ListenDate, so it needs the one true row.
+    Duplicates are merged by keeping the most recent row (latest ListenDate, then highest id).
+    Also covers a PostgreSQL install where 006's constraint couldn't be added.
+    """
+    logger.info("Starting migration 069: unique listen history per episode")
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    try:
+        for table, id_col, item_col, constraint in (
+            ("UserEpisodeHistory", "UserEpisodeHistoryID", "EpisodeID", "user_episode_unique"),
+            ("UserVideoHistory", "UserVideoHistoryID", "VideoID", "user_video_unique"),
+        ):
+            if check_constraint_exists(cursor, db_type, table, constraint):
+                logger.info(f"Migration 069: {table} already has {constraint}")
+                continue
+            qt = f'"{table}"' if pg else table
+            oldest = "'-infinity'::timestamp" if pg else "'1000-01-01 00:00:00'"
+            newer = f"""
+                k.UserID = h.UserID AND k.{item_col} = h.{item_col}
+                AND (COALESCE(k.ListenDate, {oldest}) > COALESCE(h.ListenDate, {oldest})
+                     OR (COALESCE(k.ListenDate, {oldest}) = COALESCE(h.ListenDate, {oldest})
+                         AND k.{id_col} > h.{id_col}))
+            """
+            if pg:
+                cursor.execute(f"DELETE FROM {qt} h USING {qt} k WHERE {newer}")
+            else:
+                cursor.execute(f"DELETE h FROM {qt} h JOIN {qt} k ON {newer}")
+            logger.info(f"Migration 069: removed {cursor.rowcount} duplicate {table} rows")
+            cursor.execute(f"ALTER TABLE {qt} ADD CONSTRAINT {constraint} UNIQUE (UserID, {item_col})")
+            logger.info(f"Migration 069: added {constraint}")
+        logger.info("Migration 069 completed")
+    finally:
+        cursor.close()
 
 
 @register_migration("111", "gpodder_episode_action_log", "Episode action log: Guid, resolved EpisodeID, Origin, indexes; keep actions when a device is removed", requires=["066", "110"])

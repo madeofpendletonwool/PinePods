@@ -9,6 +9,7 @@ pub mod people;
 pub mod podcasting2;
 pub mod recommendations;
 pub mod scheduler;
+pub mod sync;
 pub mod task_manager;
 pub mod tasks;
 pub mod transcription;
