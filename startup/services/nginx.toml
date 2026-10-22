@@ -1,5 +1,5 @@
 command = "nginx -g 'daemon off;'"
-start-after = ["gpodder-api.toml"]
+start-after = ["pinepods-api.toml"]
 stdout = "${HORUST_STDOUT_MODE}"
 stderr = "${HORUST_STDERR_MODE}"
 

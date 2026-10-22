@@ -180,13 +180,14 @@ async fn sync_logs_survive_device_removal_and_device_lists_are_backfilled() {
         &app,
         r#"ALTER TABLE "GpodderSyncSubscriptions" DROP CONSTRAINT fk_gpodder_subscriptions_device,
            ALTER COLUMN DeviceID SET NOT NULL,
+           ALTER COLUMN ServerTs DROP NOT NULL,
            ADD CONSTRAINT legacy_subs_device FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE"#,
         "ALTER TABLE GpodderSyncSubscriptions DROP FOREIGN KEY fk_gpodder_subscriptions_device",
     )
     .await;
     if app.backend() == Backend::MariaDb {
         exec(&app, "ALTER TABLE GpodderSyncEpisodeActions ADD CONSTRAINT legacy_actions_device FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE").await;
-        exec(&app, "ALTER TABLE GpodderSyncSubscriptions MODIFY COLUMN DeviceID INT NOT NULL").await;
+        exec(&app, "ALTER TABLE GpodderSyncSubscriptions MODIFY COLUMN DeviceID INT NOT NULL, MODIFY COLUMN ServerTs BIGINT NULL").await;
         exec(&app, "ALTER TABLE GpodderSyncSubscriptions ADD CONSTRAINT legacy_subs_device FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE").await;
     }
 
@@ -224,7 +225,7 @@ async fn sync_logs_survive_device_removal_and_device_lists_are_backfilled() {
     }
     exec(&app, r#"UPDATE "GpodderSyncSubscriptions" SET ServerTs = NULL"#).await;
 
-    rerun_migrations(&app, &["111", "112"]).await;
+    rerun_migrations(&app, &["111", "112", "114"]).await;
 
     // 111: actions resolved by exact URL within the user's podcasts; unknown stays unmatched.
     assert_eq!(int(&app, &format!(r#"SELECT EpisodeID FROM "GpodderSyncEpisodeActions" WHERE EpisodeURL = '{e1_url}'"#)).await, Some(e1 as i64));
@@ -361,4 +362,42 @@ async fn listen_history_duplicates_are_merged_and_made_unique() {
         int(&app, &format!(r#"SELECT ListenDuration FROM "UserEpisodeHistory" WHERE UserID = {uid} AND EpisodeID = {e2}"#)).await,
         Some(1802)
     );
+}
+
+/// Rows the Go server wrote after 112 have no ServerTs: 114 backfills it from Timestamp (Go's
+/// receive time) and makes the column required.
+#[tokio::test(flavor = "multi_thread")]
+async fn subscription_server_ts_is_backfilled_and_required() {
+    let app = TestApp::new().await;
+    let user = app.user("serverts").await;
+    let uid = user.id;
+    exec_per_backend(
+        &app,
+        r#"ALTER TABLE "GpodderSyncSubscriptions" ALTER COLUMN ServerTs DROP NOT NULL"#,
+        "ALTER TABLE GpodderSyncSubscriptions MODIFY COLUMN ServerTs BIGINT NULL",
+    )
+    .await;
+    exec(&app, &format!(r#"INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType) VALUES ({uid}, 'phone', 'mobile')"#)).await;
+    let phone = int(&app, &format!(r#"SELECT DeviceID FROM "GpodderDevices" WHERE UserID = {uid}"#)).await.unwrap();
+    exec(&app, &format!(
+        r#"INSERT INTO "GpodderSyncSubscriptions" (UserID, DeviceID, PodcastURL, Action, Timestamp, ServerTs)
+           VALUES ({uid}, {phone}, 'https://go.example/feed', 'add', 1700000000, NULL),
+                  ({uid}, {phone}, 'https://rust.example/feed', 'add', 1600000000, 1700000500)"#
+    ))
+    .await;
+
+    rerun_migrations(&app, &["114"]).await;
+
+    let ts = |url: &str| {
+        let sql = format!(r#"SELECT ServerTs FROM "GpodderSyncSubscriptions" WHERE PodcastURL = '{url}'"#);
+        let app = &app;
+        async move { int(app, &sql).await }
+    };
+    assert_eq!(ts("https://go.example/feed").await, Some(1_700_000_000), "NULL ServerTs is backfilled from Timestamp");
+    assert_eq!(ts("https://rust.example/feed").await, Some(1_700_000_500), "an existing ServerTs is kept");
+    let nullable = match app.backend() {
+        Backend::Postgres => int(&app, "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'GpodderSyncSubscriptions' AND column_name = 'serverts' AND is_nullable = 'YES'").await,
+        Backend::MariaDb => int(&app, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'GpodderSyncSubscriptions' AND COLUMN_NAME = 'ServerTs' AND IS_NULLABLE = 'YES'").await,
+    };
+    assert_eq!(nullable, Some(0), "ServerTs is NOT NULL after 114");
 }

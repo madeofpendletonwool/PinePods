@@ -145,8 +145,8 @@ pub async fn gpodder_force_sync(
     // Perform initial full sync (without timestamps) based on sync type
     let sync_result = match settings.sync_type.as_str() {
         "gpodder" => {
-            // Internal gPodder API - call initial full sync
-            state.db_pool.call_gpodder_initial_full_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name).await
+            // The PinePods gpodder server reads the same database; republish local state.
+            state.db_pool.gpodder_publish_episode_state(user_id).await.map(|_| true)
         }
         "nextcloud" => {
             // Nextcloud initial sync. The stored token is encrypted; passing it as-is always
@@ -160,8 +160,7 @@ pub async fn gpodder_force_sync(
             state.db_pool.call_gpodder_initial_full_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name).await
         }
         "both" => {
-            // Both internal and external - call initial sync for both
-            let internal_result = state.db_pool.call_gpodder_initial_full_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name).await;
+            let internal_result = state.db_pool.gpodder_publish_episode_state(user_id).await.map(|_| true);
             let decrypted_token = state.db_pool.decrypt_password(&settings.token).await.unwrap_or_default();
             let external_result = state.db_pool.call_gpodder_initial_full_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name).await;
             
@@ -274,7 +273,7 @@ pub async fn gpodder_status(
         "gpodder_enabled": status.sync_type == "gpodder" || status.sync_type == "both" || status.sync_type == "external",
         "external_enabled": status.sync_type == "external" || status.sync_type == "both",
         "external_url": status.gpodder_url,
-        "api_url": "http://localhost:8042" 
+        "api_url": crate::database::INTERNAL_GPODDER_URL
     })))
 }
 
@@ -356,7 +355,7 @@ pub async fn gpodder_toggle(
             None::<String>
         },
         "api_url": if new_sync_type == "gpodder" || new_sync_type == "both" {
-            Some("http://localhost:8042")
+            Some(crate::database::INTERNAL_GPODDER_URL)
         } else {
             None
         }
@@ -515,13 +514,19 @@ pub async fn gpodder_create_device(
         return Err(AppError::BadRequest("GPodder sync is not enabled for this user".to_string()));
     }
     
-    // Create device via GPodder API (uses proper auth for internal/external)
-    let device_id = state.db_pool.create_device_via_gpodder_api(
-        &settings.url,
-        &settings.username, 
-        &settings.token,
-        &request.device_name
-    ).await.map_err(|e| AppError::Internal(format!("Failed to create device via GPodder API: {}", e)))?;
+    let device_id = if settings.url == crate::database::INTERNAL_GPODDER_URL {
+        state.db_pool
+            .gpodder_update_device(user_id, &request.device_name, request.device_caption.as_deref(), Some(&request.device_type))
+            .await?;
+        request.device_name.clone()
+    } else {
+        state.db_pool.create_device_via_gpodder_api(
+            &settings.url,
+            &settings.username,
+            &settings.token,
+            &request.device_name
+        ).await.map_err(|e| AppError::Internal(format!("Failed to create device via GPodder API: {}", e)))?
+    };
     
     // Return GPodder API standard format
     Ok(Json(serde_json::json!({ 

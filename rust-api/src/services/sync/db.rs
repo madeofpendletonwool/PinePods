@@ -835,6 +835,21 @@ impl DatabasePool {
         Ok(())
     }
 
+    /// Every feed URL the user is subscribed to.
+    pub async fn sync_user_feed_urls(&self, user_id: i32) -> AppResult<std::collections::HashSet<String>> {
+        let urls: Vec<Option<String>> = match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT feedurl FROM "Podcasts" WHERE userid = $1"#)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT FeedURL FROM Podcasts WHERE UserID = ?")
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?,
+        };
+        Ok(urls.into_iter().flatten().collect())
+    }
+
     /// Names of the user's Pinepods devices: the role device and the pre-overhaul internal one.
     /// The old sync paths use this to skip Pinepods' own log rows.
     pub async fn sync_pinepods_device_names(&self, user_id: i32) -> AppResult<Vec<String>> {

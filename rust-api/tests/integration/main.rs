@@ -11,6 +11,7 @@ mod cross_user;
 mod feeds;
 mod foreign_resources;
 mod gpodder;
+mod gpodder_server;
 mod library;
 mod opml;
 mod people;

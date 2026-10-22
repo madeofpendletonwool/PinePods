@@ -2,36 +2,22 @@
 //!
 //! Which server answers is chosen by `PINEPODS_TEST_GPODDER`:
 //!
-//! - `go` (default): the current Go service (`gpodder-api/`), built once per test process and
-//!   started per test against that test's database, exactly as production runs it next to
-//!   rust-api.
-//! - `rust`: the rust-api router itself, served on a real socket (the Phase 5 port).
+//! - `rust` (default): the rust-api router itself, served on a real socket.
 //! - `mock`: the in-memory reference server in [`super::mock_gpodder`]. It has no Pinepods
 //!   library behind it, so tests that look at the library skip themselves; everything else
 //!   must pass, which is how the protocol tests themselves are checked.
-//!
-//! Tests describe findings the current server is known to fail with [`conformance`], so the
-//! suite stays green while documenting them, and flips to a hard failure the moment a finding
-//! is fixed (so its entry gets removed) or a new one appears.
 
 use std::future::Future;
-use std::io::Write as _;
-use std::net::TcpListener;
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
-use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 use serde_json::{json, Value};
 
 use super::app::{TestApp, TestUser};
-use super::env::{repo_root, Backend};
 use super::mock_gpodder::MockGpodder;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Impl {
-    Go,
     Rust,
     Mock,
 }
@@ -39,100 +25,30 @@ pub enum Impl {
 impl Impl {
     pub fn current() -> Impl {
         match std::env::var("PINEPODS_TEST_GPODDER").unwrap_or_default().to_lowercase().as_str() {
-            "" | "go" => Impl::Go,
-            "rust" => Impl::Rust,
+            "" | "rust" => Impl::Rust,
             "mock" => Impl::Mock,
-            other => panic!("PINEPODS_TEST_GPODDER={other}: expected go, rust or mock"),
-        }
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Impl::Go => "go",
-            Impl::Rust => "rust",
-            Impl::Mock => "mock",
+            other => panic!("PINEPODS_TEST_GPODDER={other}: expected rust or mock"),
         }
     }
 }
 
-// ---- known failures ----------------------------------------------------------------------
-
-/// Where a finding is known to fail today.
-#[derive(Clone, Copy, Debug)]
-pub enum Known {
-    /// Expected to pass everywhere.
-    None,
-    /// The Go service fails it on every backend.
-    Go,
-    /// The Go service fails it on MariaDB only.
-    GoMariaDb,
-}
-
-impl Known {
-    fn applies(self, imp: Impl, backend: Backend) -> bool {
-        match self {
-            Known::None => false,
-            Known::Go => imp == Impl::Go,
-            Known::GoMariaDb => imp == Impl::Go && backend == Backend::MariaDb,
-        }
-    }
-}
-
-/// Run one protocol check. If `known` says the current server fails `finding`, a failure is
-/// recorded (stderr + `target/gpodder-conformance/<impl>-<backend>.txt`) instead of failing
-/// the test, and an unexpected pass fails it so the stale entry gets removed.
-/// `PINEPODS_TEST_GPODDER_STRICT=1` turns the tolerance off.
-pub async fn conformance<Fut>(finding: &str, known: Known, body: Fut)
+/// Run one protocol check, naming it in the failure message.
+pub async fn conformance<Fut>(check: &str, body: Fut)
 where
     Fut: Future<Output = ()> + Send + 'static,
 {
-    let imp = Impl::current();
-    let backend = super::env::env().backend;
-    let tolerated = known.applies(imp, backend) && std::env::var("PINEPODS_TEST_GPODDER_STRICT").is_err();
-    let outcome = tokio::spawn(body).await;
-    match (outcome, tolerated) {
-        (Ok(()), false) => {}
-        (Ok(()), true) => panic!(
-            "{finding} now passes on {}/{}: remove it from this test's known failures",
-            imp.name(),
-            backend.db_type()
-        ),
-        (Err(e), true) if e.is_panic() => {
-            let payload = e.into_panic();
-            let msg = payload
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "<non-string panic>".into());
-            let first_line = msg.lines().next().unwrap_or_default();
-            eprintln!("[known failure {finding} on {}/{}] {first_line}", imp.name(), backend.db_type());
-            record_known_failure(imp, backend, finding, first_line);
-        }
-        (Err(e), _) => std::panic::resume_unwind(e.into_panic()),
-    }
-}
-
-fn record_known_failure(imp: Impl, backend: Backend, finding: &str, msg: &str) {
-    let dir = repo_root().join("rust-api/target/gpodder-conformance");
-    let _ = std::fs::create_dir_all(&dir);
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(dir.join(format!("{}-{}.txt", imp.name(), backend.db_type())))
-    {
-        // One write per line: tests run in parallel and append to the same file.
-        let _ = f.write_all(format!("{finding}\t{msg}\n").as_bytes());
+    if let Err(e) = tokio::spawn(body).await {
+        eprintln!("[gpodder check failed: {check}]");
+        std::panic::resume_unwind(e.into_panic());
     }
 }
 
 // ---- servers ------------------------------------------------------------------------------
 
-/// A running gpodder server for one test. Declare it before the `TestApp` it serves so it is
-/// dropped (and the Go process killed, releasing its connections) before the database is.
+/// A running gpodder server for one test.
 pub struct GpodderServer {
     pub imp: Impl,
     pub base_url: String,
-    go: Option<GoProcess>,
     serve: Option<tokio::task::JoinHandle<()>>,
     pub mock: Option<MockGpodder>,
 }
@@ -145,171 +61,36 @@ impl Drop for GpodderServer {
     }
 }
 
-struct GoProcess {
-    child: Child,
-    log: PathBuf,
-}
-
-impl Drop for GoProcess {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-impl GoProcess {
-    fn log_tail(&self) -> String {
-        let s = std::fs::read_to_string(&self.log).unwrap_or_default();
-        s.lines().rev().take(30).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n")
-    }
-}
-
-/// The Go binary, built once per test process (`go build` is incremental, so this is cheap
-/// after the first run). `PINEPODS_TEST_GPODDER_BIN` points at a prebuilt one instead.
-fn go_binary() -> &'static PathBuf {
-    static BIN: OnceLock<PathBuf> = OnceLock::new();
-    BIN.get_or_init(|| {
-        if let Ok(p) = std::env::var("PINEPODS_TEST_GPODDER_BIN") {
-            return PathBuf::from(p);
-        }
-        std::thread::spawn(|| {
-            let root = repo_root();
-            let out = root.join("rust-api/target/gpodder-api-test");
-            let status = Command::new("go")
-                .args(["build", "-o"])
-                .arg(&out)
-                .arg("./cmd/server")
-                .current_dir(root.join("gpodder-api"))
-                // The test process points every proxy variable at a dead port (env.rs); the
-                // build itself may need to download modules.
-                .env_remove("HTTP_PROXY")
-                .env_remove("HTTPS_PROXY")
-                .env_remove("ALL_PROXY")
-                .env_remove("http_proxy")
-                .env_remove("https_proxy")
-                .env_remove("all_proxy")
-                .status()
-                .unwrap_or_else(|e| {
-                    panic!("could not run `go build` for gpodder-api ({e}); install Go or set PINEPODS_TEST_GPODDER_BIN")
-                });
-            assert!(status.success(), "go build of gpodder-api failed");
-            out
-        })
-        .join()
-        .expect("building gpodder-api")
-    })
-}
-
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
-}
-
-async fn wait_listening(port: u16, mut alive: impl FnMut() -> Result<(), String>) {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    loop {
-        if tokio::net::TcpStream::connect(("127.0.0.1", port)).await.is_ok() {
-            return;
-        }
-        if let Err(e) = alive() {
-            panic!("gpodder server exited before listening: {e}");
-        }
-        if Instant::now() > deadline {
-            panic!("gpodder server did not start listening on {port}");
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-}
-
 impl TestApp {
     /// Start the gpodder server under test for this app's database.
     pub async fn gpodder_server(&self) -> GpodderServer {
         let imp = Impl::current();
         match imp {
-            Impl::Go => {
-                let env = self.env;
-                let port = free_port();
-                let log_dir = repo_root().join("rust-api/target/gpodder-test-logs");
-                std::fs::create_dir_all(&log_dir).unwrap();
-                let log = log_dir.join(format!("{}.log", self.db_name));
-                let out = std::fs::File::create(&log).unwrap();
-                let child = Command::new(go_binary())
-                    // Its .env loader reads the working directory; keep a developer's out of it.
-                    .current_dir(&log_dir)
-                    // Production passes the user's DB_TYPE through unchanged ("mariadb" for
-                    // MariaDB installs), so the tests do too.
-                    .env("DB_TYPE", env.backend.db_type())
-                    .env("DB_HOST", &env.db_host)
-                    .env("DB_PORT", env.db_port.to_string())
-                    .env("DB_USER", &env.db_user)
-                    .env("DB_PASSWORD", &env.db_password)
-                    .env("DB_NAME", &self.db_name)
-                    .env("SERVER_PORT", port.to_string())
-                    .env_remove("DEBUG_MODE")
-                    .stdin(Stdio::null())
-                    .stdout(out.try_clone().unwrap())
-                    .stderr(out)
-                    .spawn()
-                    .expect("start gpodder-api");
-                let mut proc = GoProcess { child, log };
-                wait_listening(port, || match proc.child.try_wait() {
-                    Ok(Some(status)) => Err(format!("{status}\n{}", proc.log_tail())),
-                    _ => Ok(()),
-                })
-                .await;
-                GpodderServer { imp, base_url: format!("http://127.0.0.1:{port}"), go: Some(proc), serve: None, mock: None }
-            }
-            Impl::Rust => {
-                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-                let port = listener.local_addr().unwrap().port();
-                let router = self.router.clone();
-                let serve = tokio::spawn(async move {
-                    axum::serve(listener, router).await.unwrap();
-                });
-                GpodderServer { imp, base_url: format!("http://127.0.0.1:{port}"), go: None, serve: Some(serve), mock: None }
-            }
+            Impl::Rust => self.rust_gpodder_server().await,
             Impl::Mock => {
                 let mock = MockGpodder::start().await;
-                GpodderServer { imp, base_url: mock.base_url.clone(), go: None, serve: None, mock: Some(mock) }
+                GpodderServer { imp, base_url: mock.base_url.clone(), serve: None, mock: Some(mock) }
             }
         }
     }
 
-    /// Turn on the internal gpodder server for `user` the way enabling it in Settings does,
-    /// minus the HTTP calls rust-api then makes to the hard-coded `localhost:8042`.
+    /// The rust-api router on a real socket, whatever `PINEPODS_TEST_GPODDER` says.
+    pub async fn rust_gpodder_server(&self) -> GpodderServer {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let router = self.router.clone();
+        let serve = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        GpodderServer { imp: Impl::Rust, base_url: format!("http://127.0.0.1:{port}"), serve: Some(serve), mock: None }
+    }
+
+    /// Turn on the gpodder server for `user` the way the Settings page does.
     pub async fn enable_gpodder(&self, server: &GpodderServer, user: &TestUser) {
-        use pinepods_api::database::DatabasePool;
         match server.imp {
-            Impl::Go => {
-                let token: String = {
-                    use rand::RngExt as _;
-                    rand::rng().sample_iter(rand::distr::Alphanumeric).take(64).map(char::from).collect()
-                };
-                match self.db() {
-                    DatabasePool::Postgres(pool) => sqlx::query(
-                        r#"UPDATE "Users" SET gpodderurl = 'http://localhost:8042', gpoddertoken = $1,
-                           gpodderloginname = $2, pod_sync_type = 'gpodder' WHERE userid = $3"#,
-                    )
-                    .bind(&token)
-                    .bind(&user.username)
-                    .bind(user.id)
-                    .execute(pool)
-                    .await
-                    .map(|_| ())
-                    .unwrap(),
-                    DatabasePool::MySQL(pool) => sqlx::query(
-                        "UPDATE Users SET GpodderUrl = 'http://localhost:8042', GpodderToken = ?, \
-                         GpodderLoginName = ?, Pod_Sync_Type = 'gpodder' WHERE UserID = ?",
-                    )
-                    .bind(&token)
-                    .bind(&user.username)
-                    .bind(user.id)
-                    .execute(pool)
-                    .await
-                    .map(|_| ())
-                    .unwrap(),
-                };
+            Impl::Rust => {
+                self.post("/api/data/gpodder/toggle").key(user).json(&json!({ "enabled": true })).send().await.assert_ok();
             }
-            Impl::Rust => unimplemented!("Phase 5: enable the Rust gpodder server through its settings endpoint"),
             Impl::Mock => server.mock.as_ref().unwrap().add_user(&user.username, &user.password),
         }
     }

@@ -179,6 +179,11 @@ fn claim_add(user_id: i32, url: &str) -> Option<InFlightAdd> {
         .then(|| InFlightAdd(user_id, url.to_string()))
 }
 
+/// Feeds queued for import for `user_id` that haven't finished yet.
+pub fn in_flight_adds(user_id: i32) -> Vec<String> {
+    IN_FLIGHT_ADDS.lock().unwrap().iter().filter(|(u, _)| *u == user_id).map(|(_, url)| url.clone()).collect()
+}
+
 /// Limits concurrent sync imports; held by the import task while it fetches.
 pub async fn add_permit() -> tokio::sync::OwnedSemaphorePermit {
     ADD_PERMITS.clone().acquire_owned().await.expect("sync add semaphore is never closed")
@@ -223,13 +228,24 @@ pub async fn apply_subscription_changes(
         db.remove_podcast_by_url(user_id, url, origin).await?;
         summary.removed += 1;
     }
-    for url in add {
-        if db.podcast_exists_for_user(user_id, &url).await? {
-            continue;
-        }
-        let Some(claim) = claim_add(user_id, &url) else { continue };
-        tasks.spawn_sync_add_podcast(user_id, url, origin, claim).await?;
-        summary.queued += 1;
+    let subscribed = if add.is_empty() { HashSet::new() } else { db.sync_user_feed_urls(user_id).await? };
+    let claims: Vec<(String, InFlightAdd)> = add
+        .into_iter()
+        .filter(|url| !subscribed.contains(url))
+        .filter_map(|url| claim_add(user_id, &url).map(|claim| (url, claim)))
+        .collect();
+    summary.queued = claims.len();
+    if !claims.is_empty() {
+        // Claimed adds already count as in flight; registering the import tasks (a Valkey write
+        // each) happens off the caller's request.
+        let tasks = tasks.clone();
+        tokio::spawn(async move {
+            for (url, claim) in claims {
+                if let Err(e) = tasks.spawn_sync_add_podcast(user_id, url.clone(), origin, claim).await {
+                    warn!("Queueing the import of {} for user {} failed: {}", url, user_id, e);
+                }
+            }
+        });
     }
     Ok(summary)
 }

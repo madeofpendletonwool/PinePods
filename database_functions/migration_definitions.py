@@ -1015,6 +1015,7 @@ def migration_008_gpodder_tables(conn, db_type: str):
                     LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     IsActive BOOLEAN DEFAULT TRUE,
                     SystemRole VARCHAR(16),
+                    SubsDownloadCursor BIGINT,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
                     UNIQUE(UserID, DeviceName)
                 )
@@ -1049,6 +1050,7 @@ def migration_008_gpodder_tables(conn, db_type: str):
                     LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     IsActive BOOLEAN DEFAULT TRUE,
                     SystemRole VARCHAR(16),
+                    SubsDownloadCursor BIGINT,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
                     UNIQUE(UserID, DeviceName)
                 )
@@ -2969,7 +2971,7 @@ def migration_100_gpodder_initial_schema(conn, db_type: str):
                     PodcastURL TEXT NOT NULL,
                     Action VARCHAR(10) NOT NULL,
                     Timestamp BIGINT NOT NULL,
-                    ServerTs BIGINT,
+                    ServerTs BIGINT NOT NULL,
                     Origin VARCHAR(32) NOT NULL DEFAULT 'client',
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
                     CONSTRAINT fk_gpodder_subscriptions_device FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE SET NULL
@@ -3085,7 +3087,7 @@ def migration_100_gpodder_initial_schema(conn, db_type: str):
                     PodcastURL TEXT NOT NULL,
                     Action VARCHAR(10) NOT NULL,
                     Timestamp BIGINT NOT NULL,
-                    ServerTs BIGINT,
+                    ServerTs BIGINT NOT NULL,
                     Origin VARCHAR(32) NOT NULL DEFAULT 'client',
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
                     CONSTRAINT fk_gpodder_subscriptions_device FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE SET NULL
@@ -3247,6 +3249,7 @@ def migration_102_gpodder_create_sessions(conn, db_type: str):
                     LastActive TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UserAgent TEXT,
                     ClientIP TEXT,
+                    EpisodesDownloadCursor BIGINT,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
                     UNIQUE(SessionToken)
                 )
@@ -3269,12 +3272,14 @@ def migration_102_gpodder_create_sessions(conn, db_type: str):
                     LastActive TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UserAgent TEXT,
                     ClientIP TEXT,
+                    EpisodesDownloadCursor BIGINT,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                 )
             ''', conn=conn)
             
             # Create indexes
             indexes_sql = [
+                'CREATE INDEX idx_gpodder_sessions_token ON GpodderSessions(SessionToken(64))',
                 'CREATE INDEX idx_gpodder_sessions_userid ON GpodderSessions(UserID)',
                 'CREATE INDEX idx_gpodder_sessions_expires ON GpodderSessions(ExpiresAt)'
             ]
@@ -5983,7 +5988,7 @@ def migration_062_people_refactor(conn, db_type: str) -> None:
 
 @register_migration("063", "add_feed_content_hash_and_refresh_not_before", "Add Podcasts.FeedContentHash (unchanged-body skip) and Podcasts.RefreshNotBefore (Retry-After backoff)", requires=["005"])
 def migration_063_add_feed_content_hash_and_refresh_not_before(conn, db_type: str) -> None:
-    """Refresh quick wins (SYNC_REFRESH_PLAN.md 2.1).
+    """Columns for skipping unchanged feeds and honouring Retry-After.
 
     - FeedContentHash: SHA-256 hex of the last feed body that was applied. Many hosts send no
       ETag/Last-Modified (or change them every request), so the refresher compares the body hash
@@ -6369,7 +6374,7 @@ def migration_110_gpodder_action_server_ts(conn, db_type: str) -> None:
         cursor.close()
 
 
-@register_migration("067", "create_sync_targets_and_app_passwords", "Add SyncTargets, GpodderAppPasswords and the Users.GpodderServerEnabled / SyncNotice columns (sync overhaul D5)", requires=["001"])
+@register_migration("067", "create_sync_targets_and_app_passwords", "Add SyncTargets, GpodderAppPasswords and the Users.GpodderServerEnabled / SyncNotice columns", requires=["001"])
 def migration_067_create_sync_targets_and_app_passwords(conn, db_type: str) -> None:
     """Schema for the per-user sync settings that replace the shared Users.Gpodder* columns.
 
@@ -6723,8 +6728,8 @@ def migration_111_gpodder_episode_action_log(conn, db_type: str) -> None:
 
     - Guid: the episode GUID when the client sends one.
     - EpisodeID: the resolved local episode (NULL = unmatched). Backfilled here by exact
-      EpisodeURL within the user's podcasts; GUID and URL-base matching is the Phase 4 resolver's
-      job. FK ON DELETE SET NULL, so removing a podcast leaves its actions unmatched.
+      EpisodeURL within the user's podcasts; GUID and URL-base matching is left to the
+      sync resolver. FK ON DELETE SET NULL, so removing a podcast leaves its actions unmatched.
     - Origin: 'client' (gpodder clients; the default, so the Go server's INSERTs keep working),
       'pinepods', or 'target:<TargetID>'.
     - DeviceID FK CASCADE -> SET NULL: removing a device no longer erases its history.
@@ -6793,15 +6798,15 @@ def migration_111_gpodder_episode_action_log(conn, db_type: str) -> None:
 
 @register_migration("112", "gpodder_subscription_log", "Subscription log: ServerTs, Origin, indexes, SET NULL device FK; GpodderDeviceSubscriptions", requires=["100"])
 def migration_112_gpodder_subscription_log(conn, db_type: str) -> None:
-    """Turn GpodderSyncSubscriptions into the sync log/outbox and add per-device lists (3.3).
+    """Turn GpodderSyncSubscriptions into the sync log/outbox and add per-device lists.
 
-    - ServerTs: server receive time, the download cursor (D2). Backfilled from Timestamp, which
+    - ServerTs: server receive time, the download cursor. Backfilled from Timestamp, which
       the Go server already stamps with its own clock. NULLable for now because the Go server
-      doesn't write it; the Rust server (Phase 5) writes it and makes it NOT NULL.
+      doesn't write it; migration 114 makes it NOT NULL.
     - Origin: as in migration 111.
     - DeviceID becomes NULLable with FK ON DELETE SET NULL, so removing a device keeps its
       (possibly not yet pushed) log rows.
-    - GpodderDeviceSubscriptions: each device's last known list, for correct PUT diffs (G5).
+    - GpodderDeviceSubscriptions: each device's last known list, so a PUT only changes what that device reported.
       Backfilled by replaying the log per device: the last action per URL wins.
     """
     logger.info("Starting migration 112: subscription log + GpodderDeviceSubscriptions")
@@ -6879,11 +6884,11 @@ def migration_112_gpodder_subscription_log(conn, db_type: str) -> None:
 
 @register_migration("113", "gpodder_pinepods_device", "GpodderDevices.SystemRole marks Pinepods' own device per user", requires=["008"])
 def migration_113_gpodder_pinepods_device(conn, db_type: str) -> None:
-    """Identify Pinepods' own gpodder device by role rather than by name (3.4).
+    """Identify Pinepods' own gpodder device by role rather than by name.
 
     DeviceName is chosen by clients and UNIQUE(UserID, DeviceName), so a name alone can't be
     trusted to mean "Pinepods". SystemRole = 'pinepods' marks it, unique per user (NULLs don't
-    collide). The device itself is created on demand by the sync core (Phase 4). The existing
+    collide). The device itself is created on demand by the sync core. The existing
     internal device the current Rust sync uses ('pinepods-internal-<UserID>') is marked now, so
     Pinepods keeps its device history and no second Pinepods device appears.
     """
@@ -6903,5 +6908,48 @@ def migration_113_gpodder_pinepods_device(conn, db_type: str) -> None:
         )
         logger.info(f"Migration 113: marked {cursor.rowcount} existing internal devices as the Pinepods device")
         logger.info("Migration 113 completed")
+    finally:
+        cursor.close()
+
+
+@register_migration("114", "gpodder_subscription_server_ts_not_null", "Subscription log: backfill ServerTs and make it NOT NULL", requires=["112"])
+def migration_114_gpodder_subscription_server_ts_not_null(conn, db_type: str) -> None:
+    """Backfill GpodderSyncSubscriptions.ServerTs from Timestamp and make it NOT NULL."""
+    logger.info("Starting migration 114: GpodderSyncSubscriptions.ServerTs NOT NULL")
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    table = '"GpodderSyncSubscriptions"' if pg else "GpodderSyncSubscriptions"
+    try:
+        cursor.execute(f"UPDATE {table} SET ServerTs = Timestamp WHERE ServerTs IS NULL")
+        logger.info(f"Migration 114: backfilled ServerTs on {cursor.rowcount} subscription log rows")
+        if pg:
+            cursor.execute(f"ALTER TABLE {table} ALTER COLUMN ServerTs SET NOT NULL")
+        else:
+            cursor.execute(f"ALTER TABLE {table} MODIFY COLUMN ServerTs BIGINT NOT NULL")
+        logger.info("Migration 114 completed")
+    finally:
+        cursor.close()
+
+
+@register_migration("115", "gpodder_download_cursors", "Remember the cursor each gpodder device/session was last given by a download", requires=["008", "102"])
+def migration_115_gpodder_download_cursors(conn, db_type: str) -> None:
+    """Last download cursor per device (subscriptions) and per session (episode actions), returned
+    by uploads so a client doesn't skip changes made between its download and upload. Also
+    indexes GpodderSessions.SessionToken on MySQL, which had no index."""
+    logger.info("Starting migration 115: gpodder download cursors")
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    devices = '"GpodderDevices"' if pg else "GpodderDevices"
+    sessions = '"GpodderSessions"' if pg else "GpodderSessions"
+    try:
+        if not _column_exists(cursor, db_type, "GpodderDevices", "SubsDownloadCursor"):
+            cursor.execute(f"ALTER TABLE {devices} ADD COLUMN SubsDownloadCursor BIGINT NULL")
+        if not _column_exists(cursor, db_type, "GpodderSessions", "EpisodesDownloadCursor"):
+            cursor.execute(f"ALTER TABLE {sessions} ADD COLUMN EpisodesDownloadCursor BIGINT NULL")
+        if not pg:
+            safe_add_index(cursor, db_type,
+                           "CREATE INDEX idx_gpodder_sessions_token ON GpodderSessions(SessionToken(64))",
+                           "idx_gpodder_sessions_token")
+        logger.info("Migration 115 completed")
     finally:
         cursor.close()

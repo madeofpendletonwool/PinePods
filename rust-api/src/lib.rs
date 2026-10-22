@@ -18,6 +18,7 @@ use tower_http::{
 pub mod config;
 pub mod database;
 pub mod error;
+pub mod gpodder;
 pub mod handlers;
 pub mod models;
 pub mod openapi;
@@ -93,6 +94,7 @@ pub fn create_app(state: AppState) -> Router {
     router
         // Routes/services that intentionally stay out of the API spec
         .route("/api/placeholder/{width}/{height}", get(handlers::proxy::placeholder_image))
+        .merge(gpodder::router())
         .nest_service("/api/local-media", ServeDir::new("/opt/pinepods/local-media"))
         // Raw spec for tooling/docs builds, plus the interactive Scalar UI at /api/docs
         .route("/api/openapi.json", get(move || {

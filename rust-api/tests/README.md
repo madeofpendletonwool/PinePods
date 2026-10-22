@@ -107,9 +107,7 @@ Guidelines:
 `gpodder/` checks the gpodder sync server over real HTTP, the way AntennaPod and other
 clients use it. `PINEPODS_TEST_GPODDER` picks the server:
 
-- `go` (default): the current `gpodder-api/` service, built with `go build` and started per
-  test against that test's database, so Go must be installed.
-- `rust`: the rust-api router on a real socket, for the Rust port.
+- `rust` (default): the rust-api router on a real socket.
 - `mock`: the in-memory reference server in `harness/mock_gpodder.rs`. It follows the
   cursor rules, so every test must pass against it; that's how the tests themselves are
   checked. It also stands in for external gpodder/Nextcloud servers in sync engine tests.
@@ -117,11 +115,7 @@ clients use it. `PINEPODS_TEST_GPODDER` picks the server:
 `harness/antennapod.rs` holds AntennaPod's response parsing as assertions: a `play` action
 without `started >= 0`, `position > 0` and `total > 0` resets the episode to 0 there.
 
-Each test names the finding it covers and where it is known to fail (`Known::Go`,
-`Known::GoMariaDb`). A known failure is printed and appended to
-`target/gpodder-conformance/<server>-<db>.txt` instead of failing the run (the script prints
-these at the end); a known failure that starts passing fails the test, so the entry gets
-removed. `PINEPODS_TEST_GPODDER_STRICT=1` shows the real failures.
+Library assertions are skipped against `mock`, which has no Pinepods database behind it.
 
 ## Not covered yet
 

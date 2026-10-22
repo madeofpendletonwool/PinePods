@@ -52,6 +52,21 @@ pub struct ScheduledBackupRow {
     pub last_run: Option<DateTime<Utc>>,
 }
 
+/// A transaction rolled back because it collided with a concurrent one: a deadlock or
+/// serialization failure, or MariaDB's "record has changed since last read" (1020, snapshot
+/// isolation). Running it again is safe.
+fn is_write_conflict(e: &AppError) -> bool {
+    let AppError::Database(sqlx::Error::Database(db)) = e else { return false };
+    if matches!(db.code().as_deref(), Some("40001") | Some("40P01")) {
+        return true;
+    }
+    db.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>().is_some_and(|m| matches!(m.number(), 1020 | 1213))
+}
+
+/// `Users.GpodderUrl` of users on the PinePods gpodder server. Not a real address any more;
+/// clients and the UI read it as "internal".
+pub const INTERNAL_GPODDER_URL: &str = "http://localhost:8042";
+
 impl DatabasePool {
     pub async fn new(config: &Config) -> AppResult<Self> {
         let db = &config.database;
@@ -1105,8 +1120,23 @@ impl DatabasePool {
 
     /// Unsubscribe: delete a podcast and everything that depends on it in one transaction, and
     /// log the `remove` for sync. Every unsubscribe path (by id, by name, by URL, sync apply)
-    /// goes through here. Returns false if the podcast doesn't exist.
+    /// goes through here. Returns false if the podcast doesn't exist. Retried when it collides
+    /// with a concurrent write to the same rows (e.g. a queued import of that feed).
     async fn remove_podcast_cascade(&self, podcast_id: i32, user_id: i32, origin: crate::services::sync::SyncOrigin) -> AppResult<bool> {
+        let mut attempt = 0;
+        loop {
+            match self.remove_podcast_cascade_once(podcast_id, user_id, origin).await {
+                Err(e) if attempt < 3 && is_write_conflict(&e) => {
+                    attempt += 1;
+                    debug!("Removing podcast {} hit a write conflict, retrying ({}/3)", podcast_id, attempt);
+                    tokio::time::sleep(Duration::from_millis(20 * attempt as u64)).await;
+                }
+                other => return other,
+            }
+        }
+    }
+
+    async fn remove_podcast_cascade_once(&self, podcast_id: i32, user_id: i32, origin: crate::services::sync::SyncOrigin) -> AppResult<bool> {
         use crate::services::sync::{events, shareable_feed};
         let log = events::should_log(self, user_id, origin).await;
         match self {
@@ -3321,7 +3351,7 @@ impl DatabasePool {
                         "PodcastsAdded": row.try_get::<i32, _>("podcastsadded")?,
                         "EpisodesSaved": saved_count as i32,
                         "EpisodesDownloaded": downloaded_count as i32,
-                        "GpodderUrl": "http://localhost:8042",
+                        "GpodderUrl": INTERNAL_GPODDER_URL,
                         "Pod_Sync_Type": "gpodder"
                     });
 
@@ -3367,7 +3397,7 @@ impl DatabasePool {
                         "PodcastsAdded": row.try_get::<i32, _>("PodcastsAdded")?,
                         "EpisodesSaved": saved_count as i32,
                         "EpisodesDownloaded": downloaded_count as i32,
-                        "GpodderUrl": "http://localhost:8042",
+                        "GpodderUrl": INTERNAL_GPODDER_URL,
                         "Pod_Sync_Type": "gpodder"
                     });
 
@@ -7331,9 +7361,7 @@ impl DatabasePool {
         let mut attempt = 0;
         loop {
             match self.insert_new_episodes_once(podcast_id, rows).await {
-                Err(AppError::Database(sqlx::Error::Database(e)))
-                    if attempt < 3 && matches!(e.code().as_deref(), Some("40001") | Some("40P01")) =>
-                {
+                Err(e) if attempt < 3 && is_write_conflict(&e) => {
                     attempt += 1;
                     debug!("Episode insert for podcast {} hit a deadlock, retrying ({}/3)", podcast_id, attempt);
                     tokio::time::sleep(Duration::from_millis(20 * attempt as u64)).await;
@@ -14867,9 +14895,24 @@ impl DatabasePool {
         if let Some(sync_settings) = self.get_user_sync_settings(user_id).await? {
             match sync_settings.sync_type.as_str() {
                 "gpodder" | "external" => {
-                    // Both internal and external use HTTP API calls to GPodder server
-                    // Internal: http://localhost:8042, External: user's configured URL
-                    let mut devices = self.fetch_devices_from_gpodder_api(&sync_settings).await?;
+                    let mut devices = if sync_settings.sync_type == "gpodder" {
+                        self.gpodder_devices(user_id)
+                            .await?
+                            .into_iter()
+                            .map(|d| serde_json::json!({
+                                "id": d.name,
+                                "name": d.name,
+                                "type": d.kind.unwrap_or_else(|| "other".to_string()),
+                                "caption": d.caption.unwrap_or_else(|| d.name.clone()),
+                                "last_sync": Option::<String>::None,
+                                "is_active": true,
+                                "is_default": false,
+                                "is_remote": false,
+                            }))
+                            .collect()
+                    } else {
+                        self.fetch_devices_from_gpodder_api(&sync_settings).await?
+                    };
                     
                     // Get the default device name from Users table to mark the correct device
                     let default_device_name = match self {
@@ -14920,37 +14963,15 @@ impl DatabasePool {
     }
 
 
-    // Fetch devices from GPodder API server - works for both internal and external
+    // Fetch devices from an external gpodder server.
     async fn fetch_devices_from_gpodder_api(&self, settings: &UserSyncSettings) -> AppResult<Vec<serde_json::Value>> {
-        // For internal GPodder API, use X-GPodder-Token header
-        // For external GPodder API, use session auth with basic auth fallback
-        let (client, auth_headers) = if settings.url == "http://localhost:8042" {
-            // Internal GPodder API - use X-GPodder-Token
-            let client = reqwest::Client::new();
-            let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert("X-GPodder-Token", settings.token.parse().unwrap());
-            (client, Some(headers))
-        } else {
-            // External GPodder API - decrypt password and use session auth  
-            let decrypted_password = self.decrypt_password(&settings.token).await?;
-            let session = self.create_gpodder_session_with_password(&settings.url, &settings.username, &decrypted_password).await?;
-            (session.client, None)
-        };
-        
-        let devices_url = format!("{}/api/2/devices/{}.json", 
+        let decrypted_password = self.decrypt_password(&settings.token).await?;
+        let session = self.create_gpodder_session_with_password(&settings.url, &settings.username, &decrypted_password).await?;
+
+        let devices_url = format!("{}/api/2/devices/{}.json",
             settings.url.trim_end_matches('/'), settings.username);
-        
-        let mut request = client.get(&devices_url);
-        
-        // Add authentication headers if needed
-        if let Some(headers) = auth_headers {
-            request = request.headers(headers);
-        } else {
-            // External server with session auth - if session failed, fall back to basic auth
-            let decrypted_password = self.decrypt_password(&settings.token).await?;
-            request = request.basic_auth(&settings.username, Some(&decrypted_password));
-        }
-        
+
+        let request = session.client.get(&devices_url).basic_auth(&settings.username, Some(&decrypted_password));
         let response = request
             .send()
             .await
@@ -15036,8 +15057,9 @@ impl DatabasePool {
         
         match settings.sync_type.as_str() {
             "gpodder" => {
-                // Internal gPodder API on localhost:8042 - use unencrypted token directly
-                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, true).await
+                // The PinePods gpodder server reads the same database; republish local state.
+                self.gpodder_publish_episode_state(user_id).await?;
+                Ok(true)
             }
             "nextcloud" => {
                 self.sync_with_nextcloud(user_id, &settings, true).await
@@ -15048,10 +15070,9 @@ impl DatabasePool {
                 self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, true).await
             }
             "both" => {
-                let internal_result = self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, true).await?;
+                self.gpodder_publish_episode_state(user_id).await?;
                 let decrypted_token = self.decrypt_password(&settings.token).await?;
-                let external_result = self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, true).await?;
-                Ok(internal_result || external_result)
+                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, true).await
             }
             _ => Ok(false)
         }
@@ -15068,9 +15089,8 @@ impl DatabasePool {
         let device_name = self.get_or_create_default_device(user_id).await?;
         
         let success = match settings.sync_type.as_str() {
-            "gpodder" => {
-                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?
-            }
+            // The PinePods gpodder server reads the same database: nothing to sync.
+            "gpodder" => true,
             "nextcloud" => {
                 self.sync_with_nextcloud(user_id, &settings, false).await?
             }
@@ -15079,10 +15099,8 @@ impl DatabasePool {
                 self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?
             }
             "both" => {
-                let internal_success = self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?;
                 let decrypted_token = self.decrypt_password(&settings.token).await?;
-                let external_success = self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?;
-                internal_success || external_success
+                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?
             }
             _ => false
         };
@@ -15103,14 +15121,7 @@ impl DatabasePool {
             gpodder_url.trim_end_matches('/'), username);
         
         // Use correct authentication based on internal vs external
-        let devices_response = if gpodder_url == "http://localhost:8042" {
-            // Internal GPodder API - use X-GPodder-Token header
-            let client = reqwest::Client::new();
-            client.get(&devices_url)
-                .header("X-GPodder-Token", password)
-                .send()
-                .await
-        } else {
+        let devices_response = {
             // External GPodder API - use session auth with basic fallback
             let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
             if session.authenticated {
@@ -15169,17 +15180,6 @@ impl DatabasePool {
         let mut all_subscriptions = std::collections::HashSet::new();
         let mut all_removals = std::collections::HashSet::new();
 
-        // The internal server shares Pinepods' database, and Pinepods' own changes are logged
-        // there as they happen (sync events) under its own device. Asking as that device returns
-        // every other device's changes folded to the final action per feed, without Pinepods'
-        // own rows. Asking as each device and merging could report a feed as both added and
-        // removed (this loop applies adds, then removes) and re-applies Pinepods' own changes.
-        let devices = if gpodder_url == "http://localhost:8042" {
-            vec![self.sync_ensure_pinepods_device(user_id).await?]
-        } else {
-            devices
-        };
-        
         for device_id in &devices {
             tracing::info!("Getting subscriptions from device: {}", device_id);
             
@@ -15191,13 +15191,7 @@ impl DatabasePool {
                     gpodder_url.trim_end_matches('/'), username, device_id)
             };
             
-            let device_response = if gpodder_url == "http://localhost:8042" {
-                let client = reqwest::Client::new();
-                client.get(&subscriptions_url)
-                    .header("X-GPodder-Token", password)
-                    .send()
-                    .await
-            } else {
+            let device_response = {
                 let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
                 if session.authenticated {
                     session.client
@@ -15279,13 +15273,7 @@ impl DatabasePool {
             let episode_actions_url = format!("{}/api/2/episodes/{}.json?since={}",
                 gpodder_url.trim_end_matches('/'), username, current_since);
 
-            let device_response = if gpodder_url == "http://localhost:8042" {
-                    let client = reqwest::Client::new();
-                    client.get(&episode_actions_url)
-                        .header("X-GPodder-Token", password)
-                        .send()
-                        .await
-                } else {
+            let device_response = {
                     let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
                     if session.authenticated {
                         session.client
@@ -15412,10 +15400,7 @@ impl DatabasePool {
         let devices_url = format!("{}/api/2/devices/{}.json", 
             gpodder_url.trim_end_matches('/'), username);
         
-        let devices_response = if gpodder_url == "http://localhost:8042" {
-            let client = reqwest::Client::new();
-            client.get(&devices_url).header("X-GPodder-Token", password).send().await
-        } else {
+        let devices_response = {
             let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
             if session.authenticated {
                 session.client.get(&devices_url).send().await
@@ -15460,10 +15445,7 @@ impl DatabasePool {
             let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json?since=0", 
                 gpodder_url.trim_end_matches('/'), username, device_id);
             
-            let response = if gpodder_url == "http://localhost:8042" {
-                let client = reqwest::Client::new();
-                client.get(&subscriptions_url).header("X-GPodder-Token", password).send().await
-            } else {
+            let response = {
                 let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
                 if session.authenticated {
                     session.client.get(&subscriptions_url).send().await
@@ -15525,10 +15507,7 @@ impl DatabasePool {
             let episode_actions_url = format!("{}/api/2/episodes/{}.json?since={}",
                 gpodder_url.trim_end_matches('/'), username, current_since);
 
-                let response = if gpodder_url == "http://localhost:8042" {
-                    let client = reqwest::Client::new();
-                    client.get(&episode_actions_url).header("X-GPodder-Token", password).send().await
-                } else {
+                let response = {
                     let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
                     if session.authenticated {
                         session.client.get(&episode_actions_url).send().await
@@ -15723,15 +15702,7 @@ impl DatabasePool {
         let upload_url = format!("{}/api/2/episodes/{}.json", gpodder_url.trim_end_matches('/'), username);
         
         // Use correct authentication based on internal vs external
-        let response = if gpodder_url == "http://localhost:8042" {
-            // Internal GPodder API - use X-GPodder-Token header
-            let client = reqwest::Client::new();
-            client.post(&upload_url)
-                .header("X-GPodder-Token", password)
-                .json(episode_actions)
-                .send()
-                .await
-        } else {
+        let response = {
             // External GPodder API - use session auth with basic fallback
             let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
             if session.authenticated {
@@ -15914,15 +15885,7 @@ impl DatabasePool {
         });
 
         // Use correct authentication based on internal vs external
-        let response = if gpodder_url == "http://localhost:8042" {
-            // Internal GPodder API - use X-GPodder-Token header
-            let client = reqwest::Client::new();
-            client.post(&upload_url)
-                .header("X-GPodder-Token", password)
-                .json(&subscription_changes)
-                .send()
-                .await
-        } else {
+        let response = {
             // External GPodder API - use session auth with basic fallback
             let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
             if session.authenticated {
@@ -24501,168 +24464,79 @@ impl DatabasePool {
         Ok((processed, failed))
     }
 
-    // Set up internal gpodder sync - matches Python set_gpodder_internal_sync function exactly
+    // Turn on the PinePods gpodder server for a user. Clients log in with the user's password or
+    // an app password, so no token is generated. An external server the user already syncs with
+    // keeps its settings ("both"). The user's current listening state is published to the sync
+    // log so clients get it on their first sync.
     pub async fn set_gpodder_internal_sync(&self, user_id: i32) -> AppResult<serde_json::Value> {
+        let status = self.gpodder_get_status(user_id).await?;
+        let internal_only = matches!(status.sync_type.as_str(), "None" | "" | "gpodder");
+        let new_sync_type = match status.sync_type.as_str() {
+            "external" => "both",
+            "None" | "" => "gpodder",
+            other => other,
+        }
+        .to_string();
+        let device_name = self.sync_ensure_pinepods_device(user_id).await?;
+
         match self {
             DatabasePool::Postgres(pool) => {
-                // Get the username and current sync type
-                let user_row = sqlx::query(r#"SELECT username, pod_sync_type FROM "Users" WHERE userid = $1"#)
+                if internal_only {
+                    sqlx::query(
+                        r#"UPDATE "Users"
+                           SET gpodderurl = $1, gpoddertoken = '', gpodderloginname = username, pod_sync_type = $2,
+                               defaultgpodderdevice = $3, gpodderserverenabled = TRUE
+                           WHERE userid = $4"#,
+                    )
+                    .bind(INTERNAL_GPODDER_URL)
+                    .bind(&new_sync_type)
+                    .bind(&device_name)
                     .bind(user_id)
-                    .fetch_optional(pool)
+                    .execute(pool)
                     .await?;
-                
-                let (username, current_sync_type) = if let Some(row) = user_row {
-                    let username: String = row.try_get("username")?;
-                    let sync_type: Option<String> = row.try_get("pod_sync_type")?;
-                    (username, sync_type.unwrap_or_else(|| "None".to_string()))
                 } else {
-                    return Err(AppError::not_found("User not found"));
-                };
-
-                // Generate new sync type based on current
-                let new_sync_type = match current_sync_type.as_str() {
-                    "external" => "both",
-                    "None" | "" => "gpodder",
-                    _ => &current_sync_type,
-                };
-
-                // Generate a secure internal token (64 characters alphanumeric)
-                use rand::{distr::Alphanumeric, RngExt};
-                let internal_token: String = rand::rng()
-                    .sample_iter(&Alphanumeric)
-                    .take(64)
-                    .map(char::from)
-                    .collect();
-
-                let local_gpodder_url = "http://localhost:8042";
-
-                // Create default device name
-                let default_device_name = format!("pinepods-internal-{}", user_id);
-
-                // Update user with internal gpodder settings and set default device
-                sqlx::query(r#"
-                    UPDATE "Users" 
-                    SET gpodderurl = $1, gpoddertoken = $2, gpodderloginname = $3, pod_sync_type = $4, defaultgpodderdevice = $6, gpodderserverenabled = TRUE
-                    WHERE userid = $5
-                "#)
-                .bind(local_gpodder_url)
-                .bind(&internal_token)
-                .bind(&username)
-                .bind(new_sync_type)
-                .bind(user_id)
-                .bind(&default_device_name)
-                .execute(pool)
-                .await?;
-            crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
-                
-                // Create device via gPodder API (matches Python version exactly)
-                let device_result = match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
-                    Ok(device_id) => {
-                        serde_json::json!({
-                            "device_name": default_device_name,
-                            "device_id": device_id,
-                            "success": true
-                        })
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to create device via API: {}, continuing anyway", e);
-                        // Even if device creation fails, still return success (matches Python behavior)
-                        serde_json::json!({
-                            "device_name": default_device_name,
-                            "device_id": user_id,
-                            "success": true
-                        })
-                    }
-                };
-                
-                // Perform initial full sync to get ALL user subscriptions from all devices
-                if let Err(e) = self.call_gpodder_initial_full_sync(user_id, local_gpodder_url, &username, &internal_token, &default_device_name).await {
-                    tracing::warn!("Initial GPodder full sync failed during setup: {}", e);
-                    // Don't fail setup if initial sync fails
+                    sqlx::query(r#"UPDATE "Users" SET pod_sync_type = $1, gpodderserverenabled = TRUE WHERE userid = $2"#)
+                        .bind(&new_sync_type)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
                 }
-                
-                Ok(device_result)
             }
             DatabasePool::MySQL(pool) => {
-                // Get the username and current sync type
-                let user_row = sqlx::query("SELECT Username, Pod_Sync_Type FROM Users WHERE UserID = ?")
+                if internal_only {
+                    sqlx::query(
+                        "UPDATE Users
+                         SET GpodderUrl = ?, GpodderToken = '', GpodderLoginName = Username, Pod_Sync_Type = ?,
+                             DefaultGpodderDevice = ?, GpodderServerEnabled = TRUE
+                         WHERE UserID = ?",
+                    )
+                    .bind(INTERNAL_GPODDER_URL)
+                    .bind(&new_sync_type)
+                    .bind(&device_name)
                     .bind(user_id)
-                    .fetch_optional(pool)
+                    .execute(pool)
                     .await?;
-                
-                let (username, current_sync_type) = if let Some(row) = user_row {
-                    let username: String = row.try_get("Username")?;
-                    let sync_type: Option<String> = row.try_get("Pod_Sync_Type")?;
-                    (username, sync_type.unwrap_or_else(|| "None".to_string()))
                 } else {
-                    return Err(AppError::not_found("User not found"));
-                };
-
-                // Generate new sync type based on current
-                let new_sync_type = match current_sync_type.as_str() {
-                    "external" => "both",
-                    "None" | "" => "gpodder",
-                    _ => &current_sync_type,
-                };
-
-                // Generate a secure internal token (64 characters alphanumeric)
-                use rand::{distr::Alphanumeric, RngExt};
-                let internal_token: String = rand::rng()
-                    .sample_iter(&Alphanumeric)
-                    .take(64)
-                    .map(char::from)
-                    .collect();
-
-                let local_gpodder_url = "http://localhost:8042";
-
-                // Create default device name
-                let default_device_name = format!("pinepods-internal-{}", user_id);
-
-                // Update user with internal gpodder settings and set default device
-                sqlx::query("
-                    UPDATE Users 
-                    SET GpodderUrl = ?, GpodderToken = ?, GpodderLoginName = ?, Pod_Sync_Type = ?, DefaultGpodderDevice = ?, GpodderServerEnabled = TRUE
-                    WHERE UserID = ?
-                ")
-                .bind(local_gpodder_url)
-                .bind(&internal_token)
-                .bind(&username)
-                .bind(new_sync_type)
-                .bind(&default_device_name)
-                .bind(user_id)
-                .execute(pool)
-                .await?;
-            crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
-                
-                // Create device via gPodder API (matches Python version exactly)
-                let device_result = match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
-                    Ok(device_id) => {
-                        serde_json::json!({
-                            "device_name": default_device_name,
-                            "device_id": device_id,
-                            "success": true
-                        })
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to create device via API: {}, continuing anyway", e);
-                        // Even if device creation fails, still return success (matches Python behavior)
-                        serde_json::json!({
-                            "device_name": default_device_name,
-                            "device_id": user_id,
-                            "success": true
-                        })
-                    }
-                };
-                
-                // Perform initial full sync to get ALL user subscriptions from all devices
-                if let Err(e) = self.call_gpodder_initial_full_sync(user_id, local_gpodder_url, &username, &internal_token, &default_device_name).await {
-                    tracing::warn!("Initial GPodder full sync failed during setup: {}", e);
-                    // Don't fail setup if initial sync fails
+                    sqlx::query("UPDATE Users SET Pod_Sync_Type = ?, GpodderServerEnabled = TRUE WHERE UserID = ?")
+                        .bind(&new_sync_type)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
                 }
-                
-                Ok(device_result)
             }
         }
+        crate::services::sync::invalidate_sync_enabled(user_id);
+
+        match self.gpodder_publish_episode_state(user_id).await {
+            Ok(n) => tracing::debug!("Published {} episode states to the sync log for user {}", n, user_id),
+            Err(e) => tracing::warn!("Publishing episode state for user {} failed: {}", user_id, e),
+        }
+
+        Ok(serde_json::json!({
+            "device_name": device_name,
+            "device_id": device_name,
+            "success": true
+        }))
     }
 
     // Disable internal gpodder sync - matches Python disable_gpodder_internal_sync function exactly
@@ -24681,7 +24555,7 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 // If internal API is being used, clear the settings
-                if user_status.gpodder_url.as_deref() == Some("http://localhost:8042") {
+                if user_status.gpodder_url.as_deref() == Some(INTERNAL_GPODDER_URL) {
                     sqlx::query(r#"
                         UPDATE "Users" 
                         SET gpodderurl = '', gpoddertoken = '', gpodderloginname = '', pod_sync_type = $1, gpodderserverenabled = FALSE
@@ -24704,7 +24578,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 // If internal API is being used, clear the settings
-                if user_status.gpodder_url.as_deref() == Some("http://localhost:8042") {
+                if user_status.gpodder_url.as_deref() == Some(INTERNAL_GPODDER_URL) {
                     sqlx::query("
                         UPDATE Users 
                         SET GpodderUrl = '', GpodderToken = '', GpodderLoginName = '', Pod_Sync_Type = ?, GpodderServerEnabled = FALSE
@@ -24730,39 +24604,18 @@ impl DatabasePool {
         Ok(true)
     }
 
-    // Helper function to create device via gPodder API - matches Python create device logic exactly
+    // Create a device on an external gpodder server (`token` is the encrypted password).
     pub async fn create_device_via_gpodder_api(&self, gpodder_url: &str, username: &str, token: &str, device_name: &str) -> AppResult<String> {
-        use reqwest;
-        use serde_json;
-        
-        // Use correct authentication based on internal vs external
-        let (client, auth_method) = if gpodder_url == "http://localhost:8042" {
-            // Internal GPodder API - use X-GPodder-Token header
-            let client = reqwest::Client::new();
-            (client, "internal")
-        } else {
-            // External GPodder API - use session auth with basic fallback
-            let decrypted_password = self.decrypt_password(token).await?;
-            let session = self.create_gpodder_session_with_password(gpodder_url, username, &decrypted_password).await?;
-            (session.client, "external")
-        };
+        let decrypted_password = self.decrypt_password(token).await?;
+        let client = self.create_gpodder_session_with_password(gpodder_url, username, &decrypted_password).await?.client;
         
         // First, check if device already exists
         let device_list_url = format!("{}/api/2/devices/{}.json", gpodder_url.trim_end_matches('/'), username);
         
-        let response = if auth_method == "internal" {
-            client.get(&device_list_url)
-                .header("X-GPodder-Token", token)
-                .send()
-                .await
-        } else {
-            // External - session auth with basic fallback handled by session client
-            let decrypted_password = self.decrypt_password(token).await?;
-            client.get(&device_list_url)
-                .basic_auth(username, Some(&decrypted_password))
-                .send()
-                .await
-        };
+        let response = client.get(&device_list_url)
+            .basic_auth(username, Some(&decrypted_password))
+            .send()
+            .await;
         
         match response {
             Ok(response) if response.status().is_success() => {
@@ -24790,20 +24643,11 @@ impl DatabasePool {
             "type": "server"
         });
         
-        let create_response = if auth_method == "internal" {
-            client.post(&device_url)
-                .header("X-GPodder-Token", token)
-                .json(&device_data)
-                .send()
-                .await
-        } else {
-            let decrypted_password = self.decrypt_password(token).await?;
-            client.post(&device_url)
-                .basic_auth(username, Some(&decrypted_password))
-                .json(&device_data)
-                .send()
-                .await
-        };
+        let create_response = client.post(&device_url)
+            .basic_auth(username, Some(&decrypted_password))
+            .json(&device_data)
+            .send()
+            .await;
         
         match create_response
         {
@@ -24839,10 +24683,8 @@ impl DatabasePool {
 
         // Call the appropriate sync method based on sync type
         match settings.sync_type.as_str() {
-            "gpodder" => {
-                // Internal GPodder API - token is already unencrypted for internal use
-                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await
-            }
+            // The PinePods gpodder server reads the same database: nothing to sync.
+            "gpodder" => Ok(false),
             "external" => {
                 // External GPodder server - decrypt token using existing encryption system
                 let decrypted_token = match self.decrypt_gpodder_token(&settings.token).await {
@@ -24852,14 +24694,12 @@ impl DatabasePool {
                 self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await
             }
             "both" => {
-                // Both internal and external
-                let internal_result = self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?;
+                // The internal server needs no sync; only the external one.
                 let decrypted_token = match self.decrypt_gpodder_token(&settings.token).await {
                     Ok(token) => token,
                     Err(_) => settings.token.clone(),
                 };
-                let external_result = self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?;
-                Ok(internal_result || external_result)
+                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await
             }
             "nextcloud" => {
                 // Nextcloud sync - use existing nextcloud refresh functionality
@@ -24922,8 +24762,46 @@ impl DatabasePool {
         // Use the same authentication logic as sync operations
         let (gpodder_url, username, password) = match settings.sync_type.as_str() {
             "gpodder" => {
-                // Internal gPodder API - use token directly (no decryption needed)
-                ("http://localhost:8042".to_string(), settings.username.clone(), settings.token.clone())
+                // The PinePods gpodder server: read the sync log directly.
+                let stats = self.gpodder_server_stats(user_id).await?;
+                return Ok(GpodderStatistics {
+                    server_url: "PinePods gpodder server".to_string(),
+                    sync_type: settings.sync_type.clone(),
+                    sync_enabled: true,
+                    total_devices: stats.devices.len() as i32,
+                    server_devices: stats
+                        .devices
+                        .into_iter()
+                        .map(|d| ServerDevice { id: d.name, caption: d.caption, device_type: d.kind, subscriptions: stats.library.len() as i32 })
+                        .collect(),
+                    total_subscriptions: stats.library.len() as i32,
+                    server_subscriptions: stats
+                        .library
+                        .into_iter()
+                        .map(|(url, title)| ServerSubscription { url, title, description: None })
+                        .collect(),
+                    recent_episode_actions: stats
+                        .recent_actions
+                        .into_iter()
+                        .map(|a| ServerEpisodeAction {
+                            podcast: a.podcast,
+                            episode: a.episode,
+                            action: a.action,
+                            timestamp: chrono::DateTime::from_timestamp(a.timestamp, 0)
+                                .map(|t| t.format("%Y-%m-%dT%H:%M:%S").to_string())
+                                .unwrap_or_default(),
+                            position: a.position,
+                            device: a.device,
+                        })
+                        .collect(),
+                    total_episode_actions: stats.total_actions as i32,
+                    connection_status: "Connected".to_string(),
+                    last_sync_timestamp: stats
+                        .last_change
+                        .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
+                        .map(|t| t.to_rfc3339()),
+                    api_endpoints_tested: vec![],
+                });
             }
             "external" => {
                 // External gPodder server - decrypt token first
