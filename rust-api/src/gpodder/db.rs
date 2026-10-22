@@ -108,6 +108,8 @@ pub struct GpodderStatsAction {
     pub timestamp: i64,
     pub position: Option<i32>,
     pub device: Option<String>,
+    /// `client`, `pinepods` or `target:<id>`.
+    pub origin: String,
 }
 
 fn reserved(name: &str) -> AppError {
@@ -273,30 +275,39 @@ impl DatabasePool {
         Ok(())
     }
 
-    /// A new 30-day session.
-    pub(crate) async fn gpodder_create_session(&self, user_id: i32, token: &str, user_agent: Option<&str>, client_ip: Option<&str>) -> AppResult<()> {
+    /// A new 30-day session. Opened with an app password, it ends when that password is revoked.
+    pub(crate) async fn gpodder_create_session(
+        &self,
+        user_id: i32,
+        token: &str,
+        user_agent: Option<&str>,
+        client_ip: Option<&str>,
+        app_password: Option<i32>,
+    ) -> AppResult<()> {
         match self {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
-                    r#"INSERT INTO "GpodderSessions" (userid, sessiontoken, expiresat, useragent, clientip)
-                       VALUES ($1, $2, NOW() + INTERVAL '30 days', $3, $4)"#,
+                    r#"INSERT INTO "GpodderSessions" (userid, sessiontoken, expiresat, useragent, clientip, apppasswordid)
+                       VALUES ($1, $2, NOW() + INTERVAL '30 days', $3, $4, $5)"#,
                 )
                 .bind(user_id)
                 .bind(token)
                 .bind(user_agent)
                 .bind(client_ip)
+                .bind(app_password)
                 .execute(pool)
                 .await?;
             }
             DatabasePool::MySQL(pool) => {
                 sqlx::query(
-                    "INSERT INTO GpodderSessions (UserID, SessionToken, ExpiresAt, UserAgent, ClientIP)
-                     VALUES (?, ?, NOW() + INTERVAL 30 DAY, ?, ?)",
+                    "INSERT INTO GpodderSessions (UserID, SessionToken, ExpiresAt, UserAgent, ClientIP, AppPasswordID)
+                     VALUES (?, ?, NOW() + INTERVAL 30 DAY, ?, ?, ?)",
                 )
                 .bind(user_id)
                 .bind(token)
                 .bind(user_agent)
                 .bind(client_ip)
+                .bind(app_password)
                 .execute(pool)
                 .await?;
             }
@@ -1160,11 +1171,11 @@ impl DatabasePool {
                 (url, title)
             })
             .collect();
-        type ActionRow = (String, String, String, i64, Option<i32>, Option<String>);
+        type ActionRow = (String, String, String, i64, Option<i32>, Option<String>, String);
         let (recent, total, last): (Vec<ActionRow>, i64, Option<i64>) = match self {
             DatabasePool::Postgres(pool) => (
                 sqlx::query_as(
-                    r#"SELECT a.podcasturl, a.episodeurl, a.action, a.timestamp, a.position, d.devicename
+                    r#"SELECT a.podcasturl, a.episodeurl, a.action, a.timestamp, a.position, d.devicename, a.origin
                        FROM "GpodderSyncEpisodeActions" a LEFT JOIN "GpodderDevices" d ON d.deviceid = a.deviceid
                        WHERE a.userid = $1 ORDER BY a.serverts DESC, a.actionid DESC LIMIT 10"#,
                 )
@@ -1182,7 +1193,7 @@ impl DatabasePool {
             ),
             DatabasePool::MySQL(pool) => (
                 sqlx::query_as(
-                    "SELECT a.PodcastURL, a.EpisodeURL, a.Action, a.Timestamp, a.Position, d.DeviceName
+                    "SELECT a.PodcastURL, a.EpisodeURL, a.Action, a.Timestamp, a.Position, d.DeviceName, a.Origin
                      FROM GpodderSyncEpisodeActions a LEFT JOIN GpodderDevices d ON d.DeviceID = a.DeviceID
                      WHERE a.UserID = ? ORDER BY a.ServerTs DESC, a.ActionID DESC LIMIT 10",
                 )
@@ -1204,11 +1215,208 @@ impl DatabasePool {
             library,
             recent_actions: recent
                 .into_iter()
-                .map(|(podcast, episode, action, timestamp, position, device)| GpodderStatsAction { podcast, episode, action, timestamp, position, device })
+                .map(|(podcast, episode, action, timestamp, position, device, origin)| GpodderStatsAction {
+                    podcast,
+                    episode,
+                    action,
+                    timestamp,
+                    position,
+                    device,
+                    origin,
+                })
                 .collect(),
             total_actions: total,
             last_change: last,
         })
+    }
+}
+
+/// A device as the sync settings show it. `system` = Pinepods' own device (can't be renamed
+/// or removed). Times are unix seconds.
+#[derive(Debug, Clone)]
+pub struct DeviceInfo {
+    pub id: i32,
+    pub name: String,
+    pub caption: Option<String>,
+    pub kind: Option<String>,
+    pub last_seen: Option<i64>,
+    pub system: bool,
+}
+
+/// An app password without its hash. Times are unix seconds.
+#[derive(Debug, Clone)]
+pub struct AppPasswordInfo {
+    pub id: i32,
+    pub label: String,
+    pub created_at: Option<i64>,
+    pub last_used_at: Option<i64>,
+}
+
+type DeviceInfoRow = (i32, String, Option<String>, Option<String>, Option<i64>, Option<String>);
+
+fn device_info((id, name, caption, kind, last_seen, role): DeviceInfoRow) -> DeviceInfo {
+    DeviceInfo { id, name, caption: caption.filter(|c| !c.is_empty()), kind: kind.filter(|k| !k.is_empty()), last_seen, system: role.is_some() }
+}
+
+impl DatabasePool {
+    // ---- sync settings: devices and app passwords ---------------------------------------------
+
+    /// The username clients log in with.
+    pub async fn gpodder_username(&self, user_id: i32) -> AppResult<Option<String>> {
+        Ok(match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT username FROM "Users" WHERE userid = $1"#)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT Username FROM Users WHERE UserID = ?")
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?,
+        })
+    }
+
+    /// The user's active devices, Pinepods' own included, with when each last synced.
+    pub async fn gpodder_device_list(&self, user_id: i32) -> AppResult<Vec<DeviceInfo>> {
+        let rows: Vec<DeviceInfoRow> = match self {
+            DatabasePool::Postgres(pool) => sqlx::query_as(
+                r#"SELECT deviceid, devicename, devicecaption, devicetype,
+                          EXTRACT(EPOCH FROM lastsync::timestamptz)::BIGINT, systemrole
+                   FROM "GpodderDevices" WHERE userid = $1 AND COALESCE(isactive, TRUE) ORDER BY deviceid"#,
+            )
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_as(
+                "SELECT DeviceID, DeviceName, DeviceCaption, DeviceType, CAST(UNIX_TIMESTAMP(LastSync) AS SIGNED), SystemRole
+                 FROM GpodderDevices WHERE UserID = ? AND COALESCE(IsActive, TRUE) ORDER BY DeviceID",
+            )
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?,
+        };
+        Ok(rows.into_iter().map(device_info).collect())
+    }
+
+    /// One of the user's devices by id.
+    pub async fn gpodder_device_by_id(&self, user_id: i32, device_id: i32) -> AppResult<Option<DeviceInfo>> {
+        Ok(self.gpodder_device_list(user_id).await?.into_iter().find(|d| d.id == device_id))
+    }
+
+    /// Set a client device's caption. Pinepods' own device is left alone (false).
+    pub async fn gpodder_rename_device(&self, user_id: i32, device_id: i32, caption: &str) -> AppResult<bool> {
+        let n = match self {
+            DatabasePool::Postgres(pool) => sqlx::query(
+                r#"UPDATE "GpodderDevices" SET devicecaption = $1 WHERE deviceid = $2 AND userid = $3 AND systemrole IS NULL"#,
+            )
+            .bind(caption)
+            .bind(device_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?
+            .rows_affected(),
+            DatabasePool::MySQL(pool) => sqlx::query(
+                "UPDATE GpodderDevices SET DeviceCaption = ? WHERE DeviceID = ? AND UserID = ? AND SystemRole IS NULL",
+            )
+            .bind(caption)
+            .bind(device_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?
+            .rows_affected(),
+        };
+        Ok(n > 0)
+    }
+
+    /// Remove a client device. Its log rows stay (device set NULL), its subscription list goes.
+    /// The client gets a new device the next time it syncs. Pinepods' own device is never removed.
+    pub async fn gpodder_remove_device(&self, user_id: i32, device_id: i32) -> AppResult<bool> {
+        // Clearing the device on log rows writes to the log, so lock the targets first.
+        let n = match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                crate::services::sync::db::pg_lock_targets_shared(&mut tx, user_id).await?;
+                let n = sqlx::query(r#"DELETE FROM "GpodderDevices" WHERE deviceid = $1 AND userid = $2 AND systemrole IS NULL"#)
+                    .bind(device_id)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected();
+                tx.commit().await?;
+                n
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, true).await?;
+                let n = sqlx::query("DELETE FROM GpodderDevices WHERE DeviceID = ? AND UserID = ? AND SystemRole IS NULL")
+                    .bind(device_id)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected();
+                tx.commit().await?;
+                n
+            }
+        };
+        Ok(n > 0)
+    }
+
+    pub async fn gpodder_app_password_list(&self, user_id: i32) -> AppResult<Vec<AppPasswordInfo>> {
+        let rows: Vec<(i32, String, Option<i64>, Option<i64>)> = match self {
+            DatabasePool::Postgres(pool) => sqlx::query_as(
+                r#"SELECT apppasswordid, label, EXTRACT(EPOCH FROM createdat::timestamptz)::BIGINT,
+                          EXTRACT(EPOCH FROM lastusedat::timestamptz)::BIGINT
+                   FROM "GpodderAppPasswords" WHERE userid = $1 ORDER BY apppasswordid"#,
+            )
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_as(
+                "SELECT AppPasswordID, Label, CAST(UNIX_TIMESTAMP(CreatedAt) AS SIGNED), CAST(UNIX_TIMESTAMP(LastUsedAt) AS SIGNED)
+                 FROM GpodderAppPasswords WHERE UserID = ? ORDER BY AppPasswordID",
+            )
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?,
+        };
+        Ok(rows.into_iter().map(|(id, label, created_at, last_used_at)| AppPasswordInfo { id, label, created_at, last_used_at }).collect())
+    }
+
+    /// Store a new app password (its argon2 hash) and return its id.
+    pub async fn gpodder_create_app_password(&self, user_id: i32, label: &str, hash: &str) -> AppResult<i32> {
+        Ok(match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(
+                r#"INSERT INTO "GpodderAppPasswords" (userid, label, passwordhash) VALUES ($1, $2, $3) RETURNING apppasswordid"#,
+            )
+            .bind(user_id)
+            .bind(label)
+            .bind(hash)
+            .fetch_one(pool)
+            .await?,
+            DatabasePool::MySQL(pool) => sqlx::query("INSERT INTO GpodderAppPasswords (UserID, Label, PasswordHash) VALUES (?, ?, ?)")
+                .bind(user_id)
+                .bind(label)
+                .bind(hash)
+                .execute(pool)
+                .await?
+                .last_insert_id() as i32,
+        })
+    }
+
+    pub async fn gpodder_revoke_app_password(&self, user_id: i32, id: i32) -> AppResult<bool> {
+        let n = match self {
+            DatabasePool::Postgres(pool) => sqlx::query(r#"DELETE FROM "GpodderAppPasswords" WHERE apppasswordid = $1 AND userid = $2"#)
+                .bind(id)
+                .bind(user_id)
+                .execute(pool)
+                .await?
+                .rows_affected(),
+            DatabasePool::MySQL(pool) => sqlx::query("DELETE FROM GpodderAppPasswords WHERE AppPasswordID = ? AND UserID = ?")
+                .bind(id)
+                .bind(user_id)
+                .execute(pool)
+                .await?
+                .rows_affected(),
+        };
+        Ok(n > 0)
     }
 }
 

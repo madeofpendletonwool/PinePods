@@ -2,7 +2,8 @@
 //! migrations are forgotten and re-run through the real runner, and the result is checked.
 //! 068 moves Users.Pod_Sync_Type to GpodderServerEnabled / SyncTargets / app passwords; 111/112
 //! extend the action and subscription logs; 113 marks Pinepods' own device; 069 makes listen
-//! history one row per user and episode on MySQL.
+//! history one row per user and episode on MySQL; 116 ties gpodder sessions to the app password
+//! that opened them.
 
 use pinepods_api::services::auth::verify_password;
 
@@ -400,4 +401,45 @@ async fn subscription_server_ts_is_backfilled_and_required() {
         Backend::MariaDb => int(&app, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'GpodderSyncSubscriptions' AND COLUMN_NAME = 'ServerTs' AND IS_NULLABLE = 'YES'").await,
     };
     assert_eq!(nullable, Some(0), "ServerTs is NOT NULL after 114");
+}
+
+/// Before 116 sessions didn't know their app password: 116 adds the column and the FK, so
+/// revoking an app password ends the sessions it opened (and only those).
+#[tokio::test(flavor = "multi_thread")]
+async fn sessions_end_with_the_app_password_that_opened_them() {
+    let app = TestApp::new().await;
+    let user = app.user("sessions").await;
+    let uid = user.id;
+    exec_per_backend(
+        &app,
+        r#"ALTER TABLE "GpodderSessions" DROP COLUMN AppPasswordID"#,
+        "ALTER TABLE GpodderSessions DROP FOREIGN KEY fk_gpodder_sessions_app_password",
+    )
+    .await;
+    if app.backend() == Backend::MariaDb {
+        exec(&app, "ALTER TABLE GpodderSessions DROP COLUMN AppPasswordID").await;
+    }
+
+    rerun_migrations(&app, &["116"]).await;
+
+    exec(&app, &format!(r#"INSERT INTO "GpodderAppPasswords" (UserID, Label, PasswordHash) VALUES ({uid}, 'phone', 'x'), ({uid}, 'tablet', 'y')"#)).await;
+    let pw = |label: &str| {
+        let sql = format!(r#"SELECT AppPasswordID FROM "GpodderAppPasswords" WHERE Label = '{label}'"#);
+        let app = &app;
+        async move { int(app, &sql).await.unwrap() }
+    };
+    let (phone, tablet) = (pw("phone").await, pw("tablet").await);
+    let expires = match app.backend() {
+        Backend::Postgres => "NOW() + INTERVAL '1 day'",
+        Backend::MariaDb => "NOW() + INTERVAL 1 DAY",
+    };
+    exec(&app, &format!(
+        r#"INSERT INTO "GpodderSessions" (UserID, SessionToken, ExpiresAt, AppPasswordID)
+           VALUES ({uid}, 'by-phone', {expires}, {phone}), ({uid}, 'by-tablet', {expires}, {tablet}), ({uid}, 'by-password', {expires}, NULL)"#
+    ))
+    .await;
+    exec(&app, &format!(r#"DELETE FROM "GpodderAppPasswords" WHERE AppPasswordID = {phone}"#)).await;
+    let count = int(&app, &format!(r#"SELECT COUNT(*) FROM "GpodderSessions" WHERE UserID = {uid}"#)).await;
+    let gone = int(&app, r#"SELECT COUNT(*) FROM "GpodderSessions" WHERE SessionToken = 'by-phone'"#).await;
+    assert_eq!((count, gone), (Some(2), Some(0)), "only the revoked password's session ends");
 }

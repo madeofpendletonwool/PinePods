@@ -82,6 +82,7 @@ pub fn openapi_router() -> OpenApiRouter<AppState> {
         .nest("/api/async", OpenApiRouter::from(create_async_routes()))
         .nest("/api/proxy", create_proxy_routes())
         .nest("/api/gpodder", create_gpodder_routes())
+        .nest("/api/sync", create_sync_routes())
         .nest("/api/feed", create_feed_routes())
         .nest("/api/auth", create_auth_routes())
         .nest("/ws", OpenApiRouter::from(create_websocket_routes()))
@@ -436,6 +437,21 @@ fn create_gpodder_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::sync::gpodder_force_sync))
         .routes(routes!(handlers::sync::gpodder_sync))
         .routes(routes!(handlers::sync::gpodder_get_statistics))
+}
+
+fn create_sync_routes() -> OpenApiRouter<AppState> {
+    use handlers::sync_settings as s;
+    OpenApiRouter::new()
+        .routes(routes!(s::get_server, s::put_server))
+        .routes(routes!(s::list_app_passwords, s::create_app_password))
+        .routes(routes!(s::revoke_app_password))
+        .routes(routes!(s::dismiss_notice))
+        .routes(routes!(s::list_devices))
+        .routes(routes!(s::rename_device, s::remove_device))
+        .routes(routes!(s::get_target, s::put_target, s::delete_target))
+        .routes(routes!(s::test_target))
+        .routes(routes!(s::run_sync))
+        .routes(routes!(s::get_stats))
 }
 
 fn create_init_routes() -> OpenApiRouter<AppState> {

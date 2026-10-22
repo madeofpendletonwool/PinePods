@@ -19,14 +19,14 @@ use super::apply::{apply_resolved, apply_subscription_changes, in_flight_adds};
 use super::engine_db::{Outbox, SyncTargetRow, TargetKind};
 use super::model::{ActionKind, EpisodeAction, OutboundAction};
 use super::resolver::{resolve, ResolveKey};
-use super::targets::gpodder::GpodderTarget;
+use super::targets::gpodder::{device_to_use, GpodderTarget, RemoteDevice};
 use super::targets::nextcloud::NextcloudTarget;
 use super::targets::SyncTarget;
 use super::SyncOrigin;
 use crate::database::DatabasePool;
 use crate::error::{AppError, AppResult};
 use crate::services::scheduler::failure_backoff;
-use crate::services::tasks::TaskSpawner;
+use crate::services::tasks::{ProgressReporter, TaskSpawner};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunMode {
@@ -134,6 +134,18 @@ pub async fn run_due_for_user(db: &DatabasePool, tasks: &TaskSpawner, user_id: i
 /// One run against one of the user's targets. Records LastAttemptAt, then LastSuccessAt or
 /// LastError + ConsecutiveFailures. The returned error is the stored one (no credentials).
 pub async fn run(db: &DatabasePool, tasks: &TaskSpawner, user_id: i32, target_id: i32, mode: RunMode) -> AppResult<RunSummary> {
+    run_reporting(db, tasks, user_id, target_id, mode, None).await
+}
+
+/// `run`, reporting each step to a task (the first sync of a new target).
+pub async fn run_reporting(
+    db: &DatabasePool,
+    tasks: &TaskSpawner,
+    user_id: i32,
+    target_id: i32,
+    mode: RunMode,
+    progress: Option<&dyn ProgressReporter>,
+) -> AppResult<RunSummary> {
     let lock = user_lock(user_id);
     let _guard = lock.lock().await;
     // Read under the lock: a run that just finished may have moved the cursors.
@@ -150,7 +162,7 @@ pub async fn run(db: &DatabasePool, tasks: &TaskSpawner, user_id: i32, target_id
             .decrypt_password(&target.encrypted_secret)
             .await
             .map_err(|_| AppError::internal("The stored password for the sync server can't be decrypted; enter it again"))?;
-        run_locked(db, tasks, &target, &secret, mode).await
+        run_locked(db, tasks, &target, &secret, mode, progress).await
     }
     .await;
 
@@ -170,7 +182,8 @@ pub async fn run(db: &DatabasePool, tasks: &TaskSpawner, user_id: i32, target_id
     }
 }
 
-fn error_message(e: &AppError) -> String {
+/// The message of an error, without the variant's prefix.
+pub fn error_message(e: &AppError) -> String {
     match e {
         AppError::Internal(m)
         | AppError::Auth(m)
@@ -198,7 +211,20 @@ fn target_for(t: &SyncTargetRow, secret: &str) -> AppResult<Box<dyn SyncTarget>>
     })
 }
 
-async fn run_locked(db: &DatabasePool, tasks: &TaskSpawner, t: &SyncTargetRow, secret: &str, mode: RunMode) -> AppResult<RunSummary> {
+async fn step(progress: Option<&dyn ProgressReporter>, percent: f64, message: &str) {
+    if let Some(p) = progress {
+        let _ = p.update_progress(percent, Some(message.to_string())).await;
+    }
+}
+
+async fn run_locked(
+    db: &DatabasePool,
+    tasks: &TaskSpawner,
+    t: &SyncTargetRow,
+    secret: &str,
+    mode: RunMode,
+    progress: Option<&dyn ProgressReporter>,
+) -> AppResult<RunSummary> {
     let user_id = t.user_id;
     let full = mode == RunMode::Full || t.needs_full_sync;
     let origin = SyncOrigin::Target(t.target_id);
@@ -206,6 +232,7 @@ async fn run_locked(db: &DatabasePool, tasks: &TaskSpawner, t: &SyncTargetRow, s
     let mut summary = RunSummary { full, ..Default::default() };
 
     let mut remote = target_for(t, secret)?;
+    step(progress, 10.0, "Signing in to the sync server").await;
     remote.login().await?;
     if let Some(device) = remote.prepare_device(full).await? {
         db.sync_target_set_device(t.target_id, &device).await?;
@@ -220,6 +247,7 @@ async fn run_locked(db: &DatabasePool, tasks: &TaskSpawner, t: &SyncTargetRow, s
     };
 
     // Subscriptions. A local change the target hasn't had yet wins; it's pushed below.
+    step(progress, 25.0, "Fetching subscriptions").await;
     let subs = remote.pull_subscriptions(if full { 0 } else { t.subs_pull_cursor }).await?;
     let mut local = db.sync_user_feed_urls(user_id).await?;
     local.extend(in_flight_adds(user_id));
@@ -236,6 +264,7 @@ async fn run_locked(db: &DatabasePool, tasks: &TaskSpawner, t: &SyncTargetRow, s
     }
 
     // Episode actions.
+    step(progress, 45.0, "Fetching listening progress").await;
     let pulled = remote.pull_actions(if full { 0 } else { t.actions_pull_cursor }).await?;
     if pulled.unreadable > 0 {
         debug!("Skipped {} unreadable episode actions from user {}'s sync server", pulled.unreadable, user_id);
@@ -248,6 +277,7 @@ async fn run_locked(db: &DatabasePool, tasks: &TaskSpawner, t: &SyncTargetRow, s
     }
 
     // Push.
+    step(progress, 70.0, "Sending local changes").await;
     if !fresh {
         summary.subscriptions_pushed += push_subscription_log(db, &*remote, t, &origin_value).await?;
         summary.actions_pushed += push_action_log(db, &*remote, t, &origin_value).await?;
@@ -363,6 +393,42 @@ async fn push_action_log(db: &DatabasePool, remote: &dyn SyncTarget, t: &SyncTar
         cursor = next;
     }
     Ok(pushed)
+}
+
+/// What a connection test found.
+#[derive(Debug, Clone, Default)]
+pub struct ConnectionCheck {
+    /// The account's devices (gpodder servers only).
+    pub devices: Vec<RemoteDevice>,
+    /// The device Pinepods would sync as (gpodder servers only).
+    pub device_name: Option<String>,
+}
+
+/// Check credentials without saving anything or creating a device. gpodder: log in and list the
+/// devices; Nextcloud (no login endpoint): pull subscription changes from now, which is empty.
+pub async fn test_connection(kind: TargetKind, url: &str, username: &str, password: &str, device: Option<&str>) -> AppResult<ConnectionCheck> {
+    let result = async {
+        match kind {
+            TargetKind::Gpodder => {
+                let mut remote = GpodderTarget::new(url, username, password, None)?;
+                remote.login().await?;
+                let devices = remote.devices().await?;
+                let device_name = Some(device_to_use(device, &devices));
+                Ok(ConnectionCheck { devices, device_name })
+            }
+            TargetKind::Nextcloud => {
+                let remote = NextcloudTarget::new(url, username, password)?;
+                remote.pull_subscriptions(Utc::now().timestamp()).await?;
+                Ok(ConnectionCheck::default())
+            }
+        }
+    }
+    .await;
+    result.map_err(|e| match e {
+        AppError::Auth(m) => AppError::Auth(scrub(&m, password)),
+        AppError::BadRequest(m) => AppError::BadRequest(scrub(&m, password)),
+        other => AppError::internal(scrub(&error_message(&other), password)),
+    })
 }
 
 #[cfg(test)]

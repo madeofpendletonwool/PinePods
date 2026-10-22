@@ -9,7 +9,8 @@ mod episodes;
 mod misc;
 mod subscriptions;
 
-pub use db::{GpodderStats, GpodderStatsAction, GpodderStatsDevice};
+pub use auth::forget_user;
+pub use db::{AppPasswordInfo, DeviceInfo, GpodderStats, GpodderStatsAction, GpodderStatsDevice};
 
 use axum::{
     extract::DefaultBodyLimit,

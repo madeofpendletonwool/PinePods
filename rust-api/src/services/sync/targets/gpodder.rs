@@ -37,6 +37,48 @@ impl GpodderTarget {
     pub async fn verify(url: &str, username: &str, password: &str) -> AppResult<()> {
         GpodderTarget::new(url, username, password, None)?.login().await
     }
+
+    /// The account's devices on the server (call `login` first). Creates nothing.
+    pub async fn devices(&self) -> AppResult<Vec<RemoteDevice>> {
+        let list = self.http.send(Method::GET, self.http.url(&["api", "2", "devices", &self.user_file()], &[]), None).await?;
+        Ok(list
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|d| {
+                let id = d.get("id")?.as_str()?.to_string();
+                let text = |k: &str| d.get(k).and_then(Value::as_str).filter(|v| !v.is_empty()).map(str::to_string);
+                Some(RemoteDevice {
+                    caption: text("caption").unwrap_or_else(|| id.clone()),
+                    kind: text("type").unwrap_or_else(|| "other".into()),
+                    subscriptions: d.get("subscriptions").and_then(Value::as_i64).unwrap_or(0),
+                    id,
+                })
+            })
+            .collect())
+    }
+
+    /// Create or update a device on the server (call `login` first).
+    pub async fn configure_device(&self, name: &str, caption: &str, kind: &str) -> AppResult<()> {
+        let url = self.http.url(&["api", "2", "devices", &self.http.username, &format!("{name}.json")], &[]);
+        self.http.send(Method::POST, url, Some(&json!({ "caption": caption, "type": kind }))).await?;
+        Ok(())
+    }
+}
+
+/// A device on an external gpodder server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteDevice {
+    pub id: String,
+    pub caption: String,
+    pub kind: String,
+    pub subscriptions: i64,
+}
+
+/// The device Pinepods would sync as, given the devices already on the server.
+pub fn device_to_use(current: Option<&str>, remote: &[RemoteDevice]) -> String {
+    let remote: Vec<(String, String)> = remote.iter().map(|d| (d.id.clone(), d.kind.clone())).collect();
+    choose_device(current, &remote)
 }
 
 /// The device Pinepods should use: `current` unless another client owns it (a device of a type
@@ -83,19 +125,11 @@ impl SyncTarget for GpodderTarget {
         if !full && self.device.is_some() {
             return Ok(None);
         }
-        let list = self.http.send(Method::GET, self.http.url(&["api", "2", "devices", &self.user_file()], &[]), None).await?;
-        let remote: Vec<(String, String)> = list
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|d| Some((d.get("id")?.as_str()?.to_string(), d.get("type").and_then(Value::as_str).unwrap_or("").to_string())))
-            .collect();
-        let chosen = choose_device(self.device.as_deref(), &remote);
+        let chosen = device_to_use(self.device.as_deref(), &self.devices().await?);
         if let Some(old) = self.device.as_deref().filter(|old| *old != chosen) {
             tracing::warn!("Device {:?} on the gpodder server belongs to another client; Pinepods now syncs as {:?}", old, chosen);
         }
-        let url = self.http.url(&["api", "2", "devices", &self.http.username, &format!("{chosen}.json")], &[]);
-        self.http.send(Method::POST, url, Some(&json!({ "caption": DEVICE_CAPTION, "type": DEVICE_TYPE }))).await?;
+        self.configure_device(&chosen, DEVICE_CAPTION, DEVICE_TYPE).await?;
         let changed = self.device.as_deref() != Some(chosen.as_str());
         self.device = Some(chosen.clone());
         Ok(changed.then_some(chosen))

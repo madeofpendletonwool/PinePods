@@ -11,6 +11,7 @@ pub mod refresh;
 pub mod proxy;
 pub mod settings;
 pub mod sync;
+pub mod sync_settings;
 pub mod youtube;
 pub mod tasks;
 pub mod feed;

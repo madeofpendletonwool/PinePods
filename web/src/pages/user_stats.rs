@@ -194,26 +194,38 @@ pub fn user_stats() -> Html {
                     let formatted_date = format_date(&stats.UserCreated);
                     let time_formatted = format_time_mins(stats.TimeListened);
 
-                    let sync_content = match stats.Pod_Sync_Type.as_str() {
-                        "None" => html! { <p class="stats-value">{i18n.t("user_stats.not_syncing")}</p> },
-                        _ => {
-                            let sync_type = if stats.Pod_Sync_Type == "gpodder" {
-                                if stats.GpodderUrl == "http://localhost:8042" {
-                                    i18n.t("user_stats.internal_gpodder")
-                                } else {
-                                    i18n.t("user_stats.external_gpodder")
-                                }
-                            } else if stats.Pod_Sync_Type == "nextcloud" {
-                                i18n.t("user_stats.nextcloud")
-                            } else {
-                                i18n.t("user_stats.unknown_sync_type")
-                            };
-                            html! {
-                                <>
-                                    <p class="stats-value">{sync_type}</p>
-                                    <p class="stats-detail">{&stats.GpodderUrl}</p>
-                                </>
+                    // The PinePods server and an external one can both be on; older servers
+                    // only send Pod_Sync_Type and GpodderUrl.
+                    let sync_lines: Vec<(String, String)> = match stats.SyncServerEnabled {
+                        Some(server_on) => {
+                            let mut lines = Vec::new();
+                            if server_on {
+                                let url = stats.SyncServerUrl.clone().or_else(|| post_state.auth_details.as_ref().map(|a| a.server_name.clone())).unwrap_or_default();
+                                lines.push((i18n.t("user_stats.internal_gpodder").to_string(), url));
                             }
+                            match stats.SyncTargetKind.as_deref() {
+                                Some("nextcloud") => lines.push((i18n.t("user_stats.nextcloud").to_string(), stats.SyncTargetUrl.clone().unwrap_or_default())),
+                                Some(_) => lines.push((i18n.t("user_stats.external_gpodder").to_string(), stats.SyncTargetUrl.clone().unwrap_or_default())),
+                                None => {}
+                            }
+                            lines
+                        }
+                        None => match stats.Pod_Sync_Type.as_str() {
+                            "None" => Vec::new(),
+                            "gpodder" if stats.GpodderUrl == "http://localhost:8042" => vec![(i18n.t("user_stats.internal_gpodder").to_string(), String::new())],
+                            "gpodder" => vec![(i18n.t("user_stats.external_gpodder").to_string(), stats.GpodderUrl.clone())],
+                            "nextcloud" => vec![(i18n.t("user_stats.nextcloud").to_string(), stats.GpodderUrl.clone())],
+                            _ => vec![(i18n.t("user_stats.unknown_sync_type").to_string(), stats.GpodderUrl.clone())],
+                        },
+                    };
+                    let sync_content = if sync_lines.is_empty() {
+                        html! { <p class="stats-value">{i18n.t("user_stats.not_syncing")}</p> }
+                    } else {
+                        html! {
+                            <>
+                                <p class="stats-value">{ sync_lines.iter().map(|(label, _)| label.clone()).collect::<Vec<_>>().join(" + ") }</p>
+                                { for sync_lines.iter().filter(|(_, url)| !url.is_empty()).map(|(_, url)| html! { <p class="stats-detail">{ url.clone() }</p> }) }
+                            </>
                         }
                     };
 

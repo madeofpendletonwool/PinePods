@@ -3250,6 +3250,7 @@ def migration_102_gpodder_create_sessions(conn, db_type: str):
                     UserAgent TEXT,
                     ClientIP TEXT,
                     EpisodesDownloadCursor BIGINT,
+                    AppPasswordID INT,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
                     UNIQUE(SessionToken)
                 )
@@ -3273,6 +3274,7 @@ def migration_102_gpodder_create_sessions(conn, db_type: str):
                     UserAgent TEXT,
                     ClientIP TEXT,
                     EpisodesDownloadCursor BIGINT,
+                    AppPasswordID INT,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                 )
             ''', conn=conn)
@@ -6951,5 +6953,28 @@ def migration_115_gpodder_download_cursors(conn, db_type: str) -> None:
                            "CREATE INDEX idx_gpodder_sessions_token ON GpodderSessions(SessionToken(64))",
                            "idx_gpodder_sessions_token")
         logger.info("Migration 115 completed")
+    finally:
+        cursor.close()
+
+
+@register_migration("116", "gpodder_session_app_password", "Sessions remember the app password they were opened with, so revoking it ends them", requires=["067", "102"])
+def migration_116_gpodder_session_app_password(conn, db_type: str) -> None:
+    """GpodderSessions.AppPasswordID: the app password a session was opened with (NULL for the
+    user's own password). Deleting the app password deletes its sessions. The column is in 102's
+    CREATE TABLE; the FK is added here because GpodderAppPasswords comes from 067."""
+    logger.info("Starting migration 116: gpodder session app password")
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    sessions = '"GpodderSessions"' if pg else "GpodderSessions"
+    passwords = '"GpodderAppPasswords"' if pg else "GpodderAppPasswords"
+    try:
+        if not _column_exists(cursor, db_type, "GpodderSessions", "AppPasswordID"):
+            cursor.execute(f"ALTER TABLE {sessions} ADD COLUMN AppPasswordID INT NULL")
+        if not _foreign_keys(cursor, db_type, "GpodderSessions", "AppPasswordID", "GpodderAppPasswords"):
+            cursor.execute(
+                f"ALTER TABLE {sessions} ADD CONSTRAINT fk_gpodder_sessions_app_password FOREIGN KEY (AppPasswordID) "
+                f"REFERENCES {passwords}(AppPasswordID) ON DELETE CASCADE"
+            )
+        logger.info("Migration 116 completed")
     finally:
         cursor.close()

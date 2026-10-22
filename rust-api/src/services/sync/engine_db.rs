@@ -790,16 +790,71 @@ impl DatabasePool {
                 sqlx::query("DELETE FROM SyncTargets WHERE UserID = ?").bind(user_id).execute(pool).await?;
             }
         }
+        self.sync_mirror_sync_type(user_id).await?;
         super::invalidate_sync_enabled(user_id);
         Ok(())
     }
 
-    /// Keep the legacy Users.Pod_Sync_Type in step with the new settings, for the old settings
-    /// UI: 'both' = internal server on + an external target, else 'external' / 'nextcloud' /
-    /// 'gpodder' / 'None'.
+    /// Keep the legacy Users columns in step with the new settings, for the old settings routes
+    /// and older clients: Pod_Sync_Type is 'both' (internal server on + an external target),
+    /// 'external', 'nextcloud', 'gpodder' or 'None'; GpodderUrl/LoginName/Token describe the
+    /// target, else the internal marker URL, else nothing.
     pub async fn sync_mirror_sync_type(&self, user_id: i32) -> AppResult<()> {
-        let kind = self.sync_targets_for_user(user_id).await?.first().map(|t| t.kind);
-        let internal: bool = match self {
+        let target = self.sync_targets_for_user(user_id).await?.into_iter().next();
+        let internal = self.sync_server_enabled(user_id).await?;
+        let sync_type = match (internal, target.as_ref().map(|t| t.kind)) {
+            (true, Some(_)) => "both",
+            (false, Some(TargetKind::Gpodder)) => "external",
+            (false, Some(TargetKind::Nextcloud)) => "nextcloud",
+            (true, None) => "gpodder",
+            (false, None) => "None",
+        };
+        let internal_url = crate::database::INTERNAL_GPODDER_URL;
+        // (url, login, token); a None login means "the user's own username".
+        let (url, login, token): (Option<&str>, Option<&str>, Option<&str>) = match (&target, internal) {
+            (Some(t), _) => (Some(&t.url), Some(&t.username), Some(&t.encrypted_secret)),
+            (None, true) => (Some(internal_url), None, Some("")),
+            (None, false) => (None, None, None),
+        };
+        let own_login = target.is_none() && internal;
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"UPDATE "Users" SET pod_sync_type = $1, gpodderurl = $2,
+                           gpodderloginname = CASE WHEN $3 THEN username ELSE $4 END, gpoddertoken = $5
+                       WHERE userid = $6"#,
+                )
+                .bind(sync_type)
+                .bind(url)
+                .bind(own_login)
+                .bind(login)
+                .bind(token)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(
+                    "UPDATE Users SET Pod_Sync_Type = ?, GpodderUrl = ?,
+                         GpodderLoginName = CASE WHEN ? THEN Username ELSE ? END, GpodderToken = ?
+                     WHERE UserID = ?",
+                )
+                .bind(sync_type)
+                .bind(url)
+                .bind(own_login)
+                .bind(login)
+                .bind(token)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Users.GpodderServerEnabled.
+    pub async fn sync_server_enabled(&self, user_id: i32) -> AppResult<bool> {
+        Ok(match self {
             DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT gpodderserverenabled FROM "Users" WHERE userid = $1"#)
                 .bind(user_id)
                 .fetch_optional(pool)
@@ -810,31 +865,74 @@ impl DatabasePool {
                 .fetch_optional(pool)
                 .await?
                 .unwrap_or(false),
-        };
-        let sync_type = match (internal, kind) {
-            (true, Some(_)) => "both",
-            (false, Some(TargetKind::Gpodder)) => "external",
-            (false, Some(TargetKind::Nextcloud)) => "nextcloud",
-            (true, None) => "gpodder",
-            (false, None) => "None",
-        };
+        })
+    }
+
+    /// Users.SyncNotice (e.g. 'reenter_external': the external server must be entered again).
+    pub async fn sync_notice(&self, user_id: i32) -> AppResult<Option<String>> {
+        Ok(match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT syncnotice FROM "Users" WHERE userid = $1"#)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?
+                .flatten(),
+            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT SyncNotice FROM Users WHERE UserID = ?")
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?
+                .flatten(),
+        })
+    }
+
+    pub async fn sync_clear_notice(&self, user_id: i32) -> AppResult<()> {
         match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET pod_sync_type = $1 WHERE userid = $2"#)
-                    .bind(sync_type)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await?;
+                sqlx::query(r#"UPDATE "Users" SET syncnotice = NULL WHERE userid = $1"#).bind(user_id).execute(pool).await?;
             }
             DatabasePool::MySQL(pool) => {
-                sqlx::query("UPDATE Users SET Pod_Sync_Type = ? WHERE UserID = ?")
-                    .bind(sync_type)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await?;
+                sqlx::query("UPDATE Users SET SyncNotice = NULL WHERE UserID = ?").bind(user_id).execute(pool).await?;
             }
         }
         Ok(())
+    }
+
+    /// Log rows a target hasn't been sent yet: `(subscription changes, episode actions)`.
+    pub async fn sync_pending_counts(&self, t: &SyncTargetRow) -> AppResult<(i64, i64)> {
+        let origin = super::SyncOrigin::Target(t.target_id).log_value().unwrap_or_default();
+        Ok(match self {
+            DatabasePool::Postgres(pool) => (
+                sqlx::query_scalar(
+                    r#"SELECT COUNT(*) FROM "GpodderSyncSubscriptions" WHERE userid = $1 AND subscriptionid > $2 AND origin <> $3"#,
+                )
+                .bind(t.user_id)
+                .bind(t.subs_push_cursor)
+                .bind(&origin)
+                .fetch_one(pool)
+                .await?,
+                sqlx::query_scalar(
+                    r#"SELECT COUNT(*) FROM "GpodderSyncEpisodeActions" WHERE userid = $1 AND actionid > $2 AND origin <> $3"#,
+                )
+                .bind(t.user_id)
+                .bind(t.actions_push_cursor)
+                .bind(&origin)
+                .fetch_one(pool)
+                .await?,
+            ),
+            DatabasePool::MySQL(pool) => (
+                sqlx::query_scalar("SELECT COUNT(*) FROM GpodderSyncSubscriptions WHERE UserID = ? AND SubscriptionID > ? AND Origin <> ?")
+                    .bind(t.user_id)
+                    .bind(t.subs_push_cursor)
+                    .bind(&origin)
+                    .fetch_one(pool)
+                    .await?,
+                sqlx::query_scalar("SELECT COUNT(*) FROM GpodderSyncEpisodeActions WHERE UserID = ? AND ActionID > ? AND Origin <> ?")
+                    .bind(t.user_id)
+                    .bind(t.actions_push_cursor)
+                    .bind(&origin)
+                    .fetch_one(pool)
+                    .await?,
+            ),
+        })
     }
 }
 

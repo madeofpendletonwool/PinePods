@@ -6,23 +6,85 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::AppError,
+    error::{AppError, AppResult},
     handlers::{extract_api_key, require_valid_api_key},
     services::sync::engine::{self, RunMode},
+    services::sync::engine_db::{SyncTargetRow, TargetKind},
+    services::sync::targets::{gpodder::GpodderTarget, SyncTarget},
     AppState,
 };
+
+// The routes the old sync settings screen used, kept for older clients. They answer in their
+// old shapes from the new settings (SyncTargets, GpodderServerEnabled, the sync log).
+
+fn device_json(id: &str, kind: &str, caption: &str, is_default: bool, is_remote: bool) -> serde_json::Value {
+    serde_json::json!({
+        "id": id,
+        "name": id,
+        "type": kind,
+        "caption": caption,
+        "last_sync": Option::<String>::None,
+        "is_active": true,
+        "is_default": is_default,
+        "is_remote": is_remote,
+    })
+}
+
+async fn gpodder_target(state: &AppState, user_id: i32) -> AppResult<Option<SyncTargetRow>> {
+    Ok(state.db_pool.sync_targets_for_user(user_id).await?.into_iter().find(|t| t.kind == TargetKind::Gpodder))
+}
+
+/// The user's external gpodder server, logged in.
+async fn remote_gpodder(state: &AppState, t: &SyncTargetRow) -> AppResult<GpodderTarget> {
+    let secret = state
+        .db_pool
+        .decrypt_password(&t.encrypted_secret)
+        .await
+        .map_err(|_| AppError::internal("The stored password for the sync server can't be decrypted; enter it again"))?;
+    let mut remote = GpodderTarget::new(&t.url, &t.username, &secret, t.device_name.clone())?;
+    remote.login().await.map_err(|e| AppError::internal(engine::error_message(&e).replace(&secret, "***")))?;
+    Ok(remote)
+}
+
+/// Devices in the old shape: the PinePods server's when it's on, else the external gpodder
+/// server's (Pinepods' own marked default), else none.
+async fn legacy_devices(state: &AppState, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
+    if state.db_pool.sync_server_enabled(user_id).await? {
+        return Ok(state
+            .db_pool
+            .gpodder_device_list(user_id)
+            .await?
+            .into_iter()
+            .map(|d| {
+                let caption = d.caption.clone().unwrap_or_else(|| d.name.clone());
+                device_json(&d.name, d.kind.as_deref().unwrap_or("other"), &caption, d.system, false)
+            })
+            .collect());
+    }
+    let Some(t) = gpodder_target(state, user_id).await? else { return Ok(Vec::new()) };
+    let remote = remote_gpodder(state, &t).await?;
+    Ok(remote
+        .devices()
+        .await?
+        .into_iter()
+        .map(|d| {
+            let own = t.device_name.as_deref() == Some(d.id.as_str());
+            device_json(&d.id, &d.kind, &d.caption, own, !own)
+        })
+        .collect())
+}
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct UpdateGpodderSyncRequest {
     pub enabled: bool,
 }
 
-// Set default gPodder device - accepts device name for frontend compatibility
+// Pinepods picks its own device now, so there's no default to set; kept for older clients.
 #[utoipa::path(
     post,
     path = "/set_default/{device_id}",
     tag = "sync",
-    summary = "Gpodder set default",
+    summary = "Gpodder set default (no longer has an effect)",
     params(("device_id" = String, Path)),
     security(("api_key" = [])),
     responses(
@@ -32,24 +94,17 @@ pub struct UpdateGpodderSyncRequest {
 )]
 pub async fn gpodder_set_default(
     State(state): State<AppState>,
-    Path(device_name): Path<String>,
+    Path(_device_name): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     require_valid_api_key(&state, &api_key).await?;
 
-    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let success = state.db_pool.gpodder_set_default_device_by_name(user_id, &device_name).await?;
-    
-    if success {
-        Ok(Json(serde_json::json!({ 
-            "success": true,
-            "message": "Default device set successfully",
-            "data": null
-        })))
-    } else {
-        Err(AppError::internal("Failed to set default device"))
-    }
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": "Default device set successfully",
+        "data": null
+    })))
 }
 
 // Get gPodder devices for user - matches Python get_devices function exactly
@@ -81,8 +136,7 @@ pub async fn gpodder_get_user_devices(
         return Err(AppError::forbidden("You can only view your own devices!"));
     }
 
-    let devices = state.db_pool.gpodder_get_user_devices(user_id).await?;
-    Ok(Json(serde_json::json!(devices)))
+    Ok(Json(serde_json::json!(legacy_devices(&state, user_id).await?)))
 }
 
 // Get all gPodder devices - matches Python get_all_devices function exactly
@@ -105,8 +159,7 @@ pub async fn gpodder_get_all_devices(
     require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let devices = state.db_pool.gpodder_get_user_devices(user_id).await?;
-    Ok(Json(serde_json::json!(devices)))
+    Ok(Json(serde_json::json!(legacy_devices(&state, user_id).await?)))
 }
 
 // Force sync gPodder - performs initial full sync without timestamps (like setup)
@@ -381,37 +434,20 @@ pub async fn gpodder_test_connection(
         return Err(AppError::forbidden("You can only test connections for yourself!"));
     }
 
-    // Direct HTTP call to match Python implementation exactly
-    let client = reqwest::Client::new();
-    let auth_url = format!("{}/api/2/auth/{}/login.json", 
-                          gpodder_url.trim_end_matches('/'), 
-                          gpodder_username);
-    
-    let verified = match client
-        .post(&auth_url)
-        .basic_auth(gpodder_username, Some(gpodder_password))
-        .send()
-        .await
-    {
-        Ok(response) => response.status().is_success(),
-        Err(_) => false,
-    };
-    
-    if verified {
-        Ok(Json(serde_json::json!({
+    match engine::test_connection(TargetKind::Gpodder, gpodder_url, gpodder_username, gpodder_password, None).await {
+        Ok(check) => Ok(Json(serde_json::json!({
             "success": true,
             "message": "Successfully connected to GPodder server and verified access.",
             "data": {
                 "auth_type": "session",
-                "has_devices": true
+                "has_devices": !check.devices.is_empty()
             }
-        })))
-    } else {
-        Ok(Json(serde_json::json!({
+        }))),
+        Err(_) => Ok(Json(serde_json::json!({
             "success": false,
             "message": "Failed to connect to GPodder server",
             "data": null
-        })))
+        }))),
     }
 }
 
@@ -435,9 +471,19 @@ pub async fn gpodder_get_default_device(
     require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let default_device = state.db_pool.gpodder_get_default_device(user_id).await?;
-    
-    Ok(Json(serde_json::json!(default_device)))
+    // Pinepods' own device: on the PinePods server, else on the external gpodder server.
+    let device = if state.db_pool.sync_server_enabled(user_id).await? {
+        state.db_pool.gpodder_device_list(user_id).await?.into_iter().find(|d| d.system).map(|d| {
+            let caption = d.caption.clone().unwrap_or_else(|| d.name.clone());
+            device_json(&d.name, d.kind.as_deref().unwrap_or("server"), &caption, true, false)
+        })
+    } else {
+        gpodder_target(&state, user_id)
+            .await?
+            .and_then(|t| t.device_name)
+            .map(|name| device_json(&name, "server", "PinePods", true, false))
+    };
+    Ok(Json(serde_json::json!(device)))
 }
 
 // Create gPodder device - matches Python create_device function exactly
@@ -470,27 +516,23 @@ pub async fn gpodder_create_device(
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
-    // Get user's GPodder sync settings
-    let settings = state.db_pool.get_user_sync_settings(user_id).await?
-        .ok_or_else(|| AppError::BadRequest("User not found or GPodder sync not configured".to_string()))?;
-    
-    // Validate that GPodder sync is enabled
-    if settings.sync_type != "gpodder" && settings.sync_type != "both" && settings.sync_type != "external" {
-        return Err(AppError::BadRequest("GPodder sync is not enabled for this user".to_string()));
-    }
-    
-    let device_id = if settings.url == crate::database::INTERNAL_GPODDER_URL {
-        state.db_pool
+    let device_id = if state.db_pool.sync_server_enabled(user_id).await? {
+        state
+            .db_pool
             .gpodder_update_device(user_id, &request.device_name, request.device_caption.as_deref(), Some(&request.device_type))
             .await?;
         request.device_name.clone()
     } else {
-        state.db_pool.create_device_via_gpodder_api(
-            &settings.url,
-            &settings.username,
-            &settings.token,
-            &request.device_name
-        ).await.map_err(|e| AppError::Internal(format!("Failed to create device via GPodder API: {}", e)))?
+        let t = gpodder_target(&state, user_id)
+            .await?
+            .ok_or_else(|| AppError::BadRequest("GPodder sync is not enabled for this user".to_string()))?;
+        let caption = request.device_caption.clone().unwrap_or_else(|| request.device_name.clone());
+        remote_gpodder(&state, &t)
+            .await?
+            .configure_device(&request.device_name, &caption, &request.device_type)
+            .await
+            .map_err(|e| AppError::Internal(format!("Failed to create device via GPodder API: {}", engine::error_message(&e))))?;
+        request.device_name.clone()
     };
     
     // Return GPodder API standard format
@@ -576,11 +618,17 @@ pub async fn gpodder_get_statistics(
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
-    // Check if GPodder is enabled for this user
-    let gpodder_status = state.db_pool.gpodder_get_status(user_id).await?;
-    
-    if gpodder_status.sync_type == "None" {
-        return Ok(Json(GpodderStatistics {
+    Ok(Json(legacy_statistics(&state, user_id).await?))
+}
+
+/// The old statistics view, from the sync log and the target row (no server is contacted).
+async fn legacy_statistics(state: &AppState, user_id: i32) -> AppResult<GpodderStatistics> {
+    let db = &state.db_pool;
+    let sync_type = db.gpodder_get_status(user_id).await?.sync_type;
+    let internal = db.sync_server_enabled(user_id).await?;
+    let target = db.sync_targets_for_user(user_id).await?.into_iter().next();
+    if !internal && target.is_none() {
+        return Ok(GpodderStatistics {
             server_url: "No sync configured".to_string(),
             sync_type: "None".to_string(),
             sync_enabled: false,
@@ -593,11 +641,57 @@ pub async fn gpodder_get_statistics(
             connection_status: "Not configured".to_string(),
             last_sync_timestamp: None,
             api_endpoints_tested: vec![],
-        }));
+        });
     }
 
-    // Get real statistics from GPodder server
-    let statistics = state.db_pool.get_gpodder_server_statistics(user_id).await?;
-    
-    Ok(Json(statistics))
+    let stats = db.gpodder_server_stats(user_id).await?;
+    let library = stats.library.len() as i32;
+    let server_devices: Vec<ServerDevice> = if internal {
+        stats.devices.into_iter().map(|d| ServerDevice { id: d.name, caption: d.caption, device_type: d.kind, subscriptions: library }).collect()
+    } else {
+        target
+            .as_ref()
+            .and_then(|t| t.device_name.clone())
+            .map(|name| ServerDevice { id: name, caption: "PinePods".into(), device_type: "server".into(), subscriptions: library })
+            .into_iter()
+            .collect()
+    };
+    let rfc3339 = |t: i64| chrono::DateTime::from_timestamp(t, 0).map(|t| t.to_rfc3339());
+    let (server_url, connection_status, last_sync_timestamp) = match &target {
+        Some(t) => (
+            t.url.clone(),
+            match (&t.last_error, t.last_success_at) {
+                (Some(e), _) => format!("Sync failed: {e}"),
+                (None, Some(_)) => "Connected".to_string(),
+                (None, None) => "Waiting for the first sync".to_string(),
+            },
+            t.last_success_at.and_then(|at| rfc3339(at.and_utc().timestamp())),
+        ),
+        None => ("PinePods gpodder server".to_string(), "Connected".to_string(), stats.last_change.and_then(rfc3339)),
+    };
+    Ok(GpodderStatistics {
+        server_url,
+        sync_type,
+        sync_enabled: true,
+        total_devices: server_devices.len() as i32,
+        server_devices,
+        total_subscriptions: library,
+        server_subscriptions: stats.library.into_iter().map(|(url, title)| ServerSubscription { url, title, description: None }).collect(),
+        recent_episode_actions: stats
+            .recent_actions
+            .into_iter()
+            .map(|a| ServerEpisodeAction {
+                podcast: a.podcast,
+                episode: a.episode,
+                action: a.action,
+                timestamp: chrono::DateTime::from_timestamp(a.timestamp, 0).map(|t| t.format("%Y-%m-%dT%H:%M:%S").to_string()).unwrap_or_default(),
+                position: a.position,
+                device: a.device,
+            })
+            .collect(),
+        total_episode_actions: stats.total_actions as i32,
+        connection_status,
+        last_sync_timestamp,
+        api_endpoints_tested: vec![],
+    })
 }

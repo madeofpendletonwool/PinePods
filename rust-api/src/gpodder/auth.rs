@@ -25,25 +25,28 @@ use crate::AppState;
 const SESSION_COOKIE: &str = "sessionid";
 const SESSION_MAX_AGE: i64 = 30 * 24 * 3600;
 
-// Verified Basic credentials, so argon2 doesn't run on every request.
+// Verified Basic credentials (user, app password used), so argon2 doesn't run on every request.
 const BASIC_CACHE_TTL: Duration = Duration::from_secs(600);
-static BASIC_CACHE: LazyLock<Mutex<HashMap<[u8; 32], (i32, Instant)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+type Verified = (i32, Option<i32>);
+static BASIC_CACHE: LazyLock<Mutex<HashMap<[u8; 32], (Verified, Instant)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Who a request is from. `session` is set when it came with a valid session cookie.
+/// Who a request is from. `session` is set when it came with a valid session cookie,
+/// `app_password` when Basic credentials were one of the user's app passwords.
 #[derive(Debug, Clone)]
 pub(crate) struct Authed {
     pub user_id: i32,
     pub session: Option<i32>,
+    pub app_password: Option<i32>,
 }
 
 fn cache_key(username: &str, password: &str) -> [u8; 32] {
     Sha256::digest(format!("{}:{}", username.to_lowercase(), password).as_bytes()).into()
 }
 
-fn cached(key: &[u8; 32]) -> Option<i32> {
+fn cached(key: &[u8; 32]) -> Option<Verified> {
     let mut cache = BASIC_CACHE.lock().unwrap();
     match cache.get(key) {
-        Some((user, at)) if at.elapsed() < BASIC_CACHE_TTL => Some(*user),
+        Some((verified, at)) if at.elapsed() < BASIC_CACHE_TTL => Some(*verified),
         Some(_) => {
             cache.remove(key);
             None
@@ -52,10 +55,15 @@ fn cached(key: &[u8; 32]) -> Option<i32> {
     }
 }
 
-fn remember(key: [u8; 32], user_id: i32) {
+fn remember(key: [u8; 32], verified: Verified) {
     let mut cache = BASIC_CACHE.lock().unwrap();
     cache.retain(|_, (_, at)| at.elapsed() < BASIC_CACHE_TTL);
-    cache.insert(key, (user_id, Instant::now()));
+    cache.insert(key, (verified, Instant::now()));
+}
+
+/// Drop the user's cached Basic logins, so a revoked app password stops working at once.
+pub fn forget_user(user_id: i32) {
+    BASIC_CACHE.lock().unwrap().retain(|_, ((user, _), _)| *user != user_id);
 }
 
 fn session_cookie(headers: &HeaderMap) -> Option<String> {
@@ -85,7 +93,7 @@ async fn verify_hash(password: String, hash: String) -> bool {
 }
 
 /// Basic credentials checked against the user's password, then their app passwords.
-async fn basic_user(db: &DatabasePool, username: &str, password: &str, path_user: &str) -> GResult<Option<i32>> {
+async fn basic_user(db: &DatabasePool, username: &str, password: &str, path_user: &str) -> GResult<Option<Verified>> {
     if !username.eq_ignore_ascii_case(path_user) {
         return Ok(None);
     }
@@ -95,20 +103,20 @@ async fn basic_user(db: &DatabasePool, username: &str, password: &str, path_user
         return Ok(None);
     }
     let key = cache_key(username, password);
-    if cached(&key) == Some(user.user_id) {
-        return Ok(Some(user.user_id));
+    if let Some(verified) = cached(&key).filter(|v| v.0 == user.user_id) {
+        return Ok(Some(verified));
     }
     if !user.password_hash.is_empty() && verify_hash(password.to_string(), user.password_hash.clone()).await {
-        remember(key, user.user_id);
-        return Ok(Some(user.user_id));
+        remember(key, (user.user_id, None));
+        return Ok(Some((user.user_id, None)));
     }
     for (id, hash) in db.gpodder_app_passwords(user.user_id).await? {
         if verify_hash(password.to_string(), hash).await {
             if let Err(e) = db.gpodder_touch_app_password(id).await {
                 warn!("Recording app password use for user {} failed: {}", user.user_id, e);
             }
-            remember(key, user.user_id);
-            return Ok(Some(user.user_id));
+            remember(key, (user.user_id, Some(id)));
+            return Ok(Some((user.user_id, Some(id))));
         }
     }
     warn!("gpodder login for user {} failed: wrong password", user.user_id);
@@ -121,13 +129,13 @@ pub(crate) async fn authenticate(state: &AppState, headers: &HeaderMap, path_use
     if let Some(token) = session_cookie(headers) {
         if let Some(s) = db.gpodder_session(&token).await? {
             if s.enabled && s.username.eq_ignore_ascii_case(path_user) {
-                return Ok(Authed { user_id: s.user_id, session: Some(s.session_id) });
+                return Ok(Authed { user_id: s.user_id, session: Some(s.session_id), app_password: None });
             }
         }
     }
     if let Some((u, p)) = basic_credentials(headers) {
-        if let Some(user_id) = basic_user(db, &u, &p, path_user).await? {
-            return Ok(Authed { user_id, session: None });
+        if let Some((user_id, app_password)) = basic_user(db, &u, &p, path_user).await? {
+            return Ok(Authed { user_id, session: None, app_password });
         }
     } else {
         debug!("gpodder request without valid credentials");
@@ -156,7 +164,7 @@ pub(crate) async fn login(State(state): State<AppState>, Path(user): Path<String
         .or_else(|| header_str(&headers, "x-forwarded-for").and_then(|v| v.split(',').next()).map(str::trim));
     state
         .db_pool
-        .gpodder_create_session(authed.user_id, &token, header_str(&headers, "user-agent"), client_ip)
+        .gpodder_create_session(authed.user_id, &token, header_str(&headers, "user-agent"), client_ip, authed.app_password)
         .await?;
     let secure = header_str(&headers, "x-forwarded-proto").is_some_and(|p| p.eq_ignore_ascii_case("https"));
     let cookie = format!(
@@ -204,7 +212,9 @@ mod tests {
         assert_ne!(cache_key("bob", "pw"), cache_key("bob", "PW"));
         let key = cache_key("cache-test-user", "pw");
         assert_eq!(cached(&key), None);
-        remember(key, 42);
-        assert_eq!(cached(&key), Some(42));
+        remember(key, (42, Some(7)));
+        assert_eq!(cached(&key), Some((42, Some(7))));
+        forget_user(42);
+        assert_eq!(cached(&key), None);
     }
 }

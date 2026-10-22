@@ -26,3 +26,4 @@ mod smoke;
 mod sync_core;
 mod sync_engine;
 mod sync_migrations;
+mod sync_settings;

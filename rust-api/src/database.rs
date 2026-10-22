@@ -3369,9 +3369,7 @@ impl DatabasePool {
                         "TimeListened": row.try_get::<i32, _>("timelistened")?,
                         "PodcastsAdded": row.try_get::<i32, _>("podcastsadded")?,
                         "EpisodesSaved": saved_count as i32,
-                        "EpisodesDownloaded": downloaded_count as i32,
-                        "GpodderUrl": INTERNAL_GPODDER_URL,
-                        "Pod_Sync_Type": "gpodder"
+                        "EpisodesDownloaded": downloaded_count as i32
                     });
 
                     Ok(Some(stats))
@@ -3415,9 +3413,7 @@ impl DatabasePool {
                         "TimeListened": row.try_get::<i32, _>("TimeListened")?,
                         "PodcastsAdded": row.try_get::<i32, _>("PodcastsAdded")?,
                         "EpisodesSaved": saved_count as i32,
-                        "EpisodesDownloaded": downloaded_count as i32,
-                        "GpodderUrl": INTERNAL_GPODDER_URL,
-                        "Pod_Sync_Type": "gpodder"
+                        "EpisodesDownloaded": downloaded_count as i32
                     });
 
                     Ok(Some(stats))
@@ -14559,64 +14555,17 @@ impl DatabasePool {
         Ok(true)
     }
 
-    // Save Nextcloud credentials (from the login flow) as the user's sync target, plus the legacy
-    // Users columns the old settings UI reads.
+    // Save Nextcloud credentials (from the login flow) as the user's sync target. The target save
+    // keeps the legacy Users columns in step.
     pub async fn save_nextcloud_credentials(&self, user_id: i32, nextcloud_url: &str, app_password: &str, login_name: &str) -> AppResult<()> {
-        // Encrypt the app password
-        let encrypted_password = self.encrypt_password(app_password).await?;
-        
-        // Store Nextcloud credentials
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'nextcloud' WHERE userid = $4"#)
-                    .bind(nextcloud_url)
-                    .bind(login_name)
-                    .bind(&encrypted_password)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await?;
-            }
-            DatabasePool::MySQL(pool) => {
-                sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'nextcloud' WHERE UserID = ?")
-                    .bind(nextcloud_url)
-                    .bind(login_name)
-                    .bind(&encrypted_password)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await?;
-            }
-        }
-        
         self.sync_target_save(user_id, crate::services::sync::engine_db::TargetKind::Nextcloud, nextcloud_url, login_name, app_password).await?;
         Ok(())
     }
-    
-    
-    // Save an external gpodder server as the user's sync target (replacing any other), plus the
-    // legacy Users columns the old settings UI reads. The caller starts the first (full) sync.
-    // Pinepods' device on that server is chosen by the sync engine, never another client's.
+
+    // Save an external gpodder server as the user's sync target (replacing any other). The caller
+    // starts the first (full) sync. Pinepods' device on that server is chosen by the sync engine,
+    // never another client's.
     pub async fn add_gpodder_server(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str) -> AppResult<bool> {
-        let encrypted_password = self.encrypt_password(password).await?;
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'external' WHERE userid = $4"#)
-                    .bind(gpodder_url)
-                    .bind(username)
-                    .bind(&encrypted_password)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await?;
-            }
-            DatabasePool::MySQL(pool) => {
-                sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'external' WHERE UserID = ?")
-                    .bind(gpodder_url)
-                    .bind(username)
-                    .bind(&encrypted_password)
-                    .bind(user_id)
-                    .execute(pool)
-                    .await?;
-            }
-        }
         self.sync_target_save(user_id, crate::services::sync::engine_db::TargetKind::Gpodder, gpodder_url, username, password).await?;
         Ok(true)
     }
@@ -24478,60 +24427,21 @@ impl DatabasePool {
     // keeps its settings ("both"). The user's current listening state is published to the sync
     // log so clients get it on their first sync.
     pub async fn set_gpodder_internal_sync(&self, user_id: i32) -> AppResult<serde_json::Value> {
-        let status = self.gpodder_get_status(user_id).await?;
-        let internal_only = matches!(status.sync_type.as_str(), "None" | "" | "gpodder");
-        let new_sync_type = match status.sync_type.as_str() {
-            "external" => "both",
-            "None" | "" => "gpodder",
-            other => other,
-        }
-        .to_string();
         let device_name = self.sync_ensure_pinepods_device(user_id).await?;
-
         match self {
             DatabasePool::Postgres(pool) => {
-                if internal_only {
-                    sqlx::query(
-                        r#"UPDATE "Users"
-                           SET gpodderurl = $1, gpoddertoken = '', gpodderloginname = username, pod_sync_type = $2,
-                               defaultgpodderdevice = $3, gpodderserverenabled = TRUE
-                           WHERE userid = $4"#,
-                    )
-                    .bind(INTERNAL_GPODDER_URL)
-                    .bind(&new_sync_type)
+                sqlx::query(r#"UPDATE "Users" SET gpodderserverenabled = TRUE, defaultgpodderdevice = $1 WHERE userid = $2"#)
                     .bind(&device_name)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-                } else {
-                    sqlx::query(r#"UPDATE "Users" SET pod_sync_type = $1, gpodderserverenabled = TRUE WHERE userid = $2"#)
-                        .bind(&new_sync_type)
-                        .bind(user_id)
-                        .execute(pool)
-                        .await?;
-                }
             }
             DatabasePool::MySQL(pool) => {
-                if internal_only {
-                    sqlx::query(
-                        "UPDATE Users
-                         SET GpodderUrl = ?, GpodderToken = '', GpodderLoginName = Username, Pod_Sync_Type = ?,
-                             DefaultGpodderDevice = ?, GpodderServerEnabled = TRUE
-                         WHERE UserID = ?",
-                    )
-                    .bind(INTERNAL_GPODDER_URL)
-                    .bind(&new_sync_type)
+                sqlx::query("UPDATE Users SET GpodderServerEnabled = TRUE, DefaultGpodderDevice = ? WHERE UserID = ?")
                     .bind(&device_name)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-                } else {
-                    sqlx::query("UPDATE Users SET Pod_Sync_Type = ?, GpodderServerEnabled = TRUE WHERE UserID = ?")
-                        .bind(&new_sync_type)
-                        .bind(user_id)
-                        .execute(pool)
-                        .await?;
-                }
             }
         }
         self.sync_mirror_sync_type(user_id).await?;
@@ -24549,70 +24459,24 @@ impl DatabasePool {
         }))
     }
 
-    // Disable internal gpodder sync - matches Python disable_gpodder_internal_sync function exactly
+    // Turn off the PinePods gpodder server. An external target keeps syncing.
     pub async fn disable_gpodder_internal_sync(&self, user_id: i32) -> AppResult<bool> {
-        // Get current user gpodder status
-        let user_status = self.gpodder_get_status(user_id).await?;
-        let current_sync_type = &user_status.sync_type;
-
-        // Determine new sync type
-        let new_sync_type = match current_sync_type.as_str() {
-            "both" => "external",
-            "gpodder" => "None",
-            _ => current_sync_type,
-        };
-
         match self {
             DatabasePool::Postgres(pool) => {
-                // If internal API is being used, clear the settings
-                if user_status.gpodder_url.as_deref() == Some(INTERNAL_GPODDER_URL) {
-                    sqlx::query(r#"
-                        UPDATE "Users" 
-                        SET gpodderurl = '', gpoddertoken = '', gpodderloginname = '', pod_sync_type = $1, gpodderserverenabled = FALSE
-                        WHERE userid = $2
-                    "#)
-                    .bind(new_sync_type)
+                sqlx::query(r#"UPDATE "Users" SET gpodderserverenabled = FALSE WHERE userid = $1"#)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-                crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
-                } else {
-                    // Just update the sync type
-                    sqlx::query(r#"UPDATE "Users" SET pod_sync_type = $1, gpodderserverenabled = FALSE WHERE userid = $2"#)
-                        .bind(new_sync_type)
-                        .bind(user_id)
-                        .execute(pool)
-                        .await?;
-                    crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
-                }
             }
             DatabasePool::MySQL(pool) => {
-                // If internal API is being used, clear the settings
-                if user_status.gpodder_url.as_deref() == Some(INTERNAL_GPODDER_URL) {
-                    sqlx::query("
-                        UPDATE Users 
-                        SET GpodderUrl = '', GpodderToken = '', GpodderLoginName = '', Pod_Sync_Type = ?, GpodderServerEnabled = FALSE
-                        WHERE UserID = ?
-                    ")
-                    .bind(new_sync_type)
+                sqlx::query("UPDATE Users SET GpodderServerEnabled = FALSE WHERE UserID = ?")
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-                crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
-                } else {
-                    // Just update the sync type
-                    sqlx::query("UPDATE Users SET Pod_Sync_Type = ?, GpodderServerEnabled = FALSE WHERE UserID = ?")
-                        .bind(new_sync_type)
-                        .bind(user_id)
-                        .execute(pool)
-                        .await?;
-                    crate::services::sync::invalidate_sync_enabled(user_id); // GpodderServerEnabled changed
-                }
             }
         }
-
-        // An external target keeps syncing: 'both' becomes 'external' or 'nextcloud'.
         self.sync_mirror_sync_type(user_id).await?;
+        crate::services::sync::invalidate_sync_enabled(user_id);
         Ok(true)
     }
 

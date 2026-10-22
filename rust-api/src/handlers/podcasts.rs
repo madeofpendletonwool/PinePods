@@ -2467,7 +2467,10 @@ pub async fn get_stats(
     if key_id == query.user_id || is_web_key {
         let stats = state.db_pool.get_stats(query.user_id).await?;
         
-        if let Some(stats) = stats {
+        if let Some(mut stats) = stats {
+            if let Some(obj) = stats.as_object_mut() {
+                obj.extend(crate::handlers::sync_settings::user_stats_sync_fields(&state, &headers, query.user_id).await?);
+            }
             Ok(Json(stats))
         } else {
             Err(AppError::not_found("Stats not found for the given user ID"))

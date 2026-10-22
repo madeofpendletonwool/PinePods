@@ -145,7 +145,7 @@ fn task_icon(task_type: &str) -> &'static str {
         "youtube_download" | "download_video" | "download_all_videos" => "ph-youtube-logo",
         "playlist_generation" | "update_playlists" => "ph-list-checks",
         "opml_import" | "add_podcast_episodes" => "ph-upload-simple",
-        "refresh_gpodder_subscriptions" | "gpodder_subscription_refresh" => "ph-arrows-left-right",
+        "refresh_gpodder_subscriptions" | "gpodder_subscription_refresh" | "sync_setup" => "ph-arrows-left-right",
         "refresh_nextcloud_subscriptions" | "nextcloud_auth" => "ph-cloud",
         "manual_backup_to_directory" => "ph-floppy-disk",
         "restore_from_backup_file" => "ph-clock-counter-clockwise",
@@ -287,6 +287,7 @@ pub fn notification_center() -> Html {
     let l_backup = i18n.t("notification_center.task_backup").to_string();
     let l_restore = i18n.t("notification_center.task_restore").to_string();
     let l_gpodder = i18n.t("notification_center.task_gpodder_sync").to_string();
+    let l_sync_setup = i18n.t("sync_settings.task_first_sync").to_string();
     let l_nextcloud = i18n.t("notification_center.task_nextcloud_sync").to_string();
     let l_nextcloud_auth = i18n.t("notification_center.task_nextcloud_auth").to_string();
     let l_playlist_update = i18n.t("notification_center.task_playlist_update").to_string();
@@ -318,6 +319,7 @@ pub fn notification_center() -> Html {
                 "manual_backup_to_directory" => l_backup.clone(),
                 "restore_from_backup_file" => l_restore.clone(),
                 "refresh_gpodder_subscriptions" | "gpodder_subscription_refresh" => l_gpodder.clone(),
+                "sync_setup" => l_sync_setup.clone(),
                 "refresh_nextcloud_subscriptions" => l_nextcloud.clone(),
                 "nextcloud_auth" => l_nextcloud_auth.clone(),
                 "cleanup_tasks" => l_cleanup.clone(),
