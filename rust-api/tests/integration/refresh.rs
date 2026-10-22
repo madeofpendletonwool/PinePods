@@ -1,4 +1,4 @@
-//! Feed refresh efficiency and integrity (SYNC_REFRESH_PLAN.md Phase 2): unchanged feeds skip
+//! Feed refresh efficiency and integrity: unchanged feeds skip
 //! parsing, throttling hosts are backed off, racing refreshes can't duplicate episodes, adding a
 //! podcast downloads its feed once, manual refresh revalidates, duration probes are bounded.
 

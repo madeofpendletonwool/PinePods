@@ -1,5 +1,5 @@
-// EpisodeResolver (D7): the one place sync matches a gpodder action to a local episode. Always
-// scoped to the user (episodes are per user until the shared catalogue, Phase 12, when only this
+// EpisodeResolver: the one place sync matches a gpodder action to a local episode. Always
+// scoped to the user (episodes are per user; if they're ever shared across users, only this
 // changes). Match order, first hit wins:
 //   1. GUID, within the user's podcast whose FeedURL is the action's podcast URL;
 //   2. exact EpisodeURL, any of the user's podcasts;

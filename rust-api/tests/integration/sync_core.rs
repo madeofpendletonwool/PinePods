@@ -1,4 +1,4 @@
-//! Sync core (SYNC_REFRESH_PLAN.md Phase 4): the episode resolver, local writes recorded in the
+//! Sync core: the episode resolver, local writes recorded in the
 //! sync log (events), applying remote actions and subscription changes, and rematching actions
 //! that arrived before their episode.
 
@@ -449,7 +449,7 @@ async fn completion_threshold_new_and_ignored_actions() {
     assert!(!completed(&app, e2).await);
     assert_eq!(position(&app, &user, e2).await, Some(0));
 
-    // download/delete change nothing, even when they're the newest action (N2).
+    // download/delete change nothing, even when they're the newest action.
     let s = apply(vec![
         action(json!({"podcast": url, "episode": ep_url(1), "action": "download", "timestamp": ts(10).timestamp()})),
         action(json!({"podcast": url, "episode": ep_url(1), "action": "delete", "timestamp": ts(5).timestamp()})),

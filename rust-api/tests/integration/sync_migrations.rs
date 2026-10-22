@@ -1,4 +1,4 @@
-//! Sync data model migrations (SYNC_REFRESH_PLAN.md Phase 3): old-shape data is seeded, the
+//! Sync data model migrations: old-shape data is seeded, the
 //! migrations are forgotten and re-run through the real runner, and the result is checked.
 //! 068 moves Users.Pod_Sync_Type to GpodderServerEnabled / SyncTargets / app passwords; 111/112
 //! extend the action and subscription logs; 113 marks Pinepods' own device; 069 makes listen
@@ -137,7 +137,7 @@ async fn pod_sync_type_settings_move_to_the_new_sync_model() {
     assert_eq!(targets(&unsynced).await, 0);
     assert_eq!(notice(&unsynced).await, None);
 
-    // The old columns stay populated for the old sync code (dropped in Phase 9).
+    // The old columns stay populated for the old sync code until that code is removed.
     assert_eq!(
         text(&app, &format!(r#"SELECT GpodderToken FROM "Users" WHERE UserID = {}"#, internal.id)).await.as_deref(),
         Some(internal_token.as_str())

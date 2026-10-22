@@ -14,7 +14,7 @@ use crate::database::DatabasePool;
 use crate::error::{AppError, AppResult};
 
 // Receive time from the DB clock, evaluated once per statement. PG's NOW() is the transaction
-// start, so CLOCK_TIMESTAMP(); FLOOR because a plain ::bigint cast rounds (G1).
+// start, so CLOCK_TIMESTAMP(); FLOOR because a plain ::bigint cast rounds to nearest.
 const PG_NOW: &str = "(SELECT FLOOR(EXTRACT(EPOCH FROM CLOCK_TIMESTAMP()))::BIGINT AS t) n";
 
 // Rows per resolver query; MySQL binds 7 values per key and caps a statement at 65535.

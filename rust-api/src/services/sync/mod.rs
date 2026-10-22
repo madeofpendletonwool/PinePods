@@ -1,4 +1,4 @@
-// Sync core (SYNC_REFRESH_PLAN.md Phase 4). Local writes are recorded in the gpodder
+// Sync core. Local writes are recorded in the gpodder
 // subscription/episode-action logs as they happen (events), and remote changes are applied
 // through one path (apply), with episodes matched by one resolver. The logs double as the outbox
 // for external sync targets.

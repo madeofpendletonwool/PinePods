@@ -105,12 +105,12 @@ Guidelines:
 ## gpodder protocol tests
 
 `gpodder/` checks the gpodder sync server over real HTTP, the way AntennaPod and other
-clients use it (SYNC_REFRESH_PLAN.md, Phase 0). `PINEPODS_TEST_GPODDER` picks the server:
+clients use it. `PINEPODS_TEST_GPODDER` picks the server:
 
 - `go` (default): the current `gpodder-api/` service, built with `go build` and started per
   test against that test's database, so Go must be installed.
 - `rust`: the rust-api router on a real socket, for the Rust port.
-- `mock`: the in-memory reference server in `harness/mock_gpodder.rs`. It follows the plan's
+- `mock`: the in-memory reference server in `harness/mock_gpodder.rs`. It follows the
   cursor rules, so every test must pass against it; that's how the tests themselves are
   checked. It also stands in for external gpodder/Nextcloud servers in sync engine tests.
 

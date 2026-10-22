@@ -1242,7 +1242,7 @@ impl TaskSpawner {
 
 impl TaskSpawner {
     /// Import a feed a sync source subscribed to (sync::apply_subscription_changes; never
-    /// fetched inside the sync request, D6). `claim` marks the (user, url) as in flight until
+    /// fetched inside the sync request). `claim` marks the (user, url) as in flight until
     /// the task ends; at most a few of these fetch at once.
     pub async fn spawn_sync_add_podcast(
         &self,

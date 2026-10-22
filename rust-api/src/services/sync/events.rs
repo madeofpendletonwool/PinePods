@@ -1,4 +1,4 @@
-// Local writes → sync log (D3). The DB functions behind subscribe, unsubscribe, progress,
+// Local writes → sync log. The DB functions behind subscribe, unsubscribe, progress,
 // complete and uncomplete call these with their origin, inside their own transaction where they
 // have one. An event never fails the write it belongs to: it runs in a savepoint (on PG a failed
 // statement would otherwise abort the caller's transaction) and a failure is logged and dropped.

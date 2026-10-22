@@ -1,4 +1,4 @@
-// Remote → local (D4): the one path that applies gpodder episode actions and subscription
+// Remote → local: the one path that applies gpodder episode actions and subscription
 // changes, whether they came from a client of the Pinepods server or an external target.
 // State changes go through the same DB functions as the UI, passing the origin, so they aren't
 // logged as Pinepods' own changes and never echo back.
@@ -47,7 +47,7 @@ pub async fn apply_episode_actions(db: &DatabasePool, user_id: i32, actions: &[E
 /// Apply already-resolved actions (`resolved[i]` is `actions[i]`'s EpisodeID). For callers that
 /// log the actions themselves (the gpodder server, rematch).
 ///
-/// - Only `play` and `new` change state; `download`/`delete` are ignored (N2).
+/// - Only `play` and `new` change state; `download`/`delete` are ignored.
 /// - Per episode only the newest action (by action time) counts; on a tie the later one wins.
 /// - Last-write-wins: it's applied only if newer than the local `ListenDate` (progress or
 ///   completion time). Positions can go backwards.
@@ -185,7 +185,7 @@ pub async fn add_permit() -> tokio::sync::OwnedSemaphorePermit {
 }
 
 /// Apply subscription changes for `user_id`. Adds are queued as background imports (never
-/// fetched inline, D6), deduplicated per (user, url) and skipped when already subscribed.
+/// fetched inline), deduplicated per (user, url) and skipped when already subscribed.
 /// Removes go through the shared unsubscribe cascade. For an external target the changes are
 /// also logged as `target:<id>`.
 pub async fn apply_subscription_changes(
