@@ -72,6 +72,26 @@ fn legacy_device_name(user_id: i32) -> String {
 // Events (inside the caller's transaction)
 // ---------------------------------------------------------------------------------------------
 
+/// Share-lock the user's sync targets until the caller commits, and return the highest
+/// ActionsPushCursor (0 without targets). Every writer to the log calls this first: the external
+/// sync engine advances a push cursor under an exclusive lock on the same rows, after re-reading
+/// what it sent, so a row written or rewritten while it pushed is never skipped.
+pub async fn pg_lock_targets_shared(conn: &mut PgConnection, user_id: i32) -> AppResult<i64> {
+    let cursors: Vec<i64> = sqlx::query_scalar(r#"SELECT actionspushcursor FROM "SyncTargets" WHERE userid = $1 FOR SHARE"#)
+        .bind(user_id)
+        .fetch_all(&mut *conn)
+        .await?;
+    Ok(cursors.into_iter().max().unwrap_or(0))
+}
+
+pub async fn mysql_lock_targets_shared(conn: &mut MySqlConnection, user_id: i32) -> AppResult<i64> {
+    let cursors: Vec<i64> = sqlx::query_scalar("SELECT ActionsPushCursor FROM SyncTargets WHERE UserID = ? LOCK IN SHARE MODE")
+        .bind(user_id)
+        .fetch_all(&mut *conn)
+        .await?;
+    Ok(cursors.into_iter().max().unwrap_or(0))
+}
+
 /// The user's pinepods device, created on first use. The pre-overhaul internal device
 /// (`pinepods-internal-<uid>`) is claimed if nothing has the role yet, so Pinepods keeps one
 /// device. A client may already own the name `pinepods` (UNIQUE(UserID, DeviceName)), so other
@@ -164,6 +184,7 @@ pub async fn mysql_pinepods_device(conn: &mut MySqlConnection, user_id: i32) -> 
 }
 
 pub async fn pg_log_subscription(conn: &mut PgConnection, user_id: i32, feed_url: &str, action: &str) -> AppResult<()> {
+    pg_lock_targets_shared(conn, user_id).await?;
     let device_id = pg_pinepods_device(conn, user_id).await?;
     sqlx::query(sqlx::AssertSqlSafe(format!(
         r#"INSERT INTO "GpodderSyncSubscriptions" (userid, deviceid, podcasturl, action, timestamp, serverts, origin)
@@ -179,6 +200,7 @@ pub async fn pg_log_subscription(conn: &mut PgConnection, user_id: i32, feed_url
 }
 
 pub async fn mysql_log_subscription(conn: &mut MySqlConnection, user_id: i32, feed_url: &str, action: &str) -> AppResult<()> {
+    mysql_lock_targets_shared(conn, user_id).await?;
     let device_id = mysql_pinepods_device(conn, user_id).await?;
     sqlx::query(
         "INSERT INTO GpodderSyncSubscriptions (UserID, DeviceID, PodcastURL, Action, Timestamp, ServerTs, Origin)
@@ -259,6 +281,7 @@ fn play_values(ep: &EpisodeForEvent, event: EpisodeEvent) -> Option<(i32, i32)> 
 /// cursor readers see it again; otherwise a new row is inserted. "Unpushed" means above every
 /// target's ActionsPushCursor, so an external target never misses a position.
 pub async fn pg_log_episode(conn: &mut PgConnection, user_id: i32, episode_id: i32, ep: &EpisodeForEvent, event: EpisodeEvent) -> AppResult<()> {
+    let pushed = pg_lock_targets_shared(conn, user_id).await?;
     let device_id = pg_pinepods_device(conn, user_id).await?;
     if let EpisodeEvent::New = event {
         sqlx::query(sqlx::AssertSqlSafe(format!(
@@ -279,12 +302,12 @@ pub async fn pg_log_episode(conn: &mut PgConnection, user_id: i32, episode_id: i
     let Some((position, total)) = play_values(ep, event) else { return Ok(()) };
     let latest = sqlx::query(
         r#"SELECT a.actionid, a.action FROM "GpodderSyncEpisodeActions" a
-           WHERE a.episodeid = $1 AND a.userid = $2 AND a.origin = 'pinepods'
-             AND a.actionid > COALESCE((SELECT MAX(t.actionspushcursor) FROM "SyncTargets" t WHERE t.userid = $2), 0)
+           WHERE a.episodeid = $1 AND a.userid = $2 AND a.origin = 'pinepods' AND a.actionid > $3
            ORDER BY a.actionid DESC LIMIT 1"#,
     )
     .bind(episode_id)
     .bind(user_id)
+    .bind(pushed)
     .fetch_optional(&mut *conn)
     .await?;
     if let Some(row) = latest {
@@ -328,6 +351,7 @@ pub async fn pg_log_episode(conn: &mut PgConnection, user_id: i32, episode_id: i
 }
 
 pub async fn mysql_log_episode(conn: &mut MySqlConnection, user_id: i32, episode_id: i32, ep: &EpisodeForEvent, event: EpisodeEvent) -> AppResult<()> {
+    let pushed = mysql_lock_targets_shared(conn, user_id).await?;
     let device_id = mysql_pinepods_device(conn, user_id).await?;
     if let EpisodeEvent::New = event {
         sqlx::query(
@@ -348,13 +372,12 @@ pub async fn mysql_log_episode(conn: &mut MySqlConnection, user_id: i32, episode
     let Some((position, total)) = play_values(ep, event) else { return Ok(()) };
     let latest = sqlx::query(
         "SELECT a.ActionID, a.Action FROM GpodderSyncEpisodeActions a
-         WHERE a.EpisodeID = ? AND a.UserID = ? AND a.Origin = 'pinepods'
-           AND a.ActionID > COALESCE((SELECT MAX(t.ActionsPushCursor) FROM SyncTargets t WHERE t.UserID = ?), 0)
+         WHERE a.EpisodeID = ? AND a.UserID = ? AND a.Origin = 'pinepods' AND a.ActionID > ?
          ORDER BY a.ActionID DESC LIMIT 1",
     )
     .bind(episode_id)
     .bind(user_id)
-    .bind(user_id)
+    .bind(pushed)
     .fetch_optional(&mut *conn)
     .await?;
     if let Some(row) = latest {
@@ -652,6 +675,7 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let mut tx = pool.begin().await?;
+                pg_lock_targets_shared(&mut tx, user_id).await?;
                 let now: i64 = sqlx::query_scalar("SELECT FLOOR(EXTRACT(EPOCH FROM CLOCK_TIMESTAMP()))::BIGINT")
                     .fetch_one(&mut *tx)
                     .await?;
@@ -681,6 +705,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let mut tx = pool.begin().await?;
+                mysql_lock_targets_shared(&mut tx, user_id).await?;
                 let now: i64 = sqlx::query_scalar("SELECT UNIX_TIMESTAMP()").fetch_one(&mut *tx).await?;
                 for (chunk_no, chunk) in actions.chunks(500).enumerate() {
                     let values = vec!["(?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"; chunk.len()].join(", ");
@@ -720,6 +745,8 @@ impl DatabasePool {
         }
         match self {
             DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                pg_lock_targets_shared(&mut tx, user_id).await?;
                 sqlx::query(sqlx::AssertSqlSafe(format!(
                     r#"INSERT INTO "GpodderSyncSubscriptions" (userid, deviceid, podcasturl, action, timestamp, serverts, origin)
                        SELECT $1, NULL, u.url, $2, n.t, n.t, $3 FROM UNNEST($4::text[]) AS u(url), {PG_NOW}"#
@@ -728,11 +755,13 @@ impl DatabasePool {
                 .bind(action)
                 .bind(origin)
                 .bind(urls)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
+                tx.commit().await?;
             }
             DatabasePool::MySQL(pool) => {
                 let mut tx = pool.begin().await?;
+                mysql_lock_targets_shared(&mut tx, user_id).await?;
                 for url in urls {
                     sqlx::query(
                         "INSERT INTO GpodderSyncSubscriptions (UserID, DeviceID, PodcastURL, Action, Timestamp, ServerTs, Origin)

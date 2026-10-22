@@ -630,6 +630,7 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let mut tx = pool.begin().await?;
+                crate::services::sync::db::pg_lock_targets_shared(&mut tx, user_id).await?;
                 let now: i64 = sqlx::query_scalar(PG_NOW).fetch_one(&mut *tx).await?;
                 sqlx::query(
                     r#"INSERT INTO "GpodderSyncSubscriptions" (userid, deviceid, podcasturl, action, timestamp, serverts, origin)
@@ -659,6 +660,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let mut tx = pool.begin().await?;
+                crate::services::sync::db::mysql_lock_targets_shared(&mut tx, user_id).await?;
                 let now: i64 = sqlx::query_scalar(MYSQL_NOW).fetch_one(&mut *tx).await?;
                 for chunk in urls.iter().zip(&actions).collect::<Vec<_>>().chunks(500) {
                     let values = vec!["(?, ?, ?, ?, ?, ?, 'client')"; chunk.len()].join(", ");
@@ -785,6 +787,7 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let mut tx = pool.begin().await?;
+                crate::services::sync::db::pg_lock_targets_shared(&mut tx, user_id).await?;
                 let mut ids = HashMap::new();
                 for name in names {
                     ids.insert(name, pg_ensure_device(&mut tx, user_id, name).await?.id);
@@ -816,6 +819,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let mut tx = pool.begin().await?;
+                crate::services::sync::db::mysql_lock_targets_shared(&mut tx, user_id).await?;
                 let mut ids = HashMap::new();
                 for name in names {
                     ids.insert(name, mysql_ensure_device(&mut tx, user_id, name).await?.id);
@@ -1049,6 +1053,7 @@ impl DatabasePool {
         let inserted = match self {
             DatabasePool::Postgres(pool) => {
                 let mut tx = pool.begin().await?;
+                crate::services::sync::db::pg_lock_targets_shared(&mut tx, user_id).await?;
                 let device = crate::services::sync::db::pg_pinepods_device(&mut tx, user_id).await?;
                 let n = sqlx::query(
                     r#"INSERT INTO "GpodderSyncEpisodeActions"
@@ -1082,6 +1087,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let mut tx = pool.begin().await?;
+                crate::services::sync::db::mysql_lock_targets_shared(&mut tx, user_id).await?;
                 let device = crate::services::sync::db::mysql_pinepods_device(&mut tx, user_id).await?;
                 let n = sqlx::query(
                     "INSERT INTO GpodderSyncEpisodeActions

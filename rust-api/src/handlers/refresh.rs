@@ -14,6 +14,8 @@ use tracing::{debug, info, warn};
 use crate::{
     error::{AppError, AppResult},
     handlers::check_user_access,
+    services::sync::engine::{self, RunMode},
+    services::sync::engine_db::TargetKind,
     AppState,
 };
 
@@ -120,8 +122,8 @@ pub async fn refresh_gpodder_subscriptions_admin(
             let state = state_clone;
             reporter.update_progress(10.0, Some("Starting gPodder sync for all users...".to_string())).await?;
             
-            // Get all users who have gPodder sync enabled
-            let gpodder_users = state.db_pool.get_all_users_with_gpodder_sync().await
+            // Every user syncing with an external gpodder server
+            let gpodder_users = state.db_pool.sync_target_users(Some(TargetKind::Gpodder)).await
                 .map_err(|e| AppError::internal(&format!("Failed to get gPodder users: {}", e)))?;
             
             debug!("Found {} users with gPodder sync enabled", gpodder_users.len());
@@ -134,29 +136,16 @@ pub async fn refresh_gpodder_subscriptions_admin(
                 let progress = 10.0 + (80.0 * (index as f64) / (gpodder_users.len() as f64));
                 reporter.update_progress(progress, Some(format!("Syncing user {}/{}", index + 1, gpodder_users.len()))).await?;
                 
-                info!("Running gPodder sync for user {} ({}/{})", user_id, index + 1, gpodder_users.len());
-                
-                // Get user's sync type
-                let gpodder_status = state.db_pool.gpodder_get_status(*user_id).await
-                    .map_err(|e| AppError::internal(&format!("Failed to get status for user {}: {}", user_id, e)))?;
-                
-                if gpodder_status.sync_type != "None" && !gpodder_status.sync_type.is_empty() {
-                    match run_admin_gpodder_sync(&state, *user_id, &gpodder_status.sync_type).await {
-                        Ok(sync_result) => {
-                            successful_syncs += 1;
-                            total_synced_podcasts += sync_result.synced_podcasts;
-                            info!("gPodder sync successful for user {}: {} podcasts", 
-                                user_id, sync_result.synced_podcasts);
-                        }
-                        Err(e) => {
-                            failed_syncs += 1;
-                            warn!("gPodder sync failed for user {}: {}", user_id, e);
-                            tracing::error!("gPodder sync failed for user {}: {}", user_id, e);
-                            // Continue with other users
-                        }
+                match run_admin_gpodder_sync(&state, *user_id).await {
+                    Ok(sync_result) => {
+                        successful_syncs += 1;
+                        total_synced_podcasts += sync_result.synced_podcasts;
+                        debug!("gPodder sync successful for user {}: {} podcasts", user_id, sync_result.synced_podcasts);
                     }
-                } else {
-                    info!("gPodder sync not properly configured for user {}", user_id);
+                    Err(e) => {
+                        failed_syncs += 1;
+                        warn!("gPodder sync failed for user {}: {}", user_id, e);
+                    }
                 }
             }
             
@@ -587,34 +576,16 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
     Ok(())
 }
 
-// Helper function for admin gPodder sync
-async fn run_admin_gpodder_sync(state: &AppState, user_id: i32, sync_type: &str) -> AppResult<SyncResult> {
-    match sync_type {
-        "nextcloud" => {
-            match state.db_pool.sync_with_nextcloud_for_user(user_id).await {
-                Ok(success) => {
-                    if success {
-                        Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
-                    } else {
-                        Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
-                    }
-                }
-                Err(e) => Err(e)
-            }
-        }
-        "gpodder" | "external" | "both" => {
-            match state.db_pool.gpodder_sync(user_id).await {
-                Ok(sync_result) => {
-                    Ok(SyncResult {
-                        synced_podcasts: sync_result.synced_podcasts,
-                        synced_episodes: sync_result.synced_episodes,
-                    })
-                }
-                Err(e) => Err(e)
-            }
-        }
-        _ => Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
-    }
+// Sync one user with their external server through the sync engine. Users of the internal
+// server only have nothing to sync: it works on the same database.
+async fn run_admin_gpodder_sync(state: &AppState, user_id: i32) -> AppResult<SyncResult> {
+    let summary = engine::run_for_user(&state.db_pool, &state.task_spawner, user_id, RunMode::Incremental).await?;
+    Ok(summary
+        .map(|s| SyncResult {
+            synced_podcasts: (s.subscriptions_queued + s.subscriptions_removed) as i32,
+            synced_episodes: s.actions_applied as i32,
+        })
+        .unwrap_or(SyncResult { synced_podcasts: 0, synced_episodes: 0 }))
 }
 
 // User-specific refresh via WebSocket with real-time progress
@@ -788,7 +759,7 @@ pub async fn run_refresh_process(
                 },
             })).await;
 
-            match handle_gpodder_sync(&state, user_id, &gpodder_status.sync_type).await {
+            match run_admin_gpodder_sync(&state, user_id).await {
                 Ok(sync_result) => {
                     info!("gPodder sync successful for user {}: {} podcasts, {} episodes", 
                         user_id, sync_result.synced_podcasts, sync_result.synced_episodes);
@@ -803,9 +774,6 @@ pub async fn run_refresh_process(
                     })).await;
                 }
                 Err(e) => {
-                    warn!("gPodder sync failed for user {}: {}", user_id, e);
-                    tracing::error!("gPodder sync failed for user {}: {}", user_id, e);
-                    
                     let _ = tx.send(RefreshMessage::Status(RefreshStatus {
                         progress: RefreshProgress {
                             current: 0,
@@ -1033,58 +1001,6 @@ pub struct SyncResult {
     pub synced_episodes: i32,
 }
 
-async fn handle_gpodder_sync(state: &AppState, user_id: i32, sync_type: &str) -> AppResult<SyncResult> {
-    info!("Starting gPodder sync for user {}, sync_type: {}", user_id, sync_type);
-    
-    // Determine which sync function to call based on sync type - matches Python logic exactly
-    match sync_type {
-        "nextcloud" => {
-            info!("Performing Nextcloud gPodder sync for user {}", user_id);
-            
-            // Use the nextcloud sync functionality - this handles the /index.php/apps/gpoddersync endpoints
-            match state.db_pool.sync_with_nextcloud_for_user(user_id).await {
-                Ok(success) => {
-                    if success {
-                        info!("Nextcloud sync successful for user {}", user_id);
-                        Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
-                    } else {
-                        info!("Nextcloud sync returned false for user {}", user_id);
-                        Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
-                    }
-                }
-                Err(e) => {
-                    warn!("Nextcloud sync failed for user {}: {}", user_id, e);
-                    Err(e)
-                }
-            }
-        }
-        "gpodder" | "external" | "both" => {
-            info!("Performing standard gPodder sync for user {}, type: {}", user_id, sync_type);
-            
-            // Use the standard gPodder sync functionality
-            match state.db_pool.gpodder_sync(user_id).await {
-                Ok(sync_result) => {
-                    info!("Standard gPodder sync successful for user {}: {} podcasts, {} episodes", 
-                        user_id, sync_result.synced_podcasts, sync_result.synced_episodes);
-                    
-                    Ok(SyncResult {
-                        synced_podcasts: sync_result.synced_podcasts,
-                        synced_episodes: sync_result.synced_episodes,
-                    })
-                }
-                Err(e) => {
-                    warn!("Standard gPodder sync failed for user {}: {}", user_id, e);
-                    Err(e)
-                }
-            }
-        }
-        _ => {
-            debug!("Unknown sync type '{}' for user {}, skipping sync", sync_type, user_id);
-            Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
-        }
-    }
-}
-
 // Internal functions for scheduler (no HTTP context needed)
 pub async fn refresh_pods_admin_internal(state: &AppState) -> AppResult<()> {
     tracing::info!("Starting internal podcast refresh (scheduler)");
@@ -1092,43 +1008,20 @@ pub async fn refresh_pods_admin_internal(state: &AppState) -> AppResult<()> {
 }
 
 pub async fn refresh_gpodder_subscriptions_admin_internal(state: &AppState) -> AppResult<()> {
-    tracing::info!("Starting internal GPodder sync (scheduler)");
-    
-    // Wait for GPodder service to be ready (5 second delay on startup)
-    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-    tracing::info!("GPodder service startup delay completed");
-    
-    // Get all users who have gPodder sync enabled (internal, external, both - NOT nextcloud)
-    let gpodder_users = state.db_pool.get_all_users_with_gpodder_sync().await?;
-    tracing::info!("Found {} users with GPodder sync enabled", gpodder_users.len());
-    
-    let mut successful_syncs = 0;
-    let mut failed_syncs = 0;
-    
-    for user_id in gpodder_users.iter() {
-        tracing::info!("Running GPodder sync for user {}", user_id);
-        
-        // Get user's sync type
-        let gpodder_status = state.db_pool.gpodder_get_status(*user_id).await?;
-        
-        // Only sync GPodder types (internal, external, both) - NOT nextcloud
-        if gpodder_status.sync_type != "None" && gpodder_status.sync_type != "nextcloud" && !gpodder_status.sync_type.is_empty() {
-            match run_admin_gpodder_sync(state, *user_id, &gpodder_status.sync_type).await {
-                Ok(_) => {
-                    successful_syncs += 1;
-                    tracing::info!("GPodder sync successful for user {}", user_id);
-                }
-                Err(e) => {
-                    failed_syncs += 1;
-                    tracing::error!("GPodder sync failed for user {}: {}", user_id, e);
-                }
-            }
+    sync_external_targets(state, TargetKind::Gpodder).await
+}
+
+// Run the sync engine for every user with an enabled external target of `kind`.
+async fn sync_external_targets(state: &AppState, kind: TargetKind) -> AppResult<()> {
+    let users = state.db_pool.sync_target_users(Some(kind)).await?;
+    let mut failed = 0;
+    for user_id in &users {
+        if let Err(e) = run_admin_gpodder_sync(state, *user_id).await {
+            failed += 1;
+            warn!("{} sync failed for user {}: {}", kind.as_str(), user_id, e);
         }
     }
-    
-    tracing::info!("Internal GPodder sync completed: {}/{} users successful ({} failed)",
-        successful_syncs, gpodder_users.len(), failed_syncs);
-    
+    debug!("Scheduled {} sync: {}/{} users synced", kind.as_str(), users.len() - failed, users.len());
     Ok(())
 }
 
@@ -1159,8 +1052,8 @@ pub async fn refresh_nextcloud_subscriptions_admin(
             let state = state_clone;
             reporter.update_progress(10.0, Some("Starting Nextcloud sync for all users...".to_string())).await?;
             
-            // Get all users who have Nextcloud sync enabled
-            let nextcloud_users = state.db_pool.get_all_users_with_nextcloud_sync().await
+            // Every user syncing with Nextcloud
+            let nextcloud_users = state.db_pool.sync_target_users(Some(TargetKind::Nextcloud)).await
                 .map_err(|e| AppError::internal(&format!("Failed to get Nextcloud users: {}", e)))?;
             
             debug!("Found {} users with Nextcloud sync enabled", nextcloud_users.len());
@@ -1183,15 +1076,8 @@ pub async fn refresh_nextcloud_subscriptions_admin(
                 let progress = 10.0 + ((index as f64 / total_users as f64) * 80.0);
                 reporter.update_progress(progress, Some(format!("Running Nextcloud sync for user {}", user_id))).await?;
                 
-                match state.db_pool.sync_with_nextcloud_for_user(*user_id).await {
-                    Ok(true) => {
-                        successful_syncs += 1;
-                        info!("Nextcloud sync successful for user {}", user_id);
-                    }
-                    Ok(false) => {
-                        info!("Nextcloud sync for user {} - no changes", user_id);
-                        successful_syncs += 1; // Count as success
-                    }
+                match run_admin_gpodder_sync(&state, *user_id).await {
+                    Ok(_) => successful_syncs += 1,
                     Err(e) => {
                         failed_syncs += 1;
                         warn!("Nextcloud sync failed for user {}: {}", user_id, e);
@@ -1217,38 +1103,7 @@ pub async fn refresh_nextcloud_subscriptions_admin(
 }
 
 pub async fn refresh_nextcloud_subscriptions_admin_internal(state: &AppState) -> AppResult<()> {
-    tracing::info!("Starting internal Nextcloud sync (scheduler)");
-    
-    // Get all users who have Nextcloud sync enabled
-    let nextcloud_users = state.db_pool.get_all_users_with_nextcloud_sync().await?;
-    tracing::info!("Found {} users with Nextcloud sync enabled", nextcloud_users.len());
-    
-    let mut successful_syncs = 0;
-    let mut failed_syncs = 0;
-    
-    for user_id in nextcloud_users.iter() {
-        tracing::info!("Running Nextcloud sync for user {}", user_id);
-        
-        match state.db_pool.sync_with_nextcloud_for_user(*user_id).await {
-            Ok(true) => {
-                successful_syncs += 1;
-                tracing::info!("Nextcloud sync successful for user {}", user_id);
-            }
-            Ok(false) => {
-                tracing::info!("Nextcloud sync for user {} - no changes", user_id);
-                successful_syncs += 1; // Count as success
-            }
-            Err(e) => {
-                failed_syncs += 1;
-                tracing::error!("Nextcloud sync failed for user {}: {}", user_id, e);
-            }
-        }
-    }
-    
-    tracing::info!("Internal Nextcloud sync completed: {}/{} users successful ({} failed)",
-        successful_syncs, nextcloud_users.len(), failed_syncs);
-    
-    Ok(())
+    sync_external_targets(state, TargetKind::Nextcloud).await
 }
 
 

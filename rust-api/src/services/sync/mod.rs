@@ -9,9 +9,12 @@
 
 pub mod apply;
 pub mod db;
+pub mod engine;
+pub mod engine_db;
 pub mod events;
 pub mod model;
 pub mod resolver;
+pub mod targets;
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -32,8 +35,8 @@ pub enum SyncOrigin {
     Client,
     /// Pulled from an external sync target (`SyncTargets.TargetID`). Logged by apply.
     Target(i32),
-    /// Not a change other devices should hear about: the pre-overhaul sync paths (removed in
-    /// Phases 5/6), account deletion, housekeeping. Never logged.
+    /// Not a change other devices should hear about: the pre-overhaul sync paths, account
+    /// deletion, housekeeping. Never logged.
     Unlogged,
 }
 

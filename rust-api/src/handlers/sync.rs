@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::AppError,
     handlers::{extract_api_key, require_valid_api_key},
+    services::sync::engine::{self, RunMode},
     AppState,
 };
 
@@ -128,80 +129,40 @@ pub async fn gpodder_force_sync(
     require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // Get user's sync settings to determine which sync method to use
-    let sync_settings = state.db_pool.get_user_sync_settings(user_id).await?;
-    if sync_settings.is_none() {
-        return Ok(Json(serde_json::json!({
-            "success": false,
-            "message": "No sync configured for this user",
-            "data": null
-        })));
+    let status = state.db_pool.gpodder_get_status(user_id).await?;
+    let mut synced = false;
+    let mut errors: Vec<String> = Vec::new();
+
+    // The PinePods gpodder server reads the same database; republish local state.
+    if matches!(status.sync_type.as_str(), "gpodder" | "both") {
+        match state.db_pool.gpodder_publish_episode_state(user_id).await {
+            Ok(_) => synced = true,
+            Err(e) => errors.push(e.to_string()),
+        }
     }
-    
-    let settings = sync_settings.unwrap();
-    let device_name = state.db_pool.get_or_create_default_device(user_id).await?;
-    
-    // Perform initial full sync (without timestamps) based on sync type
-    let sync_result = match settings.sync_type.as_str() {
-        "gpodder" => {
-            // The PinePods gpodder server reads the same database; republish local state.
-            state.db_pool.gpodder_publish_episode_state(user_id).await.map(|_| true)
-        }
-        "nextcloud" => {
-            // Nextcloud initial sync. The stored token is encrypted; passing it as-is always
-            // failed authentication.
-            let app_password = state.db_pool.decrypt_password(&settings.token).await?;
-            state.db_pool.call_nextcloud_initial_full_sync(user_id, &settings.url, &settings.username, &app_password).await
-        }
-        "external" => {
-            // External gPodder server - decrypt token first then call initial full sync
-            let decrypted_token = state.db_pool.decrypt_password(&settings.token).await.unwrap_or_default();
-            state.db_pool.call_gpodder_initial_full_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name).await
-        }
-        "both" => {
-            let internal_result = state.db_pool.gpodder_publish_episode_state(user_id).await.map(|_| true);
-            let decrypted_token = state.db_pool.decrypt_password(&settings.token).await.unwrap_or_default();
-            let external_result = state.db_pool.call_gpodder_initial_full_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name).await;
-            
-            match (internal_result, external_result) {
-                (Ok(internal_success), Ok(external_success)) => Ok(internal_success || external_success),
-                (Ok(internal_success), Err(external_err)) => {
-                    tracing::warn!("External sync failed: {}, but internal sync succeeded: {}", external_err, internal_success);
-                    Ok(internal_success)
-                }
-                (Err(internal_err), Ok(external_success)) => {
-                    tracing::warn!("Internal sync failed: {}, but external sync succeeded: {}", internal_err, external_success);
-                    Ok(external_success)
-                }
-                (Err(internal_err), Err(external_err)) => {
-                    tracing::error!("Both internal and external sync failed: internal={}, external={}", internal_err, external_err);
-                    Err(internal_err)
-                }
-            }
-        }
-        _ => Ok(false)
-    };
-    
-    let (success, error_message) = match sync_result {
-        Ok(result) => (result, None),
-        Err(e) => {
-            tracing::error!("Sync failed with error: {}", e);
-            (false, Some(e.to_string()))
-        }
-    };
-    
-    if success {
+    // An external server gets a full sync: everything pulled again, the current state pushed.
+    match engine::run_for_user(&state.db_pool, &state.task_spawner, user_id, RunMode::Full).await {
+        Ok(Some(_)) => synced = true,
+        Ok(None) => {}
+        Err(e) => errors.push(e.to_string()),
+    }
+
+    if errors.is_empty() && synced {
         Ok(Json(serde_json::json!({
             "success": true,
             "message": "Initial sync completed successfully - all data refreshed",
             "data": null
         })))
-    } else {
-        let message = error_message.unwrap_or_else(|| "Initial sync failed - please check your sync configuration".to_string());
+    } else if errors.is_empty() {
         Ok(Json(serde_json::json!({
             "success": false,
-            "message": format!("Initial sync failed: {}", message),
+            "message": "No sync configured for this user",
+            "data": null
+        })))
+    } else {
+        Ok(Json(serde_json::json!({
+            "success": false,
+            "message": format!("Initial sync failed: {}", errors.join("; ")),
             "data": null
         })))
     }
@@ -228,10 +189,12 @@ pub async fn gpodder_sync(
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
-    // Use the same sync process as the scheduler (tasks.rs) which uses proper API calls with timestamps.
-    // The boolean indicates whether any changes were applied - "no changes" is a successful sync,
-    // not a failure, so report success either way and surface a clear message.
-    let had_changes = state.db_pool.refresh_gpodder_subscription_background(user_id).await?;
+    // The PinePods gpodder server works on the same database, so only an external server syncs.
+    // "No changes" is a successful sync, not a failure.
+    let summary = engine::run_for_user(&state.db_pool, &state.task_spawner, user_id, RunMode::Incremental).await?;
+    let had_changes = summary.is_some_and(|s| {
+        s.subscriptions_queued + s.subscriptions_removed + s.subscriptions_pushed + s.actions_applied + s.actions_pushed > 0
+    });
 
     let message = if had_changes {
         "Sync completed successfully"
@@ -314,16 +277,18 @@ pub async fn gpodder_toggle(
             return Err(AppError::internal("Failed to enable gpodder sync"));
         }
         
-        // Add background task for subscription refresh (matches Python background_tasks.add_task)
+        // Sync the external server too, if there is one ("both").
         let db_pool = state.db_pool.clone();
+        let tasks = state.task_spawner.clone();
         let _task_id = state.task_spawner.spawn_progress_task(
             "gpodder_subscription_refresh".to_string(),
             user_id,
             move |reporter| async move {
                 reporter.update_progress(10.0, Some("Starting GPodder subscription refresh...".to_string())).await?;
                 
-                let success = db_pool.refresh_gpodder_subscription_background(user_id).await
-                    .map_err(|e| AppError::internal(&format!("GPodder sync failed: {}", e)))?;
+                let success = engine::run_for_user(&db_pool, &tasks, user_id, RunMode::Incremental).await
+                    .map_err(|e| AppError::internal(&format!("GPodder sync failed: {}", e)))?
+                    .is_some();
                 
                 if success {
                     reporter.update_progress(100.0, Some("GPodder subscription refresh completed successfully".to_string())).await?;
