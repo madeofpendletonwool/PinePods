@@ -8,6 +8,7 @@
 // target's changes itself as `target:<id>`. So nothing is echoed back to where it came from.
 
 pub mod apply;
+pub mod compact;
 pub mod db;
 pub mod engine;
 pub mod engine_db;

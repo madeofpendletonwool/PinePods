@@ -584,3 +584,80 @@ async fn subscription_adds_are_queued_once_and_never_fetched_inline() {
     assert_eq!((s.queued, s.removed, s.rejected), (0, 0, 2));
     assert_eq!(app.podcasts(&user).await.len(), 1);
 }
+
+/// Nightly compaction drops superseded log rows past the retention window, keeps the newest row
+/// per item, and leaves rows an external target hasn't pushed yet.
+#[tokio::test(flavor = "multi_thread")]
+async fn compaction_keeps_the_latest_state_and_the_outbox() {
+    let app = TestApp::new().await;
+    let user = app.user("compact").await;
+    let other = app.user("compact-other").await;
+    let old = Utc::now().timestamp() - 100 * 86_400;
+    let recent = Utc::now().timestamp() - 86_400;
+    let pod = "https://feeds.example.test/compact.xml";
+    let ep = |n: i32| format!("https://cdn.example.test/compact/ep{n}.mp3");
+    let action = |uid: i32, ep: &str, kind: &str, at: i64| {
+        format!("({uid}, '{pod}', '{ep}', '{kind}', {at}, {at}, 0, 60, 600, 'client')")
+    };
+    let rows = [
+        action(user.id, &ep(1), "play", old),       // superseded by the next play: deleted
+        action(user.id, &ep(1), "play", old + 10),  // superseded by the recent play: deleted
+        action(user.id, &ep(1), "download", old),   // newest download of ep1: kept
+        action(user.id, &ep(1), "play", recent),    // newest: kept
+        action(user.id, &ep(2), "play", old),       // only row for ep2: kept
+        action(other.id, &ep(1), "play", old),      // another user's newest: kept
+        action(other.id, &ep(1), "play", old + 10),
+    ];
+    exec(
+        &app,
+        &format!(
+            r#"INSERT INTO "GpodderSyncEpisodeActions" (UserID, PodcastURL, EpisodeURL, Action, Timestamp, ServerTs, Started, Position, Total, Origin) VALUES {}"#,
+            rows.join(", ")
+        ),
+    )
+    .await;
+    for (url, kind, at) in [("https://a.example/feed", "add", old), ("https://a.example/feed", "remove", old + 5), ("https://a.example/feed", "add", old + 9), ("https://b.example/feed", "add", old)] {
+        exec(&app, &format!(
+            r#"INSERT INTO "GpodderSyncSubscriptions" (UserID, PodcastURL, Action, Timestamp, ServerTs, Origin) VALUES ({}, '{url}', '{kind}', {at}, {at}, 'client')"#,
+            user.id
+        ))
+        .await;
+    }
+    let ids = |table: &'static str, id: &'static str, uid: i32| {
+        let app = &app;
+        async move {
+            let n = int(app, &format!(r#"SELECT COUNT(*) FROM "{table}" WHERE UserID = {uid}"#)).await.unwrap();
+            let min = int(app, &format!(r#"SELECT MIN({id}) FROM "{table}" WHERE UserID = {uid}"#)).await.unwrap();
+            (n, min)
+        }
+    };
+    let (_, first_action) = ids("GpodderSyncEpisodeActions", "ActionID", user.id).await;
+    let (_, first_sub) = ids("GpodderSyncSubscriptions", "SubscriptionID", user.id).await;
+
+    // A target that has pushed only the first action and the first subscription row.
+    exec(&app, &format!(
+        r#"INSERT INTO "SyncTargets" (UserID, Kind, Url, Username, EncryptedSecret, SubsPushCursor, ActionsPushCursor) VALUES ({}, 'gpodder', 'https://gpodder.invalid', 'u', 's', {first_sub}, {first_action})"#,
+        user.id
+    ))
+    .await;
+    let s = sync::compact::run(app.db()).await.unwrap();
+    assert_eq!((s.actions, s.subscriptions), (1 + 1, 1), "only pushed rows go (plus the other user's, who has no target)");
+    assert_eq!(ids("GpodderSyncEpisodeActions", "ActionID", user.id).await.0, 4);
+
+    // Once everything is pushed, all superseded old rows go and the newest per item stays.
+    exec(&app, &format!(r#"UPDATE "SyncTargets" SET SubsPushCursor = 9000000000000000000, ActionsPushCursor = 9000000000000000000 WHERE UserID = {}"#, user.id)).await;
+    let s = sync::compact::run(app.db()).await.unwrap();
+    assert_eq!((s.actions, s.subscriptions), (1, 1));
+    let kept = |sql: String| {
+        let app = &app;
+        async move { int(app, &sql).await.unwrap() }
+    };
+    assert_eq!(kept(format!(r#"SELECT COUNT(*) FROM "GpodderSyncEpisodeActions" WHERE UserID = {} AND Action = 'play' AND EpisodeURL = '{}'"#, user.id, ep(1))).await, 1);
+    assert_eq!(kept(format!(r#"SELECT COUNT(*) FROM "GpodderSyncEpisodeActions" WHERE UserID = {} AND ServerTs = {recent}"#, user.id)).await, 1, "the newest play stays");
+    assert_eq!(ids("GpodderSyncEpisodeActions", "ActionID", user.id).await.0, 3, "newest play + download of ep1, ep2's play");
+    assert_eq!(ids("GpodderSyncEpisodeActions", "ActionID", other.id).await.0, 1);
+    assert_eq!(kept(format!(r#"SELECT COUNT(*) FROM "GpodderSyncSubscriptions" WHERE UserID = {} AND Action = 'add'"#, user.id)).await, 2, "latest per feed");
+
+    // Nothing left to do.
+    assert_eq!(sync::compact::run(app.db()).await.unwrap(), Default::default());
+}

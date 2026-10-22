@@ -949,3 +949,136 @@ where
         },
     }))
 }
+
+// ---- compaction -----------------------------------------------------------------------------
+
+fn action_key(episode_id: Option<i32>, podcast_url: &str, episode_url: &str, action: &str) -> String {
+    match episode_id {
+        Some(id) => format!("e:{id}|{}", action.to_ascii_lowercase()),
+        None => format!("u:{podcast_url}\n{episode_url}|{}", action.to_ascii_lowercase()),
+    }
+}
+
+impl DatabasePool {
+    /// Users with log rows that arrived before `cutoff` (unix seconds).
+    pub async fn sync_log_users_before(&self, cutoff: i64) -> AppResult<Vec<i32>> {
+        Ok(match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(
+                r#"SELECT userid FROM "GpodderSyncSubscriptions" WHERE serverts < $1
+                   UNION SELECT userid FROM "GpodderSyncEpisodeActions" WHERE COALESCE(serverts, 0) < $1"#,
+            )
+            .bind(cutoff)
+            .fetch_all(pool)
+            .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_scalar(
+                "SELECT UserID FROM GpodderSyncSubscriptions WHERE ServerTs < ?
+                 UNION SELECT UserID FROM GpodderSyncEpisodeActions WHERE COALESCE(ServerTs, 0) < ?",
+            )
+            .bind(cutoff)
+            .bind(cutoff)
+            .fetch_all(pool)
+            .await?,
+        })
+    }
+
+    /// Delete the user's superseded log rows older than `cutoff` that every target has pushed.
+    /// Runs with the targets share-locked, so no push cursor moves while it decides.
+    pub async fn sync_compact_user(&self, user_id: i32, cutoff: i64) -> AppResult<super::compact::CompactSummary> {
+        use super::compact::{superseded, CompactSummary, LogRow};
+        let lowest = |cursors: Vec<(i64, i64)>| -> (Option<i64>, Option<i64>) {
+            (cursors.iter().map(|c| c.0).min(), cursors.iter().map(|c| c.1).min())
+        };
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                let cursors: Vec<(i64, i64)> = sqlx::query_as(
+                    r#"SELECT subspushcursor, actionspushcursor FROM "SyncTargets" WHERE userid = $1 FOR SHARE"#,
+                )
+                .bind(user_id)
+                .fetch_all(&mut *tx)
+                .await?;
+                let (subs_pushed, actions_pushed) = lowest(cursors);
+                let subs: Vec<(i64, String, i64)> = sqlx::query_as(
+                    r#"SELECT subscriptionid::BIGINT, podcasturl, serverts FROM "GpodderSyncSubscriptions" WHERE userid = $1"#,
+                )
+                .bind(user_id)
+                .fetch_all(&mut *tx)
+                .await?;
+                let subs: Vec<LogRow> = subs.into_iter().map(|(id, url, ts)| LogRow { id, key: url, server_ts: ts }).collect();
+                let actions: Vec<(i64, Option<i32>, String, String, String, i64)> = sqlx::query_as(
+                    r#"SELECT actionid::BIGINT, episodeid, podcasturl, episodeurl, action, COALESCE(serverts, 0)
+                       FROM "GpodderSyncEpisodeActions" WHERE userid = $1"#,
+                )
+                .bind(user_id)
+                .fetch_all(&mut *tx)
+                .await?;
+                let actions: Vec<LogRow> = actions
+                    .into_iter()
+                    .map(|(id, ep, purl, eurl, action, ts)| LogRow { id, key: action_key(ep, &purl, &eurl, &action), server_ts: ts })
+                    .collect();
+                let mut summary = CompactSummary::default();
+                for chunk in superseded(&subs, cutoff, subs_pushed).chunks(1000) {
+                    summary.subscriptions += sqlx::query(r#"DELETE FROM "GpodderSyncSubscriptions" WHERE subscriptionid = ANY($1)"#)
+                        .bind(chunk.iter().map(|id| *id as i32).collect::<Vec<i32>>())
+                        .execute(&mut *tx)
+                        .await?
+                        .rows_affected();
+                }
+                for chunk in superseded(&actions, cutoff, actions_pushed).chunks(1000) {
+                    summary.actions += sqlx::query(r#"DELETE FROM "GpodderSyncEpisodeActions" WHERE actionid = ANY($1)"#)
+                        .bind(chunk.iter().map(|id| *id as i32).collect::<Vec<i32>>())
+                        .execute(&mut *tx)
+                        .await?
+                        .rows_affected();
+                }
+                tx.commit().await?;
+                Ok(summary)
+            }
+            DatabasePool::MySQL(pool) => {
+                // The share lock is the first statement (MariaDB snapshot isolation).
+                let mut tx = pool.begin().await?;
+                let cursors: Vec<(i64, i64)> = sqlx::query_as(
+                    "SELECT SubsPushCursor, ActionsPushCursor FROM SyncTargets WHERE UserID = ? LOCK IN SHARE MODE",
+                )
+                .bind(user_id)
+                .fetch_all(&mut *tx)
+                .await?;
+                let (subs_pushed, actions_pushed) = lowest(cursors);
+                let subs: Vec<(i64, String, i64)> = sqlx::query_as(
+                    "SELECT CAST(SubscriptionID AS SIGNED), PodcastURL, ServerTs FROM GpodderSyncSubscriptions WHERE UserID = ?",
+                )
+                .bind(user_id)
+                .fetch_all(&mut *tx)
+                .await?;
+                let subs: Vec<LogRow> = subs.into_iter().map(|(id, url, ts)| LogRow { id, key: url, server_ts: ts }).collect();
+                let actions: Vec<(i64, Option<i32>, String, String, String, i64)> = sqlx::query_as(
+                    "SELECT CAST(ActionID AS SIGNED), EpisodeID, PodcastURL, EpisodeURL, Action, CAST(COALESCE(ServerTs, 0) AS SIGNED)
+                     FROM GpodderSyncEpisodeActions WHERE UserID = ?",
+                )
+                .bind(user_id)
+                .fetch_all(&mut *tx)
+                .await?;
+                let actions: Vec<LogRow> = actions
+                    .into_iter()
+                    .map(|(id, ep, purl, eurl, action, ts)| LogRow { id, key: action_key(ep, &purl, &eurl, &action), server_ts: ts })
+                    .collect();
+                let mut summary = CompactSummary::default();
+                for (table, column, ids, count) in [
+                    ("GpodderSyncSubscriptions", "SubscriptionID", superseded(&subs, cutoff, subs_pushed), &mut summary.subscriptions),
+                    ("GpodderSyncEpisodeActions", "ActionID", superseded(&actions, cutoff, actions_pushed), &mut summary.actions),
+                ] {
+                    for chunk in ids.chunks(1000) {
+                        let sql = format!("DELETE FROM {table} WHERE {column} IN ({})", vec!["?"; chunk.len()].join(", "));
+                        let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
+                        for id in chunk {
+                            q = q.bind(id);
+                        }
+                        *count += q.execute(&mut *tx).await?.rows_affected();
+                    }
+                }
+                tx.commit().await?;
+                Ok(summary)
+            }
+        }
+    }
+}

@@ -194,6 +194,10 @@ impl BackgroundScheduler {
             warn!("⚠️ Auto complete episodes failed during nightly tasks: {}", e);
         }
 
+        if let Err(e) = crate::services::sync::compact::run(&state.db_pool).await {
+            warn!("⚠️ Sync log compaction failed during nightly tasks: {}", e);
+        }
+
         // Refresh Discover-page recommendations for users who already have a cached set,
         // so their next visit is instant. New users are generated on demand by the endpoint.
         if let Err(e) = Self::refresh_recommendations_internal(&state).await {
