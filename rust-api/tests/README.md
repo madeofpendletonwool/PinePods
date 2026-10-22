@@ -31,6 +31,7 @@ Useful environment variables:
 | `PINEPODS_TEST_KEEP_DB` | keep each test's database afterwards for inspection |
 | `PINEPODS_TEST_EXTERNAL_SERVICES` | don't start containers; use the ones above |
 | `PINEPODS_TEST_GPODDER` | gpodder server the protocol tests talk to: `rust` (default), `mock` |
+| `PINEPODS_TEST_LOG` | print the server's logs with this filter (e.g. `warn`); add `-- --nocapture` |
 
 ## How it works
 

@@ -1161,8 +1161,10 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let mut tx = pool.begin().await?;
+                // Locking the row first makes a concurrent import of this feed wait (its episode
+                // inserts check the row), instead of adding episodes between the deletes below.
                 let podcast = sqlx::query(
-                    r#"SELECT feedurl, username, password, COALESCE(isyoutubechannel, FALSE) AS yt FROM "Podcasts" WHERE podcastid = $1"#
+                    r#"SELECT feedurl, username, password, COALESCE(isyoutubechannel, FALSE) AS yt FROM "Podcasts" WHERE podcastid = $1 FOR UPDATE"#
                 )
                 .bind(podcast_id)
                 .fetch_optional(&mut *tx)
@@ -1255,7 +1257,7 @@ impl DatabasePool {
             DatabasePool::MySQL(pool) => {
                 let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
                 let podcast = sqlx::query(
-                    "SELECT FeedURL, Username, Password, IsYouTubeChannel AS yt FROM Podcasts WHERE PodcastID = ?"
+                    "SELECT FeedURL, Username, Password, IsYouTubeChannel AS yt FROM Podcasts WHERE PodcastID = ? FOR UPDATE"
                 )
                 .bind(podcast_id)
                 .fetch_optional(&mut *tx)
