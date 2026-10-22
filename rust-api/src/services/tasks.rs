@@ -1247,7 +1247,7 @@ impl TaskSpawner {
 impl TaskSpawner {
     /// Import a feed a sync source subscribed to (sync::apply_subscription_changes; never
     /// fetched inside the sync request). `claim` marks the (user, url) as in flight until
-    /// the task ends; at most a few of these fetch at once.
+    /// the task ends; at most a few of these fetch at once. Failures are kept for retrying.
     pub async fn spawn_sync_add_podcast(
         &self,
         user_id: i32,
@@ -1262,7 +1262,11 @@ impl TaskSpawner {
                 task_manager.update_task_progress(&task_id, 10.0, Some("Fetching podcast feed...".to_string())).await?;
                 if let Err(e) = db_pool.add_podcast_from_url(user_id, &feed_url, None, origin).await {
                     warn!("Sync subscription add of {} for user {} failed: {}", feed_url, user_id, e);
+                    crate::services::sync::imports::failed(&db_pool, &task_manager, user_id, &feed_url, origin, &e).await;
                     return Err(e);
+                }
+                if let Err(e) = db_pool.sync_import_succeeded(user_id, &feed_url).await {
+                    warn!("Clearing the failed import of {} for user {} failed: {}", feed_url, user_id, e);
                 }
                 Ok(serde_json::json!({ "user_id": user_id, "feed_url": feed_url, "status": "completed" }))
             })

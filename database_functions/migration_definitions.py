@@ -643,6 +643,9 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     AutoDownloadDeleteCustomized BOOLEAN DEFAULT FALSE,
                     FeedContentHash TEXT,
                     RefreshNotBefore TIMESTAMP,
+                    FailingSince TIMESTAMP,
+                    LastErrorKind VARCHAR(32),
+                    ProblemNotified BOOLEAN NOT NULL DEFAULT FALSE,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                 )
             """)
@@ -719,6 +722,9 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     AutoDownloadDeleteCustomized TINYINT(1) DEFAULT 0,
                     FeedContentHash TEXT,
                     RefreshNotBefore DATETIME NULL DEFAULT NULL,
+                    FailingSince DATETIME NULL DEFAULT NULL,
+                    LastErrorKind VARCHAR(32),
+                    ProblemNotified TINYINT(1) NOT NULL DEFAULT 0,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )
             """)
@@ -6735,6 +6741,76 @@ def migration_070_gpodder_device_user_caption(conn, db_type: str) -> None:
     try:
         if not _column_exists(cursor, db_type, "GpodderDevices", "UserCaption"):
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN UserCaption VARCHAR(255) NULL")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("071", "feed_health", "Podcasts.FailingSince/LastErrorKind/ProblemNotified and SyncImportFailures, for showing feeds that keep failing", requires=["001", "005", "044", "063"])
+def migration_071_feed_health(conn, db_type: str) -> None:
+    """Feed problems become visible.
+
+    - Podcasts.FailingSince: when the current run of failed refreshes began (NULL when the last
+      refresh worked); LastErrorKind: gone/auth/not_feed/unreachable/server/throttled/other;
+      ProblemNotified: the user has been told about this run of failures.
+    - SyncImportFailures: feeds a sync app subscribed to that Pinepods couldn't import, retried
+      with backoff (NextAttemptAt NULL = gave up) until the user retries, removes or dismisses them.
+    """
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    podcasts = '"Podcasts"' if pg else "Podcasts"
+    try:
+        for column, ddl in (
+            ("FailingSince", "TIMESTAMP" if pg else "DATETIME NULL DEFAULT NULL"),
+            ("LastErrorKind", "VARCHAR(32)"),
+            ("ProblemNotified", "BOOLEAN NOT NULL DEFAULT FALSE" if pg else "TINYINT(1) NOT NULL DEFAULT 0"),
+        ):
+            if not _column_exists(cursor, db_type, "Podcasts", column):
+                cursor.execute(f"ALTER TABLE {podcasts} ADD COLUMN {column} {ddl}")
+        # Feeds already failing count from their last attempt.
+        cursor.execute(
+            f"UPDATE {podcasts} SET FailingSince = LastRefreshAttempt "
+            f"WHERE COALESCE(ConsecutiveFailures, 0) > 0 AND FailingSince IS NULL"
+        )
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "SyncImportFailures" (
+                    FailureID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FeedURL TEXT NOT NULL,
+                    Origin VARCHAR(32) NOT NULL,
+                    ErrorKind VARCHAR(32) NOT NULL,
+                    LastError TEXT,
+                    Attempts INT NOT NULL DEFAULT 1,
+                    FirstFailedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    LastAttemptAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    NextAttemptAt TIMESTAMP,
+                    CONSTRAINT uq_sync_import_failures UNIQUE (UserID, FeedURL)
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_sync_import_failures_next ON "SyncImportFailures"(NextAttemptAt)')
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS SyncImportFailures (
+                    FailureID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    FeedURL TEXT NOT NULL,
+                    FeedURLHash CHAR(64) AS (SHA2(FeedURL, 256)) STORED,
+                    Origin VARCHAR(32) NOT NULL,
+                    ErrorKind VARCHAR(32) NOT NULL,
+                    LastError TEXT,
+                    Attempts INT NOT NULL DEFAULT 1,
+                    FirstFailedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    LastAttemptAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    NextAttemptAt DATETIME NULL DEFAULT NULL,
+                    UNIQUE KEY uq_sync_import_failures (UserID, FeedURLHash),
+                    KEY idx_sync_import_failures_next (NextAttemptAt),
+                    CONSTRAINT fk_sync_import_failures_user FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
         conn.commit()
     except Exception:
         conn.rollback()

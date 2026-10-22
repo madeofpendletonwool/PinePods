@@ -8044,7 +8044,8 @@ impl DatabasePool {
                 sqlx::query(
                     r#"UPDATE "Podcasts"
                        SET lastrefreshattempt = NOW(), lastrefreshsuccess = NOW(),
-                           consecutivefailures = 0, lasterrormessage = NULL, refreshnotbefore = NULL
+                           consecutivefailures = 0, lasterrormessage = NULL, refreshnotbefore = NULL,
+                           failingsince = NULL, lasterrorkind = NULL, problemnotified = FALSE
                        WHERE podcastid = ANY($1)"#,
                 )
                 .bind(podcast_ids)
@@ -8055,7 +8056,8 @@ impl DatabasePool {
                 let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
                 let sql = format!(
                     "UPDATE Podcasts SET LastRefreshAttempt = NOW(), LastRefreshSuccess = NOW(), \
-                     ConsecutiveFailures = 0, LastErrorMessage = NULL, RefreshNotBefore = NULL \
+                     ConsecutiveFailures = 0, LastErrorMessage = NULL, RefreshNotBefore = NULL, \
+                     FailingSince = NULL, LastErrorKind = NULL, ProblemNotified = FALSE \
                      WHERE PodcastID IN ({})",
                     placeholders
                 );
@@ -8067,12 +8069,14 @@ impl DatabasePool {
         Ok(())
     }
 
-    /// Record a failed refresh: bumps the consecutive-failure counter (used for backoff) and
-    /// stores the error for visibility. `not_before` (a host's Retry-After) additionally holds
-    /// the feed back until then, on top of the usual failure backoff.
+    /// Record a failed refresh: bumps the consecutive-failure counter (used for backoff), stores
+    /// the error and its kind for the feed problems list, and notes when the failures began.
+    /// `not_before` (a host's Retry-After) additionally holds the feed back until then, on top of
+    /// the usual failure backoff.
     pub async fn record_refresh_failure(
         &self,
         podcast_ids: &[i32],
+        kind: crate::services::feed_health::FeedErrorKind,
         error: &str,
         not_before: Option<std::time::Duration>,
     ) -> AppResult<()> {
@@ -8093,12 +8097,14 @@ impl DatabasePool {
                            consecutivefailures = COALESCE(consecutivefailures, 0) + 1,
                            lasterrormessage = $1,
                            refreshnotbefore = CASE WHEN $2::BIGINT IS NULL THEN NULL
-                                                   ELSE NOW() + make_interval(secs => $2::BIGINT) END
+                                                   ELSE NOW() + make_interval(secs => $2::BIGINT) END,
+                           failingsince = COALESCE(failingsince, NOW()), lasterrorkind = $4
                        WHERE podcastid = ANY($3)"#,
                 )
                 .bind(error)
                 .bind(wait_secs)
                 .bind(podcast_ids)
+                .bind(kind.as_str())
                 .execute(pool)
                 .await?;
             }
@@ -8107,12 +8113,13 @@ impl DatabasePool {
                 let sql = format!(
                     "UPDATE Podcasts SET LastRefreshAttempt = NOW(), \
                      ConsecutiveFailures = COALESCE(ConsecutiveFailures, 0) + 1, LastErrorMessage = ?, \
-                     RefreshNotBefore = NOW() + INTERVAL ? SECOND \
+                     RefreshNotBefore = NOW() + INTERVAL ? SECOND, \
+                     FailingSince = COALESCE(FailingSince, NOW()), LastErrorKind = ? \
                      WHERE PodcastID IN ({})",
                     placeholders
                 );
                 // NOW() + INTERVAL NULL SECOND is NULL, which clears the hold as intended.
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(error).bind(wait_secs);
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(error).bind(wait_secs).bind(kind.as_str());
                 for id in podcast_ids { q = q.bind(id); }
                 q.execute(pool).await?;
             }

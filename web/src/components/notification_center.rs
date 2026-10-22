@@ -673,6 +673,26 @@ pub fn notification_center() -> Html {
         let (kind, icon) = msg_kind(&m.severity);
         let id = m.id.clone();
         let on_dismiss = dismiss_message.clone();
+        // Feed problem messages carry a name/URL and an error kind; the text is ours.
+        let kind_text = |k: &Option<String>| {
+            i18n.t(crate::components::setting_components::feed_problems::kind_key(k.as_deref().unwrap_or("other"))).to_string()
+        };
+        let (line1, line2) = match m.category.as_str() {
+            "feed_problem" => (i18n.t("feed_problems.msg_problem").replace("{name}", &m.title), Some(kind_text(&m.body))),
+            "feed_recovered" => (i18n.t("feed_problems.msg_recovered").replace("{name}", &m.title), None),
+            "sync_import_failed" => (
+                i18n.t("feed_problems.msg_import_failed").to_string(),
+                Some(format!("{} · {}", m.title, kind_text(&m.body))),
+            ),
+            _ => (m.title.clone(), m.body.clone()),
+        };
+        let open_link = m.link.clone().map(|link| {
+            let close = close_drawer.clone();
+            Callback::from(move |e: MouseEvent| {
+                yew_router::history::History::push(&yew_router::history::BrowserHistory::new(), link.clone());
+                close.emit(e);
+            })
+        });
         let rel = parse_rfc3339_ms(&m.created_at).map(rel_time).unwrap_or_default();
         html! {
             <div class={classes!("nc-card", format!("k-{kind}"))}>
@@ -685,11 +705,11 @@ pub fn notification_center() -> Html {
                         }
                     }
                 </span>
-                <div class="nc-main-col">
-                    <div class="nc-line1" style="white-space:normal;line-height:1.4">{ m.title.clone() }</div>
+                <div class="nc-main-col" onclick={open_link.clone()} style={open_link.as_ref().map(|_| "cursor:pointer")}>
+                    <div class="nc-line1" style="white-space:normal;line-height:1.4">{ line1 }</div>
                     {
-                        if let Some(body) = &m.body {
-                            html! { <div class="nc-line2" style="white-space:normal">{ body.clone() }</div> }
+                        if let Some(body) = line2 {
+                            html! { <div class="nc-line2" style="white-space:normal">{ body }</div> }
                         } else { html! {} }
                     }
                     <div class="nc-line2"><span class="nc-time" style="opacity:.7">{ rel }</span></div>

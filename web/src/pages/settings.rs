@@ -7,6 +7,7 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::gen_components::{Search_nav, UseScrollToTop};
 use i18nrs::yew::use_translation;
 use yew::prelude::*;
+use yew_router::hooks::use_location;
 use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 
@@ -161,6 +162,29 @@ pub fn settings() -> Html {
                 || ()
             },
         );
+    }
+
+    // `?section=<id>` (links from Activity messages) opens the user tab at that section.
+    let section = use_location().and_then(|loc| {
+        loc.query_str()
+            .trim_start_matches('?')
+            .split('&')
+            .find_map(|kv| kv.strip_prefix("section=").map(str::to_string))
+    });
+    {
+        let active_tab = active_tab.clone();
+        use_effect_with(section, move |section| {
+            if let Some(section) = section.clone() {
+                active_tab.set("user");
+                gloo_timers::callback::Timeout::new(150, move || {
+                    if let Some(el) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.get_element_by_id(&format!("settings-{section}"))) {
+                        el.scroll_into_view();
+                    }
+                })
+                .forget();
+            }
+            || ()
+        });
     }
 
     let on_user_tab_click = {
@@ -405,6 +429,20 @@ pub fn settings() -> Html {
                                 </div>
                                 <div class="settings-section-body">
                                     <setting_components::nextcloud_options::SyncOptions />
+                                </div>
+                            </div>
+                            <div class="settings-section" id="settings-feed_problems">
+                                <div class="settings-section-head">
+                                    <i class="ph ph-warning-circle"></i>
+                                    <div>
+                                        <div class="settings-section-title-row">
+                                            <div class="settings-section-title">{ &i18n.t("feed_problems.title") }</div>
+                                            <button class="info-btn" title={i18n.t("feed_problems.description").to_string()}>{"?"}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-body">
+                                    <setting_components::feed_problems::FeedProblemsSection />
                                 </div>
                             </div>
                             <div class="settings-section">

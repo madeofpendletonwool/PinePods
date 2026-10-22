@@ -14,6 +14,7 @@ use tracing::{debug, info, warn};
 use crate::{
     error::{AppError, AppResult},
     handlers::check_user_access,
+    services::feed_health::{self, FeedErrorKind},
     services::sync::engine::{self, RunMode},
     services::sync::engine_db::TargetKind,
     AppState,
@@ -340,7 +341,7 @@ async fn refresh_feed_group(
                     .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), None)
                     .await;
             }
-            let _ = state.db_pool.record_refresh_success(&ids).await;
+            mark_refreshed(state, &ids).await;
         }
         Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified, content_hash }) => {
             let artwork = rep.artwork_url.clone().unwrap_or_default();
@@ -348,7 +349,7 @@ async fn refresh_feed_group(
                 Ok(parsed) => parsed,
                 Err(e) => {
                     warn!("Error parsing feed {}: {}", rep.feed_url, e);
-                    let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string(), None).await;
+                    mark_failed(state, &ids, FeedErrorKind::NotFeed, &e.to_string(), None).await;
                     return Err(e);
                 }
             };
@@ -391,21 +392,40 @@ async fn refresh_feed_group(
                 .db_pool
                 .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), hash)
                 .await;
-            let _ = state.db_pool.record_refresh_success(&ids).await;
+            mark_refreshed(state, &ids).await;
         }
         Ok(crate::database::FeedFetch::Throttled { status, retry_after }) => {
             let msg = format!("Feed host throttled refresh (HTTP {})", status);
-            let _ = state.db_pool.record_refresh_failure(&ids, &msg, retry_after).await;
+            mark_failed(state, &ids, FeedErrorKind::Throttled, &msg, retry_after).await;
             return Err(AppError::external_error(&msg));
         }
         Err(e) => {
             warn!("Error fetching feed {}: {}", rep.feed_url, e);
-            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string(), None).await;
+            mark_failed(state, &ids, FeedErrorKind::of(&e), &e.to_string(), None).await;
             return Err(e);
         }
     }
 
     Ok(all_new)
+}
+
+/// Record a successful refresh, telling users whose feed had been reported as failing.
+async fn mark_refreshed(state: &AppState, ids: &[i32]) {
+    let recovered = state.db_pool.feed_problems_reported(ids).await.unwrap_or_default();
+    if let Err(e) = state.db_pool.record_refresh_success(ids).await {
+        warn!("Recording a successful refresh of {:?} failed: {}", ids, e);
+        return;
+    }
+    feed_health::after_success(&state.task_manager, recovered).await;
+}
+
+/// Record a failed refresh and report feeds that have now been failing long enough.
+async fn mark_failed(state: &AppState, ids: &[i32], kind: FeedErrorKind, error: &str, retry_after: Option<std::time::Duration>) {
+    if let Err(e) = state.db_pool.record_refresh_failure(ids, kind, error, retry_after).await {
+        warn!("Recording a failed refresh of {:?} failed: {}", ids, e);
+        return;
+    }
+    feed_health::after_failure(&state.db_pool, &state.task_manager, ids).await;
 }
 
 /// Refresh a single YouTube channel podcast.
@@ -436,11 +456,11 @@ async fn refresh_youtube_item(state: &AppState, item: &PodcastRefreshItem) {
     {
         Ok(_) => {
             info!("Successfully refreshed YouTube channel {}", item.podcast_id);
-            let _ = state.db_pool.record_refresh_success(&ids).await;
+            mark_refreshed(state, &ids).await;
         }
         Err(e) => {
             warn!("Error refreshing YouTube channel {}: {}", item.podcast_id, e);
-            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string(), None).await;
+            mark_failed(state, &ids, FeedErrorKind::of(&e), &e.to_string(), None).await;
         }
     }
 }
@@ -906,6 +926,18 @@ pub struct PodcastForRefresh {
     pub throttled: bool,
 }
 
+/// Refresh one of the user's podcasts now (the feed problems list's "Refresh now"). Same path
+/// and skips as the manual refresh. `Ok(false)` when the user has no such podcast.
+pub async fn refresh_podcast_now(state: &AppState, user_id: i32, podcast_id: i32) -> AppResult<bool> {
+    let podcasts = state.db_pool.get_user_podcasts_for_refresh(user_id).await?;
+    let Some(podcast) = podcasts.iter().find(|p| p.id == podcast_id) else { return Ok(false) };
+    // A failure is recorded and shown with the feed; the caller reads the new state.
+    if let Err(e) = refresh_single_podcast(state, podcast, user_id, false).await {
+        debug!("Refreshing podcast {} now failed: {}", podcast_id, e);
+    }
+    Ok(true)
+}
+
 async fn refresh_single_podcast(
     state: &AppState,
     podcast: &PodcastForRefresh,
@@ -996,7 +1028,7 @@ async fn refresh_youtube_channel(
     ).await {
         Ok(_) => {
             info!("Successfully refreshed YouTube channel: {}", podcast.name);
-            let _ = state.db_pool.record_refresh_success(&ids).await;
+            mark_refreshed(state, &ids).await;
             // YouTube new-episode surfacing over the websocket is not yet wired up
             // (process_youtube_channel does not return the inserted rows); the channel is still
             // refreshed and new videos appear on the next list load.
@@ -1004,7 +1036,7 @@ async fn refresh_youtube_channel(
         }
         Err(e) => {
             warn!("Error refreshing YouTube channel {}: {}", podcast.name, e);
-            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string(), None).await;
+            mark_failed(state, &ids, FeedErrorKind::of(&e), &e.to_string(), None).await;
             Err(e)
         }
     }

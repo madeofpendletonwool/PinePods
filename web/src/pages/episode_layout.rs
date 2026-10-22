@@ -4791,7 +4791,12 @@ pub fn episode_layout() -> Html {
                                             }
                                         };
 
-                                        layout
+                                        html! {
+                                            <>
+                                                { layout }
+                                                <crate::components::setting_components::feed_problems::FeedProblemBanner podcast_id={*podcast_id} />
+                                            </>
+                                        }
                                     } else {
                                         html! {}
                                     }

@@ -189,6 +189,19 @@ pub async fn add_permit() -> tokio::sync::OwnedSemaphorePermit {
     ADD_PERMITS.clone().acquire_owned().await.expect("sync add semaphore is never closed")
 }
 
+/// Queue the import of one feed for `user_id` unless it's already in flight (a retry of a failed
+/// import). False when it was.
+pub async fn queue_import(tasks: &TaskSpawner, user_id: i32, url: &str, origin: SyncOrigin) -> bool {
+    let Some(claim) = claim_add(user_id, url) else { return false };
+    match tasks.spawn_sync_add_podcast(user_id, url.to_string(), origin, claim).await {
+        Ok(_) => true,
+        Err(e) => {
+            warn!("Queueing the import of {} for user {} failed: {}", url, user_id, e);
+            false
+        }
+    }
+}
+
 /// Apply subscription changes for `user_id`. Adds are queued as background imports (never
 /// fetched inline), deduplicated per (user, url) and skipped when already subscribed.
 /// Removes go through the shared unsubscribe cascade. For an external target the changes are

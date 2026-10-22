@@ -8,6 +8,7 @@ mod accounts;
 mod admin_only;
 mod auth_coverage;
 mod cross_user;
+mod feed_health;
 mod feeds;
 mod foreign_resources;
 mod gpodder;

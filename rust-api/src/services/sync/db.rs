@@ -1082,3 +1082,255 @@ impl DatabasePool {
         }
     }
 }
+
+// ---- failed imports ---------------------------------------------------------------------------
+
+type ImportFailureRow = (i32, String, String, String, Option<String>, i32, i64, i64, Option<i64>);
+
+fn import_failure(r: ImportFailureRow) -> super::imports::ImportFailure {
+    super::imports::ImportFailure {
+        id: r.0,
+        feed_url: r.1,
+        source: if r.2.starts_with("target:") { "target".into() } else { r.2.clone() },
+        kind: crate::services::feed_health::FeedErrorKind::parse(&r.3),
+        error: r.4,
+        attempts: r.5,
+        first_failed_at: r.6,
+        last_attempt_at: r.7,
+        next_attempt_at: r.8,
+        origin: r.2,
+    }
+}
+
+const PG_IMPORT_FAILURE_COLUMNS: &str = "failureid, feedurl, origin, errorkind, lasterror, attempts,
+    EXTRACT(EPOCH FROM firstfailedat::timestamptz)::BIGINT, EXTRACT(EPOCH FROM lastattemptat::timestamptz)::BIGINT,
+    EXTRACT(EPOCH FROM nextattemptat::timestamptz)::BIGINT";
+const MYSQL_IMPORT_FAILURE_COLUMNS: &str = "FailureID, FeedURL, Origin, ErrorKind, LastError, Attempts,
+    CAST(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', FirstFailedAt) AS SIGNED),
+    CAST(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', LastAttemptAt) AS SIGNED),
+    CAST(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', NextAttemptAt) AS SIGNED)";
+
+impl DatabasePool {
+    /// Record a failed import and schedule the next attempt. True when this failure made
+    /// Pinepods give up.
+    pub async fn sync_import_failed(
+        &self,
+        user_id: i32,
+        feed_url: &str,
+        origin: &str,
+        kind: crate::services::feed_health::FeedErrorKind,
+        error: &str,
+    ) -> AppResult<bool> {
+        let error = match error.char_indices().nth(1000) {
+            Some((i, _)) => &error[..i],
+            None => error,
+        };
+        let delay = |attempts: i32| super::imports::retry_delay(attempts).map(|d| d.num_seconds());
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                let before: Option<i32> = sqlx::query_scalar(
+                    r#"SELECT attempts FROM "SyncImportFailures" WHERE userid = $1 AND feedurl = $2 FOR UPDATE"#,
+                )
+                .bind(user_id)
+                .bind(feed_url)
+                .fetch_optional(&mut *tx)
+                .await?;
+                let attempts = before.unwrap_or(0) + 1;
+                sqlx::query(
+                    r#"INSERT INTO "SyncImportFailures" (userid, feedurl, origin, errorkind, lasterror, attempts, nextattemptat)
+                       VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7::BIGINT IS NULL THEN NULL ELSE NOW() + make_interval(secs => $7::BIGINT) END)
+                       ON CONFLICT (userid, feedurl) DO UPDATE SET
+                         origin = EXCLUDED.origin, errorkind = EXCLUDED.errorkind, lasterror = EXCLUDED.lasterror,
+                         attempts = EXCLUDED.attempts, lastattemptat = NOW(), nextattemptat = EXCLUDED.nextattemptat"#,
+                )
+                .bind(user_id)
+                .bind(feed_url)
+                .bind(origin)
+                .bind(kind.as_str())
+                .bind(error)
+                .bind(attempts)
+                .bind(delay(attempts))
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                Ok(delay(attempts).is_none() && delay(attempts - 1).is_some())
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                let before: Option<i32> = sqlx::query_scalar(
+                    "SELECT Attempts FROM SyncImportFailures WHERE UserID = ? AND FeedURLHash = SHA2(?, 256) FOR UPDATE",
+                )
+                .bind(user_id)
+                .bind(feed_url)
+                .fetch_optional(&mut *tx)
+                .await?;
+                let attempts = before.unwrap_or(0) + 1;
+                sqlx::query(
+                    "INSERT INTO SyncImportFailures (UserID, FeedURL, Origin, ErrorKind, LastError, Attempts, NextAttemptAt)
+                     VALUES (?, ?, ?, ?, ?, ?, NOW() + INTERVAL ? SECOND)
+                     ON DUPLICATE KEY UPDATE
+                       Origin = VALUES(Origin), ErrorKind = VALUES(ErrorKind), LastError = VALUES(LastError),
+                       Attempts = VALUES(Attempts), LastAttemptAt = NOW(), NextAttemptAt = VALUES(NextAttemptAt)",
+                )
+                .bind(user_id)
+                .bind(feed_url)
+                .bind(origin)
+                .bind(kind.as_str())
+                .bind(error)
+                .bind(attempts)
+                .bind(delay(attempts)) // NOW() + INTERVAL NULL SECOND is NULL: given up
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                Ok(delay(attempts).is_none() && delay(attempts - 1).is_some())
+            }
+        }
+    }
+
+    /// The feed imported after all: forget its failures.
+    pub async fn sync_import_succeeded(&self, user_id: i32, feed_url: &str) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"DELETE FROM "SyncImportFailures" WHERE userid = $1 AND feedurl = $2"#)
+                    .bind(user_id)
+                    .bind(feed_url)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("DELETE FROM SyncImportFailures WHERE UserID = ? AND FeedURLHash = SHA2(?, 256)")
+                    .bind(user_id)
+                    .bind(feed_url)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Failed imports whose next attempt is due: (user, feed URL, origin), oldest first.
+    pub async fn sync_imports_due(&self, limit: i64) -> AppResult<Vec<(i32, String, String)>> {
+        Ok(match self {
+            DatabasePool::Postgres(pool) => sqlx::query_as(
+                r#"SELECT userid, feedurl, origin FROM "SyncImportFailures"
+                   WHERE nextattemptat IS NOT NULL AND nextattemptat <= NOW() ORDER BY nextattemptat LIMIT $1"#,
+            )
+            .bind(limit)
+            .fetch_all(pool)
+            .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_as(
+                "SELECT UserID, FeedURL, Origin FROM SyncImportFailures
+                 WHERE NextAttemptAt IS NOT NULL AND NextAttemptAt <= NOW() ORDER BY NextAttemptAt LIMIT ?",
+            )
+            .bind(limit)
+            .fetch_all(pool)
+            .await?,
+        })
+    }
+
+    /// The user's failed imports, oldest first.
+    pub async fn sync_import_failures(&self, user_id: i32) -> AppResult<Vec<super::imports::ImportFailure>> {
+        let rows: Vec<ImportFailureRow> = match self {
+            DatabasePool::Postgres(pool) => {
+                let sql = format!(r#"SELECT {PG_IMPORT_FAILURE_COLUMNS} FROM "SyncImportFailures" WHERE userid = $1 ORDER BY failureid"#);
+                sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(user_id).fetch_all(pool).await?
+            }
+            DatabasePool::MySQL(pool) => {
+                let sql = format!("SELECT {MYSQL_IMPORT_FAILURE_COLUMNS} FROM SyncImportFailures WHERE UserID = ? ORDER BY FailureID");
+                sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(user_id).fetch_all(pool).await?
+            }
+        };
+        Ok(rows.into_iter().map(import_failure).collect())
+    }
+
+    /// One of the user's failed imports.
+    pub async fn sync_import_failure(&self, user_id: i32, id: i32) -> AppResult<Option<super::imports::ImportFailure>> {
+        let row: Option<ImportFailureRow> = match self {
+            DatabasePool::Postgres(pool) => {
+                let sql = format!(r#"SELECT {PG_IMPORT_FAILURE_COLUMNS} FROM "SyncImportFailures" WHERE userid = $1 AND failureid = $2"#);
+                sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(user_id).bind(id).fetch_optional(pool).await?
+            }
+            DatabasePool::MySQL(pool) => {
+                let sql = format!("SELECT {MYSQL_IMPORT_FAILURE_COLUMNS} FROM SyncImportFailures WHERE UserID = ? AND FailureID = ?");
+                sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(user_id).bind(id).fetch_optional(pool).await?
+            }
+        };
+        Ok(row.map(import_failure))
+    }
+
+    /// Forget one of the user's failed imports. False when there's no such row.
+    pub async fn sync_import_dismiss(&self, user_id: i32, id: i32) -> AppResult<bool> {
+        let n = match self {
+            DatabasePool::Postgres(pool) => sqlx::query(r#"DELETE FROM "SyncImportFailures" WHERE userid = $1 AND failureid = $2"#)
+                .bind(user_id)
+                .bind(id)
+                .execute(pool)
+                .await?
+                .rows_affected(),
+            DatabasePool::MySQL(pool) => sqlx::query("DELETE FROM SyncImportFailures WHERE UserID = ? AND FailureID = ?")
+                .bind(user_id)
+                .bind(id)
+                .execute(pool)
+                .await?
+                .rows_affected(),
+        };
+        Ok(n > 0)
+    }
+
+    /// Forget a failed import and unsubscribe from it everywhere: a Pinepods `remove` goes to the
+    /// log, so apps and the external server drop it too. False when there's no such row.
+    pub async fn sync_import_remove(&self, user_id: i32, id: i32) -> AppResult<bool> {
+        let Some(failure) = self.sync_import_failure(user_id, id).await? else { return Ok(false) };
+        let log = super::events::should_log(self, user_id, super::SyncOrigin::Pinepods).await;
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                if log {
+                    pg_lock_targets_shared(&mut tx, user_id).await?;
+                }
+                sqlx::query(r#"DELETE FROM "SyncImportFailures" WHERE userid = $1 AND failureid = $2"#)
+                    .bind(user_id)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                if log {
+                    super::events::subscription_pg(self, &mut tx, user_id, &failure.feed_url, "remove").await;
+                }
+                tx.commit().await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = super::events::begin_mysql(pool, user_id, log).await?;
+                sqlx::query("DELETE FROM SyncImportFailures WHERE UserID = ? AND FailureID = ?")
+                    .bind(user_id)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                if log {
+                    super::events::subscription_mysql(self, &mut tx, user_id, &failure.feed_url, "remove").await;
+                }
+                tx.commit().await?;
+            }
+        }
+        Ok(true)
+    }
+
+    /// Retry one of the user's failed imports at the next scheduled sync (also after giving up).
+    pub async fn sync_import_retry(&self, user_id: i32, id: i32) -> AppResult<bool> {
+        let n = match self {
+            DatabasePool::Postgres(pool) => sqlx::query(r#"UPDATE "SyncImportFailures" SET nextattemptat = NOW() WHERE userid = $1 AND failureid = $2"#)
+                .bind(user_id)
+                .bind(id)
+                .execute(pool)
+                .await?
+                .rows_affected(),
+            DatabasePool::MySQL(pool) => sqlx::query("UPDATE SyncImportFailures SET NextAttemptAt = NOW() WHERE UserID = ? AND FailureID = ?")
+                .bind(user_id)
+                .bind(id)
+                .execute(pool)
+                .await?
+                .rows_affected(),
+        };
+        Ok(n > 0)
+    }
+}

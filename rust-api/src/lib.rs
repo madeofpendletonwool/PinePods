@@ -121,6 +121,12 @@ pub fn create_app(state: AppState) -> Router {
 
 fn create_data_routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
+        // Feeds that keep failing and failed sync imports
+        .routes(routes!(handlers::feed_problems::get_feed_problems))
+        .routes(routes!(handlers::feed_problems::refresh_failing_feed))
+        .routes(routes!(handlers::feed_problems::retry_import))
+        .routes(routes!(handlers::feed_problems::remove_import))
+        .routes(routes!(handlers::feed_problems::dismiss_import))
         // Durable in-app notifications (Activity center messages)
         .routes(routes!(handlers::notifications::list_notifications))
         .routes(routes!(handlers::notifications::mark_notification_read))

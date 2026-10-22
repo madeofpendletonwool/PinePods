@@ -3448,3 +3448,70 @@ pub async fn call_run_sync(server_name: &str, api_key: &str, full: bool) -> Resu
 pub async fn call_get_sync_stats(server_name: &str, api_key: &str) -> Result<SyncStats, Error> {
     sync_send(sync_request("GET", server_name, api_key, "/stats").build()).await
 }
+
+// ---- feed problems (/api/data/feed_problems) ----------------------------------------------------
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct FailingFeed {
+    pub podcast_id: i32,
+    pub name: String,
+    pub feed_url: String,
+    pub artwork: Option<String>,
+    /// gone | auth | not_feed | unreachable | server | throttled | other
+    pub kind: String,
+    pub error: Option<String>,
+    pub failures: i32,
+    pub failing_since: Option<i64>,
+    pub last_attempt: Option<i64>,
+    pub reported: bool,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct ImportFailure {
+    pub id: i32,
+    pub feed_url: String,
+    /// client | target
+    pub source: String,
+    pub kind: String,
+    pub error: Option<String>,
+    pub attempts: i32,
+    pub first_failed_at: i64,
+    pub last_attempt_at: i64,
+    pub next_attempt_at: Option<i64>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
+pub struct FeedProblems {
+    pub feeds: Vec<FailingFeed>,
+    pub imports: Vec<ImportFailure>,
+}
+
+fn feed_problems_request(method: &str, server_name: &str, api_key: &str, path: &str) -> gloo_net::http::RequestBuilder {
+    let url = format!("{}/api/data/feed_problems{}", server_name, path);
+    let builder = match method {
+        "POST" => Request::post(&url),
+        "DELETE" => Request::delete(&url),
+        _ => Request::get(&url),
+    };
+    builder.header("Api-Key", api_key).header("Content-Type", "application/json")
+}
+
+pub async fn call_get_feed_problems(server_name: &str, api_key: &str) -> Result<FeedProblems, Error> {
+    sync_send(feed_problems_request("GET", server_name, api_key, "").build()).await
+}
+
+pub async fn call_refresh_failing_feed(server_name: &str, api_key: &str, podcast_id: i32) -> Result<FeedProblems, Error> {
+    sync_send(feed_problems_request("POST", server_name, api_key, &format!("/{podcast_id}/refresh")).build()).await
+}
+
+pub async fn call_retry_import(server_name: &str, api_key: &str, id: i32) -> Result<serde_json::Value, Error> {
+    sync_send(feed_problems_request("POST", server_name, api_key, &format!("/imports/{id}/retry")).build()).await
+}
+
+pub async fn call_remove_import(server_name: &str, api_key: &str, id: i32) -> Result<serde_json::Value, Error> {
+    sync_send(feed_problems_request("POST", server_name, api_key, &format!("/imports/{id}/remove")).build()).await
+}
+
+pub async fn call_dismiss_import(server_name: &str, api_key: &str, id: i32) -> Result<serde_json::Value, Error> {
+    sync_send(feed_problems_request("DELETE", server_name, api_key, &format!("/imports/{id}")).build()).await
+}

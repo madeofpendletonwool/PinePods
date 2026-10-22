@@ -415,6 +415,9 @@ pub async fn run_refresh_job(state: &AppState) -> AppResult<()> {
 
 /// The scheduled external sync.
 pub async fn run_sync_job(state: &AppState) -> AppResult<()> {
+    if let Err(e) = crate::services::sync::imports::retry_due(&state.db_pool, &state.task_spawner).await {
+        warn!("Retrying failed sync imports failed: {}", e);
+    }
     let s = engine::run_due(&state.db_pool, &state.task_spawner).await?;
     if s.synced + s.failed + s.held > 0 {
         debug!("Scheduled sync: {} synced, {} failed, {} in backoff", s.synced, s.failed, s.held);
