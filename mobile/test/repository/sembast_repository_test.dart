@@ -69,6 +69,17 @@ void main() {
   });
 
   group('episodes', () {
+    test('findEpisodesByGuidOrLegacy matches the exact and legacy-suffixed guids only', () async {
+      await repo.saveEpisode(buildEpisode(guid: 'pinepods_12'));
+      await repo.saveEpisode(buildEpisode(guid: 'pinepods_12_1700000000'));
+      await repo.saveEpisode(buildEpisode(guid: 'pinepods_123'));
+      await repo.saveEpisode(buildEpisode(guid: 'other'));
+
+      final found = await repo.findEpisodesByGuidOrLegacy('pinepods_12');
+
+      expect(found.map((e) => e.guid), unorderedEquals(['pinepods_12', 'pinepods_12_1700000000']));
+    });
+
     test('saveEpisode round-trips and is findable by guid and id', () async {
       final saved = await repo.saveEpisode(buildEpisode(guid: 'e1', title: 'Ep 1'));
 

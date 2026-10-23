@@ -1,6 +1,7 @@
 // lib/ui/widgets/lazy_network_image.dart
 import 'dart:io';
 
+import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 
 class LazyNetworkImage extends StatefulWidget {
@@ -35,118 +36,89 @@ class LazyNetworkImage extends StatefulWidget {
 }
 
 class _LazyNetworkImageState extends State<LazyNetworkImage> {
-  bool _shouldLoad = false;
-  
-  Widget get _defaultPlaceholder => Container(
-    width: widget.width,
-    height: widget.height,
-    decoration: BoxDecoration(
-      color: Colors.grey[200],
-      borderRadius: widget.borderRadius,
-    ),
-    child: const Icon(
-      Icons.music_note,
-      color: Colors.grey,
-      size: 24,
-    ),
-  );
-
-  Widget get _defaultErrorWidget => Container(
-    width: widget.width,
-    height: widget.height,
-    decoration: BoxDecoration(
-      color: Colors.grey[300],
-      borderRadius: widget.borderRadius,
-    ),
-    child: const Icon(
-      Icons.broken_image,
-      color: Colors.grey,
-      size: 24,
-    ),
-  );
+  /// Resolved once per path, off the build path: a sync stat on every rebuild
+  /// is too slow for list rows that rebuild on each playback state change.
+  File? _localFile;
+  String? _checkedPath;
 
   @override
   void initState() {
     super.initState();
-    // Delay loading slightly to allow the widget to be built first
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() {
-          _shouldLoad = true;
-        });
-      }
-    });
+    _checkLocalFile();
   }
 
-  /// The locally-cached file to render, or null when there isn't one on disk.
-  File? get _localFile {
+  @override
+  void didUpdateWidget(LazyNetworkImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.localImagePath != widget.localImagePath) _checkLocalFile();
+  }
+
+  Future<void> _checkLocalFile() async {
     final path = widget.localImagePath;
-    if (path == null || path.isEmpty) return null;
+    _checkedPath = path;
+    if (path == null || path.isEmpty) {
+      _localFile = null;
+      return;
+    }
     final file = File(path);
-    return file.existsSync() ? file : null;
+    final exists = await file.exists();
+    if (!mounted || _checkedPath != path) return;
+    setState(() => _localFile = exists ? file : null);
+  }
+
+  Widget _box(IconData icon) {
+    // hintColor rather than colorScheme.onSurface: some themes set onSurface
+    // to their accent, which would tint every placeholder.
+    final muted = Theme.of(context).hintColor;
+    return Container(
+      width: widget.width,
+      height: widget.height,
+      color: muted.withOpacity(0.12),
+      child: Icon(icon, color: muted, size: widget.width * 0.4),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final cacheWidth = (widget.width * MediaQuery.devicePixelRatioOf(context)).round();
     final localFile = _localFile;
+
+    final Widget image;
     if (localFile != null) {
-      // A cached copy exists — render it directly (no network, no lazy gate).
-      return ClipRRect(
-        borderRadius: widget.borderRadius ?? BorderRadius.zero,
-        child: Image.file(
-          localFile,
-          width: widget.width,
-          height: widget.height,
-          fit: widget.fit,
-          cacheWidth: (widget.width * 2).round(),
-          cacheHeight: (widget.height * 2).round(),
-          errorBuilder: (context, error, stackTrace) {
-            return widget.errorWidget ?? _defaultErrorWidget;
-          },
-        ),
+      image = Image.file(
+        localFile,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+        cacheWidth: cacheWidth,
+        errorBuilder: (context, error, stackTrace) => widget.errorWidget ?? _box(Icons.podcasts),
+      );
+    } else if (widget.imageUrl.isEmpty) {
+      image = widget.placeholder ?? _box(Icons.podcasts);
+    } else {
+      image = ExtendedImage.network(
+        widget.imageUrl,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+        cache: true,
+        cacheWidth: cacheWidth,
+        loadStateChanged: (state) {
+          switch (state.extendedImageLoadState) {
+            case LoadState.loading:
+              return widget.placeholder ?? _box(Icons.podcasts);
+            case LoadState.failed:
+              return widget.errorWidget ?? _box(Icons.podcasts);
+            case LoadState.completed:
+              return null;
+          }
+        },
       );
     }
 
     return ClipRRect(
       borderRadius: widget.borderRadius ?? BorderRadius.zero,
-      child: _shouldLoad && widget.imageUrl.isNotEmpty
-        ? Image.network(
-            widget.imageUrl,
-            width: widget.width,
-            height: widget.height,
-            fit: widget.fit,
-            cacheWidth: (widget.width * 2).round(), // 2x for better quality on high-DPI
-            cacheHeight: (widget.height * 2).round(),
-            errorBuilder: (context, error, stackTrace) {
-              return widget.errorWidget ?? _defaultErrorWidget;
-            },
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              
-              return Container(
-                width: widget.width,
-                height: widget.height,
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: widget.borderRadius,
-                ),
-                child: Center(
-                  child: SizedBox(
-                    width: widget.width * 0.4,
-                    height: widget.height * 0.4,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      value: loadingProgress.expectedTotalBytes != null
-                        ? loadingProgress.cumulativeBytesLoaded /
-                            loadingProgress.expectedTotalBytes!
-                        : null,
-                    ),
-                  ),
-                ),
-              );
-            },
-          )
-        : widget.placeholder ?? _defaultPlaceholder,
+      child: image,
     );
   }
 }

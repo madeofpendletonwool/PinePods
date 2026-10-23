@@ -245,6 +245,23 @@ class SembastRepository extends Repository {
     return await _loadEpisodeSnapshot(snapshot.key, snapshot.value);
   }
 
+  @override
+  Future<List<Episode>> findEpisodesByGuidOrLegacy(String guid) async {
+    final legacyPrefix = '${guid}_';
+    final finder = Finder(
+      filter: Filter.or([
+        Filter.equals('guid', guid),
+        Filter.custom((record) {
+          final value = record['guid'];
+          return value is String && value.startsWith(legacyPrefix);
+        }),
+      ]),
+    );
+
+    final snapshots = await _episodeStore.find(await _db, finder: finder);
+    return snapshots.map((s) => Episode.fromMap(s.key, s.value)).toList();
+  }
+
   // TODO: Remove nullable on pguid as this does not make sense.
   @override
   Future<List<Episode>> findEpisodesByPodcastGuid(

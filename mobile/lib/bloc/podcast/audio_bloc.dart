@@ -92,7 +92,7 @@ class AudioBloc extends Bloc {
   /// on to a queue and execute them sequentially. Each state maps to a call
   /// to the Audio Service plugin.
   void _handlePlayingStateTransitions() {
-    _transitionPlayingState.asyncMap((event) => Future.value(event)).listen((state) async {
+    _transitionPlayingState.asyncMap((state) async {
       switch (state) {
         case TransitionState.play:
           await audioPlayerService.play();
@@ -110,7 +110,7 @@ class AudioBloc extends Bloc {
           await audioPlayerService.stop();
           break;
       }
-    });
+    }).listen((_) {}, onError: (Object e) => log.warning('Transition failed: $e'));
   }
 
   /// Setup a listener for episode requests and then connect to the
@@ -194,7 +194,7 @@ class AudioBloc extends Bloc {
   void Function(double) get transitionPosition => _transitionPosition.sink.add;
 
   /// Get the current playing state
-  Stream<AudioState>? get playingState => audioPlayerService.playingState;
+  ValueStream<AudioState>? get playingState => audioPlayerService.playingState;
 
   /// Listen for any playback errors
   Stream<int>? get playbackError => audioPlayerService.playbackError;

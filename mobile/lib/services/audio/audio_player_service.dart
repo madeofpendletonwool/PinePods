@@ -125,7 +125,7 @@ abstract class AudioPlayerService {
   Episode? nowPlaying;
 
   /// Event listeners
-  Stream<AudioState>? playingState;
+  ValueStream<AudioState>? playingState;
   ValueStream<PositionState>? playPosition;
   ValueStream<Episode?>? episodeEvent;
   Stream<TranscriptState>? transcriptEvent;

@@ -11,7 +11,6 @@ import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
-import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
@@ -34,7 +33,7 @@ import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/services/auto_download/auto_download_service.dart';
 import 'package:pinepods_mobile/services/auto_download/queue_download_service.dart';
 import 'package:pinepods_mobile/services/auto_download/mirror_download_service.dart';
-import 'package:pinepods_mobile/ui/utils/live_progress.dart';
+import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
@@ -218,23 +217,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
       return;
     }
 
-    // Convert HomeEpisode to PinepodsEpisode
-    final episode = PinepodsEpisode(
-      podcastName: homeEpisode.podcastName,
-      episodeTitle: homeEpisode.episodeTitle,
-      episodePubDate: homeEpisode.episodePubDate,
-      episodeDescription: homeEpisode.episodeDescription ?? '',
-      episodeArtwork: homeEpisode.episodeArtwork,
-      episodeUrl: homeEpisode.episodeUrl,
-      episodeDuration: homeEpisode.episodeDuration,
-      listenDuration: homeEpisode.listenDuration,
-      episodeId: homeEpisode.episodeId,
-      completed: homeEpisode.completed,
-      saved: homeEpisode.saved,
-      queued: homeEpisode.queued,
-      downloaded: homeEpisode.downloaded,
-      isYoutube: homeEpisode.isYoutube,
-    );
+    final episode = homeEpisode.toPinepodsEpisode();
 
     try {
       await playPinepodsEpisodeWithOptionalFullScreen(
@@ -1024,31 +1007,15 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         ...(_homeData!.inProgressEpisodes.take(3).map((episode) =>
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _EpisodeCard(
-              episode: episode,
+            child: PinepodsEpisodeCard(
+              episode: episode.toPinepodsEpisode(),
+              margin: EdgeInsets.zero,
               onTap: () {
-                // Convert HomeEpisode to PinepodsEpisode for navigation
-                final pinepodsEpisode = PinepodsEpisode(
-                  podcastName: episode.podcastName,
-                  episodeTitle: episode.episodeTitle,
-                  episodePubDate: episode.episodePubDate,
-                  episodeDescription: episode.episodeDescription ?? '',
-                  episodeArtwork: episode.episodeArtwork,
-                  episodeUrl: episode.episodeUrl,
-                  episodeDuration: episode.episodeDuration,
-                  listenDuration: episode.listenDuration,
-                  episodeId: episode.episodeId,
-                  completed: episode.completed,
-                  saved: episode.saved,
-                  queued: episode.queued,
-                  downloaded: episode.downloaded,
-                  isYoutube: episode.isYoutube,
-                );
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => PinepodsEpisodeDetails(
-                      initialEpisode: pinepodsEpisode,
+                      initialEpisode: episode.toPinepodsEpisode(),
                     ),
                   ),
                 ).then((_) => _refreshHomeContentSilently());
@@ -1107,30 +1074,15 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         ...(_homeData!.queuePreview.map((episode) =>
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _EpisodeCard(
-              episode: episode,
+            child: PinepodsEpisodeCard(
+              episode: episode.toPinepodsEpisode(),
+              margin: EdgeInsets.zero,
               onTap: () {
-                final pinepodsEpisode = PinepodsEpisode(
-                  podcastName: episode.podcastName,
-                  episodeTitle: episode.episodeTitle,
-                  episodePubDate: episode.episodePubDate,
-                  episodeDescription: episode.episodeDescription ?? '',
-                  episodeArtwork: episode.episodeArtwork,
-                  episodeUrl: episode.episodeUrl,
-                  episodeDuration: episode.episodeDuration,
-                  listenDuration: episode.listenDuration,
-                  episodeId: episode.episodeId,
-                  completed: episode.completed,
-                  saved: episode.saved,
-                  queued: episode.queued,
-                  downloaded: episode.downloaded,
-                  isYoutube: episode.isYoutube,
-                );
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => PinepodsEpisodeDetails(
-                      initialEpisode: pinepodsEpisode,
+                      initialEpisode: episode.toPinepodsEpisode(),
                     ),
                   ),
                 ).then((_) => _refreshHomeContentSilently());
@@ -1225,31 +1177,15 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         ...(_homeData!.recentEpisodes.take(5).map((episode) =>
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _EpisodeCard(
-              episode: episode,
+            child: PinepodsEpisodeCard(
+              episode: episode.toPinepodsEpisode(),
+              margin: EdgeInsets.zero,
               onTap: () {
-                // Convert HomeEpisode to PinepodsEpisode for navigation
-                final pinepodsEpisode = PinepodsEpisode(
-                  podcastName: episode.podcastName,
-                  episodeTitle: episode.episodeTitle,
-                  episodePubDate: episode.episodePubDate,
-                  episodeDescription: episode.episodeDescription ?? '',
-                  episodeArtwork: episode.episodeArtwork,
-                  episodeUrl: episode.episodeUrl,
-                  episodeDuration: episode.episodeDuration,
-                  listenDuration: episode.listenDuration,
-                  episodeId: episode.episodeId,
-                  completed: episode.completed,
-                  saved: episode.saved,
-                  queued: episode.queued,
-                  downloaded: episode.downloaded,
-                  isYoutube: episode.isYoutube,
-                );
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => PinepodsEpisodeDetails(
-                      initialEpisode: pinepodsEpisode,
+                      initialEpisode: episode.toPinepodsEpisode(),
                     ),
                   ),
                 ).then((_) => _refreshHomeContentSilently());
@@ -1426,294 +1362,6 @@ class _WeeklyStatCard extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _EpisodeCard extends StatefulWidget {
-  final HomeEpisode episode;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-  final VoidCallback? onPlayPressed;
-
-  const _EpisodeCard({
-    required this.episode,
-    this.onTap,
-    this.onLongPress,
-    this.onPlayPressed,
-  });
-
-  @override
-  State<_EpisodeCard> createState() => _EpisodeCardState();
-}
-
-class _EpisodeCardState extends State<_EpisodeCard> {
-  bool _isLoading = false;
-  AudioState _audioState = AudioState.none;
-  Episode? _nowPlaying;
-  PositionState? _positionState;
-  AudioBloc? _audioBloc;
-  StreamSubscription? _nowPlayingSub;
-  StreamSubscription? _audioStateSub;
-  StreamSubscription? _positionSub;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final bloc = Provider.of<AudioBloc>(context, listen: false);
-    if (_audioBloc != bloc) {
-      _nowPlayingSub?.cancel();
-      _audioStateSub?.cancel();
-      _positionSub?.cancel();
-      _audioBloc = bloc;
-
-      _nowPlayingSub = bloc.nowPlaying?.listen((ep) {
-        if (mounted) setState(() { _nowPlaying = ep; _isLoading = false; });
-      });
-      _audioStateSub = bloc.playingState?.listen((state) {
-        if (mounted) setState(() {
-          _audioState = state;
-          if (state == AudioState.error) _isLoading = false;
-        });
-      });
-      // Live position ticks for this card's progress bar while it's the
-      // episode currently playing - mirrors what mini_player.dart already
-      // does with the same stream. Without this the bar was frozen at
-      // whatever listenDuration Home's data snapshot had when it loaded.
-      // Ticks fire roughly once a second during playback, so only rebuild
-      // this card when it's the one actually playing - checking the guid
-      // before calling setState avoids every card on Home rebuilding on
-      // every tick.
-      _positionSub = bloc.playPosition?.listen((state) {
-        if (!mounted) return;
-        if (state.episode?.guid != widget.episode.episodeUrl) return;
-        setState(() => _positionState = state);
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _nowPlayingSub?.cancel();
-    _audioStateSub?.cancel();
-    _positionSub?.cancel();
-    super.dispose();
-  }
-
-  bool get _isCurrentEpisode =>
-      widget.episode.episodeUrl.isNotEmpty &&
-      _nowPlaying?.guid == widget.episode.episodeUrl;
-
-  /// Progress (0-100) to show on the bar: live position while this card is
-  /// the episode actually playing, otherwise the static value from Home's
-  /// last-loaded snapshot.
-  double get _displayProgressPercentage => LiveProgressResolver.percentage(
-        isCurrentEpisode: _isCurrentEpisode,
-        staticPercentage: widget.episode.progressPercentage,
-        livePercentage: _positionState?.percentage,
-      );
-
-  String? get _displayListenDurationText => LiveProgressResolver.elapsedText(
-        isCurrentEpisode: _isCurrentEpisode,
-        staticText: widget.episode.formattedListenDuration,
-        livePosition: _positionState?.position,
-      );
-
-  bool get _showProgressSection => LiveProgressResolver.shouldShowProgress(
-        isCurrentEpisode: _isCurrentEpisode,
-        hasStaticProgress: widget.episode.listenDuration != null && widget.episode.listenDuration! > 0,
-      );
-
-  bool get _isPlaying =>
-      _isCurrentEpisode &&
-      (_audioState == AudioState.playing ||
-          _audioState == AudioState.buffering ||
-          _audioState == AudioState.starting);
-
-  bool get _isPaused =>
-      _isCurrentEpisode && _audioState == AudioState.pausing;
-
-  void _onButtonTap() {
-    final bloc = _audioBloc;
-    if (bloc == null) return;
-    if (_isPlaying) {
-      bloc.transitionState(TransitionState.pause);
-    } else if (_isPaused) {
-      bloc.transitionState(TransitionState.play);
-    } else {
-      if (_isLoading) return;
-      setState(() => _isLoading = true);
-      widget.onPlayPressed?.call();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final showSpinner = _isLoading && !_isCurrentEpisode;
-    final IconData playIcon;
-    final Color iconColor;
-    if (_isPlaying) {
-      playIcon = Icons.pause_circle;
-      iconColor = Theme.of(context).primaryColor;
-    } else if (widget.episode.completed && !_isPaused) {
-      playIcon = Icons.check_circle;
-      iconColor = Colors.green;
-    } else if (widget.episode.listenDuration != null && widget.episode.listenDuration! > 0) {
-      playIcon = Icons.play_circle_filled;
-      iconColor = Theme.of(context).primaryColor;
-    } else {
-      playIcon = Icons.play_circle_outline;
-      iconColor = Theme.of(context).primaryColor;
-    }
-
-    // Status indicators shown inline with the duration so the right column can
-    // host a larger play button without growing the card.
-    final statusIcons = <Widget>[
-      if (widget.episode.saved)
-        Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: Icon(Icons.bookmark, size: 16, color: Colors.orange[600]),
-        ),
-      if (widget.episode.downloaded)
-        Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: Icon(Icons.download_done, size: 16, color: Colors.green[600]),
-        ),
-      if (widget.episode.queued)
-        Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: Icon(Icons.queue_music, size: 16, color: Colors.blue[600]),
-        ),
-    ];
-
-    return Card(
-      child: InkWell(
-        onTap: widget.onTap,
-        onLongPress: widget.onLongPress,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
-            children: [
-            // Episode artwork
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                widget.episode.episodeArtwork,
-                width: 60,
-                height: 60,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 60,
-                    height: 60,
-                    color: Theme.of(context).colorScheme.surfaceVariant,
-                    child: Icon(
-                      Icons.podcasts,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            // Episode info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.episode.episodeTitle,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.episode.podcastName,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  // Progress bar for in-progress episodes - also shown while
-                  // this card is actively playing even if Home's snapshot
-                  // hadn't recorded a listen position yet (e.g. just started
-                  // from 0 via auto-advance or this card's own play button).
-                  if (_showProgressSection) ...[
-                    LinearProgressIndicator(
-                      value: _displayProgressPercentage / 100,
-                      backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          _displayListenDurationText ?? '',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const Spacer(),
-                        Text(
-                          widget.episode.formattedDuration,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        ...statusIcons,
-                      ],
-                    ),
-                  ] else ...[
-                    Row(
-                      children: [
-                        Text(
-                          widget.episode.formattedDuration,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const Spacer(),
-                        ...statusIcons,
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            // Larger play button (status icons moved next to the duration).
-            if (widget.onPlayPressed != null) ...[
-              const SizedBox(width: 4),
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: showSpinner
-                      ? Padding(
-                          key: const ValueKey('loading'),
-                          padding: const EdgeInsets.all(8.0),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Theme.of(context).primaryColor,
-                            ),
-                          ),
-                        )
-                      : GestureDetector(
-                          key: ValueKey(playIcon),
-                          behavior: HitTestBehavior.opaque,
-                          onTap: _onButtonTap,
-                          child: Icon(playIcon, color: iconColor, size: 40),
-                        ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    ),
-      );
   }
 }
 

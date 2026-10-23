@@ -227,21 +227,35 @@ class PinepodsAudioService {
       // Both tolerate offline / failures. When resuming, the server's current
       // position is fetched alongside them, since the caller's episode data may
       // predate progress synced since it was loaded.
+      // When the list data already carries the podcast id, the playback
+      // settings lookup joins the same parallel batch instead of waiting on it.
+      final knownPodcastId = pinepodsEpisode.podcastId;
+      Future<PlayEpisodeDetails> fetchPlayDetails(int podcastId) => _pinepodsService
+              .getPlayEpisodeDetails(userId, podcastId, pinepodsEpisode.isYoutube)
+              .catchError((e) {
+            log.fine('Could not fetch play details (continuing): $e');
+            return PlayEpisodeDetails(playbackSpeed: 1.0, startSkip: 0, endSkip: 0);
+          });
+
       final results = await Future.wait<dynamic>([
-        _pinepodsService.getPodcastIdFromEpisode(
-          episodeId,
-          userId,
-          pinepodsEpisode.isYoutube,
-        ).catchError((e) {
-          log.fine('Could not fetch podcast id (continuing): $e');
-          return 0;
-        }),
+        knownPodcastId != null && knownPodcastId > 0
+            ? Future.value(knownPodcastId)
+            : _pinepodsService.getPodcastIdFromEpisode(
+                episodeId,
+                userId,
+                pinepodsEpisode.isYoutube,
+              ).catchError((e) {
+                log.fine('Could not fetch podcast id (continuing): $e');
+                return 0;
+              }),
         _pinepodsService.fetchPodcasting2Data(episodeId, userId).catchError((e) {
           log.fine('Could not fetch podcast 2.0 data (continuing): $e');
           return null;
         }),
-        if (resume)
-          getServerPositionForEpisode(episodeId, userId, pinepodsEpisode.isYoutube),
+        resume
+            ? getServerPositionForEpisode(episodeId, userId, pinepodsEpisode.isYoutube)
+            : Future<double?>.value(null),
+        if (knownPodcastId != null && knownPodcastId > 0) fetchPlayDetails(knownPodcastId),
       ]);
       final podcastId = results[0] as int;
       final podcast2Data = results[1] as Map<String, dynamic>?;
@@ -249,13 +263,10 @@ class PinepodsAudioService {
           ? await _resolveResumePosition(pinepodsEpisode, serverPosition: results[2] as double?)
           : 0.0;
 
-      // Get playback settings (speed, skip times). This already returns sane
-      // defaults on failure.
-      final playDetails = await _pinepodsService.getPlayEpisodeDetails(
-        userId,
-        podcastId,
-        pinepodsEpisode.isYoutube,
-      );
+      // Playback settings (speed, skip times); defaults on failure.
+      final playDetails = results.length > 3
+          ? results[3] as PlayEpisodeDetails
+          : await fetchPlayDetails(podcastId);
 
       // Convert PinepodsEpisode to Episode for the audio player
       final episode = _convertToEpisode(pinepodsEpisode, playDetails, podcast2Data);

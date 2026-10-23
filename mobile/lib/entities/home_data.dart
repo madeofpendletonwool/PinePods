@@ -1,5 +1,7 @@
 // lib/entities/home_data.dart
 
+import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+
 class HomePodcast {
   final int podcastId;
   final String podcastName;
@@ -123,6 +125,24 @@ class HomeEpisode {
       downloaded: json['downloaded'] ?? false,
     );
   }
+
+  PinepodsEpisode toPinepodsEpisode() => PinepodsEpisode(
+        podcastName: podcastName,
+        episodeTitle: episodeTitle,
+        episodePubDate: episodePubDate,
+        episodeDescription: episodeDescription,
+        episodeArtwork: episodeArtwork,
+        episodeUrl: episodeUrl,
+        episodeDuration: episodeDuration,
+        listenDuration: listenDuration,
+        episodeId: episodeId,
+        completed: completed,
+        saved: saved,
+        queued: queued,
+        downloaded: downloaded,
+        isYoutube: isYoutube,
+        podcastId: podcastId,
+      );
 
   /// Format duration in seconds to MM:SS or HH:MM:SS format
   String get formattedDuration {

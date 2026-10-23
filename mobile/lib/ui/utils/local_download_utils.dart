@@ -82,11 +82,8 @@ class LocalDownloadUtils {
       final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
       final repository = podcastBloc.podcastService.repository;
 
-      // Get all episodes and find matches with both new and old GUID formats
-      final allEpisodes = await repository.findAllEpisodes();
-      final matchingEpisodes = allEpisodes.where((ep) =>
-        ep.guid == guid || ep.guid.startsWith('${guid}_')
-      ).toList();
+      // Matches both the current and the legacy timestamp-suffixed guid.
+      final matchingEpisodes = await repository.findEpisodesByGuidOrLegacy(guid);
 
       logger.debug('LocalDownload', 'Repository lookup for $guid: found ${matchingEpisodes.length} matching episodes');
 

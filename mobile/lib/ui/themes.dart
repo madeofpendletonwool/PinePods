@@ -234,8 +234,10 @@ class ThemeRegistry {
     return _themes[key] ?? _themes['Dark']!;
   }
   
+  static final Map<String, ThemeData> _polished = {};
+
   static ThemeData getThemeData(String key) {
-    return getTheme(key).themeData;
+    return _polished.putIfAbsent(key, () => polishTheme(getTheme(key).themeData));
   }
   
   static bool isValidTheme(String key) {
@@ -805,11 +807,11 @@ class Themes {
   Themes({required this.themeData});
 
   factory Themes.lightTheme() {
-    return Themes(themeData: _lightTheme);
+    return Themes(themeData: ThemeRegistry.getThemeData('Light'));
   }
 
   factory Themes.darkTheme() {
-    return Themes(themeData: _darkTheme);
+    return Themes(themeData: ThemeRegistry.getThemeData('Dark'));
   }
 
   factory Themes.fromKey(String key) {
@@ -2289,6 +2291,57 @@ ThemeData _buildHotDogStandTheme() {
         backgroundColor: const Color(0xffff0000),
         foregroundColor: const Color(0xffffff00),
       ),
+    ),
+  );
+}
+
+const double kCardRadius = 14.0;
+const double kButtonRadius = 12.0;
+
+/// Shared shape language layered over every theme: rounded cards, buttons,
+/// dialogs, sheets and menus. Colours stay whatever each theme defines; only
+/// null style fields are filled in.
+ThemeData polishTheme(ThemeData t) {
+  final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(kButtonRadius));
+  final shapeStyle = ButtonStyle(
+    shape: WidgetStatePropertyAll(buttonShape),
+    padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
+  );
+  ButtonStyle withShape(ButtonStyle? existing) => existing?.merge(shapeStyle) ?? shapeStyle;
+
+  return t.copyWith(
+    cardTheme: t.cardTheme.copyWith(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kCardRadius)),
+      clipBehavior: Clip.antiAlias,
+      elevation: t.cardTheme.elevation ?? 0.5,
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: withShape(t.elevatedButtonTheme.style).merge(
+        const ButtonStyle(elevation: WidgetStatePropertyAll(0)),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(style: withShape(t.filledButtonTheme.style)),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: withShape(t.outlinedButtonTheme.style)),
+    textButtonTheme: TextButtonThemeData(
+      style: t.textButtonTheme.style?.merge(ButtonStyle(shape: WidgetStatePropertyAll(buttonShape))) ??
+          ButtonStyle(shape: WidgetStatePropertyAll(buttonShape)),
+    ),
+    dialogTheme: t.dialogTheme.copyWith(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    ),
+    bottomSheetTheme: t.bottomSheetTheme.copyWith(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      clipBehavior: Clip.antiAlias,
+    ),
+    popupMenuTheme: t.popupMenuTheme.copyWith(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    chipTheme: t.chipTheme.copyWith(shape: const StadiumBorder()),
+    snackBarTheme: t.snackBarTheme.copyWith(
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
   );
 }

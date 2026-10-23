@@ -117,7 +117,14 @@ class NativeAudioPlayerService extends AudioPlayerService {
       try {
         _nativeEventSubscription = eventChannel.receiveBroadcastStream().listen(
           _handleNativeEvent,
-          onError: (error) => log.severe('Native event stream error: $error'),
+          // Older native builds report load failures as stream errors rather
+          // than {type: error} events; either way the player must leave the
+          // buffering state or the UI spins forever.
+          onError: (error) {
+            log.severe('Native event stream error: $error');
+            final code = error is PlatformException ? int.tryParse(error.code) ?? -1 : -1;
+            _handleErrorEvent({'code': code, 'message': '$error'});
+          },
         );
         log.info('Subscribed to native event channel (attempt ${attempt + 1})');
       } catch (e) {
@@ -257,6 +264,14 @@ class NativeAudioPlayerService extends AudioPlayerService {
         return;
       }
 
+      // A failed item still reports paused/stopped afterwards; keep the error
+      // so the UI offers a retry rather than a resume that can't work.
+      if (_playingState.valueOrNull == AudioState.error &&
+          audioState != AudioState.playing &&
+          audioState != AudioState.buffering) {
+        return;
+      }
+
       _playingState.add(audioState);
     }
 
@@ -304,6 +319,10 @@ class NativeAudioPlayerService extends AudioPlayerService {
     final code = event['code'] as int? ?? -1;
     final message = event['message'] as String? ?? 'Unknown error';
     log.severe('Playback error $code: $message');
+    _handlingCompletion = false;
+    // Don't save here: a failed item reads position 0 and would wipe the
+    // resume point. Just stop the periodic saver for the same reason.
+    _stopLocalPositionSaver();
     _playbackError.add(code);
     _playingState.add(AudioState.error);
   }
@@ -395,13 +414,10 @@ class NativeAudioPlayerService extends AudioPlayerService {
       return direct;
     }
 
-    // Legacy 'pinepods_<id>_<timestamp>' guids: fall back to a scan.
-    final all = await repository.findAllEpisodes();
-    for (final e in all) {
-      if ((e.guid == guid || e.guid.startsWith('${guid}_')) &&
-          e.downloadState == DownloadState.downloaded) {
-        return e;
-      }
+    // Legacy 'pinepods_<id>_<timestamp>' guids.
+    final legacy = await repository.findEpisodesByGuidOrLegacy(guid);
+    for (final e in legacy) {
+      if (e.downloadState == DownloadState.downloaded) return e;
     }
     return null;
   }
@@ -476,6 +492,18 @@ class NativeAudioPlayerService extends AudioPlayerService {
   @override
   Future<void> play() async {
     log.info('play');
+
+    // After a failure (or once the track has run out) native has nothing it
+    // can resume, so a plain play() is a silent no-op. Reload instead.
+    final current = _currentEpisode;
+    final state = _playingState.valueOrNull;
+    if (current != null &&
+        (state == AudioState.error || state == AudioState.stopped || state == AudioState.none)) {
+      log.info('play: no healthy item loaded (state $state), reloading current episode');
+      await playEpisode(episode: current, resume: true);
+      return;
+    }
+
     _startLocalPositionSaver();
 
     try {
@@ -1505,7 +1533,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
   Episode? get nowPlaying => _currentEpisode;
 
   @override
-  Stream<AudioState> get playingState => _playingState.stream;
+  ValueStream<AudioState> get playingState => _playingState.stream;
 
   @override
   ValueStream<PositionState> get playPosition => _playPosition.stream;
