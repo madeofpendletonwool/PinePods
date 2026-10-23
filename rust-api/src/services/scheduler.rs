@@ -137,6 +137,16 @@ impl BackgroundScheduler {
             })
         })?;
 
+        // Delete server downloads of finished episodes (for users who turned that on) hourly,
+        // so they don't sit around until the 6-hourly cleanup.
+        let finished_state = app_state.clone();
+        let finished_job = Job::new_async("0 15 * * * *", move |_uuid, _l| {
+            let state = finished_state.clone();
+            Box::pin(async move {
+                guarded(JobKind::Cleanup, async move { state.db_pool.auto_delete_finished_downloads().await }).await;
+            })
+        })?;
+
         // Evaluate user-configured scheduled backups every minute. A poll-and-evaluate job is
         // used (rather than dynamically registering per-user cron jobs) so it survives restarts
         // and automatically picks up schedule/enable changes within a minute.
@@ -168,6 +178,7 @@ impl BackgroundScheduler {
         self.scheduler.add(sync_job).await?;
         self.scheduler.add(nightly_job).await?;
         self.scheduler.add(cleanup_job).await?;
+        self.scheduler.add(finished_job).await?;
         self.scheduler.add(backup_job).await?;
         self.scheduler.add(ytdlp_job).await?;
 

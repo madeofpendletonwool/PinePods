@@ -80,11 +80,11 @@ async fn users_cannot_act_on_each_others_accounts() {
     eprintln!("cross_user: {} user-scoped operations, {controls_ok} owner controls succeeded", ops.len());
     assert!(ops.len() > 80, "only {} user-scoped operations found; spec walk is broken", ops.len());
     // Guard against the probe silently degrading (e.g. every request failing validation):
-    // a healthy fraction must demonstrably work for the account owner.
+    // a healthy fraction of the owner calls made (destructive ones are skipped) must work.
+    let controls = ops.iter().filter(|op| !destructive(op)).count();
     assert!(
-        controls_ok * 100 >= ops.len() * 60,
-        "only {controls_ok}/{} probes succeeded for the owner — synthesized requests are too broken to prove anything",
-        ops.len()
+        controls_ok * 100 >= controls * 60,
+        "only {controls_ok}/{controls} probes succeeded for the owner — synthesized requests are too broken to prove anything",
     );
     assert!(
         failures.is_empty(),

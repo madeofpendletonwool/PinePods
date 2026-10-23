@@ -693,7 +693,11 @@ class PinepodsService {
   }
 
   // Get auto-skip segments (silence #727) for an episode, in seconds.
-  Future<List<SkipSegment>> getEpisodeSkipSegments(int episodeId, int userId) async {
+  Future<List<SkipSegment>> getEpisodeSkipSegments(int episodeId, int userId) async =>
+      (await getEpisodeSkipInfo(episodeId, userId)).segments;
+
+  /// Skip ranges plus, when there are ads, which audio copy they were found on.
+  Future<SkipInfo> getEpisodeSkipInfo(int episodeId, int userId) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
@@ -705,21 +709,35 @@ class PinepodsService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final segments = (data['segments'] as List?) ?? [];
-        return segments
-            .map((s) => SkipSegment(
-                  segmentId: (s['segment_id'] as num?)?.toInt() ?? 0,
-                  kind: s['kind'] ?? '',
-                  startTime: (s['start_time'] as num?)?.toDouble() ?? 0.0,
-                  endTime: (s['end_time'] as num?)?.toDouble() ?? 0.0,
-                  source: s['source'] as String?,
-                  status: s['status'] as String?,
-                ))
-            .toList();
+        final audio = data['ad_audio'];
+        final analyzed = audio is Map ? audio['analyzed'] : null;
+        return SkipInfo(
+          segments: segments
+              .map((s) => SkipSegment(
+                    segmentId: (s['segment_id'] as num?)?.toInt() ?? 0,
+                    kind: s['kind'] ?? '',
+                    startTime: (s['start_time'] as num?)?.toDouble() ?? 0.0,
+                    endTime: (s['end_time'] as num?)?.toDouble() ?? 0.0,
+                    source: s['source'] as String?,
+                    status: s['status'] as String?,
+                  ))
+              .toList(),
+          adAudio: audio is Map
+              ? AdAudio(
+                  download: audio['download'] as String? ?? 'unknown',
+                  analyzedDuration: analyzed is Map
+                      ? (analyzed['duration'] as num?)?.toDouble()
+                      : null,
+                  analyzedSource:
+                      analyzed is Map ? analyzed['source'] as String? : null,
+                )
+              : null,
+        );
       }
     } catch (e) {
       _devLog('Error getting skip segments: $e');
     }
-    return const [];
+    return const SkipInfo(segments: []);
   }
 
   // --- AI features (#726 transcripts / #790 ad-block) --------------------
@@ -740,6 +758,7 @@ class PinepodsService {
           available: data['available'] == true,
           transcriptionReady: data['transcription_ready'] == true,
           adRemovalReady: data['ad_removal_ready'] == true,
+          downloadsEnabled: data['downloads_enabled'] == true,
         );
       }
     } catch (e) {
@@ -749,8 +768,11 @@ class PinepodsService {
   }
 
   // POST /api/data/detect_ads — trigger ad detection (async background job).
-  // Returns true if the request was accepted (503 => AI unavailable).
-  Future<bool> detectAds(int episodeId, int userId, {bool force = false}) async {
+  // Returns true if the request was accepted (503 => AI unavailable). With
+  // [downloadFirst], an episode not on the server is downloaded there first and
+  // ads are detected on that copy, so they line up with what gets played.
+  Future<bool> detectAds(int episodeId, int userId,
+      {bool force = false, bool downloadFirst = false}) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
@@ -763,6 +785,7 @@ class PinepodsService {
           'episode_id': episodeId,
           'user_id': userId,
           'force': force,
+          'download_first': downloadFirst,
         }),
       );
       return response.statusCode == 200;
@@ -914,6 +937,105 @@ class PinepodsService {
           int userId, int podcastId, bool enabled) =>
       _setPodcastEnabled(
           'adjust_ad_skip_auto_activate', userId, podcastId, enabled);
+
+  // --- Server downloads: auto-download + retention ---------------------
+  // These are the server's settings (what the server downloads and keeps),
+  // separate from the app's own on-device auto-download.
+
+  Future<Map<String, dynamic>?> _postJson(
+      String path, Map<String, dynamic> body) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    try {
+      final response = await http.post(
+        Uri.parse('$_server/api/data/$path'),
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data is Map<String, dynamic> ? data : <String, dynamic>{};
+      }
+      _devLog('POST $path failed: ${response.statusCode}');
+    } catch (e) {
+      _devLog('Error calling $path: $e');
+    }
+    return null;
+  }
+
+  Future<bool> getServerAutoDownload(int userId, int podcastId) async {
+    final data = await _postJson('get_auto_download_status',
+        {'podcast_id': podcastId, 'user_id': userId});
+    return data?['auto_download'] == true;
+  }
+
+  Future<bool> setServerAutoDownload(
+          int userId, int podcastId, bool enabled) async =>
+      await _postJson('enable_auto_download', {
+        'podcast_id': podcastId,
+        'user_id': userId,
+        'auto_download': enabled,
+      }) !=
+      null;
+
+  /// Delete a server download once its episode is finished. Without
+  /// [podcastId] this is the user's default; with one it is the podcast's
+  /// effective value and whether it overrides the default.
+  Future<({bool enabled, bool customized})> getAutoDeleteOnComplete(
+      int userId,
+      {int? podcastId}) async {
+    final data = await _postJson('get_auto_delete_on_complete',
+        {'user_id': userId, 'podcast_id': podcastId});
+    return (
+      enabled: data?['enabled'] == true,
+      customized: data?['customized'] == true,
+    );
+  }
+
+  Future<bool> setAutoDeleteOnCompleteDefault(int userId, bool enabled) async =>
+      await _postJson('user/set_auto_delete_on_complete',
+          {'user_id': userId, 'enabled': enabled}) !=
+      null;
+
+  /// [enabled] null goes back to the user's default.
+  Future<bool> setPodcastAutoDeleteOnComplete(
+          int userId, int podcastId, bool? enabled) async =>
+      await _postJson('podcast/set_auto_delete_on_complete', {
+        'user_id': userId,
+        'podcast_id': podcastId,
+        'enabled': enabled,
+      }) !=
+      null;
+
+  /// Delete server downloads older than this many days (0 = keep). Without
+  /// [podcastId] this is the user's default; with one, the podcast's value and
+  /// whether it overrides the default.
+  Future<({int days, bool customized})> getAutoDeleteDays(int userId,
+      {int? podcastId}) async {
+    final data = await _postJson('get_auto_download_delete_days',
+        {'user_id': userId, 'podcast_id': podcastId});
+    return (
+      days: (data?['days'] as num?)?.toInt() ?? 0,
+      customized: data?['customized'] == true,
+    );
+  }
+
+  Future<bool> setAutoDeleteDaysDefault(int userId, int days) async =>
+      await _postJson('user/set_auto_download_delete_days',
+          {'user_id': userId, 'days': days}) !=
+      null;
+
+  Future<bool> setPodcastAutoDeleteDays(
+          int userId, int podcastId, int days) async =>
+      await _postJson('podcast/set_auto_download_delete_days',
+          {'user_id': userId, 'podcast_id': podcastId, 'days': days}) !=
+      null;
+
+  Future<bool> clearPodcastAutoDeleteDays(int userId, int podcastId) async =>
+      await _postJson('clear_podcast_auto_download_delete_days',
+          {'user_id': userId, 'podcast_id': podcastId}) !=
+      null;
 
   // Record listen duration for episode
   Future<bool> recordListenDuration(
@@ -2957,16 +3079,53 @@ class SkipSegment {
       kind == 'ad' && (status == 'active' || status == 'confirmed');
 }
 
+// How the user's playback copy relates to the copy ads were detected on.
+// Dynamically inserted ads differ between fetches of an episode, so ad times
+// only fit the copy they came from. `download` is "match" (the user's server
+// download is that copy), "mismatch", "none" (no server download) or "unknown".
+class AdAudio {
+  final String download;
+  final double? analyzedDuration;
+  final String? analyzedSource;
+
+  const AdAudio({
+    required this.download,
+    this.analyzedDuration,
+    this.analyzedSource,
+  });
+
+  /// Whether ad times can be trusted on what is playing: the user's server
+  /// download when it is the analyzed copy, otherwise a copy whose length
+  /// (seconds) matches the analyzed one, since inserted ads usually change it.
+  bool fits(double durationSec, {required bool playingServerCopy}) {
+    if (download == 'match' && playingServerCopy) return true;
+    final expected = analyzedDuration;
+    if (expected == null || expected <= 0) return true;
+    if (!durationSec.isFinite || durationSec <= 0) return false;
+    final tolerance = (expected * 0.003) < 2.0 ? 2.0 : expected * 0.003;
+    return (durationSec - expected).abs() <= tolerance;
+  }
+}
+
+class SkipInfo {
+  final List<SkipSegment> segments;
+  final AdAudio? adAudio;
+
+  const SkipInfo({required this.segments, this.adAudio});
+}
+
 // AI capability status from GET /api/data/ai_status; gates all AI UI.
 class AiStatus {
   final bool available;
   final bool transcriptionReady;
   final bool adRemovalReady;
+  final bool downloadsEnabled;
 
   const AiStatus({
     this.available = false,
     this.transcriptionReady = false,
     this.adRemovalReady = false,
+    this.downloadsEnabled = false,
   });
 }
 

@@ -21,7 +21,7 @@ use crate::requests::pod_req::{
     call_save_episode, DownloadEpisodeRequest, EpisodeRequest, FetchPodcasting2DataRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest, Transcript,
     call_get_ai_status, call_get_episode_transcript, call_transcribe_episode, StoredTranscript,
-    call_get_episode_skip_segments, SkipSegment, call_detect_ads, call_adjust_ad_segment_review,
+    call_get_episode_skip_segments, SkipSegment, AdAudio, call_get_ai_status_full, call_detect_ads, call_adjust_ad_segment_review,
     AdSegmentReviewRequest,
 };
 use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_parse_podcast_url};
@@ -785,11 +785,14 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
         });
     }
 
-    // Load detected ad segments for inline review + transcript highlighting (#790).
+    // Load detected ad segments for inline review + transcript highlighting (#790), and which
+    // audio copy they were found on.
     let ad_segments = use_state(Vec::<SkipSegment>::new);
+    let ad_audio = use_state(|| Option::<AdAudio>::None);
     let ad_refresh = use_state(|| 0u32);
     {
         let ad_segments = ad_segments.clone();
+        let ad_audio = ad_audio.clone();
         let server_name = props.server_name.clone();
         let api_key = props.api_key.clone();
         let refresh = *ad_refresh;
@@ -797,14 +800,35 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
             let episode_id = *episode_id;
             if let Some(user_id) = *user_id {
                 wasm_bindgen_futures::spawn_local(async move {
-                    if let Ok(segs) = call_get_episode_skip_segments(&server_name, &Some(api_key), user_id, episode_id).await {
-                        ad_segments.set(segs.into_iter().filter(|s| s.kind == "ad").collect());
+                    if let Ok(info) = call_get_episode_skip_segments(&server_name, &Some(api_key), user_id, episode_id).await {
+                        ad_segments.set(info.segments.into_iter().filter(|s| s.kind == "ad").collect());
+                        ad_audio.set(info.ad_audio);
                     }
                 });
             }
             || ()
         });
     }
+
+    // Whether the admin allows server downloads (offered as the accurate way to detect ads).
+    let downloads_enabled = use_state(|| false);
+    {
+        let downloads_enabled = downloads_enabled.clone();
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        use_effect_with(props.ai_available, move |ai_available| {
+            if *ai_available {
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(st) = call_get_ai_status_full(&server_name, &Some(api_key)).await {
+                        downloads_enabled.set(st.downloads_enabled);
+                    }
+                });
+            }
+            || ()
+        });
+    }
+    let (episode_status, _) = use_store::<EpisodeStatusState>();
+    let on_server = episode_status.downloaded_episodes.is_server_download(episode_id);
     let ad_ranges: Vec<(f64, f64)> = ad_segments.iter().map(|s| (s.start_time, s.end_time)).collect();
 
     let status = ai_transcript.as_ref().map(|t| t.status.clone());
@@ -898,22 +922,41 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
         return html! {};
     }
 
-    // Ad detection (#790): manual trigger + per-user confirm/deny of detected ads.
-    let on_detect_ads = {
+    // Ad detection (#790): manual trigger + per-user confirm/deny of detected ads. Ads that are
+    // inserted dynamically differ between copies of an episode, so detecting on a fresh stream
+    // can give times that don't fit what the user later plays; the server copy is the reliable one.
+    let detect_choice = use_state(|| false);
+    let start_detect = {
         let server_name = props.server_name.clone();
         let api_key = props.api_key.clone();
+        let detect_choice = detect_choice.clone();
         let started = i18n.t("episode.ad_detection_started").to_string();
+        let download_started = i18n.t("episode.ad_detection_download_started").to_string();
         let err = i18n.t("episode.ad_detection_error").to_string();
-        Callback::from(move |_: MouseEvent| {
+        Callback::from(move |download_first: bool| {
+            detect_choice.set(false);
             if let Some(user_id) = user_id {
                 let (server_name, api_key) = (server_name.clone(), api_key.clone());
-                let (started, err) = (started.clone(), err.clone());
+                let msg = if download_first { download_started.clone() } else { started.clone() };
+                let err = err.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_detect_ads(&server_name, &Some(api_key), episode_id, user_id, true).await {
-                        Ok(_) => Dispatch::<NotificationState>::global().reduce_mut(|s| s.info_message = Some(started)),
+                    match call_detect_ads(&server_name, &Some(api_key), episode_id, user_id, true, download_first).await {
+                        Ok(_) => Dispatch::<NotificationState>::global().reduce_mut(|s| s.info_message = Some(msg)),
                         Err(e) => Dispatch::<NotificationState>::global().reduce_mut(|s| s.error_message = Some(format!("{}: {}", err, e))),
                     }
                 });
+            }
+        })
+    };
+    let offer_download = !on_server && *downloads_enabled;
+    let on_detect_ads = {
+        let start_detect = start_detect.clone();
+        let detect_choice = detect_choice.clone();
+        Callback::from(move |_: MouseEvent| {
+            if offer_download {
+                detect_choice.set(true);
+            } else {
+                start_detect.emit(false);
             }
         })
     };
@@ -945,6 +988,64 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
         html! {}
     };
 
+    let detect_choice_panel = if *detect_choice {
+        let download = { let s = start_detect.clone(); Callback::from(move |_: MouseEvent| s.emit(true)) };
+        let stream = { let s = start_detect.clone(); Callback::from(move |_: MouseEvent| s.emit(false)) };
+        let cancel = { let c = detect_choice.clone(); Callback::from(move |_: MouseEvent| c.set(false)) };
+        html! {
+            <div class="ep-ad-notice">
+                <i class="ph ph-warning"></i>
+                <div class="ep-ad-notice-body">
+                    <span>{ i18n.t("episode.ad_detect_not_downloaded") }</span>
+                    <div class="ep-ad-notice-actions">
+                        <button class="ep-ai-transcript-btn" onclick={download}>
+                            <i class="ph ph-cloud-arrow-down"></i>{ i18n.t("episode.ad_detect_download_first") }
+                        </button>
+                        <button class="ep-ai-transcript-btn" onclick={stream}>{ i18n.t("episode.ad_detect_stream_anyway") }</button>
+                        <button class="ep-ai-transcript-btn" onclick={cancel}>{ i18n.t("episode.cancel") }</button>
+                    </div>
+                </div>
+            </div>
+        }
+    } else {
+        html! {}
+    };
+
+    // How the ad times relate to what this user plays.
+    let ad_accuracy = match (ad_segments.is_empty(), ad_audio.as_ref().map(|a| a.download.as_str())) {
+        (false, Some("match")) => html! {
+            <div class="ep-ad-notice is-ok">
+                <i class="ph ph-check-circle"></i>
+                <div class="ep-ad-notice-body"><span>{ i18n.t("episode.ad_accuracy_match") }</span></div>
+            </div>
+        },
+        (false, Some("mismatch")) => html! {
+            <div class="ep-ad-notice">
+                <i class="ph ph-warning"></i>
+                <div class="ep-ad-notice-body"><span>{ i18n.t("episode.ad_accuracy_mismatch") }</span></div>
+            </div>
+        },
+        (false, Some("none")) => {
+            let download = { let s = start_detect.clone(); Callback::from(move |_: MouseEvent| s.emit(true)) };
+            html! {
+                <div class="ep-ad-notice">
+                    <i class="ph ph-warning"></i>
+                    <div class="ep-ad-notice-body">
+                        <span>{ i18n.t("episode.ad_accuracy_streaming") }</span>
+                        if *downloads_enabled {
+                            <div class="ep-ad-notice-actions">
+                                <button class="ep-ai-transcript-btn" onclick={download}>
+                                    <i class="ph ph-cloud-arrow-down"></i>{ i18n.t("episode.ad_detect_download_first") }
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+        _ => html! {},
+    };
+
     let ad_review = if !ad_segments.is_empty() {
         html! {
             <div class="ep-ad-review">
@@ -962,10 +1063,10 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
                             <span class={ if skipping { "ep-ad-status skipping" } else { "ep-ad-status kept" } }>
                                 { if skipping { i18n.t("episode.ad_skipping") } else { i18n.t("episode.ad_kept") } }
                             </span>
-                            <button class="ep-ad-btn confirm" onclick={confirm} title="Skip this ad">
+                            <button class="ep-ad-btn confirm" onclick={confirm} title={i18n.t("episode.ad_skip_this").to_string()}>
                                 <i class="ph ph-check"></i>
                             </button>
-                            <button class="ep-ad-btn deny" onclick={deny} title="Keep this ad">
+                            <button class="ep-ad-btn deny" onclick={deny} title={i18n.t("episode.ad_keep_this").to_string()}>
                                 <i class="ph ph-x"></i>
                             </button>
                         </div>
@@ -983,6 +1084,8 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
             { content }
             { action }
             { detect_action }
+            { detect_choice_panel }
+            { ad_accuracy }
             { ad_review }
         </div>
     }

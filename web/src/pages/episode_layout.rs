@@ -18,6 +18,7 @@ use crate::requests::pod_req::{
     call_get_silence_trim, SilenceTrimRequest,
     call_adjust_auto_transcribe, call_get_ai_status, call_get_auto_transcribe, AutoTranscribeRequest,
     call_get_auto_ad_detect, call_adjust_auto_ad_detect, AutoAdDetectRequest,
+    call_get_auto_delete_on_complete, call_set_podcast_auto_delete_on_complete,
     call_get_ad_skip_auto_activate, call_adjust_ad_skip_auto_activate,
     call_bulk_download_episodes,
     call_bulk_mark_episodes_completed, call_bulk_queue_episodes, call_bulk_save_episodes,
@@ -2545,6 +2546,79 @@ pub fn episode_layout() -> Html {
             });
         })
     };
+    // Ad times only fit the copy they were found on, and dynamically inserted ads differ between
+    // fetches, so auto ad-detect is only reliable when episodes are downloaded to the server.
+    let enable_auto_download_for_ads = toggle_download.clone();
+
+    // Delete server downloads once an episode is finished: this podcast's override, or the
+    // user's default when not customized.
+    let delete_on_complete = use_state(|| false);
+    let delete_on_complete_customized = use_state(|| false);
+    let delete_on_complete_default = use_state(|| false);
+    {
+        let delete_on_complete = delete_on_complete.clone();
+        let delete_on_complete_customized = delete_on_complete_customized.clone();
+        let delete_on_complete_default = delete_on_complete_default.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        use_effect_with(*podcast_id, move |pid| {
+            let pid = *pid;
+            if let (true, Some(api_key), Some(server_name), Some(user_id)) =
+                (pid != 0, api_key.clone(), server_name.clone(), user_id.clone())
+            {
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok((enabled, _)) = call_get_auto_delete_on_complete(&server_name, &api_key, user_id, None).await {
+                        delete_on_complete_default.set(enabled);
+                    }
+                    if let Ok((enabled, customized)) = call_get_auto_delete_on_complete(&server_name, &api_key, user_id, Some(pid)).await {
+                        delete_on_complete.set(enabled);
+                        delete_on_complete_customized.set(customized);
+                    }
+                });
+            }
+            || ()
+        });
+    }
+    let on_delete_on_complete_change = {
+        let delete_on_complete = delete_on_complete.clone();
+        let delete_on_complete_customized = delete_on_complete_customized.clone();
+        let delete_on_complete_default = delete_on_complete_default.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        let podcast_id = podcast_id.clone();
+        Callback::from(move |e: Event| {
+            let value = e.target_unchecked_into::<web_sys::HtmlSelectElement>().value();
+            let choice = match value.as_str() {
+                "on" => Some(true),
+                "off" => Some(false),
+                _ => None,
+            };
+            delete_on_complete.set(choice.unwrap_or(*delete_on_complete_default));
+            delete_on_complete_customized.set(choice.is_some());
+            let (api_key, server_name, user_id, pid) = (api_key.clone(), server_name.clone(), user_id.clone(), *podcast_id);
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key, server_name, user_id) {
+                    if let Err(e) = call_set_podcast_auto_delete_on_complete(&server_name, &api_key, user_id, pid, choice).await {
+                        web_sys::console::log_1(&format!("Error updating delete-when-finished: {}", e).into());
+                    }
+                }
+            });
+        })
+    };
+    let delete_on_complete_value = if !*delete_on_complete_customized {
+        "default"
+    } else if *delete_on_complete {
+        "on"
+    } else {
+        "off"
+    };
+    let delete_on_complete_default_label = if *delete_on_complete_default {
+        i18n.t("episodes_layout.delete_on_complete_default_on").to_string()
+    } else {
+        i18n.t("episodes_layout.delete_on_complete_default_off").to_string()
+    };
 
     // let onclick_cat = new_category
     let app_dispatch_add = _search_dispatch.clone();
@@ -2928,6 +3002,20 @@ pub fn episode_layout() -> Html {
                             </div>
 
                             <div class="mt-4">
+                                <label for="delete-on-complete" class="block mb-2 text-sm font-medium">{ &i18n.t("episodes_layout.delete_on_complete_label") }</label>
+                                <select
+                                    id="delete-on-complete"
+                                    class="email-input border text-sm rounded-lg p-2.5"
+                                    onchange={on_delete_on_complete_change}
+                                >
+                                    <option value="default" selected={delete_on_complete_value == "default"}>{ &delete_on_complete_default_label }</option>
+                                    <option value="on" selected={delete_on_complete_value == "on"}>{ &i18n.t("episodes_layout.delete_on_complete_on") }</option>
+                                    <option value="off" selected={delete_on_complete_value == "off"}>{ &i18n.t("episodes_layout.delete_on_complete_off") }</option>
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">{ &i18n.t("episodes_layout.delete_on_complete_description") }</p>
+                            </div>
+
+                            <div class="mt-4">
                                 <label class="block mb-2 text-sm font-medium">{ &i18n_use_podcast_covers }</label>
                                 <div class="flex items-center space-x-2">
                                     <label class="relative inline-flex items-center cursor-pointer">
@@ -3061,6 +3149,34 @@ pub fn episode_layout() -> Html {
                                                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                                 <span class="ms-3 text-sm">{ &i18n.t("episodes_layout.auto_ad_detect_desc") }</span>
                                             </label>
+                                            {
+                                                if auto_ad_detect_checked && !*download_status {
+                                                    html! {
+                                                        <div class="ep-ad-notice">
+                                                            <i class="ph ph-warning"></i>
+                                                            <div class="ep-ad-notice-body">
+                                                                <span>{ &i18n.t("episodes_layout.auto_ad_detect_needs_download") }</span>
+                                                                <div class="ep-ad-notice-actions">
+                                                                    <button class="ep-ai-transcript-btn" onclick={enable_auto_download_for_ads}>
+                                                                        <i class="ph ph-cloud-arrow-down"></i>{ &i18n.t("episodes_layout.auto_ad_detect_enable_download") }
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                } else if auto_ad_detect_checked {
+                                                    html! {
+                                                        <div class="ep-ad-notice is-ok">
+                                                            <i class="ph ph-check-circle"></i>
+                                                            <div class="ep-ad-notice-body">
+                                                                <span>{ &i18n.t("episodes_layout.auto_ad_detect_download_ok") }</span>
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
                                             {
                                                 // Skip-immediately vs. confirm-first — only when auto-detect is on.
                                                 if auto_transcribe_checked && auto_ad_detect_checked {

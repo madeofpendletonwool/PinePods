@@ -3853,6 +3853,43 @@
         ]
       }
     },
+    "/api/data/get_auto_delete_on_complete": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get delete-downloads-when-finished",
+        "operationId": "get_auto_delete_on_complete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetAutoDeleteOnCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "`enabled` and, for a podcast, whether it is `customized`",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/get_auto_download_delete_days": {
       "post": {
         "tags": [
@@ -6785,6 +6822,43 @@
                 "schema": {
                   "$ref": "#/components/schemas/NotificationStatusResponse"
                 }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/podcast/set_auto_delete_on_complete": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Set or clear a podcast's delete-downloads-when-finished",
+        "operationId": "set_podcast_auto_delete_on_complete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAutoDeleteOnCompletePodcast"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -10311,6 +10385,43 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/NotificationSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/user/set_auto_delete_on_complete": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Set delete-downloads-when-finished (user default)",
+        "operationId": "set_auto_delete_on_complete_user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAutoDeleteOnCompleteUser"
               }
             }
           },
@@ -14305,6 +14416,10 @@
           },
           "force": {
             "type": "boolean"
+          },
+          "download_first": {
+            "type": "boolean",
+            "description": "Download the episode to the server first (when it isn't) and detect ads on that copy, so\nad times match what the user plays."
           }
         }
       },
@@ -15051,6 +15166,25 @@
         "properties": {
           "url": {
             "type": "string"
+          }
+        }
+      },
+      "GetAutoDeleteOnCompleteRequest": {
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "podcast_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -17781,6 +17915,46 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "SetAutoDeleteOnCompletePodcast": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "podcast_id"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "podcast_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`null` goes back to the user's default."
+          }
+        }
+      },
+      "SetAutoDeleteOnCompleteUser": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "enabled"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "enabled": {
+            "type": "boolean"
           }
         }
       },

@@ -10051,6 +10051,27 @@ body.search-takeover-open .drawer-icon { display: none; }
 }
 .ep-ad-btn.confirm:hover { color: var(--success-color); border-color: var(--success-color); }
 .ep-ad-btn.deny:hover { color: var(--error-color); border-color: var(--error-color); }
+.ep-ad-notice {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-color);
+    background: color-mix(in srgb, var(--warning-color, #e0a800) 12%, transparent);
+    border-left: 3px solid var(--warning-color, #e0a800);
+}
+.ep-ad-notice.is-ok {
+    background: color-mix(in srgb, var(--success-color) 10%, transparent);
+    border-left-color: var(--success-color);
+}
+.ep-ad-notice > i { font-size: 16px; margin-top: 1px; flex-shrink: 0; }
+.ep-ad-notice-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ep-ad-notice-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ep-ad-notice-actions .ep-ai-transcript-btn { margin: 0; }
 
 .ep-chapter-play {
     display: inline-flex;

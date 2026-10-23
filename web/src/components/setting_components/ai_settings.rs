@@ -309,6 +309,12 @@ pub fn ai_settings() -> Html {
 
                             // ---- Ad detection ----
                             <div class="settings-section-subhead">{ i18n.t("ai_settings.section_ad_detection") }</div>
+                            <div class="settings-row">
+                                <div class="ep-ad-notice" style="margin-top:0;">
+                                    <i class="ph ph-info"></i>
+                                    <div class="ep-ad-notice-body"><span>{ i18n.t("ai_settings.dynamic_ads_note") }</span></div>
+                                </div>
+                            </div>
                             {
                                 // Ad removal has no default model — tell the admin how to enable it.
                                 if ai_status.available && !ai_status.ad_removal_ready {

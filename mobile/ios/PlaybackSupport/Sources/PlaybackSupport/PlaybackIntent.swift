@@ -7,6 +7,8 @@ struct PlaybackIntent {
 
     var canPlay: Bool { requested && !interrupted }
     var canResumeLoadedEpisode: Bool { canPlay && loadedGeneration == generation }
+    /// The current episode finished loading (including its start-position seek).
+    var isLoaded: Bool { loadedGeneration == generation }
 
     mutating func completeLoad(generation: UInt64) {
         guard self.generation == generation else { return }

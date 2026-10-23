@@ -248,7 +248,9 @@
     "failed_to_update": "Failed to update auto-delete setting: ",
     "label": "Auto-Delete Downloads After:",
     "updated_successfully": "Auto-delete setting updated successfully",
-    "warning": "Warning: server-downloaded files older than this will be permanently deleted from the server. This cannot be undone."
+    "warning": "Warning: server-downloaded files older than this will be permanently deleted from the server. This cannot be undone.",
+    "on_complete_label": "Delete downloads when finished",
+    "on_complete_description": "Remove an episode's server download about an hour after you finish it. Combined with auto-download, the server keeps only what you haven't heard. This is the default for all podcasts; each podcast's settings can override it."
   },
   "download_settings": {
     "enable_server_downloads": "Enable Server Downloads",
@@ -404,7 +406,17 @@
     "ad_skipping": "Skipping",
     "ad_kept": "Kept",
     "ad_detection_started": "Ad detection started — this can take a while.",
-    "ad_detection_error": "Could not start ad detection"
+    "ad_detection_error": "Could not start ad detection",
+    "ad_detection_download_started": "Downloading to the server — ads will be detected on that copy when it finishes.",
+    "ad_detect_not_downloaded": "This episode isn't downloaded to the server. Many podcasts insert different ads each time an episode is fetched, so ads found on a one-off copy can land at the wrong times when you play it. For exact skips, download it to the server first.",
+    "ad_detect_download_first": "Download to server, then detect",
+    "ad_detect_stream_anyway": "Detect anyway",
+    "cancel": "Cancel",
+    "ad_accuracy_match": "Ads were found on your server download, so skips line up exactly.",
+    "ad_accuracy_mismatch": "Your server download is a different copy from the one these ads were found on, so their times may be off. Detect ads again to match your download.",
+    "ad_accuracy_streaming": "You're streaming this episode. If the podcast inserts ads dynamically, they can sit at different times than detected; Pinepods only skips them when the stream's length matches the analyzed copy. Download it to the server for exact skips.",
+    "ad_skip_this": "Skip this ad",
+    "ad_keep_this": "Keep this ad"
   },
   "failed_to_find_podcast_metadata": "Failed to find podcast's metadata.",
   "episode_list_item": {
@@ -502,6 +514,15 @@
     "error_resetting_auto_delete": "Error resetting auto-delete setting",
     "auto_delete_custom_badge": "Custom",
     "auto_delete_global_badge": "Global default",
+    "delete_on_complete_label": "Delete Downloads When Finished:",
+    "delete_on_complete_default_on": "Use my default (on)",
+    "delete_on_complete_default_off": "Use my default (off)",
+    "delete_on_complete_on": "On — delete once I finish an episode",
+    "delete_on_complete_off": "Off — keep finished episodes",
+    "delete_on_complete_description": "Removes this podcast's server download about an hour after you finish the episode. Pairs well with auto-download, so the server only keeps what you haven't heard yet.",
+    "auto_ad_detect_needs_download": "Auto-download is off for this podcast. Many podcasts insert different ads every time an episode is fetched, so ads found on one copy can land at the wrong times in the copy you stream. Pinepods holds off skipping when the stream doesn't match, which means some ads won't be skipped. Turn on auto-download so ads are found on the server copy you'll play; \"Delete downloads when finished\" keeps that from filling the disk.",
+    "auto_ad_detect_enable_download": "Turn on auto-download",
+    "auto_ad_detect_download_ok": "Auto-download is on, so ads are found on the server copy you'll play and skips line up exactly.",
     "podcast_index_id": "Podcast Index ID",
     "podcast_index_id_placeholder": "Enter Podcast Index ID",
     "podcast_name": "Podcast Name",
@@ -1705,6 +1726,7 @@
     "capabilities": "Capabilities",
     "transcription": "Transcription",
     "ad_removal": "Ad removal",
+    "dynamic_ads_note": "Ad times only fit the copy of an episode they were found on, and many podcasts insert different ads each time an episode is fetched. For accurate skipping, turn on auto-download for podcasts you detect ads on, so ads are found on the server copy that gets played, and use \"Delete downloads when finished\" (in Auto-Delete Downloads settings, or per podcast) to keep the disk in check. When someone streams instead, players only skip if the stream's length matches the analyzed copy.",
     "ad_removal_hint": "Ad removal needs a language model. Below, either pull a local GGUF model and select it, or switch the ad-detection model to Remote and point it at an OpenAI-compatible endpoint (e.g. Ollama). Then save.",
     "models": "Models",
     "transcription_model": "Transcription model (Whisper)",

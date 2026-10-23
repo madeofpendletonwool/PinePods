@@ -7169,6 +7169,40 @@ def migration_076_youtube_video_filters(conn, db_type: str) -> None:
     finally:
         cursor.close()
 
+@register_migration("078", "ad_audio_fingerprint_and_delete_when_finished", "Record which audio copy a transcript was made from, fingerprint server downloads, and add delete-download-when-finished settings", requires=["001", "005", "006", "051"])
+def migration_078_ad_audio_fingerprint_and_delete_when_finished(conn, db_type: str) -> None:
+    """Dynamically inserted ads differ between copies of the same episode, so ad times only fit
+    the copy they were detected on. EpisodeTranscripts.AudioFingerprint/AudioDuration/AudioSource
+    record that copy and DownloadedEpisodes.AudioFingerprint each server download, so the server
+    can tell whether a user's download matches. Users.AutoDeleteOnComplete is the default for
+    deleting a server download once the episode is finished; Podcasts.AutoDeleteOnComplete
+    overrides it per podcast (NULL = use the default)."""
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+
+    def q(name):
+        return f'"{name}"' if pg else name
+
+    double = "DOUBLE PRECISION" if pg else "DOUBLE"
+    try:
+        for table, column, ddl in (
+            ("EpisodeTranscripts", "AudioFingerprint", "VARCHAR(64)"),
+            ("EpisodeTranscripts", "AudioDuration", double),
+            ("EpisodeTranscripts", "AudioSource", "VARCHAR(16)"),
+            ("DownloadedEpisodes", "AudioFingerprint", "VARCHAR(64)"),
+            ("Users", "AutoDeleteOnComplete", "BOOLEAN DEFAULT FALSE"),
+            ("Podcasts", "AutoDeleteOnComplete", "BOOLEAN"),
+        ):
+            if not _column_exists(cursor, db_type, table, column):
+                cursor.execute(f"ALTER TABLE {q(table)} ADD COLUMN {column} {ddl}")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 def _refresh_interval_minutes(published, now) -> int:
     """A feed's refresh interval from its newest publishing dates: an eighth of the median gap,
     15 minutes to 6 hours, 24 hours when nothing came out in 90 days. Matches the refresh."""
