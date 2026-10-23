@@ -228,7 +228,7 @@ async fn the_refresh_job_only_refreshes() {
     let feed_hits = s.app.fixtures().hits("show.xml").len();
     let runs = s.runs();
     s.app.feed("show.xml", &Feed::with_episodes("Show", 4));
-    exec(&s.app, &format!(r#"UPDATE "Podcasts" SET NextRefreshAt = '2000-01-01 00:00:00' WHERE PodcastID = {}"#, s.pod)).await;
+    set_next_refresh(&s.app, s.pod, "2000-01-01 00:00:00").await;
 
     scheduler::run_refresh_job(&s.app.state).await.unwrap();
     assert_eq!(s.app.fixtures().hits("show.xml").len(), feed_hits + 1, "the feed was refreshed");

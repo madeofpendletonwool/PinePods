@@ -7167,6 +7167,194 @@ def _refresh_interval_minutes(published, now) -> int:
     return int(min(max(median / 8 / 60, 15), 6 * 60))
 
 
+@register_migration("080", "create_feeds", "Feeds: one row per feed address and credentials, holding the refresh state its subscriptions share", requires=["044", "063", "071", "075"])
+def migration_080_create_feeds(conn, db_type: str) -> None:
+    """Feeds: one row per feed, shared by every user subscribed to it, with the refresh state
+    (validators, schedule, failures). Podcasts.FeedID links a subscription to its feed.
+
+    A feed is its address (FeedURLHash, the SHA-256 of FeedURL, carries the unique key; the server
+    fills it in) plus a credential key: '' for public feeds, the SHA-256 of
+    username + NUL + password for private ones (same address, other credentials = another feed),
+    and the SHA-256 of 'local' + NUL + user id for anything that isn't http(s), so uploads are
+    never shared. The refresh state of existing subscriptions is merged per feed: the earliest
+    next refresh and shortest interval, the stored validators, the body hash only when every
+    subscription agrees, and the healthiest failure state.
+    """
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    podcasts = '"Podcasts"' if pg else "Podcasts"
+    feeds = '"Feeds"' if pg else "Feeds"
+    try:
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "Feeds" (
+                    FeedID SERIAL PRIMARY KEY,
+                    FeedURL TEXT NOT NULL,
+                    FeedURLHash CHAR(64) NOT NULL,
+                    CredentialKey VARCHAR(64) NOT NULL DEFAULT '',
+                    IsYouTubeChannel BOOLEAN NOT NULL DEFAULT FALSE,
+                    FeedETag TEXT,
+                    FeedLastModified TEXT,
+                    FeedContentHash TEXT,
+                    RefreshNotBefore TIMESTAMP,
+                    NextRefreshAt TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '5 minutes'),
+                    RefreshIntervalMinutes INT,
+                    LastRefreshAttempt TIMESTAMP,
+                    LastRefreshSuccess TIMESTAMP,
+                    ConsecutiveFailures INT NOT NULL DEFAULT 0,
+                    LastErrorMessage TEXT,
+                    FailingSince TIMESTAMP,
+                    LastErrorKind VARCHAR(32),
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_feeds_url_credentials UNIQUE (FeedURLHash, CredentialKey)
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS Feeds (
+                    FeedID INT AUTO_INCREMENT PRIMARY KEY,
+                    FeedURL TEXT NOT NULL,
+                    FeedURLHash CHAR(64) NOT NULL,
+                    CredentialKey VARCHAR(64) NOT NULL DEFAULT '',
+                    IsYouTubeChannel TINYINT(1) NOT NULL DEFAULT 0,
+                    FeedETag TEXT,
+                    FeedLastModified TEXT,
+                    FeedContentHash TEXT,
+                    RefreshNotBefore DATETIME NULL DEFAULT NULL,
+                    NextRefreshAt DATETIME NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE),
+                    RefreshIntervalMinutes INT,
+                    LastRefreshAttempt DATETIME NULL DEFAULT NULL,
+                    LastRefreshSuccess DATETIME NULL DEFAULT NULL,
+                    ConsecutiveFailures INT NOT NULL DEFAULT 0,
+                    LastErrorMessage TEXT,
+                    FailingSince DATETIME NULL DEFAULT NULL,
+                    LastErrorKind VARCHAR(32),
+                    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_feeds_url_credentials (FeedURLHash, CredentialKey)
+                )
+            """)
+        safe_add_index(cursor, db_type, f"CREATE INDEX idx_feeds_nextrefreshat ON {feeds} (NextRefreshAt)", "idx_feeds_nextrefreshat")
+
+        if not _column_exists(cursor, db_type, "Podcasts", "FeedID"):
+            cursor.execute(f"ALTER TABLE {podcasts} ADD COLUMN FeedID INT NULL")
+        safe_add_index(cursor, db_type, f"CREATE INDEX idx_podcasts_feedid ON {podcasts} (FeedID)", "idx_podcasts_feedid")
+        if pg:
+            cursor.execute("""
+                SELECT COUNT(*) FROM information_schema.table_constraints
+                WHERE table_name = 'Podcasts' AND constraint_name = 'fk_podcasts_feed'
+            """)
+        else:
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Podcasts' AND CONSTRAINT_NAME = 'fk_podcasts_feed'
+            """)
+        if not cursor.fetchone()[0]:
+            cursor.execute(
+                f"ALTER TABLE {podcasts} ADD CONSTRAINT fk_podcasts_feed FOREIGN KEY (FeedID) "
+                f"REFERENCES {feeds}(FeedID) ON DELETE SET NULL"
+            )
+
+        linked = _link_podcasts_to_feeds(cursor, db_type)
+        logger.info(f"Migration 080: linked {linked} podcasts to their feeds")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+def _feed_credential_key(feed_url, username, password, user_id) -> str:
+    """Matches services::feeds::credential_key in rust-api."""
+    import hashlib
+
+    url = (feed_url or "").strip().lower()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return hashlib.sha256(f"local\0{user_id}".encode()).hexdigest()
+    if not username and not password:
+        return ""
+    return hashlib.sha256(f"{username or ''}\0{password or ''}".encode()).hexdigest()
+
+
+def _link_podcasts_to_feeds(cursor, db_type: str) -> int:
+    """Create the feed of every podcast without one and link it. Returns how many were linked."""
+    import hashlib
+
+    pg = db_type == "postgresql"
+    podcasts = '"Podcasts"' if pg else "Podcasts"
+    feeds = '"Feeds"' if pg else "Feeds"
+    state_cols = ["FeedETag", "FeedLastModified", "FeedContentHash", "RefreshNotBefore", "NextRefreshAt",
+                  "RefreshIntervalMinutes", "LastRefreshAttempt", "LastRefreshSuccess", "ConsecutiveFailures",
+                  "LastErrorMessage", "FailingSince", "LastErrorKind"]
+    cursor.execute(
+        f"SELECT PodcastID, FeedURL, Username, Password, UserID, COALESCE(IsYouTubeChannel, FALSE), "
+        f"{', '.join(state_cols)} FROM {podcasts} WHERE FeedID IS NULL AND FeedURL IS NOT NULL AND FeedURL <> ''"
+    )
+    groups = {}
+    for row in cursor.fetchall():
+        podcast_id, url, username, password, user_id, youtube = row[:6]
+        state = dict(zip(state_cols, row[6:]))
+        key = (url, _feed_credential_key(url, username, password, user_id))
+        groups.setdefault(key, {"youtube": bool(youtube), "rows": []})["rows"].append((podcast_id, state))
+    if not groups:
+        return 0
+
+    def earliest(values):
+        values = [v for v in values if v is not None]
+        return min(values) if values else None
+
+    def latest(values):
+        values = [v for v in values if v is not None]
+        return max(values) if values else None
+
+    linked = 0
+    for (url, cred_key), group in groups.items():
+        states = [s for _, s in group["rows"]]
+        hashes = {s["FeedContentHash"] for s in states}
+        healthiest = min(states, key=lambda s: s["ConsecutiveFailures"] or 0)
+        merged = {
+            "FeedETag": next((s["FeedETag"] for s in states if s["FeedETag"]), None),
+            "FeedLastModified": next((s["FeedLastModified"] for s in states if s["FeedLastModified"]), None),
+            "FeedContentHash": hashes.pop() if len(hashes) == 1 else None,
+            "RefreshNotBefore": latest(s["RefreshNotBefore"] for s in states),
+            "NextRefreshAt": earliest(s["NextRefreshAt"] for s in states),
+            "RefreshIntervalMinutes": earliest(s["RefreshIntervalMinutes"] for s in states),
+            "LastRefreshAttempt": latest(s["LastRefreshAttempt"] for s in states),
+            "LastRefreshSuccess": latest(s["LastRefreshSuccess"] for s in states),
+            "ConsecutiveFailures": healthiest["ConsecutiveFailures"] or 0,
+            "LastErrorMessage": healthiest["LastErrorMessage"],
+            "FailingSince": healthiest["FailingSince"],
+            "LastErrorKind": healthiest["LastErrorKind"],
+        }
+        url_hash = hashlib.sha256(url.encode()).hexdigest()
+        cursor.execute(
+            f"SELECT FeedID FROM {feeds} WHERE FeedURLHash = %s AND CredentialKey = %s",
+            (url_hash, cred_key),
+        )
+        found = cursor.fetchone()
+        if found:
+            feed_id = found[0]
+        else:
+            cols = ["FeedURL", "FeedURLHash", "CredentialKey", "IsYouTubeChannel"] + state_cols
+            values = [url, url_hash, cred_key, group["youtube"]] + [merged[c] for c in state_cols]
+            marks = ", ".join(["%s"] * len(cols))
+            if pg:
+                cursor.execute(f"INSERT INTO {feeds} ({', '.join(cols)}) VALUES ({marks}) RETURNING FeedID", values)
+                feed_id = cursor.fetchone()[0]
+            else:
+                cursor.execute(f"INSERT INTO {feeds} ({', '.join(cols)}) VALUES ({marks})", values)
+                feed_id = cursor.lastrowid
+        ids = [podcast_id for podcast_id, _ in group["rows"]]
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            cursor.execute(
+                f"UPDATE {podcasts} SET FeedID = %s WHERE PodcastID IN ({', '.join(['%s'] * len(chunk))})",
+                (feed_id, *chunk),
+            )
+        linked += len(ids)
+    return linked
+
+
 @register_migration("111", "gpodder_episode_action_log", "Episode action log: Guid, resolved EpisodeID, Origin, indexes; keep actions when a device is removed", requires=["066", "110"])
 def migration_111_gpodder_episode_action_log(conn, db_type: str) -> None:
     """Turn GpodderSyncEpisodeActions into the sync log/outbox (sync overhaul 3.2).

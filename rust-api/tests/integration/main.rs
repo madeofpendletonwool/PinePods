@@ -26,6 +26,7 @@ mod refresh;
 mod refresh_schedule;
 mod scheduling;
 mod settings;
+mod shared_feeds;
 mod smoke;
 mod sync_core;
 mod sync_engine;

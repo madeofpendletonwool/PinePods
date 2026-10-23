@@ -22,7 +22,7 @@ async fn interval(app: &TestApp, pod: i32) -> Option<i64> {
 }
 
 async fn set_next(app: &TestApp, pod: i32, at: &str) {
-    exec(app, &format!(r#"UPDATE "Podcasts" SET NextRefreshAt = '{at}' WHERE PodcastID = {pod}"#)).await;
+    set_next_refresh(app, pod, at).await;
 }
 
 async fn make_due(app: &TestApp, pod: i32) {
@@ -154,7 +154,7 @@ async fn failures_and_retry_after_push_the_next_refresh_out() {
     let before = hits();
     assert_eq!(tick(&app).await, 0);
     assert_eq!(hits(), before);
-    exec(&app, &format!(r#"UPDATE "Podcasts" SET LastRefreshAttempt = '2000-01-01 00:00:00' WHERE PodcastID = {pod}"#)).await;
+    set_refresh_state(&app, pod, "LastRefreshAttempt = '2000-01-01 00:00:00'").await;
     app.feed("flaky.xml", &feed);
     assert_eq!(tick(&app).await, 1);
     assert_eq!(failures().await, Some(0));
@@ -168,7 +168,7 @@ async fn failures_and_retry_after_push_the_next_refresh_out() {
     let secs = due_in(&app, pod).await;
     assert!((7195..=7205).contains(&secs), "{secs}s");
     make_due(&app, pod).await;
-    exec(&app, &format!(r#"UPDATE "Podcasts" SET LastRefreshAttempt = '2000-01-01 00:00:00' WHERE PodcastID = {pod}"#)).await;
+    set_refresh_state(&app, pod, "LastRefreshAttempt = '2000-01-01 00:00:00'").await;
     let before = hits();
     assert_eq!(tick(&app).await, 0);
     assert_eq!(hits(), before, "held by Retry-After");

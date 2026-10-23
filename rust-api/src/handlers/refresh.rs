@@ -224,6 +224,7 @@ impl Drop for FeedLock {
 #[derive(Clone)]
 struct PodcastRefreshItem {
     podcast_id: i32,
+    feed_id: Option<i32>,
     feed_url: String,
     artwork_url: Option<String>,
     auto_download: bool,
@@ -508,14 +509,19 @@ async fn refresh_youtube_item(state: &AppState, item: &PodcastRefreshItem) {
 
 /// The podcast rows to refresh (all, or those of the `only` feeds), skipping feeds a host asked us
 /// to leave alone (Retry-After) and, unless `ignore_backoff`, feeds in failure backoff.
-async fn load_refresh_items(state: &AppState, only: Option<&[String]>, ignore_backoff: bool) -> AppResult<Vec<PodcastRefreshItem>> {
+async fn load_refresh_items(
+    state: &AppState,
+    only: Option<&[String]>,
+    feeds: Option<&[i32]>,
+    ignore_backoff: bool,
+) -> AppResult<Vec<PodcastRefreshItem>> {
     use crate::services::scheduler::{BACKOFF_MAX_STEPS, BACKOFF_STEP_MINUTES};
     let mut refresh_items: Vec<PodcastRefreshItem> = Vec::new();
 
     match &state.db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
             let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
-                r#"SELECT podcastid, feedurl, artworkurl, autodownload, autoqueue, username, password,
+                r#"SELECT podcastid, feedid, feedurl, artworkurl, autodownload, autoqueue, username, password,
                           isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified, feedcontenthash,
                           refreshintervalminutes
                    FROM "Podcasts"
@@ -524,10 +530,12 @@ async fn load_refresh_items(state: &AppState, only: Option<&[String]>, ignore_ba
                      AND ($1 OR COALESCE(consecutivefailures, 0) = 0
                           OR lastrefreshattempt IS NULL
                           OR lastrefreshattempt < NOW() - (INTERVAL '1 minute' * ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(consecutivefailures, 0), {BACKOFF_MAX_STEPS}))))
-                     AND ($2::TEXT[] IS NULL OR feedurl = ANY($2))"#
+                     AND ($2::TEXT[] IS NULL OR feedurl = ANY($2))
+                     AND ($3::INT[] IS NULL OR feedid = ANY($3))"#
             )))
             .bind(ignore_backoff)
             .bind(only)
+            .bind(feeds)
             .fetch_all(pool)
             .await?;
 
@@ -535,6 +543,7 @@ async fn load_refresh_items(state: &AppState, only: Option<&[String]>, ignore_ba
                 let podcast_id: i32 = result.try_get("podcastid")?;
                 refresh_items.push(PodcastRefreshItem {
                     podcast_id,
+                    feed_id: result.try_get("feedid")?,
                     feed_url: result.try_get("feedurl")?,
                     artwork_url: result.try_get("artworkurl").ok(),
                     auto_download: result.try_get("autodownload")?,
@@ -552,13 +561,15 @@ async fn load_refresh_items(state: &AppState, only: Option<&[String]>, ignore_ba
             }
         }
         crate::database::DatabasePool::MySQL(pool) => {
-            let feeds = match only {
-                Some(urls) if !urls.is_empty() => format!("AND FeedURL IN ({})", vec!["?"; urls.len()].join(", ")),
+            let in_list = |column: &str, n: Option<usize>| match n {
+                Some(n) if n > 0 => format!("AND {column} IN ({})", vec!["?"; n].join(", ")),
                 Some(_) => "AND FALSE".to_string(),
                 None => String::new(),
             };
+            let urls = in_list("FeedURL", only.map(<[String]>::len));
+            let feed_ids = in_list("FeedID", feeds.map(<[i32]>::len));
             let mut query = sqlx::query(sqlx::AssertSqlSafe(format!(
-                "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, AutoQueue, Username, Password,
+                "SELECT PodcastID, FeedID, FeedURL, ArtworkURL, AutoDownload, AutoQueue, Username, Password,
                         IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified, FeedContentHash,
                         RefreshIntervalMinutes
                  FROM Podcasts
@@ -567,11 +578,14 @@ async fn load_refresh_items(state: &AppState, only: Option<&[String]>, ignore_ba
                    AND (? OR COALESCE(ConsecutiveFailures, 0) = 0
                         OR LastRefreshAttempt IS NULL
                         OR LastRefreshAttempt < NOW() - INTERVAL ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(ConsecutiveFailures, 0), {BACKOFF_MAX_STEPS})) MINUTE)
-                   {feeds}"
+                   {urls} {feed_ids}"
             )))
             .bind(ignore_backoff);
             for url in only.unwrap_or_default() {
                 query = query.bind(url);
+            }
+            for id in feeds.unwrap_or_default() {
+                query = query.bind(id);
             }
             let rows = query.fetch_all(pool).await?;
 
@@ -579,6 +593,7 @@ async fn load_refresh_items(state: &AppState, only: Option<&[String]>, ignore_ba
                 let podcast_id: i32 = result.try_get("PodcastID")?;
                 refresh_items.push(PodcastRefreshItem {
                     podcast_id,
+                    feed_id: result.try_get("FeedID")?,
                     feed_url: result.try_get("FeedURL")?,
                     artwork_url: result.try_get("ArtworkURL").ok(),
                     auto_download: result.try_get("AutoDownload")?,
@@ -604,7 +619,7 @@ async fn load_refresh_items(state: &AppState, only: Option<&[String]>, ignore_ba
 // Background refresh of every user's podcasts (no WebSocket), due or not.
 async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
     info!("Running refresh");
-    let items = load_refresh_items(state, None, false).await?;
+    let items = load_refresh_items(state, None, None, false).await?;
     refresh_items(state, items).await;
     info!("Refresh completed");
     Ok(())
@@ -613,19 +628,15 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
 /// Refresh the feeds whose next refresh is due, the longest overdue first, at most
 /// `REFRESH_TICK_MAX_FEEDS` of them. Returns how many feeds were refreshed.
 pub async fn refresh_due_podcasts(state: &AppState) -> AppResult<usize> {
+    // Subscriptions added or moved since the last tick join their feed first.
+    if let Err(e) = state.db_pool.link_unlinked_feeds().await {
+        warn!("Linking podcasts to their feeds failed: {}", e);
+    }
     let due = state.db_pool.due_refresh_feeds(REFRESH_TICK_MAX_FEEDS).await?;
     if due.is_empty() {
         return Ok(0);
     }
-    let mut urls: Vec<String> = due.iter().map(|(url, _, _)| url.clone()).collect();
-    urls.sort();
-    urls.dedup();
-    let due: HashSet<FeedKey> = due.into_iter().collect();
-    let items: Vec<PodcastRefreshItem> = load_refresh_items(state, Some(&urls), false)
-        .await?
-        .into_iter()
-        .filter(|i| due.contains(&(i.feed_url.clone(), i.username.clone(), i.password.clone())))
-        .collect();
+    let items = load_refresh_items(state, None, Some(&due), false).await?;
     debug!("Refreshing {} due feeds", due.len());
     Ok(refresh_items(state, items).await)
 }
@@ -636,7 +647,7 @@ pub async fn refresh_feed_urls(state: &AppState, urls: &[String]) -> AppResult<u
     if urls.is_empty() {
         return Ok(0);
     }
-    let items = load_refresh_items(state, Some(urls), true).await?;
+    let items = load_refresh_items(state, Some(urls), None, true).await?;
     Ok(refresh_items(state, items).await)
 }
 
@@ -644,11 +655,17 @@ pub async fn refresh_feed_urls(state: &AppState, urls: &[String]) -> AppResult<u
 /// YouTube channels one by one, then playlist counts of users with new episodes. Returns the
 /// number of feeds and channels refreshed.
 async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>) -> usize {
-    // Partition into YouTube items (refreshed per-podcast) and RSS feeds grouped by
-    // (feed_url, username, password) so a feed subscribed by many users is fetched + parsed ONCE.
+    // Partition into YouTube items (refreshed per-podcast) and RSS feeds grouped by feed, so a
+    // feed subscribed by many users is fetched + parsed ONCE. A row not linked to its feed yet
+    // groups by address and credentials, which is what a feed is.
     use std::collections::HashMap;
+    #[derive(PartialEq, Eq, Hash)]
+    enum Group {
+        Feed(i32),
+        Unlinked(FeedKey),
+    }
     let mut youtube_items: Vec<PodcastRefreshItem> = Vec::new();
-    let mut feed_groups: HashMap<(String, Option<String>, Option<String>), Vec<PodcastRefreshItem>> = HashMap::new();
+    let mut feed_groups: HashMap<Group, Vec<PodcastRefreshItem>> = HashMap::new();
 
     let owners: HashMap<i32, i32> = refresh_items.iter().map(|i| (i.podcast_id, i.user_id)).collect();
     for item in refresh_items {
@@ -659,7 +676,10 @@ async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>)
         if item.is_youtube {
             youtube_items.push(item);
         } else {
-            let key = (item.feed_url.clone(), item.username.clone(), item.password.clone());
+            let key = match item.feed_id {
+                Some(id) => Group::Feed(id),
+                None => Group::Unlinked(FeedLock::key(&item.feed_url, item.username.as_deref(), item.password.as_deref())),
+            };
             feed_groups.entry(key).or_default().push(item);
         }
     }
@@ -984,6 +1004,7 @@ const SYNC_REPORT_WAIT: std::time::Duration = std::time::Duration::from_secs(10)
 #[derive(Debug, Clone)]
 pub struct PodcastForRefresh {
     pub id: i32,
+    pub feed_id: Option<i32>,
     pub name: String,
     pub feed_url: String,
     pub artwork_url: Option<String>,
@@ -1055,6 +1076,7 @@ async fn refresh_rss_feed(
     // FeedCutoffDays, auto-download/queue/transcribe, failure and Retry-After tracking.
     let item = PodcastRefreshItem {
         podcast_id: podcast.id,
+        feed_id: podcast.feed_id,
         feed_url: podcast.feed_url.clone(),
         artwork_url: podcast.artwork_url.clone(),
         auto_download: podcast.auto_download,
@@ -1073,7 +1095,17 @@ async fn refresh_rss_feed(
         debug!("Skipping manual refresh of podcast {}: it's being refreshed right now", podcast.id);
         return Ok(Vec::new());
     };
-    let new_episodes = refresh_feed_group(state, std::slice::from_ref(&item)).await?;
+    // The feed is refreshed for everyone subscribed to it: its schedule and validators are
+    // shared, so refreshing one subscription alone would leave the others behind.
+    let mut group = match podcast.feed_id {
+        Some(feed_id) => load_refresh_items(state, None, Some(&[feed_id]), true).await?,
+        None => Vec::new(),
+    };
+    if !group.iter().any(|i| i.podcast_id == item.podcast_id) {
+        group.insert(0, item);
+    }
+    let mut new_episodes = refresh_feed_group(state, &group).await?;
+    new_episodes.retain(|e| e.podcastid == podcast.id);
 
     if !new_episodes.is_empty() {
         info!("Refreshed podcast '{}' for user {}: {} new episodes", podcast.name, user_id, new_episodes.len());

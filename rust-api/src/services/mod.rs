@@ -5,6 +5,7 @@ pub mod audio_processing;
 pub mod auth;
 pub mod download_metadata;
 pub mod feed_health;
+pub mod feeds;
 pub mod http;
 pub mod people;
 pub mod podcasting2;

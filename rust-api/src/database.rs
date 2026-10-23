@@ -68,6 +68,25 @@ fn is_write_conflict(e: &AppError) -> bool {
     db.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>().is_some_and(|m| matches!(m.number(), 1020 | 1213))
 }
 
+const PG_PODCASTS: &str = r#""Podcasts""#;
+
+// A refresh-state update writes the feed of the given podcast rows and, until those columns are
+// dropped from Podcasts, the rows themselves. Postgres binds the ids as one array at `$n`.
+fn pg_refresh_targets(n: usize) -> [(&'static str, String); 2] {
+    [
+        (PG_PODCASTS, format!("podcastid = ANY(${n})")),
+        (r#""Feeds""#, format!(r#"feedid IN (SELECT feedid FROM "Podcasts" WHERE podcastid = ANY(${n}))"#)),
+    ]
+}
+
+fn mysql_refresh_targets(ids: usize) -> [(&'static str, String); 2] {
+    let marks = vec!["?"; ids].join(", ");
+    [
+        ("Podcasts", format!("PodcastID IN ({marks})")),
+        ("Feeds", format!("FeedID IN (SELECT FeedID FROM Podcasts WHERE PodcastID IN ({marks}))")),
+    ]
+}
+
 /// `Users.GpodderUrl` of users on the PinePods gpodder server. Not a real address any more;
 /// clients and the UI read it as "internal".
 pub const INTERNAL_GPODDER_URL: &str = "http://localhost:8042";
@@ -857,6 +876,7 @@ impl DatabasePool {
                     crate::services::sync::events::subscription_pg(self, &mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
                 }
                 tx.commit().await?;
+                self.link_feed_or_warn(podcast_id).await;
                 
                 // Add episodes
                 let first_episode_id = self.add_episodes(podcast_id, &podcast_values.pod_feed_url, 
@@ -942,6 +962,7 @@ impl DatabasePool {
                     crate::services::sync::events::subscription_mysql(self, &mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
                 }
                 tx.commit().await?;
+                self.link_feed_or_warn(podcast_id).await;
                 
                 // Add episodes
                 let first_episode_id = self.add_episodes(podcast_id, &podcast_values.pod_feed_url, 
@@ -1028,6 +1049,7 @@ impl DatabasePool {
                     crate::services::sync::events::subscription_pg(self, &mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
                 }
                 tx.commit().await?;
+                self.link_feed_or_warn(podcast_id).await;
                 
                 debug!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
                     podcast_values.pod_title, podcast_values.user_id);
@@ -1087,6 +1109,7 @@ impl DatabasePool {
                     crate::services::sync::events::subscription_mysql(self, &mut tx, podcast_values.user_id, &podcast_values.pod_feed_url, "add").await;
                 }
                 tx.commit().await?;
+                self.link_feed_or_warn(podcast_id).await;
                 
                 debug!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
                     podcast_values.pod_title, podcast_values.user_id);
@@ -1379,6 +1402,7 @@ impl DatabasePool {
                 let rows = sqlx::query(
                     r#"SELECT 
                         podcastid as id,
+                        feedid as feed_id,
                         podcastname as name,
                         feedurl as feed_url,
                         artworkurl as artwork_url,
@@ -1406,6 +1430,7 @@ impl DatabasePool {
                 for row in rows {
                     podcasts.push(crate::handlers::refresh::PodcastForRefresh {
                         id: row.try_get("id")?,
+                        feed_id: row.try_get("feed_id")?,
                         name: row.try_get("name")?,
                         feed_url: row.try_get("feed_url")?,
                         artwork_url: row.try_get("artwork_url").unwrap_or_default(),
@@ -1430,6 +1455,7 @@ impl DatabasePool {
                 let rows = sqlx::query(
                     "SELECT 
                         PodcastID as id,
+                        FeedID as feed_id,
                         PodcastName as name,
                         FeedURL as feed_url,
                         ArtworkURL as artwork_url,
@@ -1457,6 +1483,7 @@ impl DatabasePool {
                 for row in rows {
                     podcasts.push(crate::handlers::refresh::PodcastForRefresh {
                         id: row.try_get("id")?,
+                        feed_id: row.try_get("feed_id")?,
                         name: row.try_get("name")?,
                         feed_url: row.try_get("feed_url")?,
                         artwork_url: row.try_get("artwork_url").unwrap_or_default(),
@@ -8007,8 +8034,8 @@ impl DatabasePool {
     }
 
     /// Persist fresh conditional-GET validators (ETag / Last-Modified) and, when given, the body
-    /// hash for every podcast row that shares this feed, so the next cycle can skip it. A `None`
-    /// hash leaves the stored one alone (a 304 carries no body).
+    /// hash for the feed of these podcast rows (and the rows), so the next cycle can skip it. A
+    /// `None` hash leaves the stored one alone (a 304 carries no body).
     pub async fn store_feed_cache_validators(
         &self,
         podcast_ids: &[i32],
@@ -8021,104 +8048,112 @@ impl DatabasePool {
         }
         match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(
-                    r#"UPDATE "Podcasts" SET feedetag = $1, feedlastmodified = $2,
-                              feedcontenthash = COALESCE($3, feedcontenthash)
-                       WHERE podcastid = ANY($4)"#,
-                )
-                .bind(etag)
-                .bind(last_modified)
-                .bind(content_hash)
-                .bind(podcast_ids)
-                .execute(pool)
-                .await?;
-            }
-            DatabasePool::MySQL(pool) => {
-                let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                let sql = format!(
-                    "UPDATE Podcasts SET FeedETag = ?, FeedLastModified = ?, \
-                     FeedContentHash = COALESCE(?, FeedContentHash) WHERE PodcastID IN ({})",
-                    placeholders
-                );
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                for (table, rows) in pg_refresh_targets(4) {
+                    sqlx::query(sqlx::AssertSqlSafe(format!(
+                        r#"UPDATE {table} SET feedetag = $1, feedlastmodified = $2,
+                                  feedcontenthash = COALESCE($3, feedcontenthash)
+                           WHERE {rows}"#
+                    )))
                     .bind(etag)
                     .bind(last_modified)
-                    .bind(content_hash);
-                for id in podcast_ids { q = q.bind(id); }
-                q.execute(pool).await?;
+                    .bind(content_hash)
+                    .bind(podcast_ids)
+                    .execute(pool)
+                    .await?;
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                for (table, rows) in mysql_refresh_targets(podcast_ids.len()) {
+                    let sql = format!(
+                        "UPDATE {table} SET FeedETag = ?, FeedLastModified = ?, \
+                         FeedContentHash = COALESCE(?, FeedContentHash) WHERE {rows}"
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                        .bind(etag)
+                        .bind(last_modified)
+                        .bind(content_hash);
+                    for id in podcast_ids { q = q.bind(id); }
+                    q.execute(pool).await?;
+                }
             }
         }
         Ok(())
     }
 
-    /// Mark a successful refresh for every podcast row sharing this feed: clears the failure
-    /// counter and any Retry-After hold, records the timestamps used for backoff decisions, and
-    /// schedules the next refresh.
+    /// Mark a successful refresh for the feed of these podcast rows: clears the failure counter
+    /// and any Retry-After hold, records the timestamps used for backoff decisions, and schedules
+    /// the next refresh.
     pub async fn record_refresh_success(&self, podcast_ids: &[i32], next: crate::services::refresh_schedule::Schedule) -> AppResult<()> {
         if podcast_ids.is_empty() {
             return Ok(());
         }
         match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(
-                    r#"UPDATE "Podcasts"
-                       SET lastrefreshattempt = NOW(), lastrefreshsuccess = NOW(),
-                           consecutivefailures = 0, lasterrormessage = NULL, refreshnotbefore = NULL,
-                           failingsince = NULL, lasterrorkind = NULL, problemnotified = FALSE,
-                           refreshintervalminutes = $2, nextrefreshat = NOW() + make_interval(secs => $3::BIGINT)
-                       WHERE podcastid = ANY($1)"#,
-                )
-                .bind(podcast_ids)
-                .bind(next.interval_minutes)
-                .bind(next.next_in_secs)
-                .execute(pool)
-                .await?;
+                for (table, rows) in pg_refresh_targets(1) {
+                    let notified = if table == PG_PODCASTS { ", problemnotified = FALSE" } else { "" };
+                    sqlx::query(sqlx::AssertSqlSafe(format!(
+                        r#"UPDATE {table}
+                           SET lastrefreshattempt = NOW(), lastrefreshsuccess = NOW(),
+                               consecutivefailures = 0, lasterrormessage = NULL, refreshnotbefore = NULL,
+                               failingsince = NULL, lasterrorkind = NULL{notified},
+                               refreshintervalminutes = $2, nextrefreshat = NOW() + make_interval(secs => $3::BIGINT)
+                           WHERE {rows}"#
+                    )))
+                    .bind(podcast_ids)
+                    .bind(next.interval_minutes)
+                    .bind(next.next_in_secs)
+                    .execute(pool)
+                    .await?;
+                }
             }
             DatabasePool::MySQL(pool) => {
-                let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                let sql = format!(
-                    "UPDATE Podcasts SET LastRefreshAttempt = NOW(), LastRefreshSuccess = NOW(), \
-                     ConsecutiveFailures = 0, LastErrorMessage = NULL, RefreshNotBefore = NULL, \
-                     FailingSince = NULL, LastErrorKind = NULL, ProblemNotified = FALSE, \
-                     RefreshIntervalMinutes = ?, NextRefreshAt = NOW() + INTERVAL ? SECOND \
-                     WHERE PodcastID IN ({})",
-                    placeholders
-                );
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(next.interval_minutes).bind(next.next_in_secs);
-                for id in podcast_ids { q = q.bind(id); }
-                q.execute(pool).await?;
+                for (table, rows) in mysql_refresh_targets(podcast_ids.len()) {
+                    let notified = if table == "Podcasts" { "ProblemNotified = FALSE, " } else { "" };
+                    let sql = format!(
+                        "UPDATE {table} SET LastRefreshAttempt = NOW(), LastRefreshSuccess = NOW(), \
+                         ConsecutiveFailures = 0, LastErrorMessage = NULL, RefreshNotBefore = NULL, \
+                         FailingSince = NULL, LastErrorKind = NULL, {notified}\
+                         RefreshIntervalMinutes = ?, NextRefreshAt = NOW() + INTERVAL ? SECOND \
+                         WHERE {rows}"
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(next.interval_minutes).bind(next.next_in_secs);
+                    for id in podcast_ids { q = q.bind(id); }
+                    q.execute(pool).await?;
+                }
             }
         }
         Ok(())
     }
 
-    /// Schedule the next refresh of these podcast rows without recording a refresh (after the
-    /// import that added a podcast).
+    /// Schedule the next refresh of the feed of these podcast rows without recording a refresh
+    /// (after the import that added a podcast).
     pub async fn set_refresh_schedule(&self, podcast_ids: &[i32], next: crate::services::refresh_schedule::Schedule) -> AppResult<()> {
         if podcast_ids.is_empty() {
             return Ok(());
         }
         match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(
-                    r#"UPDATE "Podcasts" SET refreshintervalminutes = $2, nextrefreshat = NOW() + make_interval(secs => $3::BIGINT)
-                       WHERE podcastid = ANY($1)"#,
-                )
-                .bind(podcast_ids)
-                .bind(next.interval_minutes)
-                .bind(next.next_in_secs)
-                .execute(pool)
-                .await?;
+                for (table, rows) in pg_refresh_targets(1) {
+                    sqlx::query(sqlx::AssertSqlSafe(format!(
+                        r#"UPDATE {table} SET refreshintervalminutes = $2, nextrefreshat = NOW() + make_interval(secs => $3::BIGINT)
+                           WHERE {rows}"#
+                    )))
+                    .bind(podcast_ids)
+                    .bind(next.interval_minutes)
+                    .bind(next.next_in_secs)
+                    .execute(pool)
+                    .await?;
+                }
             }
             DatabasePool::MySQL(pool) => {
-                let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                let sql = format!(
-                    "UPDATE Podcasts SET RefreshIntervalMinutes = ?, NextRefreshAt = NOW() + INTERVAL ? SECOND WHERE PodcastID IN ({})",
-                    placeholders
-                );
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(next.interval_minutes).bind(next.next_in_secs);
-                for id in podcast_ids { q = q.bind(id); }
-                q.execute(pool).await?;
+                for (table, rows) in mysql_refresh_targets(podcast_ids.len()) {
+                    let sql = format!(
+                        "UPDATE {table} SET RefreshIntervalMinutes = ?, NextRefreshAt = NOW() + INTERVAL ? SECOND WHERE {rows}"
+                    );
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(next.interval_minutes).bind(next.next_in_secs);
+                    for id in podcast_ids { q = q.bind(id); }
+                    q.execute(pool).await?;
+                }
             }
         }
         Ok(())
@@ -8150,51 +8185,6 @@ impl DatabasePool {
         Ok(dates.into_iter().map(|d| d.and_utc()).collect())
     }
 
-    /// Feeds due for a scheduled refresh, as (url, username, password), the longest overdue
-    /// first: any subscriber's row being due makes the feed due. Feeds in failure backoff or
-    /// under a host's Retry-After hold wait.
-    pub async fn due_refresh_feeds(&self, limit: i64) -> AppResult<Vec<(String, Option<String>, Option<String>)>> {
-        use crate::services::scheduler::{BACKOFF_MAX_STEPS, BACKOFF_STEP_MINUTES};
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-                    r#"SELECT feedurl, username, password FROM "Podcasts"
-                       WHERE COALESCE(refreshpodcast, TRUE) = TRUE
-                         AND feedurl NOT LIKE 'local://%'
-                         AND (nextrefreshat IS NULL OR nextrefreshat <= NOW())
-                         AND (refreshnotbefore IS NULL OR refreshnotbefore <= NOW())
-                         AND (COALESCE(consecutivefailures, 0) = 0 OR lastrefreshattempt IS NULL
-                              OR lastrefreshattempt < NOW() - (INTERVAL '1 minute' * ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(consecutivefailures, 0), {BACKOFF_MAX_STEPS}))))
-                       GROUP BY feedurl, username, password
-                       ORDER BY MIN(nextrefreshat) ASC NULLS FIRST
-                       LIMIT $1"#
-                )))
-                .bind(limit)
-                .fetch_all(pool)
-                .await?;
-                Ok(rows)
-            }
-            DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-                    "SELECT FeedURL, Username, Password FROM Podcasts
-                     WHERE COALESCE(RefreshPodcast, 1) = 1
-                       AND FeedURL NOT LIKE 'local://%'
-                       AND (NextRefreshAt IS NULL OR NextRefreshAt <= NOW())
-                       AND (RefreshNotBefore IS NULL OR RefreshNotBefore <= NOW())
-                       AND (COALESCE(ConsecutiveFailures, 0) = 0 OR LastRefreshAttempt IS NULL
-                            OR LastRefreshAttempt < NOW() - INTERVAL ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(ConsecutiveFailures, 0), {BACKOFF_MAX_STEPS})) MINUTE)
-                     GROUP BY FeedURL, Username, Password
-                     ORDER BY MIN(NextRefreshAt) ASC
-                     LIMIT ?"
-                )))
-                .bind(limit)
-                .fetch_all(pool)
-                .await?;
-                Ok(rows)
-            }
-        }
-    }
-
     /// Record a failed refresh: bumps the consecutive-failure counter (used for backoff), stores
     /// the error and its kind for the feed problems list, and notes when the failures began.
     /// `not_before` (a host's Retry-After) additionally holds the feed back until then, on top of
@@ -8220,46 +8210,48 @@ impl DatabasePool {
         const DEFAULT_MINUTES: i64 = 60;
         match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(
-                    sqlx::AssertSqlSafe(format!(r#"UPDATE "Podcasts"
-                       SET nextrefreshat = NOW() + make_interval(secs => GREATEST(
-                               COALESCE(refreshintervalminutes, {DEFAULT_MINUTES}) * 60,
-                               {BACKOFF_STEP_MINUTES} * 60 * LEAST(COALESCE(consecutivefailures, 0) + 1, {BACKOFF_MAX_STEPS}),
-                               COALESCE($2::BIGINT, 0))),
-                           lastrefreshattempt = NOW(),
-                           consecutivefailures = COALESCE(consecutivefailures, 0) + 1,
-                           lasterrormessage = $1,
-                           refreshnotbefore = CASE WHEN $2::BIGINT IS NULL THEN NULL
-                                                   ELSE NOW() + make_interval(secs => $2::BIGINT) END,
-                           failingsince = COALESCE(failingsince, NOW()), lasterrorkind = $4
-                       WHERE podcastid = ANY($3)"#)),
-                )
-                .bind(error)
-                .bind(wait_secs)
-                .bind(podcast_ids)
-                .bind(kind.as_str())
-                .execute(pool)
-                .await?;
+                for (table, rows) in pg_refresh_targets(3) {
+                    sqlx::query(sqlx::AssertSqlSafe(format!(
+                        r#"UPDATE {table}
+                           SET nextrefreshat = NOW() + make_interval(secs => GREATEST(
+                                   COALESCE(refreshintervalminutes, {DEFAULT_MINUTES}) * 60,
+                                   {BACKOFF_STEP_MINUTES} * 60 * LEAST(COALESCE(consecutivefailures, 0) + 1, {BACKOFF_MAX_STEPS}),
+                                   COALESCE($2::BIGINT, 0))),
+                               lastrefreshattempt = NOW(),
+                               consecutivefailures = COALESCE(consecutivefailures, 0) + 1,
+                               lasterrormessage = $1,
+                               refreshnotbefore = CASE WHEN $2::BIGINT IS NULL THEN NULL
+                                                       ELSE NOW() + make_interval(secs => $2::BIGINT) END,
+                               failingsince = COALESCE(failingsince, NOW()), lasterrorkind = $4
+                           WHERE {rows}"#
+                    )))
+                    .bind(error)
+                    .bind(wait_secs)
+                    .bind(podcast_ids)
+                    .bind(kind.as_str())
+                    .execute(pool)
+                    .await?;
+                }
             }
             DatabasePool::MySQL(pool) => {
-                let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                // NextRefreshAt first: MySQL assigns left to right, so it still sees the old count.
-                let sql = format!(
-                    "UPDATE Podcasts SET NextRefreshAt = NOW() + INTERVAL GREATEST( \
-                         COALESCE(RefreshIntervalMinutes, {DEFAULT_MINUTES}) * 60, \
-                         {BACKOFF_STEP_MINUTES} * 60 * LEAST(COALESCE(ConsecutiveFailures, 0) + 1, {BACKOFF_MAX_STEPS}), \
-                         COALESCE(?, 0)) SECOND, \
-                     LastRefreshAttempt = NOW(), \
-                     ConsecutiveFailures = COALESCE(ConsecutiveFailures, 0) + 1, LastErrorMessage = ?, \
-                     RefreshNotBefore = NOW() + INTERVAL ? SECOND, \
-                     FailingSince = COALESCE(FailingSince, NOW()), LastErrorKind = ? \
-                     WHERE PodcastID IN ({})",
-                    placeholders
-                );
-                // NOW() + INTERVAL NULL SECOND is NULL, which clears the hold as intended.
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(wait_secs).bind(error).bind(wait_secs).bind(kind.as_str());
-                for id in podcast_ids { q = q.bind(id); }
-                q.execute(pool).await?;
+                for (table, rows) in mysql_refresh_targets(podcast_ids.len()) {
+                    // NextRefreshAt first: MySQL assigns left to right, so it still sees the old count.
+                    let sql = format!(
+                        "UPDATE {table} SET NextRefreshAt = NOW() + INTERVAL GREATEST( \
+                             COALESCE(RefreshIntervalMinutes, {DEFAULT_MINUTES}) * 60, \
+                             {BACKOFF_STEP_MINUTES} * 60 * LEAST(COALESCE(ConsecutiveFailures, 0) + 1, {BACKOFF_MAX_STEPS}), \
+                             COALESCE(?, 0)) SECOND, \
+                         LastRefreshAttempt = NOW(), \
+                         ConsecutiveFailures = COALESCE(ConsecutiveFailures, 0) + 1, LastErrorMessage = ?, \
+                         RefreshNotBefore = NOW() + INTERVAL ? SECOND, \
+                         FailingSince = COALESCE(FailingSince, NOW()), LastErrorKind = ? \
+                         WHERE {rows}"
+                    );
+                    // NOW() + INTERVAL NULL SECOND is NULL, which clears the hold as intended.
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(wait_secs).bind(error).bind(wait_secs).bind(kind.as_str());
+                    for id in podcast_ids { q = q.bind(id); }
+                    q.execute(pool).await?;
+                }
             }
         }
         Ok(())
@@ -16678,6 +16670,7 @@ impl DatabasePool {
             }
         }
         
+        self.link_feed_or_warn(podcast_id).await;
         debug!("Successfully added YouTube channel with ID: {}", podcast_id);
         Ok(podcast_id)
     }
@@ -21893,6 +21886,8 @@ impl DatabasePool {
 
     // Update podcast basic info - for edit podcast functionality
     pub async fn update_podcast_info(&self, podcast_id: i32, user_id: i32, feed_url: Option<String>, username: Option<String>, password: Option<String>, podcast_name: Option<String>, description: Option<String>, author: Option<String>, artwork_url: Option<String>, website_url: Option<String>, podcast_index_id: Option<i64>) -> AppResult<bool> {
+        // A new address or new credentials can make it another feed.
+        let rekey = feed_url.is_some() || username.is_some() || password.is_some();
         match self {
             DatabasePool::Postgres(pool) => {
                 // First verify podcast exists and belongs to user
@@ -21990,7 +21985,11 @@ impl DatabasePool {
                 query = query.bind(podcast_id).bind(user_id);
                 
                 let result = query.execute(pool).await?;
-                Ok(result.rows_affected() > 0)
+                let changed = result.rows_affected() > 0;
+                if changed && rekey {
+                    self.link_feed_or_warn(podcast_id).await;
+                }
+                Ok(changed)
             }
             DatabasePool::MySQL(pool) => {
                 // First verify podcast exists and belongs to user
@@ -22076,7 +22075,11 @@ impl DatabasePool {
                 query = query.bind(podcast_id).bind(user_id);
                 
                 let result = query.execute(pool).await?;
-                Ok(result.rows_affected() > 0)
+                let changed = result.rows_affected() > 0;
+                if changed && rekey {
+                    self.link_feed_or_warn(podcast_id).await;
+                }
+                Ok(changed)
             }
         }
     }
@@ -25313,6 +25316,7 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
 
+                self.link_feed_or_warn(podcast_id).await;
                 Ok(podcast_id)
             }
             DatabasePool::MySQL(pool) => {
@@ -25340,6 +25344,7 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
 
+                self.link_feed_or_warn(podcast_id).await;
                 Ok(podcast_id)
             }
         }

@@ -298,6 +298,7 @@ impl DatabasePool {
                 tx.commit().await?;
             }
         }
+        self.link_feed_or_warn(podcast_id).await;
         info!("Podcast {} moved from its failing address {} to {}", podcast_id, old, url);
         Ok(true)
     }
