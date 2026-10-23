@@ -241,10 +241,11 @@ pub async fn apply_subscription_changes(
         db.remove_podcast_by_url(user_id, url, origin).await?;
         summary.removed += 1;
     }
-    let subscribed = if add.is_empty() { HashSet::new() } else { db.sync_user_feed_urls(user_id).await? };
+    // Known under this or an equivalent address (or as an alias): nothing to add.
+    let subscribed = if add.is_empty() { HashSet::new() } else { db.subscription_url_keys(user_id).await? };
     let claims: Vec<(String, InFlightAdd)> = add
         .into_iter()
-        .filter(|url| !subscribed.contains(url))
+        .filter(|url| !subscribed.contains(&super::feeds::feed_url_key(url)))
         .filter_map(|url| claim_add(user_id, &url).map(|claim| (url, claim)))
         .collect();
     summary.queued = claims.len();

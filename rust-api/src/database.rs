@@ -14723,29 +14723,6 @@ impl DatabasePool {
         }
     }
 
-    // Check if podcast exists for user
-    pub(crate) async fn podcast_exists_for_user(&self, user_id: i32, feed_url: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#)
-                    .bind(feed_url)
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
-                
-                Ok(row.is_some())
-            }
-            DatabasePool::MySQL(pool) => {
-                let row = sqlx::query("SELECT PodcastID FROM Podcasts WHERE FeedURL = ? AND UserID = ?")
-                    .bind(feed_url)
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
-                
-                Ok(row.is_some())
-            }
-        }
-    }
 
     // Decrypt password using Fernet - matches Python encryption
     pub async fn decrypt_password(&self, encrypted_password: &str) -> AppResult<String> {
@@ -22491,14 +22468,24 @@ impl DatabasePool {
 
     // Add podcast from URL - used by Nextcloud sync
     pub async fn add_podcast_from_url(&self, user_id: i32, feed_url: &str, _feed_cutoff: Option<i32>, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
-        // Check if podcast already exists for this user
-        if self.podcast_exists_for_user(user_id, feed_url).await? {
+        if let Some(podcast_id) = self.subscription_for_url(user_id, feed_url).await? {
             tracing::info!("Podcast {} already exists for user {}", feed_url, user_id);
-            return Ok(());
+            return self.add_feed_alias(user_id, podcast_id, feed_url).await;
         }
 
         // Get podcast metadata from feed URL using existing function
         let (podcast_values, body) = self.get_podcast_values_with_body(feed_url, user_id, None, None).await?;
+
+        // A sync app may know a show the user has under its new address: remember the address
+        // instead of subscribing twice.
+        let title = podcast_values.get("podcastname").map(String::as_str).unwrap_or_default();
+        if let Some(podcast_id) = self.same_show(user_id, title, &body).await? {
+            tracing::info!("{} is podcast {} under another address for user {}; not adding it again", feed_url, podcast_id, user_id);
+            if !self.adopt_feed_url_if_failing(user_id, podcast_id, feed_url).await? {
+                self.add_feed_alias(user_id, podcast_id, feed_url).await?;
+            }
+            return Ok(());
+        }
         
         // Add podcast using existing function
         let _result = self.add_podcast_from_values(&podcast_values, user_id, 30, None, None, Some(&body), origin).await?;
@@ -22509,19 +22496,7 @@ impl DatabasePool {
 
     // Remove podcast by URL - used by sync (subscription removes)
     pub async fn remove_podcast_by_url(&self, user_id: i32, feed_url: &str, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
-        let podcast_id: Option<i32> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#)
-                .bind(feed_url)
-                .bind(user_id)
-                .fetch_optional(pool)
-                .await?,
-            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT PodcastID FROM Podcasts WHERE FeedURL = ? AND UserID = ?")
-                .bind(feed_url)
-                .bind(user_id)
-                .fetch_optional(pool)
-                .await?,
-        };
-        match podcast_id {
+        match self.subscription_for_url(user_id, feed_url).await? {
             Some(podcast_id) if self.remove_podcast_cascade(podcast_id, user_id, origin).await? => {
                 tracing::info!("Successfully removed podcast {} for user {}", feed_url, user_id);
             }

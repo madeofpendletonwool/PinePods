@@ -6032,13 +6032,16 @@ def _in_list(values) -> str:
     return ", ".join(["%s"] * len(values))
 
 
-@register_migration("064", "dedupe_episodes_by_guid", "Merge duplicate (PodcastID, EpisodeGUID) episode rows left by racing refreshes", requires=["045", "048", "050", "051", "062"])
-def migration_064_dedupe_episodes_by_guid(conn, db_type: str) -> None:
-    """Merge episodes that share (PodcastID, EpisodeGUID), so 065 can make the pair unique.
+def _new_merge_counts() -> dict:
+    return {
+        "history": 0, "saved": 0, "downloads": 0, "queue": 0, "playlists": 0,
+        "collections": 0, "shares": 0, "segments": 0, "transcripts": 0, "people": 0, "sync_actions": 0,
+    }
 
-    Overlapping refreshes (scheduled + manual, or two manual ones) could both insert the same new
-    episode because nothing enforced uniqueness. For each duplicate set the lowest EpisodeID
-    survives and every table keyed by EpisodeID is re-pointed at it:
+
+def _merge_episodes(cursor, db_type: str, survivor: int, losers: list, moved: dict, label: str) -> None:
+    """Merge the episode rows `losers` into `survivor` and delete them. Every table keyed by
+    EpisodeID is re-pointed at the survivor:
 
     - UserEpisodeHistory: one row per user, with the highest listen position and latest date.
     - SavedEpisodes / DownloadedEpisodes: one row per user, the most recent one kept.
@@ -6046,15 +6049,183 @@ def migration_064_dedupe_episodes_by_guid(conn, db_type: str) -> None:
     - EpisodeQueue (podcast rows only; is_youtube rows hold video ids): one row per user, the
       earliest queue position kept.
     - PlaylistContents / CollectionEpisodes: one row per playlist / collection.
-    - SharedEpisodes: every share link is kept.
+    - SharedEpisodes and the gpodder episode action log: every row is kept.
     - EpisodeSkipSegments / EpisodeTranscripts: per-episode results, taken from the survivor if
       it has any, otherwise from the first duplicate that does (review rows follow the segments).
     - EpisodePeople: credits are unioned.
     - Episodes: Completed / SilenceDetected / AdsDetected are OR-ed, the longest duration and any
-      chapters/transcript links are kept.
+      chapters/transcript links are kept (the survivor's first).
+    """
+    pg = db_type == "postgresql"
 
-    The duplicates are then deleted (remaining cascades only remove rows already merged) and
-    EpisodeCount is recounted for the affected podcasts. Runs in one transaction.
+    def q(table: str) -> str:
+        return f'"{table}"' if pg else table
+
+    ids = [survivor] + list(losers)
+
+    def keep_one_per_owner(table, id_col, owner_col, order_key, extra_where=""):
+        """Re-point `table` rows for `ids` at `survivor`, keeping one row per owner.
+
+        `order_key` sorts (row id, owner, sort value) tuples; the first row per owner stays.
+        Returns (rows touched, rows dropped)."""
+        cursor.execute(
+            f"SELECT {id_col}, {owner_col}, {order_key[0]} FROM {q(table)} "
+            f"WHERE EpisodeID IN ({_in_list(ids)}){extra_where}",
+            ids,
+        )
+        rows = sorted(cursor.fetchall(), key=order_key[1])
+        kept, dropped = {}, []
+        for row in rows:
+            if row[1] in kept:
+                dropped.append(row)
+            else:
+                kept[row[1]] = row
+        if dropped:
+            cursor.execute(
+                f"DELETE FROM {q(table)} WHERE {id_col} IN ({_in_list(dropped)})",
+                [r[0] for r in dropped],
+            )
+        repoint = [r[0] for r in kept.values()]
+        if repoint:
+            cursor.execute(
+                f"UPDATE {q(table)} SET EpisodeID = %s WHERE {id_col} IN ({_in_list(repoint)})",
+                [survivor] + repoint,
+            )
+        return len(rows), dropped
+
+    # Sort keys over (row id, owner, value) rows: newest value first (NULL last), else lowest id.
+    newest = lambda r: (r[2] is None, -(r[2].timestamp()) if r[2] is not None else 0, r[0])
+    lowest_id = lambda r: r[0]
+
+    # Episode-level flags.
+    cursor.execute(
+        f"""SELECT EpisodeID, Completed, EpisodeDuration, SilenceDetected, AdsDetected,
+                   ChaptersURL, TranscriptsJSON
+            FROM {q('Episodes')} WHERE EpisodeID IN ({_in_list(ids)})""",
+        ids,
+    )
+    rows = sorted(cursor.fetchall(), key=lambda r: (r[0] != survivor, r[0]))
+    completed = any(bool(r[1]) for r in rows)
+    duration = max((r[2] or 0) for r in rows)
+    silence = any(bool(r[3]) for r in rows)
+    ads = any(bool(r[4]) for r in rows)
+    chapters = next((r[5] for r in rows if r[5]), None)
+    transcripts = next((r[6] for r in rows if r[6]), None)
+    cursor.execute(
+        f"""UPDATE {q('Episodes')}
+            SET Completed = %s, EpisodeDuration = %s, SilenceDetected = %s, AdsDetected = %s,
+                ChaptersURL = %s, TranscriptsJSON = %s
+            WHERE EpisodeID = %s""",
+        (completed, duration, silence, ads, chapters, transcripts, survivor),
+    )
+
+    # Listen history: one row per user with the furthest position and latest listen date.
+    cursor.execute(
+        f"""SELECT UserID, MAX(ListenDuration), MAX(ListenDate), COUNT(*)
+            FROM {q('UserEpisodeHistory')} WHERE EpisodeID IN ({_in_list(ids)})
+            GROUP BY UserID""",
+        ids,
+    )
+    history = cursor.fetchall()
+    cursor.execute(
+        f"DELETE FROM {q('UserEpisodeHistory')} WHERE EpisodeID IN ({_in_list(losers)})",
+        losers,
+    )
+    for user_id, position, listened_at, count in history:
+        cursor.execute(
+            f"SELECT COUNT(*) FROM {q('UserEpisodeHistory')} WHERE UserID = %s AND EpisodeID = %s",
+            (user_id, survivor),
+        )
+        if cursor.fetchone()[0]:
+            cursor.execute(
+                f"""UPDATE {q('UserEpisodeHistory')} SET ListenDuration = %s, ListenDate = %s
+                    WHERE UserID = %s AND EpisodeID = %s""",
+                (position, listened_at, user_id, survivor),
+            )
+        else:
+            cursor.execute(
+                f"""INSERT INTO {q('UserEpisodeHistory')} (UserID, EpisodeID, ListenDate, ListenDuration)
+                    VALUES (%s, %s, %s, %s)""",
+                (user_id, survivor, listened_at, position),
+            )
+        moved["history"] += count
+
+    c, _ = keep_one_per_owner("SavedEpisodes", "SaveID", "UserID", ("SaveDate", newest))
+    moved["saved"] += c
+    cursor.execute(
+        f"SELECT DownloadID, DownloadedLocation FROM {q('DownloadedEpisodes')} "
+        f"WHERE EpisodeID IN ({_in_list(ids)})",
+        ids,
+    )
+    locations = dict(cursor.fetchall())
+    c, dropped = keep_one_per_owner("DownloadedEpisodes", "DownloadID", "UserID", ("DownloadedDate", newest))
+    moved["downloads"] += c
+    for row in dropped:
+        logger.info(
+            f"{label}: dropped duplicate download {row[0]} of episode {survivor} for user {row[1]}; "
+            f"file left on disk: {locations.get(row[0])}"
+        )
+    c, _ = keep_one_per_owner(
+        "EpisodeQueue", "QueueID", "UserID",
+        ("QueuePosition", lambda r: (r[2] is None, r[2] if r[2] is not None else 0, r[0])),
+        extra_where=" AND is_youtube = FALSE" if pg else " AND COALESCE(is_youtube, 0) = 0",
+    )
+    moved["queue"] += c
+    c, _ = keep_one_per_owner("PlaylistContents", "PlaylistContentID", "PlaylistID", ("Position", lowest_id))
+    moved["playlists"] += c
+    c, _ = keep_one_per_owner("CollectionEpisodes", "CollectionEpisodeID", "CollectionID", ("AddedAt", lowest_id))
+    moved["collections"] += c
+
+    cursor.execute(
+        f"UPDATE {q('SharedEpisodes')} SET EpisodeID = %s WHERE EpisodeID IN ({_in_list(losers)})",
+        [survivor] + list(losers),
+    )
+    moved["shares"] += cursor.rowcount or 0
+    if _column_exists(cursor, db_type, "GpodderSyncEpisodeActions", "EpisodeID"):
+        cursor.execute(
+            f"UPDATE {q('GpodderSyncEpisodeActions')} SET EpisodeID = %s WHERE EpisodeID IN ({_in_list(losers)})",
+            [survivor] + list(losers),
+        )
+        moved["sync_actions"] += cursor.rowcount or 0
+
+    # Per-episode processing results: take one episode's set whole, never mix two.
+    for table, key in (("EpisodeSkipSegments", "segments"), ("EpisodeTranscripts", "transcripts")):
+        cursor.execute(
+            f"SELECT DISTINCT EpisodeID FROM {q(table)} WHERE EpisodeID IN ({_in_list(ids)})",
+            ids,
+        )
+        having = sorted(r[0] for r in cursor.fetchall())
+        if having and survivor not in having:
+            cursor.execute(
+                f"UPDATE {q(table)} SET EpisodeID = %s WHERE EpisodeID = %s",
+                (survivor, having[0]),
+            )
+            moved[key] += cursor.rowcount or 0
+
+    insert_ignore = "INSERT INTO" if pg else "INSERT IGNORE INTO"
+    on_conflict = " ON CONFLICT DO NOTHING" if pg else ""
+    cursor.execute(
+        f"""{insert_ignore} {q('EpisodePeople')} (EpisodeID, PersonID, Role, PersonGroup, Source, Verified)
+            SELECT %s, PersonID, Role, PersonGroup, Source, Verified
+            FROM {q('EpisodePeople')} WHERE EpisodeID IN ({_in_list(losers)}){on_conflict}""",
+        [survivor] + list(losers),
+    )
+    moved["people"] += cursor.rowcount or 0
+
+    cursor.execute(
+        f"DELETE FROM {q('Episodes')} WHERE EpisodeID IN ({_in_list(losers)})",
+        losers,
+    )
+
+
+@register_migration("064", "dedupe_episodes_by_guid", "Merge duplicate (PodcastID, EpisodeGUID) episode rows left by racing refreshes", requires=["045", "048", "050", "051", "062"])
+def migration_064_dedupe_episodes_by_guid(conn, db_type: str) -> None:
+    """Merge episodes that share (PodcastID, EpisodeGUID), so 065 can make the pair unique.
+
+    Overlapping refreshes (scheduled + manual, or two manual ones) could both insert the same new
+    episode because nothing enforced uniqueness. For each duplicate set the lowest EpisodeID
+    survives (see _merge_episodes for how each table is merged), and EpisodeCount is recounted
+    for the affected podcasts. Runs in one transaction.
     """
     logger.info("Starting migration 064: merge duplicate (PodcastID, EpisodeGUID) episodes")
     cursor = conn.cursor()
@@ -6093,171 +6264,13 @@ def migration_064_dedupe_episodes_by_guid(conn, db_type: str) -> None:
             f"across {len(podcasts)} podcasts; merging"
         )
 
-        moved = {
-            "history": 0, "saved": 0, "downloads": 0, "queue": 0, "playlists": 0,
-            "collections": 0, "shares": 0, "segments": 0, "transcripts": 0, "people": 0,
-        }
+        moved = _new_merge_counts()
         detail_limit = 50
-
-        def keep_one_per_owner(table, id_col, owner_col, order_key, survivor, ids, extra_where=""):
-            """Re-point `table` rows for `ids` at `survivor`, keeping one row per owner.
-
-            `order_key` sorts (row id, owner, sort value) tuples; the first row per owner stays.
-            Returns (rows touched, rows dropped)."""
-            cursor.execute(
-                f"SELECT {id_col}, {owner_col}, {order_key[0]} FROM {q(table)} "
-                f"WHERE EpisodeID IN ({_in_list(ids)}){extra_where}",
-                ids,
-            )
-            rows = sorted(cursor.fetchall(), key=order_key[1])
-            kept, dropped = {}, []
-            for row in rows:
-                if row[1] in kept:
-                    dropped.append(row)
-                else:
-                    kept[row[1]] = row
-            if dropped:
-                cursor.execute(
-                    f"DELETE FROM {q(table)} WHERE {id_col} IN ({_in_list(dropped)})",
-                    [r[0] for r in dropped],
-                )
-            repoint = [r[0] for r in kept.values()]
-            if repoint:
-                cursor.execute(
-                    f"UPDATE {q(table)} SET EpisodeID = %s WHERE {id_col} IN ({_in_list(repoint)})",
-                    [survivor] + repoint,
-                )
-            return len(rows), dropped
-
-        # Sort keys over (row id, owner, value) rows: newest value first (NULL last), else lowest id.
-        newest = lambda r: (r[2] is None, -(r[2].timestamp()) if r[2] is not None else 0, r[0])
-        lowest_id = lambda r: r[0]
-
         for n, ((podcast_id, guid), ids) in enumerate(sorted(groups.items())):
             survivor, losers = ids[0], ids[1:]
             if n < detail_limit:
                 logger.info(f"Migration 064: podcast {podcast_id} guid {guid!r}: keeping {survivor}, merging {losers}")
-
-            # Episode-level flags.
-            cursor.execute(
-                f"""SELECT EpisodeID, Completed, EpisodeDuration, SilenceDetected, AdsDetected,
-                           ChaptersURL, TranscriptsJSON
-                    FROM {q('Episodes')} WHERE EpisodeID IN ({_in_list(ids)})""",
-                ids,
-            )
-            rows = sorted(cursor.fetchall(), key=lambda r: r[0])
-            completed = any(bool(r[1]) for r in rows)
-            duration = max((r[2] or 0) for r in rows)
-            silence = any(bool(r[3]) for r in rows)
-            ads = any(bool(r[4]) for r in rows)
-            chapters = next((r[5] for r in rows if r[5]), None)
-            transcripts = next((r[6] for r in rows if r[6]), None)
-            cursor.execute(
-                f"""UPDATE {q('Episodes')}
-                    SET Completed = %s, EpisodeDuration = %s, SilenceDetected = %s, AdsDetected = %s,
-                        ChaptersURL = %s, TranscriptsJSON = %s
-                    WHERE EpisodeID = %s""",
-                (completed, duration, silence, ads, chapters, transcripts, survivor),
-            )
-
-            # Listen history: one row per user with the furthest position and latest listen date.
-            cursor.execute(
-                f"""SELECT UserID, MAX(ListenDuration), MAX(ListenDate), COUNT(*)
-                    FROM {q('UserEpisodeHistory')} WHERE EpisodeID IN ({_in_list(ids)})
-                    GROUP BY UserID""",
-                ids,
-            )
-            history = cursor.fetchall()
-            cursor.execute(
-                f"DELETE FROM {q('UserEpisodeHistory')} WHERE EpisodeID IN ({_in_list(losers)})",
-                losers,
-            )
-            for user_id, position, listened_at, count in history:
-                cursor.execute(
-                    f"SELECT COUNT(*) FROM {q('UserEpisodeHistory')} WHERE UserID = %s AND EpisodeID = %s",
-                    (user_id, survivor),
-                )
-                if cursor.fetchone()[0]:
-                    cursor.execute(
-                        f"""UPDATE {q('UserEpisodeHistory')} SET ListenDuration = %s, ListenDate = %s
-                            WHERE UserID = %s AND EpisodeID = %s""",
-                        (position, listened_at, user_id, survivor),
-                    )
-                else:
-                    cursor.execute(
-                        f"""INSERT INTO {q('UserEpisodeHistory')} (UserID, EpisodeID, ListenDate, ListenDuration)
-                            VALUES (%s, %s, %s, %s)""",
-                        (user_id, survivor, listened_at, position),
-                    )
-                moved["history"] += count
-
-            c, _ = keep_one_per_owner("SavedEpisodes", "SaveID", "UserID", ("SaveDate", newest), survivor, ids)
-            moved["saved"] += c
-            cursor.execute(
-                f"SELECT DownloadID, DownloadedLocation FROM {q('DownloadedEpisodes')} "
-                f"WHERE EpisodeID IN ({_in_list(ids)})",
-                ids,
-            )
-            locations = dict(cursor.fetchall())
-            c, dropped = keep_one_per_owner(
-                "DownloadedEpisodes", "DownloadID", "UserID", ("DownloadedDate", newest), survivor, ids
-            )
-            moved["downloads"] += c
-            for row in dropped:
-                logger.info(
-                    f"Migration 064: dropped duplicate download {row[0]} of episode {survivor} for user {row[1]}; "
-                    f"file left on disk: {locations.get(row[0])}"
-                )
-            c, _ = keep_one_per_owner(
-                "EpisodeQueue", "QueueID", "UserID",
-                ("QueuePosition", lambda r: (r[2] is None, r[2] if r[2] is not None else 0, r[0])),
-                survivor, ids,
-                extra_where=" AND is_youtube = FALSE" if pg else " AND COALESCE(is_youtube, 0) = 0",
-            )
-            moved["queue"] += c
-            c, _ = keep_one_per_owner(
-                "PlaylistContents", "PlaylistContentID", "PlaylistID", ("Position", lowest_id), survivor, ids
-            )
-            moved["playlists"] += c
-            c, _ = keep_one_per_owner(
-                "CollectionEpisodes", "CollectionEpisodeID", "CollectionID", ("AddedAt", lowest_id), survivor, ids
-            )
-            moved["collections"] += c
-
-            cursor.execute(
-                f"UPDATE {q('SharedEpisodes')} SET EpisodeID = %s WHERE EpisodeID IN ({_in_list(losers)})",
-                [survivor] + losers,
-            )
-            moved["shares"] += cursor.rowcount or 0
-
-            # Per-episode processing results: take one episode's set whole, never mix two.
-            for table, key in (("EpisodeSkipSegments", "segments"), ("EpisodeTranscripts", "transcripts")):
-                cursor.execute(
-                    f"SELECT DISTINCT EpisodeID FROM {q(table)} WHERE EpisodeID IN ({_in_list(ids)})",
-                    ids,
-                )
-                having = sorted(r[0] for r in cursor.fetchall())
-                if having and having[0] != survivor:
-                    cursor.execute(
-                        f"UPDATE {q(table)} SET EpisodeID = %s WHERE EpisodeID = %s",
-                        (survivor, having[0]),
-                    )
-                    moved[key] += cursor.rowcount or 0
-
-            insert_ignore = "INSERT INTO" if pg else "INSERT IGNORE INTO"
-            on_conflict = " ON CONFLICT DO NOTHING" if pg else ""
-            cursor.execute(
-                f"""{insert_ignore} {q('EpisodePeople')} (EpisodeID, PersonID, Role, PersonGroup, Source, Verified)
-                    SELECT %s, PersonID, Role, PersonGroup, Source, Verified
-                    FROM {q('EpisodePeople')} WHERE EpisodeID IN ({_in_list(losers)}){on_conflict}""",
-                [survivor] + losers,
-            )
-            moved["people"] += cursor.rowcount or 0
-
-            cursor.execute(
-                f"DELETE FROM {q('Episodes')} WHERE EpisodeID IN ({_in_list(losers)})",
-                losers,
-            )
+            _merge_episodes(cursor, db_type, survivor, losers, moved, "Migration 064")
 
         if len(groups) > detail_limit:
             logger.info(f"Migration 064: ... and {len(groups) - detail_limit} more")
@@ -6349,6 +6362,181 @@ def migration_066_add_episode_url_lookup_index(conn, db_type: str) -> None:
                 "idx_episodes_episodeurlhash",
             )
         logger.info("Migration 066 completed")
+    finally:
+        cursor.close()
+
+
+def _feed_url_key(url) -> str:
+    """How feed URLs are compared to find a subscription: no scheme, no "www.", no trailing
+    slash, any case. Must match feed_url_key in rust-api/src/services/sync/feeds.rs."""
+    u = (url or "").strip().lower()
+    for prefix in ("https://", "http://"):
+        if u.startswith(prefix):
+            u = u[len(prefix):]
+            break
+    if u.startswith("www."):
+        u = u[4:]
+    return u.rstrip("/")
+
+
+def _merge_duplicate_podcasts(cursor, db_type: str) -> int:
+    """Merge podcasts a user is subscribed to twice under two addresses (a sync app that followed
+    a feed move uploaded the new address). Two of a user's podcasts are the same show when their
+    addresses compare equal, they share a Podcasting 2.0 GUID, or they have the same title and
+    share episodes (by GUID or audio URL). The older podcast stays; the copy's episodes are merged
+    into the matching ones (or moved over when the original doesn't have them), the address of the
+    feed that published last is kept and the other one is remembered as an alias. Nothing is sent
+    to sync apps. Returns how many podcasts were merged."""
+    pg = db_type == "postgresql"
+
+    def q(table: str) -> str:
+        return f'"{table}"' if pg else table
+
+    cursor.execute(
+        f"SELECT PodcastID, UserID, PodcastName, FeedURL, PodcastGUID, COALESCE(IsYouTubeChannel, {'FALSE' if pg else '0'}) "
+        f"FROM {q('Podcasts')} ORDER BY UserID, PodcastID"
+    )
+    by_user = {}
+    for podcast_id, user_id, name, url, guid, youtube in cursor.fetchall():
+        if youtube or not url or url.startswith("local://"):
+            continue
+        by_user.setdefault(user_id, []).append((podcast_id, " ".join((name or "").lower().split()), url, (guid or "").strip().lower()))
+
+    def episode_count(podcast_id):
+        cursor.execute(f"SELECT COUNT(*) FROM {q('Episodes')} WHERE PodcastID = %s", (podcast_id,))
+        return cursor.fetchone()[0]
+
+    def shared_episodes(a, b):
+        cursor.execute(
+            f"""SELECT COUNT(DISTINCT x.EpisodeID) FROM {q('Episodes')} x
+                JOIN {q('Episodes')} y ON y.PodcastID = %s AND (y.EpisodeGUID = x.EpisodeGUID OR y.EpisodeURL = x.EpisodeURL)
+                WHERE x.PodcastID = %s""",
+            (b, a),
+        )
+        return cursor.fetchone()[0]
+
+    moved = _new_merge_counts()
+    merged = 0
+    for user_id, podcasts in by_user.items():
+        gone = set()
+        for i, (a, a_name, a_url, a_guid) in enumerate(podcasts):
+            for b, b_name, b_url, b_guid in podcasts[i + 1:]:
+                if a in gone or b in gone:
+                    continue
+                same = _feed_url_key(a_url) == _feed_url_key(b_url) or bool(a_guid and a_guid == b_guid)
+                if not same and a_name and a_name == b_name:
+                    smaller = min(episode_count(a), episode_count(b))
+                    same = smaller > 0 and shared_episodes(a, b) >= min(3, smaller)
+                if not same:
+                    continue
+                _merge_podcast_into(cursor, db_type, user_id, a, b, moved)
+                gone.add(b)
+                merged += 1
+                logger.info(f"Merged podcast {b} ({b_url}) into {a} ({a_url}) for user {user_id}: the same show under two addresses")
+    if merged:
+        logger.info("Duplicate podcasts merged; episode rows re-pointed or merged: " + ", ".join(f"{k}={v}" for k, v in moved.items()))
+    return merged
+
+
+def _merge_podcast_into(cursor, db_type: str, user_id: int, kept: int, copy: int, moved: dict) -> None:
+    pg = db_type == "postgresql"
+
+    def q(table: str) -> str:
+        return f'"{table}"' if pg else table
+
+    cursor.execute(f"SELECT PodcastID, FeedURL FROM {q('Podcasts')} WHERE PodcastID IN (%s, %s)", (kept, copy))
+    urls = dict(cursor.fetchall())
+    cursor.execute(
+        f"SELECT PodcastID, MAX(EpisodePubDate) FROM {q('Episodes')} WHERE PodcastID IN (%s, %s) GROUP BY PodcastID",
+        (kept, copy),
+    )
+    latest = dict(cursor.fetchall())
+    # The address that published last is where the feed lives now.
+    copy_is_newer = latest.get(copy) is not None and (latest.get(kept) is None or latest[copy] > latest[kept])
+
+    cursor.execute(f"SELECT EpisodeID, EpisodeGUID, EpisodeURL FROM {q('Episodes')} WHERE PodcastID = %s", (kept,))
+    by_guid, by_url = {}, {}
+    for episode_id, guid, url in cursor.fetchall():
+        if guid:
+            by_guid.setdefault(guid, episode_id)
+        if url:
+            by_url.setdefault(url, episode_id)
+    cursor.execute(f"SELECT EpisodeID, EpisodeGUID, EpisodeURL FROM {q('Episodes')} WHERE PodcastID = %s", (copy,))
+    unmatched = []
+    for episode_id, guid, url in cursor.fetchall():
+        target = (by_guid.get(guid) if guid else None) or (by_url.get(url) if url else None)
+        if target:
+            _merge_episodes(cursor, db_type, target, [episode_id], moved, "Merging duplicate podcasts")
+        else:
+            unmatched.append(episode_id)
+    if unmatched:
+        cursor.execute(
+            f"UPDATE {q('Episodes')} SET PodcastID = %s WHERE EpisodeID IN ({_in_list(unmatched)})",
+            [kept] + unmatched,
+        )
+
+    cursor.execute(f"DELETE FROM {q('Podcasts')} WHERE PodcastID = %s", (copy,))
+    cursor.execute(f"UPDATE {q('UserStats')} SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s AND PodcastsAdded > 0", (user_id,))
+    if copy_is_newer:
+        cursor.execute(
+            f"""UPDATE {q('Podcasts')} SET FeedURL = %s, FeedETag = NULL, FeedLastModified = NULL, FeedContentHash = NULL
+                WHERE PodcastID = %s""",
+            (urls[copy], kept),
+        )
+    alias = urls[kept] if copy_is_newer else urls[copy]
+    insert = "INSERT INTO" if pg else "INSERT IGNORE INTO"
+    conflict = " ON CONFLICT DO NOTHING" if pg else ""
+    cursor.execute(
+        f"{insert} {q('PodcastFeedAliases')} (PodcastID, UserID, FeedURL) VALUES (%s, %s, %s){conflict}",
+        (kept, user_id, alias),
+    )
+    cursor.execute(
+        f"UPDATE {q('Podcasts')} SET EpisodeCount = (SELECT COUNT(*) FROM {q('Episodes')} WHERE PodcastID = %s) WHERE PodcastID = %s",
+        (kept, kept),
+    )
+
+
+@register_migration("077", "podcast_feed_aliases", "Other addresses of a subscribed feed; merge podcasts subscribed twice under two addresses", requires=["044", "062", "063", "064", "065"])
+def migration_077_podcast_feed_aliases(conn, db_type: str) -> None:
+    """PodcastFeedAliases: other addresses of a subscribed feed (where it lived before it moved, or
+    how a sync app writes it), so sync adds and removes under those addresses find the podcast.
+    Then podcasts already subscribed twice under two addresses are merged."""
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    try:
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "PodcastFeedAliases" (
+                    AliasID SERIAL PRIMARY KEY,
+                    PodcastID INT NOT NULL REFERENCES "Podcasts"(PodcastID) ON DELETE CASCADE,
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FeedURL TEXT NOT NULL,
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_podcast_feed_aliases UNIQUE (UserID, FeedURL)
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_podcast_feed_aliases_podcast ON "PodcastFeedAliases"(PodcastID)')
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS PodcastFeedAliases (
+                    AliasID INT AUTO_INCREMENT PRIMARY KEY,
+                    PodcastID INT NOT NULL,
+                    UserID INT NOT NULL,
+                    FeedURL TEXT NOT NULL,
+                    FeedURLHash CHAR(64) AS (SHA2(FeedURL, 256)) STORED,
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_podcast_feed_aliases (UserID, FeedURLHash),
+                    KEY idx_podcast_feed_aliases_podcast (PodcastID),
+                    FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID) ON DELETE CASCADE,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+        merged = _merge_duplicate_podcasts(cursor, db_type)
+        logger.info(f"Migration 077: merged {merged} podcasts subscribed twice under two addresses")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cursor.close()
 

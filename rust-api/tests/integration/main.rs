@@ -14,6 +14,7 @@ mod foreign_resources;
 mod gpodder;
 mod gpodder_server;
 mod library;
+mod moved_feeds;
 mod opml;
 mod people;
 mod playback;
