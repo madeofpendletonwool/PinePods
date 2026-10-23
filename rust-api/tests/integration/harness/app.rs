@@ -128,6 +128,7 @@ impl TestApp {
             api: ApiConfig {
                 search_api_url: fixtures.url("search-api/api/search"),
                 people_api_url: fixtures.url("people-api"),
+                youtube_feed_url: fixtures.url("youtube/{channel_id}.xml"),
             },
         };
         tweak(&mut config);

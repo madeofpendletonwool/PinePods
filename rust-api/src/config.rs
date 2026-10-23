@@ -13,10 +13,14 @@ pub struct Config {
     pub api: ApiConfig,
 }
 
+pub const YOUTUBE_FEED_URL: &str = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiConfig {
     pub search_api_url: String,
     pub people_api_url: String,
+    /// A YouTube channel's RSS feed, with `{channel_id}` in place of the channel.
+    pub youtube_feed_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -335,6 +339,7 @@ impl Config {
         let api = ApiConfig {
             search_api_url: env::var("SEARCH_API_URL").unwrap(),
             people_api_url: env::var("PEOPLE_API_URL").unwrap(),
+            youtube_feed_url: YOUTUBE_FEED_URL.to_string(),
         };
 
         // Validate OIDC configuration

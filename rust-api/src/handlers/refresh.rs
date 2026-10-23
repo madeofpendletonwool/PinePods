@@ -455,13 +455,32 @@ async fn mark_refreshed(state: &AppState, ids: &[i32], next: Schedule) {
     feed_health::after_success(&state.task_manager, recovered).await;
 }
 
-/// Import a newly added YouTube channel's videos and schedule its refreshes. Holds the channel's
-/// refresh lock so a scheduled refresh can't run alongside.
+/// Import a newly added YouTube channel's videos and schedule its refreshes. The channel is
+/// refreshed for all its subscribers, holding its refresh lock so a scheduled refresh can't run
+/// alongside.
 pub async fn import_added_channel(state: &AppState, podcast_id: i32, channel_id: &str, feed_cutoff: i32) -> AppResult<()> {
     let url = format!("https://www.youtube.com/channel/{}", channel_id);
     let _lock = FeedLock::acquire(FeedLock::key(&url, None, None)).await;
-    crate::handlers::youtube::process_youtube_channel(podcast_id, channel_id, feed_cutoff, state).await?;
-    mark_refreshed(state, &[podcast_id], youtube_schedule(state, podcast_id).await).await;
+    let feed_id = Some(state.db_pool.feed_of_podcast(podcast_id).await?);
+    let item = PodcastRefreshItem {
+        podcast_id,
+        feed_id,
+        feed_url: url,
+        artwork_url: None,
+        auto_download: false,
+        auto_queue: false,
+        username: None,
+        password: None,
+        is_youtube: true,
+        user_id: 0,
+        feed_cutoff: Some(feed_cutoff),
+        etag: None,
+        last_modified: None,
+        content_hash: None,
+        refresh_interval: None,
+    };
+    let group = feed_group(state, feed_id, item).await?;
+    refresh_youtube_group(state, &group).await?;
     Ok(())
 }
 
@@ -474,41 +493,92 @@ async fn mark_failed(state: &AppState, ids: &[i32], kind: FeedErrorKind, error: 
     feed_health::after_failure(&state.db_pool, &state.task_manager, ids).await;
 }
 
-/// Refresh a single YouTube channel podcast.
-async fn refresh_youtube_item(state: &AppState, item: &PodcastRefreshItem) {
-    let channel_id = if item.feed_url.contains("channel/") {
-        item.feed_url
-            .split("channel/")
-            .nth(1)
-            .unwrap_or(&item.feed_url)
-            .split('/')
-            .next()
-            .unwrap_or(&item.feed_url)
-            .split('?')
-            .next()
-            .unwrap_or(&item.feed_url)
-            .to_string()
-    } else {
-        item.feed_url.clone()
+/// Refresh one YouTube channel for every subscriber podcast in the group: its feed is fetched once
+/// (conditional GET + body hash, yt-dlp's listing when the feed fails), yt-dlp fetches only the
+/// videos a subscriber is missing, and each subscriber gets its own new rows. The caller holds the
+/// channel's lock. Returns every inserted video across the group; Err only when the channel failed.
+async fn refresh_youtube_group(
+    state: &AppState,
+    group: &[PodcastRefreshItem],
+) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
+    use crate::handlers::youtube::{self, ChannelListing, ChannelSubscriber};
+    let rep = &group[0];
+    let ids: Vec<i32> = group.iter().map(|i| i.podcast_id).collect();
+    let channel_id = youtube::channel_id_from_url(&rep.feed_url);
+
+    // Validators are only trusted when every subscriber applied the stored feed; a new
+    // subscription gets a full fetch.
+    let content_hash = rep
+        .content_hash
+        .clone()
+        .filter(|h| group.iter().all(|i| i.content_hash.as_deref() == Some(h.as_str())));
+    let validators = match &content_hash {
+        Some(hash) => crate::database::FeedValidators {
+            etag: rep.etag.as_deref(),
+            last_modified: rep.last_modified.as_deref(),
+            content_hash: Some(hash),
+        },
+        None => crate::database::FeedValidators::default(),
     };
-    let ids = [item.podcast_id];
-    match crate::handlers::youtube::process_youtube_channel(
-        item.podcast_id,
-        &channel_id,
-        item.feed_cutoff.unwrap_or(30),
-        state,
-    )
-    .await
-    {
-        Ok(_) => {
-            info!("Successfully refreshed YouTube channel {}", item.podcast_id);
-            mark_refreshed(state, &ids, youtube_schedule(state, item.podcast_id).await).await;
+
+    match youtube::list_channel_videos(state, channel_id, validators).await {
+        Ok(ChannelListing::Unchanged { etag, last_modified }) => {
+            if etag.is_some() || last_modified.is_some() {
+                let _ = state
+                    .db_pool
+                    .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), None)
+                    .await;
+            }
+            mark_refreshed(state, &ids, youtube_schedule(state, rep.podcast_id).await).await;
+            Ok(Vec::new())
+        }
+        Ok(ChannelListing::Listed { videos, etag, last_modified, content_hash }) => {
+            let subscribers: Vec<ChannelSubscriber> = group
+                .iter()
+                .map(|i| ChannelSubscriber { podcast_id: i.podcast_id, feed_cutoff: i.feed_cutoff.unwrap_or(30) })
+                .collect();
+            match youtube::process_youtube_channel(state, &subscribers, &videos).await {
+                Ok(new_videos) => {
+                    if !new_videos.is_empty() {
+                        info!("YouTube channel {}: {} new videos", channel_id, new_videos.len());
+                    }
+                    let _ = state
+                        .db_pool
+                        .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), content_hash.as_deref())
+                        .await;
+                    mark_refreshed(state, &ids, youtube_schedule(state, rep.podcast_id).await).await;
+                    Ok(new_videos)
+                }
+                Err(e) => {
+                    warn!("Error refreshing YouTube channel {}: {}", channel_id, e);
+                    mark_failed(state, &ids, FeedErrorKind::of(&e), &e.to_string(), None).await;
+                    Err(e)
+                }
+            }
+        }
+        Ok(ChannelListing::Throttled { status, retry_after }) => {
+            let msg = format!("YouTube throttled refresh (HTTP {})", status);
+            mark_failed(state, &ids, FeedErrorKind::Throttled, &msg, retry_after).await;
+            Err(AppError::external_error(&msg))
         }
         Err(e) => {
-            warn!("Error refreshing YouTube channel {}: {}", item.podcast_id, e);
+            warn!("Error refreshing YouTube channel {}: {}", channel_id, e);
             mark_failed(state, &ids, FeedErrorKind::of(&e), &e.to_string(), None).await;
+            Err(e)
         }
     }
+}
+
+/// The podcasts subscribed to this feed, with `item` among them.
+async fn feed_group(state: &AppState, feed_id: Option<i32>, item: PodcastRefreshItem) -> AppResult<Vec<PodcastRefreshItem>> {
+    let mut group = match feed_id {
+        Some(feed_id) => load_refresh_items(state, None, Some(&[feed_id]), true).await?,
+        None => Vec::new(),
+    };
+    if !group.iter().any(|i| i.podcast_id == item.podcast_id) {
+        group.insert(0, item);
+    }
+    Ok(group)
 }
 
 /// The podcast rows to refresh (all, or those of the `only` feeds), skipping feeds a host asked us
@@ -655,20 +725,19 @@ pub async fn refresh_feed_urls(state: &AppState, urls: &[String]) -> AppResult<u
     Ok(refresh_items(state, items).await)
 }
 
-/// Refresh podcast rows: RSS feeds once per (feed, credentials) for all their subscribers,
-/// YouTube channels one by one, then playlist counts of users with new episodes. Returns the
-/// number of feeds and channels refreshed.
+/// Refresh podcast rows: RSS feeds once per (feed, credentials) and YouTube channels once per
+/// channel, for all their subscribers, then playlist counts of users with new episodes. Returns
+/// the number of feeds and channels refreshed.
 async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>) -> usize {
-    // Partition into YouTube items (refreshed per-podcast) and RSS feeds grouped by feed, so a
-    // feed subscribed by many users is fetched + parsed ONCE. A row not linked to its feed yet
-    // groups by address and credentials, which is what a feed is.
+    // Group by feed, so a feed or channel subscribed by many users is fetched + parsed ONCE. A row
+    // not linked to its feed yet groups by address and credentials, which is what a feed is.
     use std::collections::HashMap;
     #[derive(PartialEq, Eq, Hash)]
     enum Group {
         Feed(i32),
         Unlinked(FeedKey),
     }
-    let mut youtube_items: Vec<PodcastRefreshItem> = Vec::new();
+    let mut youtube_groups: HashMap<Group, Vec<PodcastRefreshItem>> = HashMap::new();
     let mut feed_groups: HashMap<Group, Vec<PodcastRefreshItem>> = HashMap::new();
 
     let owners: HashMap<i32, i32> = refresh_items.iter().map(|i| (i.podcast_id, i.user_id)).collect();
@@ -677,28 +746,26 @@ async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>)
             debug!("Skipping local podcast {} - not an RSS feed", item.podcast_id);
             continue;
         }
-        if item.is_youtube {
-            youtube_items.push(item);
-        } else {
-            let key = match item.feed_id {
-                Some(id) => Group::Feed(id),
-                None => Group::Unlinked(FeedLock::key(&item.feed_url, item.username.as_deref(), item.password.as_deref())),
-            };
-            feed_groups.entry(key).or_default().push(item);
-        }
+        let key = match item.feed_id {
+            Some(id) => Group::Feed(id),
+            None => Group::Unlinked(FeedLock::key(&item.feed_url, item.username.as_deref(), item.password.as_deref())),
+        };
+        let groups = if item.is_youtube { &mut youtube_groups } else { &mut feed_groups };
+        groups.entry(key).or_default().push(item);
     }
 
     use futures::stream::{self, StreamExt};
 
     // Refresh unique RSS feeds with bounded concurrency.
     let groups: Vec<Vec<PodcastRefreshItem>> = feed_groups.into_values().collect();
-    let feeds = groups.len() + youtube_items.len();
+    let channels: Vec<Vec<PodcastRefreshItem>> = youtube_groups.into_values().collect();
+    let feeds = groups.len() + channels.len();
     let subscription_count: usize = groups.iter().map(|g| g.len()).sum();
     debug!(
         "Running refresh: {} unique RSS feeds ({} subscriptions), {} YouTube channels (concurrency={})",
         groups.len(),
         subscription_count,
-        youtube_items.len(),
+        channels.len(),
         REFRESH_CONCURRENCY
     );
     // Users whose podcasts got new episodes, for their playlist counts.
@@ -717,11 +784,16 @@ async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>)
         })
         .await;
 
-    // Refresh YouTube channels with bounded concurrency.
-    stream::iter(youtube_items)
-        .for_each_concurrent(Some(REFRESH_CONCURRENCY), |item| async move {
-            let _lock = FeedLock::acquire(FeedLock::key(&item.feed_url, None, None)).await;
-            refresh_youtube_item(state, &item).await;
+    // Refresh YouTube channels with bounded concurrency (yt-dlp has its own, lower limit).
+    stream::iter(channels)
+        .for_each_concurrent(Some(REFRESH_CONCURRENCY), |group| {
+            let (owners, touched) = (&owners, &touched);
+            async move {
+                let _lock = FeedLock::acquire(FeedLock::key(&group[0].feed_url, None, None)).await;
+                if let Ok(new_videos) = refresh_youtube_group(state, &group).await {
+                    touched.lock().unwrap().extend(new_videos.iter().filter_map(|e| owners.get(&e.podcastid)));
+                }
+            }
         })
         .await;
 
@@ -1050,7 +1122,7 @@ async fn refresh_single_podcast(
     info!("Refreshing podcast: {} (ID: {})", podcast.name, podcast.id);
 
     if podcast.is_youtube {
-        refresh_youtube_channel(state, podcast).await
+        refresh_youtube_channel(state, podcast, user_id).await
     } else {
         refresh_rss_feed(state, podcast, user_id).await
     }
@@ -1101,13 +1173,7 @@ async fn refresh_rss_feed(
     };
     // The feed is refreshed for everyone subscribed to it: its schedule and validators are
     // shared, so refreshing one subscription alone would leave the others behind.
-    let mut group = match podcast.feed_id {
-        Some(feed_id) => load_refresh_items(state, None, Some(&[feed_id]), true).await?,
-        None => Vec::new(),
-    };
-    if !group.iter().any(|i| i.podcast_id == item.podcast_id) {
-        group.insert(0, item);
-    }
+    let group = feed_group(state, podcast.feed_id, item).await?;
     let mut new_episodes = refresh_feed_group(state, &group).await?;
     new_episodes.retain(|e| e.podcastid == podcast.id);
 
@@ -1121,40 +1187,43 @@ async fn refresh_rss_feed(
 async fn refresh_youtube_channel(
     state: &AppState,
     podcast: &PodcastForRefresh,
+    user_id: i32,
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
     debug!("Refreshing YouTube channel: {}", podcast.name);
 
-    let channel_id = if podcast.feed_url.contains("channel/") {
-        podcast.feed_url.split("channel/").nth(1).unwrap_or(&podcast.feed_url).split('/').next().unwrap_or(&podcast.feed_url).split('?').next().unwrap_or(&podcast.feed_url)
-    } else {
-        &podcast.feed_url
-    };
-
+    if podcast.recently_refreshed || podcast.throttled {
+        debug!(
+            "Skipping manual refresh of channel {} (recently refreshed: {}, throttled: {})",
+            podcast.id, podcast.recently_refreshed, podcast.throttled
+        );
+        return Ok(Vec::new());
+    }
     let Some(_lock) = FeedLock::try_acquire(FeedLock::key(&podcast.feed_url, None, None)) else {
         debug!("Skipping manual refresh of channel {}: it's being refreshed right now", podcast.id);
         return Ok(Vec::new());
     };
-    let ids = [podcast.id];
-    match crate::handlers::youtube::process_youtube_channel(
-        podcast.id,
-        channel_id,
-        podcast.feed_cutoff_days.unwrap_or(30),
-        state,
-    ).await {
-        Ok(_) => {
-            info!("Successfully refreshed YouTube channel: {}", podcast.name);
-            mark_refreshed(state, &ids, youtube_schedule(state, podcast.id).await).await;
-            // YouTube new-episode surfacing over the websocket is not yet wired up
-            // (process_youtube_channel does not return the inserted rows); the channel is still
-            // refreshed and new videos appear on the next list load.
-            Ok(Vec::new())
-        }
-        Err(e) => {
-            warn!("Error refreshing YouTube channel {}: {}", podcast.name, e);
-            mark_failed(state, &ids, FeedErrorKind::of(&e), &e.to_string(), None).await;
-            Err(e)
-        }
-    }
+    // Like a feed, the channel is refreshed for everyone subscribed to it.
+    let item = PodcastRefreshItem {
+        podcast_id: podcast.id,
+        feed_id: podcast.feed_id,
+        feed_url: podcast.feed_url.clone(),
+        artwork_url: podcast.artwork_url.clone(),
+        auto_download: podcast.auto_download,
+        auto_queue: podcast.auto_queue,
+        username: None,
+        password: None,
+        is_youtube: true,
+        user_id,
+        feed_cutoff: podcast.feed_cutoff_days,
+        etag: podcast.etag.clone(),
+        last_modified: podcast.last_modified.clone(),
+        content_hash: podcast.content_hash.clone(),
+        refresh_interval: podcast.refresh_interval,
+    };
+    let group = feed_group(state, podcast.feed_id, item).await?;
+    let mut new_videos = refresh_youtube_group(state, &group).await?;
+    new_videos.retain(|e| e.podcastid == podcast.id);
+    Ok(new_videos)
 }
 
 // Define sync result structure to match our database return type
