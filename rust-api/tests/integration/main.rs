@@ -34,3 +34,4 @@ mod sync_engine;
 mod sync_migrations;
 mod sync_settings;
 mod user_episode_state;
+mod youtube;

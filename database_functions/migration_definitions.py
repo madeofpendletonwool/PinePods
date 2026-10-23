@@ -7151,6 +7151,24 @@ def migration_075_adaptive_refresh_schedule(conn, db_type: str) -> None:
         cursor.close()
 
 
+
+@register_migration("076", "youtube_video_filters", "Podcasts.VideoMinMinutes/VideoMaxMinutes/VideoTitleFilter: which new videos a YouTube channel subscription adds", requires=["001"])
+def migration_076_youtube_video_filters(conn, db_type: str) -> None:
+    """Per-subscription filters for a YouTube channel's new videos: shortest and longest length in
+    minutes, and text the title must contain. NULL means no filter."""
+    cursor = conn.cursor()
+    podcasts = '"Podcasts"' if db_type == "postgresql" else "Podcasts"
+    try:
+        for column, ddl in (("VideoMinMinutes", "INT"), ("VideoMaxMinutes", "INT"), ("VideoTitleFilter", "VARCHAR(255)")):
+            if not _column_exists(cursor, db_type, "Podcasts", column):
+                cursor.execute(f"ALTER TABLE {podcasts} ADD COLUMN {column} {ddl}")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
 def _refresh_interval_minutes(published, now) -> int:
     """A feed's refresh interval from its newest publishing dates: an eighth of the median gap,
     15 minutes to 6 hours, 24 hours when nothing came out in 90 days. Matches the refresh."""

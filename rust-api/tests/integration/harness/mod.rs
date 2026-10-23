@@ -11,6 +11,7 @@ pub mod http;
 pub mod mock_gpodder;
 pub mod rss;
 pub mod sql;
+pub mod youtube;
 
 #[allow(unused_imports)]
 pub use app::{hash_password, TestApp, TestUser};

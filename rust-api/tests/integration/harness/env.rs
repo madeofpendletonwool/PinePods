@@ -42,6 +42,8 @@ pub struct TestEnv {
     /// Name of the fully-migrated database every test clones.
     pub template: String,
     pub fixtures: FixtureServer,
+    /// Where the yt-dlp stub and its answers live (see `youtube.rs`).
+    pub ytdlp_dir: PathBuf,
 }
 
 static ENV: OnceLock<TestEnv> = OnceLock::new();
@@ -64,6 +66,8 @@ pub fn env() -> &'static TestEnv {
 fn init() -> TestEnv {
     sandbox_network();
     pinepods_api::services::url_guard::allow_loopback_for_tests();
+    let ytdlp_dir = std::env::temp_dir().join(format!("pinepods-ytdlp-{}", std::process::id()));
+    super::youtube::install_stub(&ytdlp_dir);
 
     let backend = match var("PINEPODS_TEST_DB_TYPE", "postgresql").to_lowercase().as_str() {
         "postgresql" | "postgres" => Backend::Postgres,
@@ -85,6 +89,7 @@ fn init() -> TestEnv {
         valkey_port: var("PINEPODS_TEST_VALKEY_PORT", "56380").parse().expect("PINEPODS_TEST_VALKEY_PORT"),
         template: String::new(),
         fixtures: FixtureServer::start(),
+        ytdlp_dir,
     };
 
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();

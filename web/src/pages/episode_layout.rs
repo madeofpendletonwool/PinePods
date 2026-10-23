@@ -8,6 +8,7 @@ use crate::components::gen_funcs::{
     format_error_message, get_default_sort_direction, get_filter_preference, set_filter_preference,
 };
 use crate::components::loading::Loading;
+use crate::components::youtube_video_filter::YouTubeVideoFilterSettings;
 use crate::components::episode_list_view::EpisodeListView;
 use crate::components::people::{AddPeopleSheet, PeopleLayout, PeopleStrip};
 use crate::requests::people_req::{CreditedPerson, PodcastCredits};
@@ -3111,6 +3112,7 @@ pub fn episode_layout() -> Html {
                                                     </button>
                                                 </div>
                                                 <p class="text-xs text-gray-500 mt-1">{&i18n_youtube_limit_description}</p>
+                                                <YouTubeVideoFilterSettings podcast_id={*podcast_id} />
                                             </div>
                                         }
                                     } else {

@@ -6063,3 +6063,58 @@ pub async fn call_set_collection_add_ui(
         Err(anyhow::anyhow!("Server returned error: {}", response.status()))
     }
 }
+
+/// Which new videos a YouTube channel subscription adds. `None` means no limit.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct YouTubeVideoFilter {
+    pub min_minutes: Option<i32>,
+    pub max_minutes: Option<i32>,
+    pub title_contains: Option<String>,
+}
+
+pub async fn call_get_youtube_video_filter(
+    server_name: &str,
+    api_key: &str,
+    podcast_id: i32,
+    user_id: i32,
+) -> Result<YouTubeVideoFilter, Error> {
+    let url = format!(
+        "{}/api/data/youtube_video_filter?podcast_id={}&user_id={}",
+        server_name, podcast_id, user_id
+    );
+    let response = Request::get(&url).header("Api-Key", api_key).send().await?;
+    if !response.ok() {
+        let text = response.text().await.unwrap_or_default();
+        return Err(anyhow::Error::msg(crate::components::gen_funcs::format_error_message(&text)));
+    }
+    Ok(response.json().await?)
+}
+
+/// Saves the filter and returns it as the server stored it (blank fields cleared).
+pub async fn call_update_youtube_video_filter(
+    server_name: &str,
+    api_key: &str,
+    podcast_id: i32,
+    user_id: i32,
+    filter: &YouTubeVideoFilter,
+) -> Result<YouTubeVideoFilter, Error> {
+    let url = format!("{}/api/data/update_youtube_video_filter", server_name);
+    let body = serde_json::json!({
+        "podcast_id": podcast_id,
+        "user_id": user_id,
+        "min_minutes": filter.min_minutes,
+        "max_minutes": filter.max_minutes,
+        "title_contains": filter.title_contains,
+    });
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())?
+        .send()
+        .await?;
+    if !response.ok() {
+        let text = response.text().await.unwrap_or_default();
+        return Err(anyhow::Error::msg(crate::components::gen_funcs::format_error_message(&text)));
+    }
+    Ok(response.json().await?)
+}
