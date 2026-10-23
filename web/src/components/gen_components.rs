@@ -221,7 +221,8 @@ pub fn search_bar() -> Html {
         let search_failed_msg = i18n.t("update_services.search_failed").to_string();
 
         move || {
-            if *is_submitting {
+            // Enter in an empty search box does nothing.
+            if *is_submitting || podcast_value.trim().is_empty() {
                 return;
             }
             is_submitting.set(true);

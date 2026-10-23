@@ -7447,8 +7447,14 @@
               }
             }
           },
+          "400": {
+            "description": "Empty search"
+          },
           "401": {
             "description": "Invalid or missing API key"
+          },
+          "503": {
+            "description": "The search service isn't reachable or answered with an error"
           }
         },
         "security": [

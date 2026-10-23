@@ -4007,7 +4007,9 @@ pub struct ProxySearchParams {
     security(("api_key" = [])),
     responses(
         (status = 200, description = "Success", body = serde_json::Value),
+        (status = 400, description = "Empty search"),
         (status = 401, description = "Invalid or missing API key"),
+        (status = 503, description = "The search service isn't reachable or answered with an error"),
     ),
 )]
 pub async fn proxy_search(
@@ -4020,6 +4022,10 @@ pub async fn proxy_search(
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
         return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    if params.query.trim().is_empty() {
+        return Err(AppError::bad_request("Enter something to search for"));
     }
 
     let search_api_url = std::env::var("SEARCH_API_URL")

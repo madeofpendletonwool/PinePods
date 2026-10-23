@@ -321,3 +321,14 @@ async fn search_finds_episodes_in_your_own_library_only() {
     let r = app.post("/api/data/search_data").key(&bob).json(&json!({ "user_id": alice.id, "search_term": needle })).send().await;
     assert!(!r.is_success(), "searching someone else's library: {}", r.text());
 }
+
+/// An empty search is refused here; the search service is never asked (it would fail, and the
+/// client would report the search service as down).
+#[tokio::test(flavor = "multi_thread")]
+async fn empty_searches_are_refused_without_asking_the_search_service() {
+    let app = TestApp::new().await;
+    let user = app.user("searcher").await;
+    for query in ["", "%20%20"] {
+        app.get(&format!("/api/data/proxy_search?query={query}&index=podcast_index")).key(&user).send().await.assert_status(400);
+    }
+}
