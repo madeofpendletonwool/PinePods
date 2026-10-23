@@ -75,6 +75,15 @@ impl Channel {
         self
     }
 
+    /// Like `video`, with a title and a length in minutes.
+    pub fn video_as(mut self, n: u32, days_ago: i64, title: &str, minutes: u32) -> Self {
+        self = self.video(n, days_ago);
+        let v = self.videos.iter_mut().find(|v| v.id.ends_with(&format!("v{n}"))).unwrap();
+        v.title = title.to_string();
+        v.duration = minutes * 60;
+        self
+    }
+
     pub fn video_id(&self, n: u32) -> String {
         format!("{}v{n}", self.id)
     }

@@ -533,9 +533,20 @@ async fn refresh_youtube_group(
             Ok(Vec::new())
         }
         Ok(ChannelListing::Listed { videos, etag, last_modified, content_hash }) => {
+            let mut filters = match state.db_pool.youtube_video_filters(&ids).await {
+                Ok(filters) => filters,
+                Err(e) => {
+                    mark_failed(state, &ids, FeedErrorKind::Other, &e.to_string(), None).await;
+                    return Err(e);
+                }
+            };
             let subscribers: Vec<ChannelSubscriber> = group
                 .iter()
-                .map(|i| ChannelSubscriber { podcast_id: i.podcast_id, feed_cutoff: i.feed_cutoff.unwrap_or(30) })
+                .map(|i| ChannelSubscriber {
+                    podcast_id: i.podcast_id,
+                    feed_cutoff: i.feed_cutoff.unwrap_or(30),
+                    filter: filters.remove(&i.podcast_id).unwrap_or_default(),
+                })
                 .collect();
             match youtube::process_youtube_channel(state, &subscribers, &videos).await {
                 Ok(new_videos) => {

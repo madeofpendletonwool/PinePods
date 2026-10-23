@@ -373,6 +373,7 @@ pub fn channel_id_from_url(feed_url: &str) -> &str {
 #[derive(Debug, Clone)]
 pub struct ListedVideo {
     pub id: String,
+    pub title: Option<String>,
     /// Unknown when the list came from yt-dlp's flat listing.
     pub published: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -465,7 +466,11 @@ fn parse_channel_feed(body: &str) -> Result<Vec<ListedVideo>, AppError> {
         .iter()
         .filter_map(|entry| {
             let id = entry.id.strip_prefix("yt:video:")?;
-            Some(ListedVideo { id: id.to_string(), published: entry.published.or(entry.updated) })
+            Some(ListedVideo {
+                id: id.to_string(),
+                title: entry.title.as_ref().map(|t| t.content.clone()),
+                published: entry.published.or(entry.updated),
+            })
         })
         .collect())
 }
@@ -488,8 +493,11 @@ async fn list_channel_videos_flat(channel_id: &str) -> Result<Vec<ListedVideo>, 
     }
     Ok(json_lines(&output.stdout)
         .iter()
-        .filter_map(|entry| entry.get("id").and_then(|v| v.as_str()))
-        .map(|id| ListedVideo { id: id.to_string(), published: None })
+        .filter_map(|entry| {
+            let id = entry.get("id").and_then(|v| v.as_str())?;
+            let title = entry.get("title").and_then(|v| v.as_str()).map(str::to_string);
+            Some(ListedVideo { id: id.to_string(), title, published: None })
+        })
         .collect())
 }
 
@@ -531,56 +539,128 @@ impl VideoDetails {
     }
 }
 
+// Details of recently fetched videos, so a video a subscriber's filter turned down isn't fetched
+// again each time its channel's feed changes.
+const DETAILS_CACHE_SIZE: usize = 10_000;
+static DETAILS_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<String, VideoDetails>>> =
+    std::sync::LazyLock::new(Default::default);
+
 /// Details of these videos from a single yt-dlp run. Videos yt-dlp can't read (members-only,
 /// private, upcoming premieres) are left out; Err only when yt-dlp itself failed.
 async fn fetch_video_details(ids: &[String]) -> Result<HashMap<String, VideoDetails>, AppError> {
+    let mut details: HashMap<String, VideoDetails> = {
+        let cache = DETAILS_CACHE.lock().unwrap();
+        ids.iter().filter_map(|id| cache.get(id).map(|d| (id.clone(), d.clone()))).collect()
+    };
+    let ids: Vec<&String> = ids.iter().filter(|id| !details.contains_key(*id)).collect();
+    if ids.is_empty() {
+        return Ok(details);
+    }
     let urls: Vec<String> = ids.iter().map(|id| format!("https://www.youtube.com/watch?v={}", id)).collect();
     let mut args = vec!["--quiet", "--no-warnings", "--skip-download", "--ignore-errors", "--socket-timeout", "30", "--dump-json"];
     args.extend(urls.iter().map(String::as_str));
     let _permit = crate::services::ytdlp::refresh_permit().await;
     let output = run_ytdlp(&args).await?;
-    let details: HashMap<String, VideoDetails> = json_lines(&output.stdout)
-        .iter()
-        .filter_map(VideoDetails::from_json)
-        .map(|d| (d.id.clone(), d))
-        .collect();
+    let fetched: Vec<VideoDetails> = json_lines(&output.stdout).iter().filter_map(VideoDetails::from_json).collect();
     let stderr = String::from_utf8_lossy(&output.stderr);
     // A failing video makes yt-dlp exit non-zero; only a run with no per-video errors to show for
     // it is a broken yt-dlp.
-    if !output.status.success() && details.is_empty() && !stderr.contains("ERROR: [youtube]") {
+    if !output.status.success() && fetched.is_empty() && !stderr.contains("ERROR: [youtube]") {
         return Err(AppError::external_error(&format!("yt-dlp video fetch failed: {}", stderr.trim())));
     }
-    if details.len() < ids.len() {
-        debug!("yt-dlp skipped {} of {} videos: {}", ids.len() - details.len(), ids.len(), stderr.trim());
+    if fetched.len() < ids.len() {
+        debug!("yt-dlp skipped {} of {} videos: {}", ids.len() - fetched.len(), ids.len(), stderr.trim());
     }
+    {
+        let mut cache = DETAILS_CACHE.lock().unwrap();
+        if cache.len() + fetched.len() > DETAILS_CACHE_SIZE {
+            cache.clear();
+        }
+        cache.extend(fetched.iter().map(|d| (d.id.clone(), d.clone())));
+    }
+    details.extend(fetched.into_iter().map(|d| (d.id.clone(), d)));
     Ok(details)
+}
+
+/// Which new videos a channel subscription adds. `None` means no limit.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, utoipa::ToSchema)]
+pub struct YouTubeVideoFilter {
+    /// Shortest video, in minutes.
+    pub min_minutes: Option<i32>,
+    /// Longest video, in minutes.
+    pub max_minutes: Option<i32>,
+    /// Text the title must contain (any case).
+    pub title_contains: Option<String>,
+}
+
+impl YouTubeVideoFilter {
+    /// Zeros and blank text mean no limit; Err for values that can't be right.
+    pub fn normalized(self) -> Result<YouTubeVideoFilter, AppError> {
+        let minutes = |m: Option<i32>| match m {
+            Some(m) if m < 0 => Err(AppError::bad_request("Video lengths can't be negative")),
+            Some(0) | None => Ok(None),
+            Some(m) => Ok(Some(m)),
+        };
+        let (min_minutes, max_minutes) = (minutes(self.min_minutes)?, minutes(self.max_minutes)?);
+        if let (Some(min), Some(max)) = (min_minutes, max_minutes) {
+            if min > max {
+                return Err(AppError::bad_request("The shortest length is longer than the longest"));
+            }
+        }
+        let title_contains = self.title_contains.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+        if title_contains.as_ref().is_some_and(|t| t.chars().count() > 255) {
+            return Err(AppError::bad_request("The title filter is too long (255 characters at most)"));
+        }
+        Ok(YouTubeVideoFilter { min_minutes, max_minutes, title_contains })
+    }
+
+    pub fn title_ok(&self, title: &str) -> bool {
+        self.title_contains.as_ref().map_or(true, |t| title.to_lowercase().contains(&t.to_lowercase()))
+    }
+
+    /// A video with no known length only passes when no length limit is set.
+    pub fn length_ok(&self, seconds: i32) -> bool {
+        if self.min_minutes.is_none() && self.max_minutes.is_none() {
+            return true;
+        }
+        seconds > 0
+            && self.min_minutes.map_or(true, |m| seconds >= m * 60)
+            && self.max_minutes.map_or(true, |m| seconds <= m * 60)
+    }
 }
 
 /// A channel subscription brought up to date by `process_youtube_channel`.
 pub struct ChannelSubscriber {
     pub podcast_id: i32,
+    /// Days of videos to keep; 0 or less keeps everything the channel lists.
     pub feed_cutoff: i32,
+    pub filter: YouTubeVideoFilter,
 }
 
 /// Bring a channel's subscriptions up to date with its newest videos: drop videos past each
-/// subscriber's cutoff, fetch the details of the listed videos a subscriber is missing (one
-/// yt-dlp run, never past the longest cutoff), insert them, and download their audio. Returns
-/// the inserted rows.
+/// subscriber's cutoff, fetch the details of the listed videos a subscriber is missing and would
+/// take (one yt-dlp run, never past the longest cutoff), insert the ones its filter lets through,
+/// and download their audio. Returns the inserted rows.
 pub async fn process_youtube_channel(
     state: &AppState,
     subscribers: &[ChannelSubscriber],
     listed: &[ListedVideo],
 ) -> Result<Vec<crate::handlers::podcasts::Episode>, AppError> {
     let now = chrono::Utc::now();
-    let cutoff = |sub: &ChannelSubscriber| now - chrono::Duration::days(sub.feed_cutoff as i64);
+    let cutoff = |sub: &ChannelSubscriber| (sub.feed_cutoff > 0).then(|| now - chrono::Duration::days(sub.feed_cutoff as i64));
+    let in_cutoff = |sub: &ChannelSubscriber, published| cutoff(sub).map_or(true, |c| published > c);
 
     let mut have: Vec<HashSet<String>> = Vec::with_capacity(subscribers.len());
     for sub in subscribers {
-        state.db_pool.remove_old_youtube_videos(sub.podcast_id, cutoff(sub)).await?;
+        if let Some(cutoff) = cutoff(sub) {
+            state.db_pool.remove_old_youtube_videos(sub.podcast_id, cutoff).await?;
+        }
         have.push(state.db_pool.youtube_video_ids(sub.podcast_id).await?);
     }
     let missing = |video: &ListedVideo, sub: &ChannelSubscriber, have: &HashSet<String>| {
-        !have.contains(&video.id) && video.published.map_or(true, |p| p > cutoff(sub))
+        !have.contains(&video.id)
+            && video.published.map_or(true, |p| in_cutoff(sub, p))
+            && video.title.as_deref().map_or(true, |t| sub.filter.title_ok(t))
     };
     let wanted: Vec<String> = listed
         .iter()
@@ -596,7 +676,7 @@ pub async fn process_youtube_channel(
             .iter()
             .filter(|id| !have.contains(*id))
             .filter_map(|id| details.get(id))
-            .filter(|d| d.published > cutoff(sub))
+            .filter(|d| in_cutoff(sub, d.published) && sub.filter.title_ok(&d.title) && sub.filter.length_ok(d.duration))
             .collect();
         if let Some(first) = videos.first() {
             heal_channel_metadata(state, sub.podcast_id, first).await;
@@ -739,6 +819,94 @@ pub async fn download_youtube_audio(video_id: &str, output_path: &str) -> Result
     Ok(())
 }
 
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct YouTubeVideoFilterQuery {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+// The video filter of a YouTube channel subscription.
+#[utoipa::path(
+    get,
+    path = "/youtube_video_filter",
+    tag = "youtube",
+    summary = "Get a channel's video filter",
+    params(YouTubeVideoFilterQuery),
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "The filter; unset fields mean no limit", body = YouTubeVideoFilter),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Not your podcast"),
+        (status = 404, description = "No such YouTube channel"),
+    ),
+)]
+pub async fn get_youtube_video_filter(
+    State(state): State<AppState>,
+    Query(query): Query<YouTubeVideoFilterQuery>,
+    headers: HeaderMap,
+) -> Result<Json<YouTubeVideoFilter>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+    if !crate::handlers::check_user_access(&state, &api_key, query.user_id).await? {
+        return Err(AppError::forbidden("You can only see settings of your own podcasts!"));
+    }
+    if !state.db_pool.owns_youtube_channel(query.podcast_id, query.user_id).await? {
+        return Err(AppError::not_found("YouTube channel not found"));
+    }
+    let mut filters = state.db_pool.youtube_video_filters(&[query.podcast_id]).await?;
+    Ok(Json(filters.remove(&query.podcast_id).unwrap_or_default()))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct UpdateYouTubeVideoFilterRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    /// Shortest video to add, in minutes; empty or 0 for no limit.
+    pub min_minutes: Option<i32>,
+    /// Longest video to add, in minutes; empty or 0 for no limit.
+    pub max_minutes: Option<i32>,
+    /// Only add videos whose title contains this (any case); empty for all.
+    pub title_contains: Option<String>,
+}
+
+// Set which new videos a YouTube channel subscription adds. Videos already added stay.
+#[utoipa::path(
+    post,
+    path = "/update_youtube_video_filter",
+    tag = "youtube",
+    summary = "Set a channel's video filter",
+    request_body = UpdateYouTubeVideoFilterRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "The filter as stored", body = YouTubeVideoFilter),
+        (status = 400, description = "Negative lengths, shortest longer than longest, or title filter too long"),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 403, description = "Not your podcast"),
+        (status = 404, description = "No such YouTube channel"),
+    ),
+)]
+pub async fn update_youtube_video_filter(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<UpdateYouTubeVideoFilterRequest>,
+) -> Result<Json<YouTubeVideoFilter>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+    if !crate::handlers::check_user_access(&state, &api_key, request.user_id).await? {
+        return Err(AppError::forbidden("You can only modify settings of your own podcasts!"));
+    }
+    let filter = YouTubeVideoFilter {
+        min_minutes: request.min_minutes,
+        max_minutes: request.max_minutes,
+        title_contains: request.title_contains,
+    }
+    .normalized()?;
+    if !state.db_pool.set_youtube_video_filter(request.podcast_id, request.user_id, &filter).await? {
+        return Err(AppError::not_found("YouTube channel not found"));
+    }
+    Ok(Json(filter))
+}
+
 // Check if YouTube channel exists - matches Python api_check_youtube_channel function exactly
 #[utoipa::path(
     get,
@@ -797,6 +965,31 @@ mod tests {
     }
 
     #[test]
+    fn video_filters() {
+        let any = YouTubeVideoFilter::default();
+        assert!(any.length_ok(0) && any.length_ok(30) && any.title_ok("anything"));
+
+        let long = YouTubeVideoFilter { min_minutes: Some(45), ..Default::default() };
+        assert!(long.length_ok(45 * 60) && !long.length_ok(45 * 60 - 1));
+        assert!(!long.length_ok(0), "unknown length doesn't pass a length limit");
+        let short = YouTubeVideoFilter { max_minutes: Some(120), ..Default::default() };
+        assert!(short.length_ok(120 * 60) && !short.length_ok(120 * 60 + 1));
+
+        let titled = YouTubeVideoFilter { title_contains: Some("The Standup".into()), ..Default::default() };
+        assert!(titled.title_ok("Monday: THE STANDUP #12") && !titled.title_ok("Shorts"));
+    }
+
+    #[test]
+    fn video_filter_normalization() {
+        let f = |min, max, title: &str| YouTubeVideoFilter { min_minutes: min, max_minutes: max, title_contains: Some(title.into()) };
+        assert_eq!(f(Some(0), Some(0), "  ").normalized().unwrap(), YouTubeVideoFilter::default());
+        assert_eq!(f(Some(5), None, " Pod ").normalized().unwrap().title_contains.as_deref(), Some("Pod"));
+        assert!(f(Some(-1), None, "").normalized().is_err());
+        assert!(f(Some(60), Some(30), "").normalized().is_err());
+        assert!(f(None, None, &"x".repeat(256)).normalized().is_err());
+    }
+
+    #[test]
     fn video_ids_from_a_channel_feed() {
         let body = r#"<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns="http://www.w3.org/2005/Atom">
@@ -806,6 +999,7 @@ mod tests {
         let videos = parse_channel_feed(body).unwrap();
         assert_eq!(videos.len(), 1);
         assert_eq!(videos[0].id, "vid1");
+        assert_eq!(videos[0].title.as_deref(), Some("One"));
         assert_eq!(videos[0].published.unwrap().to_rfc3339(), "2026-10-20T10:00:00+00:00");
         assert!(parse_channel_feed("<html>nope</html>").is_err());
     }

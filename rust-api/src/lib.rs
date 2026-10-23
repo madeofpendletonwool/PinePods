@@ -377,6 +377,8 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::youtube::search_youtube_channels))
         .routes(routes!(handlers::youtube::subscribe_to_youtube_channel))
         .routes(routes!(handlers::youtube::check_youtube_channel))
+        .routes(routes!(handlers::youtube::get_youtube_video_filter))
+        .routes(routes!(handlers::youtube::update_youtube_video_filter))
         .routes(routes!(handlers::settings::enable_auto_download))
         .routes(routes!(handlers::settings::enable_auto_queue))
         .routes(routes!(handlers::settings::enable_auto_play_next))

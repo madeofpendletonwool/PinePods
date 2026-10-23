@@ -16872,6 +16872,112 @@ impl DatabasePool {
         Ok(ids.into_iter().flatten().collect())
     }
 
+    // Video filters of these channel podcasts; podcasts without any are left out.
+    pub async fn youtube_video_filters(
+        &self,
+        podcast_ids: &[i32],
+    ) -> AppResult<HashMap<i32, crate::handlers::youtube::YouTubeVideoFilter>> {
+        type Row = (i32, Option<i32>, Option<i32>, Option<String>);
+        if podcast_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows: Vec<Row> = match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_as(r#"
+                    SELECT podcastid, videominminutes, videomaxminutes, videotitlefilter FROM "Podcasts"
+                    WHERE podcastid = ANY($1)
+                      AND (videominminutes IS NOT NULL OR videomaxminutes IS NOT NULL OR videotitlefilter IS NOT NULL)
+                "#)
+                .bind(podcast_ids)
+                .fetch_all(pool)
+                .await?
+            }
+            DatabasePool::MySQL(pool) => {
+                let sql = format!(
+                    "SELECT PodcastID, VideoMinMinutes, VideoMaxMinutes, VideoTitleFilter FROM Podcasts
+                     WHERE PodcastID IN ({})
+                       AND (VideoMinMinutes IS NOT NULL OR VideoMaxMinutes IS NOT NULL OR VideoTitleFilter IS NOT NULL)",
+                    vec!["?"; podcast_ids.len()].join(", ")
+                );
+                let mut q = sqlx::query_as(sqlx::AssertSqlSafe(sql));
+                for id in podcast_ids {
+                    q = q.bind(id);
+                }
+                q.fetch_all(pool).await?
+            }
+        };
+        Ok(rows
+            .into_iter()
+            .map(|(id, min_minutes, max_minutes, title_contains)| {
+                (id, crate::handlers::youtube::YouTubeVideoFilter { min_minutes, max_minutes, title_contains })
+            })
+            .collect())
+    }
+
+    // Set the video filter of a user's channel podcast. The stored feed hash is dropped so the next
+    // refresh looks at the channel's listed videos again (a looser filter may take some of them).
+    // False when the user has no such channel.
+    pub async fn set_youtube_video_filter(
+        &self,
+        podcast_id: i32,
+        user_id: i32,
+        filter: &crate::handlers::youtube::YouTubeVideoFilter,
+    ) -> AppResult<bool> {
+        let updated = match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"
+                    UPDATE "Podcasts" SET videominminutes = $1, videomaxminutes = $2, videotitlefilter = $3, feedcontenthash = NULL
+                    WHERE podcastid = $4 AND userid = $5 AND isyoutubechannel = TRUE
+                "#)
+                .bind(filter.min_minutes)
+                .bind(filter.max_minutes)
+                .bind(&filter.title_contains)
+                .bind(podcast_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?
+                .rows_affected()
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(
+                    "UPDATE Podcasts SET VideoMinMinutes = ?, VideoMaxMinutes = ?, VideoTitleFilter = ?, FeedContentHash = NULL
+                     WHERE PodcastID = ? AND UserID = ? AND IsYouTubeChannel = TRUE",
+                )
+                .bind(filter.min_minutes)
+                .bind(filter.max_minutes)
+                .bind(&filter.title_contains)
+                .bind(podcast_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?
+                .rows_affected()
+            }
+        };
+        // MySQL counts only changed rows; an unchanged filter still belongs to the user.
+        Ok(updated > 0 || self.owns_youtube_channel(podcast_id, user_id).await?)
+    }
+
+    // Whether this channel podcast is the user's.
+    pub async fn owns_youtube_channel(&self, podcast_id: i32, user_id: i32) -> AppResult<bool> {
+        let found: Option<i32> = match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_scalar(r#"SELECT podcastid FROM "Podcasts" WHERE podcastid = $1 AND userid = $2 AND isyoutubechannel = TRUE"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query_scalar("SELECT PodcastID FROM Podcasts WHERE PodcastID = ? AND UserID = ? AND IsYouTubeChannel = TRUE")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+            }
+        };
+        Ok(found.is_some())
+    }
+
     // Insert videos into a channel podcast; returns the inserted rows.
     pub async fn add_youtube_videos(
         &self,

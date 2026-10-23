@@ -214,3 +214,131 @@ async fn cleanup_keeps_old_videos_users_hold_on_to() {
     let queued = int(&app, &format!(r#"SELECT COUNT(*) FROM "EpisodeQueue" WHERE UserID = {u}"#)).await;
     assert_eq!(queued, Some(2), "queue rows are left alone");
 }
+
+async fn set_filter(app: &TestApp, user: &TestUser, pod: i32, filter: Value) -> Value {
+    let mut body = filter;
+    body["podcast_id"] = json!(pod);
+    body["user_id"] = json!(user.id);
+    let resp = app.post("/api/data/update_youtube_video_filter").key(user).json(&body).send().await;
+    resp.assert_ok();
+    resp.json()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn filters_pick_which_new_videos_are_added() {
+    let app = TestApp::new().await;
+    let user = app.user("picky").await;
+    let channel = app.youtube_channel("filtered").video_as(1, 5, "The Standup #1", 50);
+    app.publish_channel(&channel);
+    let pod = app.subscribe_channel(&user, &channel, 30).await;
+    set_filter(&app, &user, pod, json!({ "min_minutes": 45, "max_minutes": 120, "title_contains": "standup" })).await;
+
+    let channel = channel
+        .video_as(2, 4, "The Standup #2", 60)
+        .video_as(3, 3, "The Standup live stream", 180)
+        .video_as(4, 2, "Short clip", 50)
+        .video_as(5, 1, "Standup shorts", 10);
+    app.publish_channel(&channel);
+    app.refresh().await;
+    assert_eq!(app.video_ids(pod).await, vec![channel.video_id(1), channel.video_id(2)]);
+
+    let asked: Vec<String> = app.ytdlp_detail_requests(&channel).concat();
+    assert!(!asked.contains(&channel.video_id(4)), "a title the filter turns down never reaches yt-dlp");
+    assert!(app.ytdlp_calls(&channel).iter().all(|c| !c.contains(&channel.video_id(3)) || !c.contains("--extract-audio")), "no audio for filtered videos");
+
+    // Videos turned down for their length aren't fetched again when the feed changes.
+    let channel = channel.video_as(6, 0, "The Standup #3", 55);
+    app.publish_channel(&channel);
+    app.refresh().await;
+    assert!(app.video_ids(pod).await.contains(&channel.video_id(6)));
+    assert_eq!(app.ytdlp_detail_requests(&channel).last().unwrap(), &vec![channel.video_id(6)]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn each_subscriber_has_its_own_filter() {
+    let app = TestApp::new().await;
+    let picky = app.user("picky").await;
+    let all = app.user("all").await;
+    let channel = app.youtube_channel("pershared").video(1, 3);
+    app.publish_channel(&channel);
+    let picky_pod = app.subscribe_channel(&picky, &channel, 30).await;
+    let all_pod = app.subscribe_channel(&all, &channel, 30).await;
+    set_filter(&app, &picky, picky_pod, json!({ "title_contains": "Podcast" })).await;
+
+    let channel = channel.video_as(2, 1, "Weekly Podcast", 70).video_as(3, 0, "Vlog", 8);
+    app.publish_channel(&channel);
+    app.refresh().await;
+    assert_eq!(app.video_ids(picky_pod).await, vec![channel.video_id(1), channel.video_id(2)]);
+    assert_eq!(app.video_ids(all_pod).await.len(), 3);
+    assert_eq!(app.ytdlp_detail_requests(&channel).last().unwrap().len(), 2, "one run for both subscribers");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn loosening_a_filter_takes_the_listed_videos_it_turned_down() {
+    let app = TestApp::new().await;
+    let user = app.user("watcher").await;
+    let channel = app.youtube_channel("loosen").video(1, 3);
+    app.publish_channel(&channel);
+    let pod = app.subscribe_channel(&user, &channel, 30).await;
+    set_filter(&app, &user, pod, json!({ "title_contains": "standup" })).await;
+
+    let channel = channel.video_as(2, 1, "Something else", 30);
+    app.publish_channel(&channel);
+    app.refresh().await;
+    assert_eq!(app.video_ids(pod).await.len(), 1);
+
+    // The feed hasn't changed since, but the new filter is applied to it.
+    set_filter(&app, &user, pod, json!({ "title_contains": "" })).await;
+    app.refresh().await;
+    assert_eq!(app.video_ids(pod).await, vec![channel.video_id(1), channel.video_id(2)]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn video_filter_endpoints() {
+    let app = TestApp::new().await;
+    let user = app.user("owner").await;
+    let other = app.user("other").await;
+    let channel = app.youtube_channel("api").video(1, 1);
+    app.publish_channel(&channel);
+    let pod = app.subscribe_channel(&user, &channel, 30).await;
+
+    let get = |who: &TestUser, user_id: i32| app.get(&format!("/api/data/youtube_video_filter?podcast_id={pod}&user_id={user_id}")).key(who).send();
+    let resp = get(&user, user.id).await;
+    resp.assert_ok();
+    assert_eq!(resp.json(), json!({ "min_minutes": null, "max_minutes": null, "title_contains": null }));
+
+    let stored = set_filter(&app, &user, pod, json!({ "min_minutes": 0, "max_minutes": 120, "title_contains": "  The Standup " })).await;
+    assert_eq!(stored, json!({ "min_minutes": null, "max_minutes": 120, "title_contains": "The Standup" }));
+    assert_eq!(get(&user, user.id).await.json(), stored);
+
+    let bad = |body: Value| {
+        let mut body = body;
+        body["podcast_id"] = json!(pod);
+        body["user_id"] = json!(user.id);
+        app.post("/api/data/update_youtube_video_filter").key(&user).json(&body).send()
+    };
+    bad(json!({ "min_minutes": 60, "max_minutes": 30 })).await.assert_status(400);
+    bad(json!({ "min_minutes": -5 })).await.assert_status(400);
+
+    get(&other, user.id).await.assert_status(403);
+    get(&other, other.id).await.assert_status(404);
+    app.post("/api/data/update_youtube_video_filter")
+        .key(&other)
+        .json(&json!({ "podcast_id": pod, "user_id": other.id, "max_minutes": 1 }))
+        .send()
+        .await
+        .assert_status(404);
+    assert_eq!(get(&user, user.id).await.json(), stored, "someone else can't change it");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_zero_cutoff_keeps_every_listed_video() {
+    let app = TestApp::new().await;
+    let user = app.user("watcher").await;
+    let channel = app.youtube_channel("nolimit").video(1, 400).video(2, 1);
+    app.publish_channel(&channel);
+    let pod = app.subscribe_channel(&user, &channel, 0).await;
+    assert_eq!(app.video_ids(pod).await.len(), 2);
+    app.refresh().await;
+    assert_eq!(app.video_ids(pod).await.len(), 2, "nothing is removed as old");
+}

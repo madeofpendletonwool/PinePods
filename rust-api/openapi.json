@@ -10002,6 +10002,54 @@
         ]
       }
     },
+    "/api/data/update_youtube_video_filter": {
+      "post": {
+        "tags": [
+          "youtube"
+        ],
+        "summary": "Set a channel's video filter",
+        "operationId": "update_youtube_video_filter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateYouTubeVideoFilterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The filter as stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/YouTubeVideoFilter"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Negative lengths, shortest longer than longest, or title filter too long"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Not your podcast"
+          },
+          "404": {
+            "description": "No such YouTube channel"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/user/custom_themes": {
       "post": {
         "tags": [
@@ -11103,6 +11151,61 @@
           },
           "401": {
             "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/data/youtube_video_filter": {
+      "get": {
+        "tags": [
+          "youtube"
+        ],
+        "summary": "Get a channel's video filter",
+        "operationId": "get_youtube_video_filter",
+        "parameters": [
+          {
+            "name": "podcast_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The filter; unset fields mean no limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/YouTubeVideoFilter"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "403": {
+            "description": "Not your podcast"
+          },
+          "404": {
+            "description": "No such YouTube channel"
           }
         },
         "security": [
@@ -19006,6 +19109,46 @@
           }
         }
       },
+      "UpdateYouTubeVideoFilterRequest": {
+        "type": "object",
+        "required": [
+          "podcast_id",
+          "user_id"
+        ],
+        "properties": {
+          "podcast_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "min_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Shortest video to add, in minutes; empty or 0 for no limit."
+          },
+          "max_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Longest video to add, in minutes; empty or 0 for no limit."
+          },
+          "title_contains": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Only add videos whose title contains this (any case); empty for all."
+          }
+        }
+      },
       "UserCategoriesResponse": {
         "type": "object",
         "required": [
@@ -19228,6 +19371,35 @@
           },
           "mfa_code": {
             "type": "string"
+          }
+        }
+      },
+      "YouTubeVideoFilter": {
+        "type": "object",
+        "description": "Which new videos a channel subscription adds. `None` means no limit.",
+        "properties": {
+          "min_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Shortest video, in minutes."
+          },
+          "max_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Longest video, in minutes."
+          },
+          "title_contains": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Text the title must contain (any case)."
           }
         }
       },
