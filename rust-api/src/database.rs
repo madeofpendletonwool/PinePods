@@ -1392,6 +1392,7 @@ impl DatabasePool {
                         feedetag as etag,
                         feedlastmodified as last_modified,
                         feedcontenthash as content_hash,
+                        refreshintervalminutes as refresh_interval,
                         (lastrefreshsuccess IS NOT NULL AND lastrefreshsuccess > NOW() - INTERVAL '2 minutes') as recently_refreshed,
                         (refreshnotbefore IS NOT NULL AND refreshnotbefore > NOW()) as throttled
                     FROM "Podcasts" 
@@ -1418,6 +1419,7 @@ impl DatabasePool {
                         etag: row.try_get("etag").ok().flatten(),
                         last_modified: row.try_get("last_modified").ok().flatten(),
                         content_hash: row.try_get("content_hash").ok().flatten(),
+                        refresh_interval: row.try_get("refresh_interval").ok().flatten(),
                         recently_refreshed: row.try_get("recently_refreshed").unwrap_or(false),
                         throttled: row.try_get("throttled").unwrap_or(false),
                     });
@@ -1441,6 +1443,7 @@ impl DatabasePool {
                         FeedETag as etag,
                         FeedLastModified as last_modified,
                         FeedContentHash as content_hash,
+                        RefreshIntervalMinutes as refresh_interval,
                         (LastRefreshSuccess IS NOT NULL AND LastRefreshSuccess > NOW() - INTERVAL 2 MINUTE) as recently_refreshed,
                         (RefreshNotBefore IS NOT NULL AND RefreshNotBefore > NOW()) as throttled
                     FROM Podcasts 
@@ -1467,6 +1470,7 @@ impl DatabasePool {
                         etag: row.try_get("etag").ok().flatten(),
                         last_modified: row.try_get("last_modified").ok().flatten(),
                         content_hash: row.try_get("content_hash").ok().flatten(),
+                        refresh_interval: row.try_get("refresh_interval").ok().flatten(),
                         recently_refreshed: row.try_get::<i64, _>("recently_refreshed").unwrap_or(0) != 0,
                         throttled: row.try_get::<i64, _>("throttled").unwrap_or(0) != 0,
                     });
@@ -7154,6 +7158,13 @@ impl DatabasePool {
         if let Err(e) = self.store_feed_cache_validators(&[podcast_id], None, None, Some(&hash)).await {
             warn!("Storing feed hash for podcast {} failed: {}", podcast_id, e);
         }
+        // Adding the podcast was its refresh: the next one follows its publishing pattern.
+        let dates: Vec<DateTime<Utc>> = episodes.iter().map(|e| e.pub_date).collect();
+        let hints = crate::services::refresh_schedule::parse_hints(content);
+        let next = crate::services::refresh_schedule::schedule(&dates, &hints, Utc::now());
+        if let Err(e) = self.set_refresh_schedule(&[podcast_id], next).await {
+            warn!("Scheduling the next refresh of podcast {} failed: {}", podcast_id, e);
+        }
         crate::services::people::podpeople::queue_sync(podcast_id);
 
         // Get the actual first episode ID (earliest by pub date)
@@ -7952,10 +7963,15 @@ impl DatabasePool {
             AppError::Http(e)
         })?;
         let status = response.status();
+        let max_age = response
+            .headers()
+            .get(reqwest::header::CACHE_CONTROL)
+            .and_then(|v| v.to_str().ok())
+            .and_then(crate::services::refresh_schedule::max_age);
 
         let (body, etag, last_modified) = if status == reqwest::StatusCode::NOT_MODIFIED {
             debug!("Feed not modified (304): {}", url);
-            return Ok(FeedFetch::NotModified { etag: None, last_modified: None });
+            return Ok(FeedFetch::NotModified { etag: None, last_modified: None, max_age });
         } else if status.is_success() {
             let header = |name: reqwest::header::HeaderName| {
                 response.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string)
@@ -7985,9 +8001,9 @@ impl DatabasePool {
         let content_hash = crate::services::http::content_hash(&body);
         if prev.content_hash == Some(content_hash.as_str()) {
             debug!("Feed body unchanged (hash match), skipping parse: {}", url);
-            return Ok(FeedFetch::NotModified { etag, last_modified });
+            return Ok(FeedFetch::NotModified { etag, last_modified, max_age });
         }
-        Ok(FeedFetch::Fetched { body, etag, last_modified, content_hash })
+        Ok(FeedFetch::Fetched { body, etag, last_modified, content_hash, max_age })
     }
 
     /// Persist fresh conditional-GET validators (ETag / Last-Modified) and, when given, the body
@@ -8036,8 +8052,9 @@ impl DatabasePool {
     }
 
     /// Mark a successful refresh for every podcast row sharing this feed: clears the failure
-    /// counter and any Retry-After hold, and records the timestamps used for backoff decisions.
-    pub async fn record_refresh_success(&self, podcast_ids: &[i32]) -> AppResult<()> {
+    /// counter and any Retry-After hold, records the timestamps used for backoff decisions, and
+    /// schedules the next refresh.
+    pub async fn record_refresh_success(&self, podcast_ids: &[i32], next: crate::services::refresh_schedule::Schedule) -> AppResult<()> {
         if podcast_ids.is_empty() {
             return Ok(());
         }
@@ -8047,10 +8064,13 @@ impl DatabasePool {
                     r#"UPDATE "Podcasts"
                        SET lastrefreshattempt = NOW(), lastrefreshsuccess = NOW(),
                            consecutivefailures = 0, lasterrormessage = NULL, refreshnotbefore = NULL,
-                           failingsince = NULL, lasterrorkind = NULL, problemnotified = FALSE
+                           failingsince = NULL, lasterrorkind = NULL, problemnotified = FALSE,
+                           refreshintervalminutes = $2, nextrefreshat = NOW() + make_interval(secs => $3::BIGINT)
                        WHERE podcastid = ANY($1)"#,
                 )
                 .bind(podcast_ids)
+                .bind(next.interval_minutes)
+                .bind(next.next_in_secs)
                 .execute(pool)
                 .await?;
             }
@@ -8059,16 +8079,120 @@ impl DatabasePool {
                 let sql = format!(
                     "UPDATE Podcasts SET LastRefreshAttempt = NOW(), LastRefreshSuccess = NOW(), \
                      ConsecutiveFailures = 0, LastErrorMessage = NULL, RefreshNotBefore = NULL, \
-                     FailingSince = NULL, LastErrorKind = NULL, ProblemNotified = FALSE \
+                     FailingSince = NULL, LastErrorKind = NULL, ProblemNotified = FALSE, \
+                     RefreshIntervalMinutes = ?, NextRefreshAt = NOW() + INTERVAL ? SECOND \
                      WHERE PodcastID IN ({})",
                     placeholders
                 );
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(next.interval_minutes).bind(next.next_in_secs);
                 for id in podcast_ids { q = q.bind(id); }
                 q.execute(pool).await?;
             }
         }
         Ok(())
+    }
+
+    /// Schedule the next refresh of these podcast rows without recording a refresh (after the
+    /// import that added a podcast).
+    pub async fn set_refresh_schedule(&self, podcast_ids: &[i32], next: crate::services::refresh_schedule::Schedule) -> AppResult<()> {
+        if podcast_ids.is_empty() {
+            return Ok(());
+        }
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"UPDATE "Podcasts" SET refreshintervalminutes = $2, nextrefreshat = NOW() + make_interval(secs => $3::BIGINT)
+                       WHERE podcastid = ANY($1)"#,
+                )
+                .bind(podcast_ids)
+                .bind(next.interval_minutes)
+                .bind(next.next_in_secs)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let sql = format!(
+                    "UPDATE Podcasts SET RefreshIntervalMinutes = ?, NextRefreshAt = NOW() + INTERVAL ? SECOND WHERE PodcastID IN ({})",
+                    placeholders
+                );
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(next.interval_minutes).bind(next.next_in_secs);
+                for id in podcast_ids { q = q.bind(id); }
+                q.execute(pool).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Publishing dates of a podcast's newest episodes (videos for a YouTube channel).
+    pub async fn recent_pub_dates(&self, podcast_id: i32, youtube: bool, limit: i64) -> AppResult<Vec<DateTime<Utc>>> {
+        let (table, column) = if youtube { ("YouTubeVideos", "PublishedAt") } else { ("Episodes", "EpisodePubDate") };
+        let dates: Vec<chrono::NaiveDateTime> = match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                    r#"SELECT {column} FROM "{table}" WHERE podcastid = $1 AND {column} IS NOT NULL ORDER BY {column} DESC LIMIT $2"#
+                )))
+                .bind(podcast_id)
+                .bind(limit)
+                .fetch_all(pool)
+                .await?
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                    "SELECT {column} FROM {table} WHERE PodcastID = ? AND {column} IS NOT NULL ORDER BY {column} DESC LIMIT ?"
+                )))
+                .bind(podcast_id)
+                .bind(limit)
+                .fetch_all(pool)
+                .await?
+            }
+        };
+        Ok(dates.into_iter().map(|d| d.and_utc()).collect())
+    }
+
+    /// Feeds due for a scheduled refresh, as (url, username, password), the longest overdue
+    /// first: any subscriber's row being due makes the feed due. Feeds in failure backoff or
+    /// under a host's Retry-After hold wait.
+    pub async fn due_refresh_feeds(&self, limit: i64) -> AppResult<Vec<(String, Option<String>, Option<String>)>> {
+        use crate::services::scheduler::{BACKOFF_MAX_STEPS, BACKOFF_STEP_MINUTES};
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+                    r#"SELECT feedurl, username, password FROM "Podcasts"
+                       WHERE COALESCE(refreshpodcast, TRUE) = TRUE
+                         AND feedurl NOT LIKE 'local://%'
+                         AND (nextrefreshat IS NULL OR nextrefreshat <= NOW())
+                         AND (refreshnotbefore IS NULL OR refreshnotbefore <= NOW())
+                         AND (COALESCE(consecutivefailures, 0) = 0 OR lastrefreshattempt IS NULL
+                              OR lastrefreshattempt < NOW() - (INTERVAL '1 minute' * ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(consecutivefailures, 0), {BACKOFF_MAX_STEPS}))))
+                       GROUP BY feedurl, username, password
+                       ORDER BY MIN(nextrefreshat) ASC NULLS FIRST
+                       LIMIT $1"#
+                )))
+                .bind(limit)
+                .fetch_all(pool)
+                .await?;
+                Ok(rows)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+                    "SELECT FeedURL, Username, Password FROM Podcasts
+                     WHERE COALESCE(RefreshPodcast, 1) = 1
+                       AND FeedURL NOT LIKE 'local://%'
+                       AND (NextRefreshAt IS NULL OR NextRefreshAt <= NOW())
+                       AND (RefreshNotBefore IS NULL OR RefreshNotBefore <= NOW())
+                       AND (COALESCE(ConsecutiveFailures, 0) = 0 OR LastRefreshAttempt IS NULL
+                            OR LastRefreshAttempt < NOW() - INTERVAL ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(ConsecutiveFailures, 0), {BACKOFF_MAX_STEPS})) MINUTE)
+                     GROUP BY FeedURL, Username, Password
+                     ORDER BY MIN(NextRefreshAt) ASC
+                     LIMIT ?"
+                )))
+                .bind(limit)
+                .fetch_all(pool)
+                .await?;
+                Ok(rows)
+            }
+        }
     }
 
     /// Record a failed refresh: bumps the consecutive-failure counter (used for backoff), stores
@@ -8091,17 +8215,24 @@ impl DatabasePool {
             None => error,
         };
         let wait_secs = not_before.map(|d| d.as_secs() as i64);
+        // The next refresh waits out the feed's interval, the failure backoff and any hold.
+        use crate::services::scheduler::{BACKOFF_MAX_STEPS, BACKOFF_STEP_MINUTES};
+        const DEFAULT_MINUTES: i64 = 60;
         match self {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
-                    r#"UPDATE "Podcasts"
-                       SET lastrefreshattempt = NOW(),
+                    sqlx::AssertSqlSafe(format!(r#"UPDATE "Podcasts"
+                       SET nextrefreshat = NOW() + make_interval(secs => GREATEST(
+                               COALESCE(refreshintervalminutes, {DEFAULT_MINUTES}) * 60,
+                               {BACKOFF_STEP_MINUTES} * 60 * LEAST(COALESCE(consecutivefailures, 0) + 1, {BACKOFF_MAX_STEPS}),
+                               COALESCE($2::BIGINT, 0))),
+                           lastrefreshattempt = NOW(),
                            consecutivefailures = COALESCE(consecutivefailures, 0) + 1,
                            lasterrormessage = $1,
                            refreshnotbefore = CASE WHEN $2::BIGINT IS NULL THEN NULL
                                                    ELSE NOW() + make_interval(secs => $2::BIGINT) END,
                            failingsince = COALESCE(failingsince, NOW()), lasterrorkind = $4
-                       WHERE podcastid = ANY($3)"#,
+                       WHERE podcastid = ANY($3)"#)),
                 )
                 .bind(error)
                 .bind(wait_secs)
@@ -8112,8 +8243,13 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let placeholders = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                // NextRefreshAt first: MySQL assigns left to right, so it still sees the old count.
                 let sql = format!(
-                    "UPDATE Podcasts SET LastRefreshAttempt = NOW(), \
+                    "UPDATE Podcasts SET NextRefreshAt = NOW() + INTERVAL GREATEST( \
+                         COALESCE(RefreshIntervalMinutes, {DEFAULT_MINUTES}) * 60, \
+                         {BACKOFF_STEP_MINUTES} * 60 * LEAST(COALESCE(ConsecutiveFailures, 0) + 1, {BACKOFF_MAX_STEPS}), \
+                         COALESCE(?, 0)) SECOND, \
+                     LastRefreshAttempt = NOW(), \
                      ConsecutiveFailures = COALESCE(ConsecutiveFailures, 0) + 1, LastErrorMessage = ?, \
                      RefreshNotBefore = NOW() + INTERVAL ? SECOND, \
                      FailingSince = COALESCE(FailingSince, NOW()), LastErrorKind = ? \
@@ -8121,7 +8257,7 @@ impl DatabasePool {
                     placeholders
                 );
                 // NOW() + INTERVAL NULL SECOND is NULL, which clears the hold as intended.
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(error).bind(wait_secs).bind(kind.as_str());
+                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(wait_secs).bind(error).bind(wait_secs).bind(kind.as_str());
                 for id in podcast_ids { q = q.bind(id); }
                 q.execute(pool).await?;
             }
@@ -13860,6 +13996,8 @@ pub enum FeedFetch {
     NotModified {
         etag: Option<String>,
         last_modified: Option<String>,
+        /// The response's `Cache-Control: max-age`.
+        max_age: Option<chrono::Duration>,
     },
     /// Feed body plus any fresh cache validators to persist for next time.
     Fetched {
@@ -13867,6 +14005,7 @@ pub enum FeedFetch {
         etag: Option<String>,
         last_modified: Option<String>,
         content_hash: String,
+        max_age: Option<chrono::Duration>,
     },
     /// 429/503: the host asked us to back off, for `retry_after` if it said how long.
     Throttled {

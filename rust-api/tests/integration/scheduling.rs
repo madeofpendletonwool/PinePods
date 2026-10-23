@@ -228,6 +228,7 @@ async fn the_refresh_job_only_refreshes() {
     let feed_hits = s.app.fixtures().hits("show.xml").len();
     let runs = s.runs();
     s.app.feed("show.xml", &Feed::with_episodes("Show", 4));
+    exec(&s.app, &format!(r#"UPDATE "Podcasts" SET NextRefreshAt = '2000-01-01 00:00:00' WHERE PodcastID = {}"#, s.pod)).await;
 
     scheduler::run_refresh_job(&s.app.state).await.unwrap();
     assert_eq!(s.app.fixtures().hits("show.xml").len(), feed_hits + 1, "the feed was refreshed");
@@ -276,23 +277,6 @@ async fn scheduled_and_manual_refresh_never_fetch_a_feed_at_once() {
     assert_eq!(app.fixtures().max_in_flight("slow.xml"), 1, "never two fetches of the feed at once");
     let copies = int(&app, &format!(r#"SELECT COUNT(*) FROM "Episodes" WHERE PodcastID = {pod}"#)).await;
     assert_eq!(copies, Some(4));
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn startup_refresh_skips_feeds_refreshed_recently() {
-    let app = TestApp::new().await;
-    let user = app.user("listener").await;
-    let fresh = app.feed("fresh.xml", &Feed::with_episodes("Fresh", 1));
-    let stale = app.feed("stale.xml", &Feed::with_episodes("Stale", 1));
-    app.subscribe(&user, &fresh, 1).await;
-    let stale_pod = app.subscribe(&user, &stale, 1).await;
-    app.refresh().await;
-    exec(&app, &format!(r#"UPDATE "Podcasts" SET LastRefreshSuccess = NULL WHERE PodcastID = {stale_pod}"#)).await;
-    let (fresh_hits, stale_hits) = (app.fixtures().hits("fresh.xml").len(), app.fixtures().hits("stale.xml").len());
-
-    pinepods_api::handlers::refresh::refresh_stale_podcasts(&app.state, 15).await.unwrap();
-    assert_eq!(app.fixtures().hits("fresh.xml").len(), fresh_hits, "refreshed moments ago");
-    assert_eq!(app.fixtures().hits("stale.xml").len(), stale_hits + 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]

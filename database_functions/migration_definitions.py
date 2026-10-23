@@ -648,6 +648,8 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     FailingSince TIMESTAMP,
                     LastErrorKind VARCHAR(32),
                     ProblemNotified BOOLEAN NOT NULL DEFAULT FALSE,
+                    NextRefreshAt TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '5 minutes'),
+                    RefreshIntervalMinutes INT,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                 )
             """)
@@ -727,6 +729,8 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     FailingSince DATETIME NULL DEFAULT NULL,
                     LastErrorKind VARCHAR(32),
                     ProblemNotified TINYINT(1) NOT NULL DEFAULT 0,
+                    NextRefreshAt DATETIME NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE),
+                    RefreshIntervalMinutes INT,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )
             """)
@@ -7080,6 +7084,87 @@ def migration_073_podcasts_feedurl_index(conn, db_type: str) -> None:
         raise
     finally:
         cursor.close()
+
+
+@register_migration("075", "adaptive_refresh_schedule", "Podcasts.NextRefreshAt/RefreshIntervalMinutes: each feed is refreshed on its own schedule", requires=["001", "044"])
+def migration_075_adaptive_refresh_schedule(conn, db_type: str) -> None:
+    """Feeds are refreshed when they're due instead of all at once.
+
+    - NextRefreshAt: when the feed is refreshed next. New rows default to a few minutes out, so
+      the import that adds a podcast finishes (and schedules it) before a refresh picks it up.
+    - RefreshIntervalMinutes: the interval its publishing pattern earned at the last refresh.
+
+    Existing feeds get an interval from their newest ten episodes (the same rule the refresh
+    uses, without the feed's own hints) and their first refresh is spread over the next 30
+    minutes, the old refresh cycle.
+    """
+    import datetime
+
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    podcasts = '"Podcasts"' if pg else "Podcasts"
+    try:
+        added = not _column_exists(cursor, db_type, "Podcasts", "NextRefreshAt")
+        if added:
+            ddl = ("TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '5 minutes')" if pg
+                   else "DATETIME NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE)")
+            cursor.execute(f"ALTER TABLE {podcasts} ADD COLUMN NextRefreshAt {ddl}")
+        if not _column_exists(cursor, db_type, "Podcasts", "RefreshIntervalMinutes"):
+            cursor.execute(f"ALTER TABLE {podcasts} ADD COLUMN RefreshIntervalMinutes INT")
+        safe_add_index(cursor, db_type, f"CREATE INDEX idx_podcasts_nextrefreshat ON {podcasts} (NextRefreshAt)", "idx_podcasts_nextrefreshat")
+
+        # Newest ten publishing dates per podcast, episodes or YouTube videos.
+        dates = {}
+        for table, date_col in (("Episodes", "EpisodePubDate"), ("YouTubeVideos", "PublishedAt")):
+            if not _table_exists(cursor, db_type, table):
+                continue
+            name = f'"{table}"' if pg else table
+            cursor.execute(
+                f"SELECT PodcastID, {date_col} FROM ("
+                f" SELECT PodcastID, {date_col}, ROW_NUMBER() OVER (PARTITION BY PodcastID ORDER BY {date_col} DESC) AS rn"
+                f" FROM {name} WHERE {date_col} IS NOT NULL) recent WHERE rn <= 10"
+            )
+            for podcast_id, published in cursor.fetchall():
+                dates.setdefault(podcast_id, []).append(published.replace(tzinfo=None))
+
+        now = datetime.datetime.utcnow()
+        cursor.execute(f"SELECT PodcastID FROM {podcasts} WHERE RefreshIntervalMinutes IS NULL")
+        by_interval = {}
+        for (podcast_id,) in cursor.fetchall():
+            by_interval.setdefault(_refresh_interval_minutes(dates.get(podcast_id, []), now), []).append(podcast_id)
+        for minutes, ids in by_interval.items():
+            for i in range(0, len(ids), 500):
+                chunk = ids[i:i + 500]
+                marks = ", ".join(["%s"] * len(chunk))
+                cursor.execute(
+                    f"UPDATE {podcasts} SET RefreshIntervalMinutes = %s WHERE PodcastID IN ({marks})",
+                    (minutes, *chunk),
+                )
+        if added:
+            spread = "(PodcastID % 30) * INTERVAL '1 minute'" if pg else "INTERVAL (PodcastID % 30) MINUTE"
+            cursor.execute(f"UPDATE {podcasts} SET NextRefreshAt = CURRENT_TIMESTAMP + {spread}")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+def _refresh_interval_minutes(published, now) -> int:
+    """A feed's refresh interval from its newest publishing dates: an eighth of the median gap,
+    15 minutes to 6 hours, 24 hours when nothing came out in 90 days. Matches the refresh."""
+    import datetime
+
+    dates = sorted(set(published), reverse=True)[:10]
+    if not dates or now - dates[0] > datetime.timedelta(days=90):
+        return 24 * 60
+    gaps = sorted((a - b).total_seconds() for a, b in zip(dates, dates[1:]))
+    if not gaps:
+        return 60
+    mid = len(gaps) // 2
+    median = gaps[mid] if len(gaps) % 2 else (gaps[mid - 1] + gaps[mid]) / 2
+    return int(min(max(median / 8 / 60, 15), 6 * 60))
 
 
 @register_migration("111", "gpodder_episode_action_log", "Episode action log: Guid, resolved EpisodeID, Origin, indexes; keep actions when a device is removed", requires=["066", "110"])

@@ -279,7 +279,7 @@ pub async fn subscribe_to_youtube_channel(
     let state_clone = state.clone();
     let channel_id_clone = query.channel_id.clone();
     tokio::spawn(async move {
-        if let Err(e) = process_youtube_channel(podcast_id, &channel_id_clone, feed_cutoff, &state_clone).await {
+        if let Err(e) = crate::handlers::refresh::import_added_channel(&state_clone, podcast_id, &channel_id_clone, feed_cutoff).await {
             warn!("Error processing YouTube channel {}: {}", channel_id_clone, e);
         }
     });

@@ -23,6 +23,7 @@ mod podcasts;
 mod podping;
 mod queue;
 mod refresh;
+mod refresh_schedule;
 mod scheduling;
 mod settings;
 mod smoke;

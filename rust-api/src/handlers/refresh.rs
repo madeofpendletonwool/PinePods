@@ -15,6 +15,7 @@ use crate::{
     error::{AppError, AppResult},
     handlers::check_user_access,
     services::feed_health::{self, FeedErrorKind},
+    services::refresh_schedule::{self, FeedHints, Schedule},
     services::sync::engine::{self, RunMode},
     services::sync::engine_db::TargetKind,
     AppState,
@@ -86,7 +87,7 @@ pub async fn refresh_pods_admin(
     let state_clone = state.clone();
     tokio::spawn(async move {
         // This matches the Python refresh_pods function exactly
-        if let Err(e) = refresh_all_podcasts_background(&state_clone, None).await {
+        if let Err(e) = refresh_all_podcasts_background(&state_clone).await {
             tracing::error!("Background refresh failed: {}", e);
         }
     });
@@ -175,6 +176,8 @@ pub async fn refresh_gpodder_subscriptions_admin(
 
 // Max feeds refreshed in parallel. Shared by the background and per-user refresh paths.
 const REFRESH_CONCURRENCY: usize = 10;
+// Max feeds one scheduled tick refreshes; the rest wait for the next tick.
+const REFRESH_TICK_MAX_FEEDS: i64 = 250;
 
 // One refresh of a feed at a time, scheduled or manual. Keyed like the refresh groups
 // (URL + credentials); YouTube channels by channel URL.
@@ -233,6 +236,7 @@ struct PodcastRefreshItem {
     etag: Option<String>,
     last_modified: Option<String>,
     content_hash: Option<String>,
+    refresh_interval: Option<i32>,
 }
 
 /// Queue server-side auto-downloads for newly inserted episodes, if the podcast has auto-download
@@ -333,7 +337,7 @@ async fn refresh_feed_group(
         .fetch_feed_conditional(&rep.feed_url, rep.username.as_deref(), rep.password.as_deref(), validators)
         .await;
     match fetched {
-        Ok(crate::database::FeedFetch::NotModified { etag, last_modified }) => {
+        Ok(crate::database::FeedFetch::NotModified { etag, last_modified, max_age }) => {
             debug!("Feed unchanged, skipping parse: {}", rep.feed_url);
             if etag.is_some() || last_modified.is_some() {
                 let _ = state
@@ -341,9 +345,10 @@ async fn refresh_feed_group(
                     .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), None)
                     .await;
             }
-            mark_refreshed(state, &ids).await;
+            let next = unchanged_schedule(state, rep, max_age).await;
+            mark_refreshed(state, &ids, next).await;
         }
-        Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified, content_hash }) => {
+        Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified, content_hash, max_age }) => {
             let artwork = rep.artwork_url.clone().unwrap_or_default();
             let parsed = match state.db_pool.parse_feed_body(&body, rep.podcast_id, &artwork).await {
                 Ok(parsed) => parsed,
@@ -392,7 +397,9 @@ async fn refresh_feed_group(
                 .db_pool
                 .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), hash)
                 .await;
-            mark_refreshed(state, &ids).await;
+            let dates: Vec<_> = parsed.iter().map(|e| e.pub_date).collect();
+            let hints = FeedHints { max_age, ..refresh_schedule::parse_hints(&body) };
+            mark_refreshed(state, &ids, refresh_schedule::schedule(&dates, &hints, chrono::Utc::now())).await;
         }
         Ok(crate::database::FeedFetch::Throttled { status, retry_after }) => {
             let msg = format!("Feed host throttled refresh (HTTP {})", status);
@@ -409,14 +416,48 @@ async fn refresh_feed_group(
     Ok(all_new)
 }
 
-/// Record a successful refresh, telling users whose feed had been reported as failing.
-async fn mark_refreshed(state: &AppState, ids: &[i32]) {
+/// The next refresh of a feed whose body hasn't changed: it keeps the interval it had (at least
+/// the host's max-age), unless it has gone quiet since.
+async fn unchanged_schedule(state: &AppState, rep: &PodcastRefreshItem, max_age: Option<chrono::Duration>) -> Schedule {
+    let now = chrono::Utc::now();
+    let max = refresh_schedule::max_interval();
+    let dates = state.db_pool.recent_pub_dates(rep.podcast_id, false, 10).await.unwrap_or_default();
+    let hints = FeedHints { max_age, ..Default::default() };
+    let interval = match rep.refresh_interval {
+        Some(minutes) if !refresh_schedule::is_dormant(&dates, now) => {
+            let floor = max_age.unwrap_or_default().min(refresh_schedule::ACTIVE_MAX_INTERVAL);
+            chrono::Duration::minutes(minutes.into()).max(floor).min(max)
+        }
+        _ => refresh_schedule::interval(&dates, &hints, now, max),
+    };
+    refresh_schedule::schedule_with(interval, &dates, &hints, now, max)
+}
+
+/// The next refresh of a YouTube channel, from its videos.
+async fn youtube_schedule(state: &AppState, podcast_id: i32) -> Schedule {
+    let dates = state.db_pool.recent_pub_dates(podcast_id, true, 10).await.unwrap_or_default();
+    refresh_schedule::schedule(&dates, &FeedHints::default(), chrono::Utc::now())
+}
+
+/// Record a successful refresh and schedule the next, telling users whose feed had been
+/// reported as failing.
+async fn mark_refreshed(state: &AppState, ids: &[i32], next: Schedule) {
     let recovered = state.db_pool.feed_problems_reported(ids).await.unwrap_or_default();
-    if let Err(e) = state.db_pool.record_refresh_success(ids).await {
+    if let Err(e) = state.db_pool.record_refresh_success(ids, next).await {
         warn!("Recording a successful refresh of {:?} failed: {}", ids, e);
         return;
     }
     feed_health::after_success(&state.task_manager, recovered).await;
+}
+
+/// Import a newly added YouTube channel's videos and schedule its refreshes. Holds the channel's
+/// refresh lock so a scheduled refresh can't run alongside.
+pub async fn import_added_channel(state: &AppState, podcast_id: i32, channel_id: &str, feed_cutoff: i32) -> AppResult<()> {
+    let url = format!("https://www.youtube.com/channel/{}", channel_id);
+    let _lock = FeedLock::acquire(FeedLock::key(&url, None, None)).await;
+    crate::handlers::youtube::process_youtube_channel(podcast_id, channel_id, feed_cutoff, state).await?;
+    mark_refreshed(state, &[podcast_id], youtube_schedule(state, podcast_id).await).await;
+    Ok(())
 }
 
 /// Record a failed refresh and report feeds that have now been failing long enough.
@@ -456,7 +497,7 @@ async fn refresh_youtube_item(state: &AppState, item: &PodcastRefreshItem) {
     {
         Ok(_) => {
             info!("Successfully refreshed YouTube channel {}", item.podcast_id);
-            mark_refreshed(state, &ids).await;
+            mark_refreshed(state, &ids, youtube_schedule(state, item.podcast_id).await).await;
         }
         Err(e) => {
             warn!("Error refreshing YouTube channel {}: {}", item.podcast_id, e);
@@ -465,10 +506,9 @@ async fn refresh_youtube_item(state: &AppState, item: &PodcastRefreshItem) {
     }
 }
 
-/// The podcast rows to refresh, skipping feeds a host asked us to leave alone (Retry-After) and,
-/// unless `only` names the feeds, feeds in failure backoff. `min_age_minutes` skips feeds that
-/// refreshed successfully more recently than that (startup).
-async fn load_refresh_items(state: &AppState, min_age_minutes: Option<i64>, only: Option<&[String]>) -> AppResult<Vec<PodcastRefreshItem>> {
+/// The podcast rows to refresh (all, or those of the `only` feeds), skipping feeds a host asked us
+/// to leave alone (Retry-After) and, unless `ignore_backoff`, feeds in failure backoff.
+async fn load_refresh_items(state: &AppState, only: Option<&[String]>, ignore_backoff: bool) -> AppResult<Vec<PodcastRefreshItem>> {
     use crate::services::scheduler::{BACKOFF_MAX_STEPS, BACKOFF_STEP_MINUTES};
     let mut refresh_items: Vec<PodcastRefreshItem> = Vec::new();
 
@@ -476,18 +516,17 @@ async fn load_refresh_items(state: &AppState, min_age_minutes: Option<i64>, only
         crate::database::DatabasePool::Postgres(pool) => {
             let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
                 r#"SELECT podcastid, feedurl, artworkurl, autodownload, autoqueue, username, password,
-                          isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified, feedcontenthash
+                          isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified, feedcontenthash,
+                          refreshintervalminutes
                    FROM "Podcasts"
                    WHERE COALESCE(refreshpodcast, TRUE) = TRUE
                      AND (refreshnotbefore IS NULL OR refreshnotbefore <= NOW())
-                     AND ($2 OR COALESCE(consecutivefailures, 0) = 0
+                     AND ($1 OR COALESCE(consecutivefailures, 0) = 0
                           OR lastrefreshattempt IS NULL
                           OR lastrefreshattempt < NOW() - (INTERVAL '1 minute' * ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(consecutivefailures, 0), {BACKOFF_MAX_STEPS}))))
-                     AND ($1::BIGINT IS NULL OR lastrefreshsuccess IS NULL OR lastrefreshsuccess < NOW() - make_interval(mins => $1::INT))
-                     AND ($3::TEXT[] IS NULL OR feedurl = ANY($3))"#
+                     AND ($2::TEXT[] IS NULL OR feedurl = ANY($2))"#
             )))
-            .bind(min_age_minutes)
-            .bind(only.is_some())
+            .bind(ignore_backoff)
             .bind(only)
             .fetch_all(pool)
             .await?;
@@ -508,6 +547,7 @@ async fn load_refresh_items(state: &AppState, min_age_minutes: Option<i64>, only
                     etag: result.try_get::<Option<String>, _>("feedetag").ok().flatten(),
                     last_modified: result.try_get::<Option<String>, _>("feedlastmodified").ok().flatten(),
                     content_hash: result.try_get::<Option<String>, _>("feedcontenthash").ok().flatten(),
+                    refresh_interval: result.try_get::<Option<i32>, _>("refreshintervalminutes").ok().flatten(),
                 });
             }
         }
@@ -519,19 +559,17 @@ async fn load_refresh_items(state: &AppState, min_age_minutes: Option<i64>, only
             };
             let mut query = sqlx::query(sqlx::AssertSqlSafe(format!(
                 "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, AutoQueue, Username, Password,
-                        IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified, FeedContentHash
+                        IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified, FeedContentHash,
+                        RefreshIntervalMinutes
                  FROM Podcasts
                  WHERE COALESCE(RefreshPodcast, 1) = 1
                    AND (RefreshNotBefore IS NULL OR RefreshNotBefore <= NOW())
                    AND (? OR COALESCE(ConsecutiveFailures, 0) = 0
                         OR LastRefreshAttempt IS NULL
                         OR LastRefreshAttempt < NOW() - INTERVAL ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(ConsecutiveFailures, 0), {BACKOFF_MAX_STEPS})) MINUTE)
-                   AND (? IS NULL OR LastRefreshSuccess IS NULL OR LastRefreshSuccess < NOW() - INTERVAL ? MINUTE)
                    {feeds}"
             )))
-            .bind(only.is_some())
-            .bind(min_age_minutes)
-            .bind(min_age_minutes);
+            .bind(ignore_backoff);
             for url in only.unwrap_or_default() {
                 query = query.bind(url);
             }
@@ -553,6 +591,7 @@ async fn load_refresh_items(state: &AppState, min_age_minutes: Option<i64>, only
                     etag: result.try_get::<Option<String>, _>("FeedETag").ok().flatten(),
                     last_modified: result.try_get::<Option<String>, _>("FeedLastModified").ok().flatten(),
                     content_hash: result.try_get::<Option<String>, _>("FeedContentHash").ok().flatten(),
+                    refresh_interval: result.try_get::<Option<i32>, _>("RefreshIntervalMinutes").ok().flatten(),
                 });
             }
         }
@@ -562,14 +601,33 @@ async fn load_refresh_items(state: &AppState, min_age_minutes: Option<i64>, only
     Ok(refresh_items)
 }
 
-// Background refresh of every user's podcasts (no WebSocket). `min_age_minutes` skips feeds that
-// refreshed successfully more recently than that (startup).
-async fn refresh_all_podcasts_background(state: &AppState, min_age_minutes: Option<i64>) -> AppResult<()> {
+// Background refresh of every user's podcasts (no WebSocket), due or not.
+async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
     info!("Running refresh");
-    let items = load_refresh_items(state, min_age_minutes, None).await?;
+    let items = load_refresh_items(state, None, false).await?;
     refresh_items(state, items).await;
     info!("Refresh completed");
     Ok(())
+}
+
+/// Refresh the feeds whose next refresh is due, the longest overdue first, at most
+/// `REFRESH_TICK_MAX_FEEDS` of them. Returns how many feeds were refreshed.
+pub async fn refresh_due_podcasts(state: &AppState) -> AppResult<usize> {
+    let due = state.db_pool.due_refresh_feeds(REFRESH_TICK_MAX_FEEDS).await?;
+    if due.is_empty() {
+        return Ok(0);
+    }
+    let mut urls: Vec<String> = due.iter().map(|(url, _, _)| url.clone()).collect();
+    urls.sort();
+    urls.dedup();
+    let due: HashSet<FeedKey> = due.into_iter().collect();
+    let items: Vec<PodcastRefreshItem> = load_refresh_items(state, Some(&urls), false)
+        .await?
+        .into_iter()
+        .filter(|i| due.contains(&(i.feed_url.clone(), i.username.clone(), i.password.clone())))
+        .collect();
+    debug!("Refreshing {} due feeds", due.len());
+    Ok(refresh_items(state, items).await)
 }
 
 /// Refresh these feeds for every subscriber now (a Podping announced an update). Failure backoff
@@ -578,7 +636,7 @@ pub async fn refresh_feed_urls(state: &AppState, urls: &[String]) -> AppResult<u
     if urls.is_empty() {
         return Ok(0);
     }
-    let items = load_refresh_items(state, None, Some(urls)).await?;
+    let items = load_refresh_items(state, Some(urls), true).await?;
     Ok(refresh_items(state, items).await)
 }
 
@@ -612,7 +670,7 @@ async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>)
     let groups: Vec<Vec<PodcastRefreshItem>> = feed_groups.into_values().collect();
     let feeds = groups.len() + youtube_items.len();
     let subscription_count: usize = groups.iter().map(|g| g.len()).sum();
-    info!(
+    debug!(
         "Running refresh: {} unique RSS feeds ({} subscriptions), {} YouTube channels (concurrency={})",
         groups.len(),
         subscription_count,
@@ -939,6 +997,7 @@ pub struct PodcastForRefresh {
     pub etag: Option<String>,
     pub last_modified: Option<String>,
     pub content_hash: Option<String>,
+    pub refresh_interval: Option<i32>,
     /// The background refresh succeeded on this feed in the last 2 minutes.
     pub recently_refreshed: bool,
     /// The host's Retry-After hold hasn't expired yet.
@@ -1008,6 +1067,7 @@ async fn refresh_rss_feed(
         etag: podcast.etag.clone(),
         last_modified: podcast.last_modified.clone(),
         content_hash: podcast.content_hash.clone(),
+        refresh_interval: podcast.refresh_interval,
     };
     let Some(_lock) = FeedLock::try_acquire(FeedLock::key(&item.feed_url, item.username.as_deref(), item.password.as_deref())) else {
         debug!("Skipping manual refresh of podcast {}: it's being refreshed right now", podcast.id);
@@ -1047,7 +1107,7 @@ async fn refresh_youtube_channel(
     ).await {
         Ok(_) => {
             info!("Successfully refreshed YouTube channel: {}", podcast.name);
-            mark_refreshed(state, &ids).await;
+            mark_refreshed(state, &ids, youtube_schedule(state, podcast.id).await).await;
             // YouTube new-episode surfacing over the websocket is not yet wired up
             // (process_youtube_channel does not return the inserted rows); the channel is still
             // refreshed and new videos appear on the next list load.
@@ -1068,15 +1128,9 @@ pub struct SyncResult {
     pub synced_episodes: i32,
 }
 
-// Internal functions for scheduler (no HTTP context needed)
+/// Refresh every feed now, whether it's due or not.
 pub async fn refresh_pods_admin_internal(state: &AppState) -> AppResult<()> {
-    tracing::info!("Starting internal podcast refresh (scheduler)");
-    refresh_all_podcasts_background(state, None).await
-}
-
-/// Refresh every feed that hasn't refreshed successfully in the last `min_age_minutes`.
-pub async fn refresh_stale_podcasts(state: &AppState, min_age_minutes: i64) -> AppResult<()> {
-    refresh_all_podcasts_background(state, Some(min_age_minutes)).await
+    refresh_all_podcasts_background(state).await
 }
 
 // Separate endpoint for actual Nextcloud refresh (different from GPodder)

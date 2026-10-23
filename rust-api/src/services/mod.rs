@@ -10,6 +10,7 @@ pub mod people;
 pub mod podcasting2;
 pub mod podping;
 pub mod recommendations;
+pub mod refresh_schedule;
 pub mod scheduler;
 pub mod sync;
 pub mod task_manager;
