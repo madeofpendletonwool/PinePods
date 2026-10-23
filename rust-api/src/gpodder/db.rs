@@ -884,7 +884,7 @@ impl DatabasePool {
                 r#"SELECT e.episodeid AS id, e.episodetitle AS title, e.episodeurl AS url, e.episodedescription AS description,
                           e.episodepubdate AS released, p.podcastname AS ptitle, p.feedurl AS purl, p.websiteurl AS website,
                           p.username, p.password, COALESCE(p.isyoutubechannel, FALSE) AS yt
-                   FROM "Episodes" e JOIN "Podcasts" p ON p.podcastid = e.podcastid
+                   FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid
                    WHERE p.userid = $1 AND e.episodepubdate >= $2
                    ORDER BY e.episodepubdate DESC LIMIT $3"#,
             )
@@ -900,7 +900,7 @@ impl DatabasePool {
                 "SELECT e.EpisodeID AS id, e.EpisodeTitle AS title, e.EpisodeURL AS url, e.EpisodeDescription AS description,
                         e.EpisodePubDate AS released, p.PodcastName AS ptitle, p.FeedURL AS purl, p.WebsiteURL AS website,
                         p.Username AS username, p.Password AS password, p.IsYouTubeChannel AS yt
-                 FROM Episodes e JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                 FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID
                  WHERE p.UserID = ? AND e.EpisodePubDate >= ?
                  ORDER BY e.EpisodePubDate DESC LIMIT ?",
             )
@@ -1082,11 +1082,11 @@ impl DatabasePool {
                               s.guid, s.episodeid, 'pinepods'
                        FROM (
                            SELECT p.feedurl, e.episodeurl, NULLIF(e.episodeguid, '') AS guid, e.episodeid, e.episodeduration AS duration,
-                                  CASE WHEN COALESCE(e.completed, FALSE) AND COALESCE(e.episodeduration, 0) > 0
+                                  CASE WHEN COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) AND COALESCE(e.episodeduration, 0) > 0
                                        THEN e.episodeduration ELSE COALESCE(h.listenduration, 0) END AS pos,
                                   COALESCE(FLOOR(EXTRACT(EPOCH FROM h.listendate))::BIGINT, 0) AS ts
                            FROM "Episodes" e
-                           JOIN "Podcasts" p ON p.podcastid = e.podcastid
+                           JOIN "Podcasts" p ON p.feedid = e.feedid
                            LEFT JOIN "UserEpisodeHistory" h ON h.episodeid = e.episodeid AND h.userid = $1
                            WHERE p.userid = $1
                              AND (LOWER(p.feedurl) LIKE 'http://%' OR LOWER(p.feedurl) LIKE 'https://%')
@@ -1116,11 +1116,11 @@ impl DatabasePool {
                             GREATEST(COALESCE(NULLIF(s.duration, 0), s.pos), s.pos), s.guid, s.EpisodeID, 'pinepods'
                      FROM (
                          SELECT p.FeedURL, e.EpisodeURL, NULLIF(e.EpisodeGUID, '') AS guid, e.EpisodeID, e.EpisodeDuration AS duration,
-                                CASE WHEN COALESCE(e.Completed, FALSE) AND COALESCE(e.EpisodeDuration, 0) > 0
+                                CASE WHEN COALESCE((SELECT ues.Completed FROM UserEpisodeState ues WHERE ues.EpisodeID = e.EpisodeID AND ues.UserID = p.UserID), 0) AND COALESCE(e.EpisodeDuration, 0) > 0
                                      THEN e.EpisodeDuration ELSE COALESCE(h.ListenDuration, 0) END AS pos,
                                 COALESCE(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', h.ListenDate), 0) AS ts
                          FROM Episodes e
-                         JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                         JOIN Podcasts p ON p.FeedID = e.FeedID
                          LEFT JOIN UserEpisodeHistory h ON h.EpisodeID = e.EpisodeID AND h.UserID = ?
                          WHERE p.UserID = ?
                            AND (LOWER(p.FeedURL) LIKE 'http://%' OR LOWER(p.FeedURL) LIKE 'https://%')

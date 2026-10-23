@@ -83,3 +83,19 @@ pub async fn rerun_migrations(app: &TestApp, versions: &[&str]) {
     let db_name = app.db_name.clone();
     tokio::task::spawn_blocking(move || super::env::run_migrations(env, &db_name)).await.unwrap();
 }
+
+/// Apply `assignments` (e.g. "LastRefreshAttempt = '2000-01-01 00:00:00'") to a podcast's refresh
+/// state, which lives on its feed and, until those columns go, the podcast row.
+pub async fn set_refresh_state(app: &TestApp, podcast_id: i32, assignments: &str) {
+    exec(app, &format!(r#"UPDATE "Podcasts" SET {assignments} WHERE PodcastID = {podcast_id}"#)).await;
+    exec(
+        app,
+        &format!(r#"UPDATE "Feeds" SET {assignments} WHERE FeedID = (SELECT FeedID FROM "Podcasts" WHERE PodcastID = {podcast_id})"#),
+    )
+    .await;
+}
+
+/// Set when a podcast's feed is refreshed next, e.g. '2000-01-01 00:00:00' to make it due now.
+pub async fn set_next_refresh(app: &TestApp, podcast_id: i32, at: &str) {
+    set_refresh_state(app, podcast_id, &format!("NextRefreshAt = '{at}'")).await;
+}

@@ -63,6 +63,13 @@ impl TestApp {
             self.feed_tags_stored(podcast_id).await.then_some(())
         })
         .await;
+        // Scheduling the next refresh is the import's last write; a test moving the schedule
+        // before it lands would be overwritten.
+        let scheduled = format!(r#"SELECT COUNT(*) FROM "Podcasts" WHERE PodcastID = {podcast_id} AND NextRefreshAt IS NOT NULL"#);
+        eventually(&format!("next refresh scheduled for podcast {podcast_id}"), || async {
+            (super::sql::int(self, &scheduled).await == Some(1)).then_some(())
+        })
+        .await;
         podcast_id
     }
 

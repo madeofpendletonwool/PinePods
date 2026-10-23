@@ -286,6 +286,10 @@ pub async fn cleanup_tasks_internal(state: &AppState) -> AppResult<()> {
         tracing::warn!("Expired gpodder session cleanup failed: {}", e);
     }
 
+    if let Err(e) = state.db_pool.delete_orphan_feeds().await {
+        tracing::warn!("Deleting feeds without subscribers failed: {}", e);
+    }
+
     tracing::info!("Cleanup tasks completed successfully");
 
     Ok(())

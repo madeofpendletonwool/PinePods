@@ -164,14 +164,14 @@ impl DatabasePool {
         }
         let podcasts: Vec<(i32, Option<String>, Option<String>, i64)> = match self {
             DatabasePool::Postgres(pool) => sqlx::query_as(
-                r#"SELECT p.podcastid, p.podcastname, p.podcastguid, (SELECT COUNT(*) FROM "Episodes" e WHERE e.podcastid = p.podcastid)
+                r#"SELECT p.podcastid, p.podcastname, p.podcastguid, (SELECT COUNT(*) FROM "Episodes" e WHERE e.feedid = p.feedid)
                    FROM "Podcasts" p WHERE p.userid = $1 AND NOT COALESCE(p.isyoutubechannel, FALSE)"#,
             )
             .bind(user_id)
             .fetch_all(pool)
             .await?,
             DatabasePool::MySQL(pool) => sqlx::query_as(
-                "SELECT p.PodcastID, p.PodcastName, p.PodcastGUID, CAST((SELECT COUNT(*) FROM Episodes e WHERE e.PodcastID = p.PodcastID) AS SIGNED)
+                "SELECT p.PodcastID, p.PodcastName, p.PodcastGUID, CAST((SELECT COUNT(*) FROM Episodes e WHERE e.FeedID = p.FeedID) AS SIGNED)
                  FROM Podcasts p WHERE p.UserID = ? AND COALESCE(p.IsYouTubeChannel, 0) = 0",
             )
             .bind(user_id)
@@ -204,7 +204,7 @@ impl DatabasePool {
     async fn shared_episode_count(&self, podcast_id: i32, feed: &FeedIdentity) -> AppResult<usize> {
         let count: i64 = match self {
             DatabasePool::Postgres(pool) => sqlx::query_scalar(
-                r#"SELECT COUNT(*) FROM "Episodes" WHERE podcastid = $1 AND (episodeguid = ANY($2) OR episodeurl = ANY($3))"#,
+                r#"SELECT COUNT(*) FROM "Episodes" WHERE feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1) AND (episodeguid = ANY($2) OR episodeurl = ANY($3))"#,
             )
             .bind(podcast_id)
             .bind(&feed.episode_guids)
@@ -217,7 +217,7 @@ impl DatabasePool {
                 let urls: Vec<&String> = feed.episode_urls.iter().take(200).collect();
                 let list = |n: usize| if n == 0 { "NULL".to_string() } else { vec!["?"; n].join(", ") };
                 let sql = format!(
-                    "SELECT COUNT(*) FROM Episodes WHERE PodcastID = ? AND (EpisodeGUID IN ({}) OR EpisodeURL IN ({}))",
+                    "SELECT COUNT(*) FROM Episodes WHERE FeedID = (SELECT FeedID FROM Podcasts WHERE PodcastID = ?) AND (EpisodeGUID IN ({}) OR EpisodeURL IN ({}))",
                     list(guids.len()),
                     list(urls.len())
                 );
@@ -298,6 +298,7 @@ impl DatabasePool {
                 tx.commit().await?;
             }
         }
+        self.link_feed_or_warn(podcast_id).await;
         info!("Podcast {} moved from its failing address {} to {}", podcast_id, old, url);
         Ok(true)
     }

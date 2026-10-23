@@ -134,7 +134,11 @@ async fn a_failed_import_gives_up_after_its_retries_and_tells_the_user() {
     s.app.post(&format!("/api/data/feed_problems/imports/{id}/retry")).key(&s.user).send().await.ok_json();
     let f = wait_for_failure(&s.app, &s.user, &url, 10).await;
     assert_eq!(f["next_attempt_at"], Value::Null, "given up: {f}");
-    let told = messages(&s.app, &s.user, "sync_import_failed").await;
+    // The message is sent after the failure is recorded.
+    let told = eventually("the user was told the import gave up", || async {
+        Some(messages(&s.app, &s.user, "sync_import_failed").await).filter(|m| !m.is_empty())
+    })
+    .await;
     assert_eq!(told.len(), 1, "{told:?}");
 
     // Due imports are only those still being retried.

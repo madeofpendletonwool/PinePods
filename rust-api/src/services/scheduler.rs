@@ -21,9 +21,6 @@ pub fn failure_backoff(failures: i32) -> chrono::Duration {
     chrono::Duration::minutes(BACKOFF_STEP_MINUTES * i64::from(failures.clamp(0, BACKOFF_MAX_STEPS)))
 }
 
-/// Skip feeds refreshed this recently when refreshing at startup, so restarts are cheap.
-const STARTUP_REFRESH_MIN_AGE_MINUTES: i64 = 15;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobKind {
     Refresh,
@@ -92,15 +89,12 @@ impl BackgroundScheduler {
     pub async fn start(&self, app_state: Arc<AppState>) -> AppResult<()> {
         info!("🕒 Starting background task scheduler...");
 
-        // Schedule podcast refresh. Interval is configurable via PINEPODS_REFRESH_CRON (a 6-field
-        // cron expression, sec min hour dom mon dow); defaults to every 30 minutes.
-        let refresh_cron = std::env::var("PINEPODS_REFRESH_CRON")
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "0 */30 * * * *".to_string());
-        info!("📅 Podcast refresh schedule: {}", refresh_cron);
+        // Every minute, refresh the feeds that are due. Each feed's next refresh follows how often
+        // it publishes, at most PINEPODS_REFRESH_MAX_INTERVAL apart (read now, so a deprecated or
+        // invalid setting is reported at startup).
+        crate::services::refresh_schedule::max_interval();
         let refresh_state = app_state.clone();
-        let refresh_job = Job::new_async(refresh_cron.as_str(), move |_uuid, _l| {
+        let refresh_job = Job::new_async("0 * * * * *", move |_uuid, _l| {
             let state = refresh_state.clone();
             Box::pin(async move {
                 guarded(JobKind::Refresh, run_refresh_job(&state)).await;
@@ -388,8 +382,8 @@ impl BackgroundScheduler {
         Ok(())
     }
 
-    // Started once the server is listening: yt-dlp update, a refresh of feeds not refreshed in
-    // the last few minutes, then people sync.
+    // Started once the server is listening: yt-dlp update, a refresh of the feeds that are due,
+    // then people sync.
     pub async fn run_startup_refresh(state: Arc<AppState>) {
         // Log the yt-dlp version and self-update on startup (#793), so a freshly recreated
         // container pulls the latest YouTube fix before the refresh below pulls YouTube feeds.
@@ -398,7 +392,7 @@ impl BackgroundScheduler {
             warn!("⚠️ Startup yt-dlp update failed: {}", e);
         }
 
-        guarded(JobKind::Refresh, refresh::refresh_stale_podcasts(&state, STARTUP_REFRESH_MIN_AGE_MINUTES)).await;
+        guarded(JobKind::Refresh, run_refresh_job(&state)).await;
 
         // People: drop old host-feed placeholders, backfill stored tags, first PodPeopleDB sync.
         tokio::spawn(crate::services::people::startup(
@@ -408,9 +402,9 @@ impl BackgroundScheduler {
     }
 }
 
-/// The scheduled refresh: feeds only. Sync runs on its own schedule.
+/// The scheduled refresh: the feeds that are due, nothing else. Sync runs on its own schedule.
 pub async fn run_refresh_job(state: &AppState) -> AppResult<()> {
-    refresh::refresh_pods_admin_internal(state).await
+    refresh::refresh_due_podcasts(state).await.map(|_| ())
 }
 
 /// The scheduled external sync.

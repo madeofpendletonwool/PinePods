@@ -59,6 +59,8 @@ pub struct AppState {
     /// Whether the optional pinepods-ai sidecar is reachable. Kept fresh by a
     /// background health monitor; handlers gate AI features on this.
     pub ai_available: crate::services::ai_client::AiAvailability,
+    /// Whether episode ids of merged copies exist, for following them in requests.
+    pub merged_episodes: crate::services::episode_aliases::MergedEpisodes,
 }
 
 /// Builds the spec-aware router. Handlers annotated with `#[utoipa::path]` and
@@ -103,6 +105,8 @@ pub fn create_app(state: AppState) -> Router {
             async move { axum::Json(spec) }
         }))
         .merge(Scalar::with_url("/api/docs", api))
+        // Episode ids of merged copies point at the episode they became.
+        .layer(axum::middleware::from_fn_with_state(state.clone(), services::episode_aliases::follow_merged_episodes))
         // Middleware stack
         .layer(
             ServiceBuilder::new()

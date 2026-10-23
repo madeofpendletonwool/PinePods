@@ -24,10 +24,11 @@ async fn download_episode_and_wait(
                 SELECT e.episodeurl, e.episodetitle, p.podcastname, 
                        e.episodepubdate
                 FROM "Episodes" e
-                JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = $2
                 WHERE e.episodeid = $1
             "#)
             .bind(episode_id)
+            .bind(user_id)
             .fetch_one(pool)
             .await?;
             
@@ -42,9 +43,10 @@ async fn download_episode_and_wait(
             let row = sqlx::query("
                 SELECT e.EpisodeURL, e.EpisodeTitle, p.PodcastName, e.EpisodePubDate
                 FROM Episodes e
-                JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ?
                 WHERE e.EpisodeID = ?
             ")
+            .bind(user_id)
             .bind(episode_id)
             .fetch_one(pool)
             .await?;
@@ -309,10 +311,11 @@ impl TaskSpawner {
                                    e."episodedescription", p."username", p."password",
                                    p."feedurl", e."episodeguid", e."episodeduration"
                             FROM "Episodes" e
-                            JOIN "Podcasts" p ON e."podcastid" = p."podcastid"
+                            JOIN "Podcasts" p ON e."feedid" = p."feedid" AND p."userid" = $2
                             WHERE e."episodeid" = $1
                         "#)
                         .bind(episode_id)
+                        .bind(user_id)
                         .fetch_one(pool)
                         .await?;
 
@@ -339,9 +342,10 @@ impl TaskSpawner {
                                    e.EpisodeDescription, p.Username, p.Password,
                                    p.FeedURL, e.EpisodeGUID, e.EpisodeDuration
                             FROM Episodes e
-                            JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                            JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ?
                             WHERE e.EpisodeID = ?
                         ")
+                        .bind(user_id)
                         .bind(episode_id)
                         .fetch_one(pool)
                         .await?;
@@ -939,7 +943,7 @@ impl TaskSpawner {
                             SELECT e.episodeid 
                             FROM "Episodes" e
                             LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid AND de.userid = $2
-                            WHERE e.podcastid = $1 AND de.episodeid IS NULL
+                            WHERE e.feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1) AND de.episodeid IS NULL
                             ORDER BY e.episodepubdate DESC
                         "#)
                             .bind(podcast_id)
@@ -956,7 +960,7 @@ impl TaskSpawner {
                             SELECT e.EpisodeID 
                             FROM Episodes e
                             LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
-                            WHERE e.PodcastID = ? AND de.EpisodeID IS NULL
+                            WHERE e.FeedID = (SELECT FeedID FROM Podcasts WHERE PodcastID = ?) AND de.EpisodeID IS NULL
                             ORDER BY e.EpisodePubDate DESC
                         ")
                             .bind(user_id)
@@ -1206,13 +1210,13 @@ impl TaskSpawner {
                             // Count episodes for logging and notification
                             let episode_count: i64 = match &db_pool {
                                 crate::database::DatabasePool::Postgres(pool) => {
-                                    sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE podcastid = $1"#)
+                                    sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1)"#)
                                         .bind(podcast_id)
                                         .fetch_one(pool)
                                         .await?
                                 }
                                 crate::database::DatabasePool::MySQL(pool) => {
-                                    sqlx::query_scalar("SELECT COUNT(*) FROM Episodes WHERE PodcastID = ?")
+                                    sqlx::query_scalar("SELECT COUNT(*) FROM Episodes WHERE FeedID = (SELECT FeedID FROM Podcasts WHERE PodcastID = ?)")
                                         .bind(podcast_id)
                                         .fetch_one(pool)
                                         .await?

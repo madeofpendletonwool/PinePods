@@ -244,7 +244,7 @@ pub(crate) async fn episode_keys(db: &DatabasePool, podcast_id: i32) -> AppResul
     let rows = fetch_all!(
         db,
         r#"SELECT episodeid AS episodeid, episodeguid AS guid, episodeurl AS url, chaptersurl AS chapters, transcriptsjson AS transcripts
-           FROM "Episodes" WHERE podcastid = $1"#,
+           FROM "Episodes" WHERE feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1)"#,
         [podcast_id],
         |r| (r.int("episodeid")? as i32, r.opt_str("guid")?, r.opt_str("url")?, r.opt_str("chapters")?, r.opt_str("transcripts")?)
     );
@@ -313,7 +313,7 @@ pub async fn apply_feed_tags(db: &DatabasePool, podcast_id: i32, tags: &FeedTags
     }
     execute!(
         db,
-        r#"DELETE FROM "EpisodePeople" WHERE source = 'feed' AND episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#,
+        r#"DELETE FROM "EpisodePeople" WHERE source = 'feed' AND episodeid IN (SELECT episodeid FROM "Episodes" WHERE feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1))"#,
         [podcast_id]
     );
     insert_credits(db, "EpisodePeople", "episodeid", SOURCE_FEED, &episode_rows).await?;
@@ -405,7 +405,7 @@ pub async fn owned_podcast(db: &DatabasePool, podcast_id: i32, user_id: i32) -> 
 pub async fn owned_episode_podcast(db: &DatabasePool, episode_id: i32, user_id: i32) -> AppResult<i32> {
     fetch_optional!(
         db,
-        r#"SELECT e.podcastid AS podcastid FROM "Episodes" e JOIN "Podcasts" p ON p.podcastid = e.podcastid
+        r#"SELECT p.podcastid AS podcastid FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid
            WHERE e.episodeid = $1 AND p.userid = $2"#,
         [episode_id, user_id],
         |r| r.int("podcastid")? as i32
@@ -497,7 +497,7 @@ async fn podcast_raw_credits(db: &DatabasePool, podcast_id: i32) -> AppResult<Ve
                FROM "EpisodePeople" ep
                JOIN "Episodes" e ON e.episodeid = ep.episodeid
                JOIN "Persons" pe ON pe.personid = ep.personid
-               WHERE e.podcastid = $1"#
+               WHERE e.feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1)"#
         ),
         [podcast_id],
         |r| raw_credit!(r, Some(r.int("episodeid")? as i32))
@@ -695,7 +695,7 @@ pub async fn library_podcasts(db: &DatabasePool, person_id: i32, user_id: i32) -
         format!(
             r#"SELECT {cols}, ep.role AS role, ep.episodeid AS episodeid FROM "EpisodePeople" ep
                JOIN "Episodes" e ON e.episodeid = ep.episodeid
-               JOIN "Podcasts" p ON p.podcastid = e.podcastid
+               JOIN "Podcasts" p ON p.feedid = e.feedid
                WHERE ep.personid = $1 AND p.userid = $2"#
         ),
         [person_id, user_id],
@@ -747,12 +747,12 @@ pub async fn library_episodes(
                        WHEN e.episodeartwork IS NULL OR e.episodeartwork = '' THEN p.artworkurl
                        ELSE e.episodeartwork END AS episodeartwork,
                   e.episodeurl AS episodeurl, e.episodeduration AS episodeduration,
-                  e.completed AS completed, {is_video} AS is_video, h.listenduration AS listenduration,
+                  COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) AS completed, {is_video} AS is_video, h.listenduration AS listenduration,
                   CASE WHEN s.episodeid IS NULL THEN 0 ELSE 1 END AS saved,
                   CASE WHEN q.episodeid IS NULL THEN 0 ELSE 1 END AS queued,
                   CASE WHEN d.episodeid IS NULL THEN 0 ELSE 1 END AS downloaded
            FROM "Episodes" e
-           JOIN "Podcasts" p ON p.podcastid = e.podcastid
+           JOIN "Podcasts" p ON p.feedid = e.feedid
            LEFT JOIN "Users" u ON u.userid = p.userid
            LEFT JOIN "UserEpisodeHistory" h ON h.episodeid = e.episodeid AND h.userid = $1
            LEFT JOIN "SavedEpisodes" s ON s.episodeid = e.episodeid AND s.userid = $2
@@ -760,7 +760,7 @@ pub async fn library_episodes(
            LEFT JOIN "DownloadedEpisodes" d ON d.episodeid = e.episodeid AND d.userid = $4
            WHERE p.userid = $5 AND (
                e.episodeid IN (SELECT ep.episodeid FROM "EpisodePeople" ep WHERE ep.personid = $6)
-               OR e.podcastid IN (SELECT pp.podcastid FROM "PodcastPeople" pp WHERE pp.personid = $7 AND pp.role IN ('host', 'co-host'))
+               OR p.podcastid IN (SELECT pp.podcastid FROM "PodcastPeople" pp WHERE pp.personid = $7 AND pp.role IN ('host', 'co-host'))
            )
            ORDER BY e.episodepubdate DESC
            LIMIT $8 OFFSET $9"#),

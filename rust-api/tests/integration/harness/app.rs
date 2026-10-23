@@ -158,6 +158,7 @@ impl TestApp {
             notification_manager: Arc::new(pinepods_api::redis_manager::NotificationManager::new()),
             restore_in_progress: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             ai_available: pinepods_api::services::ai_client::AiAvailability::new(),
+            merged_episodes: Default::default(),
         };
         let router = pinepods_api::create_app(state.clone());
 

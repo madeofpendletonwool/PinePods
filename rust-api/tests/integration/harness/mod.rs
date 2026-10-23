@@ -25,4 +25,4 @@ pub use flows::eventually;
 #[allow(unused_imports)]
 pub use serde_json::{json, Value};
 #[allow(unused_imports)]
-pub use sql::{exec, int, rerun_migrations, text};
+pub use sql::{exec, int, rerun_migrations, set_next_refresh, set_refresh_state, text};

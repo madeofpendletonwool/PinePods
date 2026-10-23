@@ -648,6 +648,8 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     FailingSince TIMESTAMP,
                     LastErrorKind VARCHAR(32),
                     ProblemNotified BOOLEAN NOT NULL DEFAULT FALSE,
+                    NextRefreshAt TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '5 minutes'),
+                    RefreshIntervalMinutes INT,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                 )
             """)
@@ -727,6 +729,8 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     FailingSince DATETIME NULL DEFAULT NULL,
                     LastErrorKind VARCHAR(32),
                     ProblemNotified TINYINT(1) NOT NULL DEFAULT 0,
+                    NextRefreshAt DATETIME NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE),
+                    RefreshIntervalMinutes INT,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )
             """)
@@ -7074,6 +7078,709 @@ def migration_073_podcasts_feedurl_index(conn, db_type: str) -> None:
             safe_add_index(cursor, db_type, 'CREATE INDEX idx_podcasts_feedurl ON "Podcasts" USING hash (feedurl)', "idx_podcasts_feedurl")
         else:
             safe_add_index(cursor, db_type, "CREATE INDEX idx_podcasts_feedurl ON Podcasts (FeedURL(255))", "idx_podcasts_feedurl")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("075", "adaptive_refresh_schedule", "Podcasts.NextRefreshAt/RefreshIntervalMinutes: each feed is refreshed on its own schedule", requires=["001", "044"])
+def migration_075_adaptive_refresh_schedule(conn, db_type: str) -> None:
+    """Feeds are refreshed when they're due instead of all at once.
+
+    - NextRefreshAt: when the feed is refreshed next. New rows default to a few minutes out, so
+      the import that adds a podcast finishes (and schedules it) before a refresh picks it up.
+    - RefreshIntervalMinutes: the interval its publishing pattern earned at the last refresh.
+
+    Existing feeds get an interval from their newest ten episodes (the same rule the refresh
+    uses, without the feed's own hints) and their first refresh is spread over the next 30
+    minutes, the old refresh cycle.
+    """
+    import datetime
+
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    podcasts = '"Podcasts"' if pg else "Podcasts"
+    try:
+        added = not _column_exists(cursor, db_type, "Podcasts", "NextRefreshAt")
+        if added:
+            ddl = ("TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '5 minutes')" if pg
+                   else "DATETIME NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE)")
+            cursor.execute(f"ALTER TABLE {podcasts} ADD COLUMN NextRefreshAt {ddl}")
+        if not _column_exists(cursor, db_type, "Podcasts", "RefreshIntervalMinutes"):
+            cursor.execute(f"ALTER TABLE {podcasts} ADD COLUMN RefreshIntervalMinutes INT")
+        safe_add_index(cursor, db_type, f"CREATE INDEX idx_podcasts_nextrefreshat ON {podcasts} (NextRefreshAt)", "idx_podcasts_nextrefreshat")
+
+        # Newest ten publishing dates per podcast, episodes or YouTube videos.
+        dates = {}
+        for table, date_col in (("Episodes", "EpisodePubDate"), ("YouTubeVideos", "PublishedAt")):
+            if not _table_exists(cursor, db_type, table):
+                continue
+            name = f'"{table}"' if pg else table
+            cursor.execute(
+                f"SELECT PodcastID, {date_col} FROM ("
+                f" SELECT PodcastID, {date_col}, ROW_NUMBER() OVER (PARTITION BY PodcastID ORDER BY {date_col} DESC) AS rn"
+                f" FROM {name} WHERE {date_col} IS NOT NULL) recent WHERE rn <= 10"
+            )
+            for podcast_id, published in cursor.fetchall():
+                dates.setdefault(podcast_id, []).append(published.replace(tzinfo=None))
+
+        now = datetime.datetime.utcnow()
+        cursor.execute(f"SELECT PodcastID FROM {podcasts} WHERE RefreshIntervalMinutes IS NULL")
+        by_interval = {}
+        for (podcast_id,) in cursor.fetchall():
+            by_interval.setdefault(_refresh_interval_minutes(dates.get(podcast_id, []), now), []).append(podcast_id)
+        for minutes, ids in by_interval.items():
+            for i in range(0, len(ids), 500):
+                chunk = ids[i:i + 500]
+                marks = ", ".join(["%s"] * len(chunk))
+                cursor.execute(
+                    f"UPDATE {podcasts} SET RefreshIntervalMinutes = %s WHERE PodcastID IN ({marks})",
+                    (minutes, *chunk),
+                )
+        if added:
+            spread = "(PodcastID % 30) * INTERVAL '1 minute'" if pg else "INTERVAL (PodcastID % 30) MINUTE"
+            cursor.execute(f"UPDATE {podcasts} SET NextRefreshAt = CURRENT_TIMESTAMP + {spread}")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+def _refresh_interval_minutes(published, now) -> int:
+    """A feed's refresh interval from its newest publishing dates: an eighth of the median gap,
+    15 minutes to 6 hours, 24 hours when nothing came out in 90 days. Matches the refresh."""
+    import datetime
+
+    dates = sorted(set(published), reverse=True)[:10]
+    if not dates or now - dates[0] > datetime.timedelta(days=90):
+        return 24 * 60
+    gaps = sorted((a - b).total_seconds() for a, b in zip(dates, dates[1:]))
+    if not gaps:
+        return 60
+    mid = len(gaps) // 2
+    median = gaps[mid] if len(gaps) % 2 else (gaps[mid - 1] + gaps[mid]) / 2
+    return int(min(max(median / 8 / 60, 15), 6 * 60))
+
+
+@register_migration("080", "create_feeds", "Feeds: one row per feed address and credentials, holding the refresh state its subscriptions share", requires=["044", "063", "071", "075"])
+def migration_080_create_feeds(conn, db_type: str) -> None:
+    """Feeds: one row per feed, shared by every user subscribed to it, with the refresh state
+    (validators, schedule, failures). Podcasts.FeedID links a subscription to its feed.
+
+    A feed is its address (FeedURLHash, the SHA-256 of FeedURL, carries the unique key; the server
+    fills it in) plus a credential key: '' for public feeds, the SHA-256 of
+    username + NUL + password for private ones (same address, other credentials = another feed),
+    and the SHA-256 of 'local' + NUL + user id for anything that isn't http(s), so uploads are
+    never shared. The refresh state of existing subscriptions is merged per feed: the earliest
+    next refresh and shortest interval, the stored validators, the body hash only when every
+    subscription agrees, and the healthiest failure state.
+    """
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    podcasts = '"Podcasts"' if pg else "Podcasts"
+    feeds = '"Feeds"' if pg else "Feeds"
+    try:
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "Feeds" (
+                    FeedID SERIAL PRIMARY KEY,
+                    FeedURL TEXT NOT NULL,
+                    FeedURLHash CHAR(64) NOT NULL,
+                    CredentialKey VARCHAR(64) NOT NULL DEFAULT '',
+                    IsYouTubeChannel BOOLEAN NOT NULL DEFAULT FALSE,
+                    FeedETag TEXT,
+                    FeedLastModified TEXT,
+                    FeedContentHash TEXT,
+                    RefreshNotBefore TIMESTAMP,
+                    NextRefreshAt TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '5 minutes'),
+                    RefreshIntervalMinutes INT,
+                    LastRefreshAttempt TIMESTAMP,
+                    LastRefreshSuccess TIMESTAMP,
+                    ConsecutiveFailures INT NOT NULL DEFAULT 0,
+                    LastErrorMessage TEXT,
+                    FailingSince TIMESTAMP,
+                    LastErrorKind VARCHAR(32),
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_feeds_url_credentials UNIQUE (FeedURLHash, CredentialKey)
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS Feeds (
+                    FeedID INT AUTO_INCREMENT PRIMARY KEY,
+                    FeedURL TEXT NOT NULL,
+                    FeedURLHash CHAR(64) NOT NULL,
+                    CredentialKey VARCHAR(64) NOT NULL DEFAULT '',
+                    IsYouTubeChannel TINYINT(1) NOT NULL DEFAULT 0,
+                    FeedETag TEXT,
+                    FeedLastModified TEXT,
+                    FeedContentHash TEXT,
+                    RefreshNotBefore DATETIME NULL DEFAULT NULL,
+                    NextRefreshAt DATETIME NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE),
+                    RefreshIntervalMinutes INT,
+                    LastRefreshAttempt DATETIME NULL DEFAULT NULL,
+                    LastRefreshSuccess DATETIME NULL DEFAULT NULL,
+                    ConsecutiveFailures INT NOT NULL DEFAULT 0,
+                    LastErrorMessage TEXT,
+                    FailingSince DATETIME NULL DEFAULT NULL,
+                    LastErrorKind VARCHAR(32),
+                    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_feeds_url_credentials (FeedURLHash, CredentialKey)
+                )
+            """)
+        safe_add_index(cursor, db_type, f"CREATE INDEX idx_feeds_nextrefreshat ON {feeds} (NextRefreshAt)", "idx_feeds_nextrefreshat")
+
+        if not _column_exists(cursor, db_type, "Podcasts", "FeedID"):
+            cursor.execute(f"ALTER TABLE {podcasts} ADD COLUMN FeedID INT NULL")
+        safe_add_index(cursor, db_type, f"CREATE INDEX idx_podcasts_feedid ON {podcasts} (FeedID)", "idx_podcasts_feedid")
+        if pg:
+            cursor.execute("""
+                SELECT COUNT(*) FROM information_schema.table_constraints
+                WHERE table_name = 'Podcasts' AND constraint_name = 'fk_podcasts_feed'
+            """)
+        else:
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Podcasts' AND CONSTRAINT_NAME = 'fk_podcasts_feed'
+            """)
+        if not cursor.fetchone()[0]:
+            cursor.execute(
+                f"ALTER TABLE {podcasts} ADD CONSTRAINT fk_podcasts_feed FOREIGN KEY (FeedID) "
+                f"REFERENCES {feeds}(FeedID) ON DELETE SET NULL"
+            )
+
+        linked = _link_podcasts_to_feeds(cursor, db_type)
+        logger.info(f"Migration 080: linked {linked} podcasts to their feeds")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("081", "user_episode_state", "UserEpisodeState: whether a user finished an episode, kept per user instead of on the episode", requires=["003", "005", "080"])
+def migration_081_user_episode_state(conn, db_type: str) -> None:
+    """UserEpisodeState: one row per user and episode they finished (Completed, CompletedAt).
+
+    Episodes.Completed only works while every user has their own copy of each episode; this
+    table holds it per user so episodes can be shared. Filled from the completed episodes of
+    each podcast's owner. Episodes.Completed is still written alongside for now.
+    """
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    try:
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "UserEpisodeState" (
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    EpisodeID INT NOT NULL REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE,
+                    Completed BOOLEAN NOT NULL DEFAULT FALSE,
+                    CompletedAt TIMESTAMP,
+                    PRIMARY KEY (UserID, EpisodeID)
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_userepisodestate_episode ON "UserEpisodeState"(EpisodeID)')
+            cursor.execute("""
+                INSERT INTO "UserEpisodeState" (UserID, EpisodeID, Completed)
+                SELECT p.UserID, e.EpisodeID, TRUE
+                FROM "Episodes" e JOIN "Podcasts" p ON p.PodcastID = e.PodcastID
+                WHERE e.Completed = TRUE AND p.UserID IS NOT NULL
+                ON CONFLICT (UserID, EpisodeID) DO NOTHING
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS UserEpisodeState (
+                    UserID INT NOT NULL,
+                    EpisodeID INT NOT NULL,
+                    Completed TINYINT(1) NOT NULL DEFAULT 0,
+                    CompletedAt DATETIME NULL DEFAULT NULL,
+                    PRIMARY KEY (UserID, EpisodeID),
+                    KEY idx_userepisodestate_episode (EpisodeID),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("""
+                INSERT IGNORE INTO UserEpisodeState (UserID, EpisodeID, Completed)
+                SELECT p.UserID, e.EpisodeID, 1
+                FROM Episodes e JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                WHERE e.Completed = 1 AND p.UserID IS NOT NULL
+            """)
+        logger.info(f"Migration 081: {cursor.rowcount} completed episodes")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("082", "shared_episodes", "Episodes belong to a feed (Episodes.FeedID); users subscribed to the same feed share its episodes", requires=["048", "050", "051", "062", "065", "069", "081"])
+def migration_082_shared_episodes(conn, db_type: str) -> None:
+    """Episodes belong to a feed instead of a user's podcast, so subscribers of a feed share them.
+
+    - Episodes.FeedID, from each episode's podcast.
+    - The copies of one episode that each subscriber had are merged into the oldest one (by GUID,
+      or by audio URL for episodes without one). Every table that points at an episode follows
+      it: listen history keeps the furthest position and latest date per user, finished episodes
+      stay finished for the user who finished them, saved/downloaded/queued/playlist/collection
+      entries keep one row per owner, shares and credits are kept, skip segments and transcripts
+      are taken from the oldest copy that has them, and the episode keeps the longest duration and
+      any detected silence/ads.
+    - EpisodeIDAliases maps each merged copy to the episode it became, so apps holding the old
+      id keep working.
+    - The merged copies are detached (FeedID NULL) and deleted by 118 once the gpodder episode
+      action log points at the episodes they became.
+    - Episodes.PodcastID no longer references Podcasts: an episode outlives the subscription that
+      added it.
+
+    Rerunning it only merges what is left (detached copies are skipped).
+    """
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+
+    def q(table: str) -> str:
+        return f'"{table}"' if pg else table
+
+    episodes, podcasts, aliases = q("Episodes"), q("Podcasts"), q("EpisodeIDAliases")
+    try:
+        if not _column_exists(cursor, db_type, "Episodes", "FeedID"):
+            cursor.execute(f"ALTER TABLE {episodes} ADD COLUMN FeedID INT NULL")
+        safe_add_index(
+            cursor, db_type,
+            f"CREATE INDEX idx_episodes_feedid_pubdate ON {episodes} (FeedID, EpisodePubDate)",
+            "idx_episodes_feedid_pubdate",
+        )
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeIDAliases" (
+                    OldEpisodeID INT PRIMARY KEY,
+                    EpisodeID INT NOT NULL REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE,
+                    CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_episodeidaliases_episode ON "EpisodeIDAliases"(EpisodeID)')
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS EpisodeIDAliases (
+                    OldEpisodeID INT PRIMARY KEY,
+                    EpisodeID INT NOT NULL,
+                    CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    KEY idx_episodeidaliases_episode (EpisodeID),
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE
+                )
+            """)
+
+        not_merged = f"NOT EXISTS (SELECT 1 FROM {aliases} a WHERE a.OldEpisodeID = e.EpisodeID)"
+        if pg:
+            cursor.execute(f"""
+                UPDATE {episodes} e SET FeedID = p.FeedID FROM {podcasts} p
+                WHERE p.PodcastID = e.PodcastID AND p.FeedID IS NOT NULL AND e.FeedID IS NULL AND {not_merged}
+            """)
+        else:
+            cursor.execute(f"""
+                UPDATE {episodes} e JOIN {podcasts} p ON p.PodcastID = e.PodcastID SET e.FeedID = p.FeedID
+                WHERE p.FeedID IS NOT NULL AND e.FeedID IS NULL AND {not_merged}
+            """)
+
+        _drop_episode_podcast_fk(cursor, db_type)
+
+        cursor.execute(f"SELECT COUNT(*) FROM {aliases}")
+        before = cursor.fetchone()[0]
+        # The copies one episode has across a feed's subscriptions: the same GUID, or for
+        # episodes without one the same audio URL. Each subscription contributes its oldest copy
+        # (it never had two before); the oldest copy overall survives.
+        guid_key = "EpisodeGUID" if pg else "EpisodeGUIDHash"
+        url_key = "EpisodeURL" if pg else "EpisodeURLHash"
+        for key, only in ((guid_key, "EpisodeGUID IS NOT NULL"),
+                          (url_key, "EpisodeGUID IS NULL AND EpisodeURL IS NOT NULL AND EpisodeURL <> ''")):
+            cursor.execute(f"""
+                INSERT INTO {aliases} (OldEpisodeID, EpisodeID)
+                SELECT EpisodeID, Survivor FROM (
+                    SELECT EpisodeID, MIN(EpisodeID) OVER (PARTITION BY FeedID, {key}) AS Survivor
+                    FROM (
+                        SELECT EpisodeID, FeedID, {key},
+                               ROW_NUMBER() OVER (PARTITION BY FeedID, {key}, PodcastID ORDER BY EpisodeID) AS Nth
+                        FROM {episodes} e
+                        WHERE FeedID IS NOT NULL AND {only}
+                          AND NOT EXISTS (SELECT 1 FROM {aliases} a WHERE a.OldEpisodeID = e.EpisodeID)
+                    ) copies
+                    WHERE Nth = 1
+                ) grouped
+                WHERE EpisodeID <> Survivor
+            """)
+        cursor.execute(f"SELECT COUNT(*) FROM {aliases}")
+        merged = cursor.fetchone()[0] - before
+        if merged:
+            moved = _repoint_merged_episodes(cursor, db_type)
+            logger.info(
+                f"Migration 082: merged {merged} episode copies into shared episodes; rows re-pointed: "
+                + ", ".join(f"{k}={v}" for k, v in moved.items())
+            )
+        else:
+            logger.info("Migration 082: no episode copies to merge")
+
+        cursor.execute(f"""
+            UPDATE {podcasts} SET EpisodeCount = (SELECT COUNT(*) FROM {episodes} e WHERE e.FeedID = {podcasts}.FeedID)
+            WHERE FeedID IS NOT NULL AND COALESCE(IsYouTubeChannel, {'FALSE' if pg else '0'}) = {'FALSE' if pg else '0'}
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+def _drop_episode_podcast_fk(cursor, db_type: str) -> None:
+    if db_type == "postgresql":
+        cursor.execute("""
+            SELECT c.conname FROM pg_constraint c
+            JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+            WHERE c.conrelid = '"Episodes"'::regclass AND c.contype = 'f'
+              AND c.confrelid = '"Podcasts"'::regclass AND a.attname = 'podcastid'
+        """)
+        for (name,) in cursor.fetchall():
+            cursor.execute(f'ALTER TABLE "Episodes" DROP CONSTRAINT "{name}"')
+    else:
+        cursor.execute("""
+            SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Episodes' AND COLUMN_NAME = 'PodcastID'
+              AND REFERENCED_TABLE_NAME = 'Podcasts'
+        """)
+        for (name,) in cursor.fetchall():
+            cursor.execute(f"ALTER TABLE Episodes DROP FOREIGN KEY `{name}`")
+
+
+def _repoint_merged_episodes(cursor, db_type: str) -> dict:
+    """Point every row that references a merged copy (EpisodeIDAliases.OldEpisodeID) at the
+    episode it became, then detach the copies. Set-based, so large instances don't need a query
+    per episode. Returns rows touched per table."""
+    pg = db_type == "postgresql"
+
+    def q(table: str) -> str:
+        return f'"{table}"' if pg else table
+
+    aliases = q("EpisodeIDAliases")
+    moved = {}
+
+    def run(label, sql, params=()):
+        cursor.execute(sql, params)
+        moved[label] = moved.get(label, 0) + max(cursor.rowcount, 0)
+
+    def repoint(label, table, extra=""):
+        t = q(table)
+        if pg:
+            run(label, f"UPDATE {t} x SET EpisodeID = a.EpisodeID FROM {aliases} a WHERE x.EpisodeID = a.OldEpisodeID {extra}")
+        else:
+            run(label, f"UPDATE {t} x JOIN {aliases} a ON a.OldEpisodeID = x.EpisodeID SET x.EpisodeID = a.EpisodeID WHERE 1 = 1 {extra}")
+
+    def keep_one(table, owner, worse, extra=""):
+        """After re-pointing: drop rows of an owner that another of their rows for the same
+        merged episode beats (`worse` compares x to y)."""
+        t = q(table)
+        merged = f"x.EpisodeID IN (SELECT EpisodeID FROM {aliases})"
+        if pg:
+            cursor.execute(f"DELETE FROM {t} x USING {t} y WHERE x.EpisodeID = y.EpisodeID AND x.{owner} = y.{owner} AND ({worse}) AND {merged} {extra}")
+        else:
+            cursor.execute(f"DELETE x FROM {t} x JOIN {t} y ON x.EpisodeID = y.EpisodeID AND x.{owner} = y.{owner} WHERE ({worse}) AND {merged} {extra}")
+
+    epoch = "'1970-01-01'"
+    # Listen history and finished episodes: one row per user and episode.
+    history, state = q("UserEpisodeHistory"), q("UserEpisodeState")
+    if pg:
+        run("history", f"""
+            INSERT INTO {history} (UserID, EpisodeID, ListenDate, ListenDuration)
+            SELECT h.UserID, a.EpisodeID, MAX(h.ListenDate), MAX(h.ListenDuration)
+            FROM {history} h JOIN {aliases} a ON a.OldEpisodeID = h.EpisodeID
+            GROUP BY h.UserID, a.EpisodeID
+            ON CONFLICT (UserID, EpisodeID) DO UPDATE SET
+                ListenDate = GREATEST({history}.ListenDate, EXCLUDED.ListenDate),
+                ListenDuration = GREATEST({history}.ListenDuration, EXCLUDED.ListenDuration)
+        """)
+        run("finished", f"""
+            INSERT INTO {state} (UserID, EpisodeID, Completed, CompletedAt)
+            SELECT s.UserID, a.EpisodeID, BOOL_OR(s.Completed), MAX(s.CompletedAt)
+            FROM {state} s JOIN {aliases} a ON a.OldEpisodeID = s.EpisodeID
+            GROUP BY s.UserID, a.EpisodeID
+            ON CONFLICT (UserID, EpisodeID) DO UPDATE SET
+                Completed = {state}.Completed OR EXCLUDED.Completed,
+                CompletedAt = GREATEST({state}.CompletedAt, EXCLUDED.CompletedAt)
+        """)
+    else:
+        run("history", f"""
+            INSERT INTO {history} (UserID, EpisodeID, ListenDate, ListenDuration)
+            SELECT h.UserID, a.EpisodeID, MAX(h.ListenDate), MAX(h.ListenDuration)
+            FROM {history} h JOIN {aliases} a ON a.OldEpisodeID = h.EpisodeID
+            GROUP BY h.UserID, a.EpisodeID
+            ON DUPLICATE KEY UPDATE
+                ListenDate = GREATEST(COALESCE(ListenDate, VALUES(ListenDate)), COALESCE(VALUES(ListenDate), ListenDate)),
+                ListenDuration = GREATEST(COALESCE(ListenDuration, VALUES(ListenDuration)), COALESCE(VALUES(ListenDuration), ListenDuration))
+        """)
+        run("finished", f"""
+            INSERT INTO {state} (UserID, EpisodeID, Completed, CompletedAt)
+            SELECT s.UserID, a.EpisodeID, MAX(s.Completed), MAX(s.CompletedAt)
+            FROM {state} s JOIN {aliases} a ON a.OldEpisodeID = s.EpisodeID
+            GROUP BY s.UserID, a.EpisodeID
+            ON DUPLICATE KEY UPDATE
+                Completed = GREATEST(Completed, VALUES(Completed)),
+                CompletedAt = GREATEST(COALESCE(CompletedAt, VALUES(CompletedAt)), COALESCE(VALUES(CompletedAt), CompletedAt))
+        """)
+    for table in ("UserEpisodeHistory", "UserEpisodeState"):
+        cursor.execute(f"DELETE FROM {q(table)} WHERE EpisodeID IN (SELECT OldEpisodeID FROM {aliases})")
+
+    # One row per owner: the newest save/download, the earliest queue position.
+    repoint("saved", "SavedEpisodes")
+    keep_one("SavedEpisodes", "UserID",
+             f"COALESCE(y.SaveDate, {epoch}) > COALESCE(x.SaveDate, {epoch}) OR (COALESCE(y.SaveDate, {epoch}) = COALESCE(x.SaveDate, {epoch}) AND y.SaveID > x.SaveID)")
+    repoint("downloads", "DownloadedEpisodes")
+    downloads = q("DownloadedEpisodes")
+    cursor.execute(f"""
+        SELECT x.DownloadID, x.DownloadedLocation FROM {downloads} x JOIN {downloads} y
+          ON x.EpisodeID = y.EpisodeID AND x.UserID = y.UserID
+        WHERE (COALESCE(y.DownloadedDate, {epoch}) > COALESCE(x.DownloadedDate, {epoch})
+               OR (COALESCE(y.DownloadedDate, {epoch}) = COALESCE(x.DownloadedDate, {epoch}) AND y.DownloadID > x.DownloadID))
+          AND x.EpisodeID IN (SELECT EpisodeID FROM {aliases})
+    """)
+    for download_id, location in cursor.fetchall():
+        logger.warning(f"Merged episode downloaded twice by one user; keeping the newer, file left in place: {location}")
+    keep_one("DownloadedEpisodes", "UserID",
+             f"COALESCE(y.DownloadedDate, {epoch}) > COALESCE(x.DownloadedDate, {epoch}) OR (COALESCE(y.DownloadedDate, {epoch}) = COALESCE(x.DownloadedDate, {epoch}) AND y.DownloadID > x.DownloadID)")
+    podcast_rows = "AND x.is_youtube = FALSE" if pg else "AND x.is_youtube = 0"
+    repoint("queue", "EpisodeQueue", podcast_rows)
+    keep_one("EpisodeQueue", "UserID",
+             "y.QueuePosition < x.QueuePosition OR (y.QueuePosition = x.QueuePosition AND y.QueueID < x.QueueID)",
+             podcast_rows + (" AND y.is_youtube = FALSE" if pg else " AND y.is_youtube = 0"))
+    repoint("playlists", "PlaylistContents")
+    keep_one("PlaylistContents", "PlaylistID", "y.PlaylistContentID < x.PlaylistContentID")
+    repoint("collections", "CollectionEpisodes")
+    keep_one("CollectionEpisodes", "CollectionID", "y.CollectionEpisodeID < x.CollectionEpisodeID")
+    repoint("shares", "SharedEpisodes")
+
+    # Credits are unioned.
+    people = q("EpisodePeople")
+    if pg:
+        run("people", f"""
+            INSERT INTO {people} (EpisodeID, PersonID, Role, PersonGroup, Source, Verified)
+            SELECT DISTINCT a.EpisodeID, p.PersonID, p.Role, p.PersonGroup, p.Source, p.Verified
+            FROM {people} p JOIN {aliases} a ON a.OldEpisodeID = p.EpisodeID
+            ON CONFLICT DO NOTHING
+        """)
+    else:
+        run("people", f"""
+            INSERT IGNORE INTO {people} (EpisodeID, PersonID, Role, PersonGroup, Source, Verified)
+            SELECT DISTINCT a.EpisodeID, p.PersonID, p.Role, p.PersonGroup, p.Source, p.Verified
+            FROM {people} p JOIN {aliases} a ON a.OldEpisodeID = p.EpisodeID
+        """)
+
+    # Skip segments and transcripts: the episode's own, else the oldest copy's that has any.
+    for label, table in (("segments", "EpisodeSkipSegments"), ("transcripts", "EpisodeTranscripts")):
+        t = q(table)
+        cursor.execute(f"""
+            SELECT a.EpisodeID, MIN(a.OldEpisodeID) FROM {aliases} a
+            WHERE EXISTS (SELECT 1 FROM {t} x WHERE x.EpisodeID = a.OldEpisodeID)
+              AND NOT EXISTS (SELECT 1 FROM {t} x WHERE x.EpisodeID = a.EpisodeID)
+            GROUP BY a.EpisodeID
+        """)
+        for survivor, copy in cursor.fetchall():
+            run(label, f"UPDATE {t} SET EpisodeID = %s WHERE EpisodeID = %s", (survivor, copy))
+
+    # The episode itself: detected silence/ads, the longest duration, chapter/transcript links.
+    episodes = q("Episodes")
+    if pg:
+        cursor.execute(f"""
+            UPDATE {episodes} e SET
+                SilenceDetected = COALESCE(e.SilenceDetected, FALSE) OR agg.silence,
+                AdsDetected = COALESCE(e.AdsDetected, FALSE) OR agg.ads,
+                EpisodeDuration = GREATEST(COALESCE(e.EpisodeDuration, 0), agg.duration),
+                ChaptersURL = COALESCE(e.ChaptersURL, agg.chapters),
+                TranscriptsJSON = COALESCE(e.TranscriptsJSON, agg.transcripts)
+            FROM (
+                SELECT a.EpisodeID, BOOL_OR(COALESCE(c.SilenceDetected, FALSE)) AS silence,
+                       BOOL_OR(COALESCE(c.AdsDetected, FALSE)) AS ads, MAX(COALESCE(c.EpisodeDuration, 0)) AS duration,
+                       MAX(c.ChaptersURL) AS chapters, MAX(c.TranscriptsJSON) AS transcripts
+                FROM {aliases} a JOIN {episodes} c ON c.EpisodeID = a.OldEpisodeID
+                GROUP BY a.EpisodeID
+            ) agg
+            WHERE e.EpisodeID = agg.EpisodeID
+        """)
+    else:
+        cursor.execute(f"""
+            UPDATE {episodes} e JOIN (
+                SELECT a.EpisodeID, MAX(COALESCE(c.SilenceDetected, 0)) AS silence,
+                       MAX(COALESCE(c.AdsDetected, 0)) AS ads, MAX(COALESCE(c.EpisodeDuration, 0)) AS duration,
+                       MAX(c.ChaptersURL) AS chapters, MAX(c.TranscriptsJSON) AS transcripts
+                FROM {aliases} a JOIN {episodes} c ON c.EpisodeID = a.OldEpisodeID
+                GROUP BY a.EpisodeID
+            ) agg ON agg.EpisodeID = e.EpisodeID
+            SET e.SilenceDetected = GREATEST(COALESCE(e.SilenceDetected, 0), agg.silence),
+                e.AdsDetected = GREATEST(COALESCE(e.AdsDetected, 0), agg.ads),
+                e.EpisodeDuration = GREATEST(COALESCE(e.EpisodeDuration, 0), agg.duration),
+                e.ChaptersURL = COALESCE(e.ChaptersURL, agg.chapters),
+                e.TranscriptsJSON = COALESCE(e.TranscriptsJSON, agg.transcripts)
+        """)
+
+    cursor.execute(f"UPDATE {episodes} SET FeedID = NULL WHERE EpisodeID IN (SELECT OldEpisodeID FROM {aliases})")
+    return moved
+
+
+@register_migration("083", "unique_episode_per_feed", "One episode per GUID per feed, so a feed's refresh can't insert an episode twice", requires=["082"])
+def migration_083_unique_episode_per_feed(conn, db_type: str) -> None:
+    """Episodes are unique per (FeedID, EpisodeGUID) instead of per (PodcastID, EpisodeGUID).
+
+    PostgreSQL: a partial unique index. MySQL/MariaDB: on the stored EpisodeGUIDHash (see 065).
+    """
+    cursor = conn.cursor()
+    try:
+        if db_type == "postgresql":
+            safe_add_index(
+                cursor, db_type,
+                'CREATE UNIQUE INDEX idx_episodes_feedid_guid_unique ON "Episodes"(FeedID, EpisodeGUID) '
+                'WHERE EpisodeGUID IS NOT NULL',
+                "idx_episodes_feedid_guid_unique",
+            )
+            if not check_index_exists(cursor, db_type, "idx_episodes_feedid_guid_unique"):
+                raise RuntimeError("idx_episodes_feedid_guid_unique was not created")
+            cursor.execute("DROP INDEX IF EXISTS idx_episodes_podcastid_guid_unique")
+        else:
+            if not check_index_exists(cursor, db_type, "idx_episodes_feedid_guidhash_unique"):
+                cursor.execute("CREATE UNIQUE INDEX idx_episodes_feedid_guidhash_unique ON Episodes(FeedID, EpisodeGUIDHash)")
+            if check_index_exists(cursor, db_type, "idx_episodes_podcastid_guidhash_unique"):
+                cursor.execute("DROP INDEX idx_episodes_podcastid_guidhash_unique ON Episodes")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+def _feed_credential_key(feed_url, username, password, user_id) -> str:
+    """Matches services::feeds::credential_key in rust-api."""
+    import hashlib
+
+    url = (feed_url or "").strip().lower()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return hashlib.sha256(f"local\0{user_id}".encode()).hexdigest()
+    if not username and not password:
+        return ""
+    secret = f"{username or ''}\0{password or ''}".encode()
+    return hashlib.pbkdf2_hmac("sha256", secret, (feed_url or "").encode(), 10_000).hex()
+
+
+def _link_podcasts_to_feeds(cursor, db_type: str) -> int:
+    """Create the feed of every podcast without one and link it. Returns how many were linked."""
+    import hashlib
+
+    pg = db_type == "postgresql"
+    podcasts = '"Podcasts"' if pg else "Podcasts"
+    feeds = '"Feeds"' if pg else "Feeds"
+    state_cols = ["FeedETag", "FeedLastModified", "FeedContentHash", "RefreshNotBefore", "NextRefreshAt",
+                  "RefreshIntervalMinutes", "LastRefreshAttempt", "LastRefreshSuccess", "ConsecutiveFailures",
+                  "LastErrorMessage", "FailingSince", "LastErrorKind"]
+    cursor.execute(
+        f"SELECT PodcastID, FeedURL, Username, Password, UserID, COALESCE(IsYouTubeChannel, FALSE), "
+        f"{', '.join(state_cols)} FROM {podcasts} WHERE FeedID IS NULL AND FeedURL IS NOT NULL AND FeedURL <> ''"
+    )
+    groups = {}
+    for row in cursor.fetchall():
+        podcast_id, url, username, password, user_id, youtube = row[:6]
+        state = dict(zip(state_cols, row[6:]))
+        key = (url, _feed_credential_key(url, username, password, user_id))
+        groups.setdefault(key, {"youtube": bool(youtube), "rows": []})["rows"].append((podcast_id, state))
+    if not groups:
+        return 0
+
+    def earliest(values):
+        values = [v for v in values if v is not None]
+        return min(values) if values else None
+
+    def latest(values):
+        values = [v for v in values if v is not None]
+        return max(values) if values else None
+
+    linked = 0
+    for (url, cred_key), group in groups.items():
+        states = [s for _, s in group["rows"]]
+        hashes = {s["FeedContentHash"] for s in states}
+        healthiest = min(states, key=lambda s: s["ConsecutiveFailures"] or 0)
+        merged = {
+            "FeedETag": next((s["FeedETag"] for s in states if s["FeedETag"]), None),
+            "FeedLastModified": next((s["FeedLastModified"] for s in states if s["FeedLastModified"]), None),
+            "FeedContentHash": hashes.pop() if len(hashes) == 1 else None,
+            "RefreshNotBefore": latest(s["RefreshNotBefore"] for s in states),
+            "NextRefreshAt": earliest(s["NextRefreshAt"] for s in states),
+            "RefreshIntervalMinutes": earliest(s["RefreshIntervalMinutes"] for s in states),
+            "LastRefreshAttempt": latest(s["LastRefreshAttempt"] for s in states),
+            "LastRefreshSuccess": latest(s["LastRefreshSuccess"] for s in states),
+            "ConsecutiveFailures": healthiest["ConsecutiveFailures"] or 0,
+            "LastErrorMessage": healthiest["LastErrorMessage"],
+            "FailingSince": healthiest["FailingSince"],
+            "LastErrorKind": healthiest["LastErrorKind"],
+        }
+        url_hash = hashlib.sha256(url.encode()).hexdigest()
+        cursor.execute(
+            f"SELECT FeedID FROM {feeds} WHERE FeedURLHash = %s AND CredentialKey = %s",
+            (url_hash, cred_key),
+        )
+        found = cursor.fetchone()
+        if found:
+            feed_id = found[0]
+        else:
+            cols = ["FeedURL", "FeedURLHash", "CredentialKey", "IsYouTubeChannel"] + state_cols
+            values = [url, url_hash, cred_key, group["youtube"]] + [merged[c] for c in state_cols]
+            marks = ", ".join(["%s"] * len(cols))
+            if pg:
+                cursor.execute(f"INSERT INTO {feeds} ({', '.join(cols)}) VALUES ({marks}) RETURNING FeedID", values)
+                feed_id = cursor.fetchone()[0]
+            else:
+                cursor.execute(f"INSERT INTO {feeds} ({', '.join(cols)}) VALUES ({marks})", values)
+                feed_id = cursor.lastrowid
+        ids = [podcast_id for podcast_id, _ in group["rows"]]
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            cursor.execute(
+                f"UPDATE {podcasts} SET FeedID = %s WHERE PodcastID IN ({', '.join(['%s'] * len(chunk))})",
+                (feed_id, *chunk),
+            )
+        linked += len(ids)
+    return linked
+
+
+@register_migration("118", "gpodder_actions_follow_merged_episodes", "Episode actions point at the shared episode their merged copy became; the copies are deleted", requires=["082", "111"])
+def migration_118_gpodder_actions_follow_merged_episodes(conn, db_type: str) -> None:
+    """GpodderSyncEpisodeActions.EpisodeID of actions on an episode copy merged by 082 now points
+    at the episode it became (EpisodeIDAliases). Only EpisodeID changes: no action is removed, so
+    nothing waiting to be pushed to an external server is lost. Then the detached copies are
+    deleted."""
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    try:
+        if pg:
+            cursor.execute("""
+                UPDATE "GpodderSyncEpisodeActions" x SET EpisodeID = a.EpisodeID
+                FROM "EpisodeIDAliases" a WHERE x.EpisodeID = a.OldEpisodeID
+            """)
+        else:
+            # Writers of the sync log share-lock SyncTargets first; so does this.
+            if _table_exists(cursor, db_type, "SyncTargets"):
+                cursor.execute("SELECT TargetID FROM SyncTargets LOCK IN SHARE MODE")
+                cursor.fetchall()
+            cursor.execute("""
+                UPDATE GpodderSyncEpisodeActions x JOIN EpisodeIDAliases a ON a.OldEpisodeID = x.EpisodeID
+                SET x.EpisodeID = a.EpisodeID
+            """)
+        repointed = cursor.rowcount
+        episodes = '"Episodes"' if pg else "Episodes"
+        aliases = '"EpisodeIDAliases"' if pg else "EpisodeIDAliases"
+        cursor.execute(f"DELETE FROM {episodes} WHERE FeedID IS NULL AND EpisodeID IN (SELECT OldEpisodeID FROM {aliases})")
+        logger.info(f"Migration 118: {repointed} episode actions re-pointed, {cursor.rowcount} merged episode copies deleted")
         conn.commit()
     except Exception:
         conn.rollback()
