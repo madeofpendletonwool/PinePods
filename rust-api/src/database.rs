@@ -7965,7 +7965,7 @@ impl DatabasePool {
             (response.text().await.map_err(AppError::Http)?, etag, last_modified)
         } else if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::NOT_ACCEPTABLE {
             debug!("Feed {} returned {}, retrying with fallbacks", url, status);
-            (self.fetch_feed_fallbacks(url, username, password).await?, None, None)
+            (self.fetch_feed_fallbacks(url, username, password, status).await?, None, None)
         } else if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status == reqwest::StatusCode::SERVICE_UNAVAILABLE {
             let retry_after = response
                 .headers()
@@ -8158,8 +8158,8 @@ impl DatabasePool {
             debug!("Request succeeded with status: {}", response.status());
             return Ok(response.text().await.map_err(AppError::Http)?);
         }
-        warn!("Initial request for {} failed with status: {}", url, response.status());
-        self.fetch_feed_fallbacks(url, username, password).await
+        debug!("Feed {} answered {}, retrying with fallbacks", url, response.status());
+        self.fetch_feed_fallbacks(url, username, password, response.status()).await
     }
 
     /// GET a feed with basic auth when credentials are stored.
@@ -8171,21 +8171,18 @@ impl DatabasePool {
         }
     }
 
-    /// After the normal request failed: retry once with a browser UA (hosts that block podcast
-    /// clients), then once on the www/non-www variant of the URL.
-    async fn fetch_feed_fallbacks(&self, url: &str, username: Option<&str>, password: Option<&str>) -> AppResult<String> {
-        let browser = Self::feed_get(crate::services::http::browser_feed_client(), url, username, password)
-            .send()
-            .await
-            .map_err(|e| {
-                warn!("Browser UA request failed for {}: {}", url, e);
-                AppError::Http(e)
-            })?;
-        if browser.status().is_success() {
-            debug!("Browser UA request succeeded with status: {}", browser.status());
-            return Ok(browser.text().await.map_err(AppError::Http)?);
+    /// After the normal request answered `status`: retry once with a browser UA (hosts that block
+    /// podcast clients), then once on the www/non-www variant of the URL. When both fail too, the
+    /// error is the feed's own answer, so a gone feed is reported as gone.
+    async fn fetch_feed_fallbacks(&self, url: &str, username: Option<&str>, password: Option<&str>, status: reqwest::StatusCode) -> AppResult<String> {
+        match Self::feed_get(crate::services::http::browser_feed_client(), url, username, password).send().await {
+            Ok(browser) if browser.status().is_success() => {
+                debug!("Browser UA request for {} succeeded", url);
+                return Ok(browser.text().await.map_err(AppError::Http)?);
+            }
+            Ok(browser) => debug!("Browser UA request for {} answered {}", url, browser.status()),
+            Err(e) => debug!("Browser UA request for {} failed: {}", url, e),
         }
-        warn!("Browser UA request for {} also failed with status: {}, trying alternate URL", url, browser.status());
 
         let alternate_url = if url.contains("://www.") {
             url.replace("://www.", "://")
@@ -8193,23 +8190,19 @@ impl DatabasePool {
             url.replace("://", "://www.")
         };
         // SSRF guard: alternate_url is a www/non-www variant not covered by the up-front check.
-        if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(&alternate_url).await {
-            warn!("Refusing to fetch alternate feed URL {}: {}", alternate_url, reason);
-            return Err(AppError::bad_request(format!("Refused to fetch feed URL: {}", reason)));
+        match crate::services::url_guard::ensure_safe_public_url_async(&alternate_url).await {
+            Err(reason) => debug!("Not trying alternate feed URL {}: {}", alternate_url, reason),
+            Ok(()) => match Self::feed_get(crate::services::http::feed_client(), &alternate_url, username, password).send().await {
+                Ok(alt) if alt.status().is_success() => {
+                    debug!("Alternate feed URL {} succeeded", alternate_url);
+                    return Ok(alt.text().await.map_err(AppError::Http)?);
+                }
+                Ok(alt) => debug!("Alternate feed URL {} answered {}", alternate_url, alt.status()),
+                Err(e) => debug!("Alternate feed URL {} failed: {}", alternate_url, e),
+            },
         }
-        let alt = Self::feed_get(crate::services::http::feed_client(), &alternate_url, username, password)
-            .send()
-            .await
-            .map_err(|e| {
-                warn!("Alternate HTTP request failed for {}: {}", alternate_url, e);
-                AppError::Http(e)
-            })?;
-        if !alt.status().is_success() {
-            warn!("Alternate request also failed with status: {}", alt.status());
-            return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", alt.status())));
-        }
-        debug!("Alternate request succeeded with status: {}", alt.status());
-        Ok(alt.text().await.map_err(AppError::Http)?)
+        warn!("Feed {} answered HTTP {} (also with a browser user agent and at {})", url, status.as_u16(), alternate_url);
+        Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", status)))
     }
 
     // Custom function to extract raw iTunes durations before feed_rs processes them
