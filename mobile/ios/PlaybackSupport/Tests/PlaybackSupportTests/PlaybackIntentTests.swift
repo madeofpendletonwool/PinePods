@@ -16,6 +16,19 @@ final class PlaybackIntentTests: XCTestCase {
         XCTAssertTrue(intent.canResumeLoadedEpisode)
     }
 
+    func testLoadedOnlyOnceTheCurrentEpisodeFinishesLoading() {
+        var intent = PlaybackIntent()
+        let first = intent.beginEpisode()
+        XCTAssertFalse(intent.isLoaded)
+        intent.completeLoad(generation: first)
+        XCTAssertTrue(intent.isLoaded)
+        intent.pause()
+        XCTAssertTrue(intent.isLoaded)
+        _ = intent.beginEpisode()
+        intent.completeLoad(generation: first)
+        XCTAssertFalse(intent.isLoaded)
+    }
+
     func testLoadWhilePausedCanBeResumedExplicitly() {
         var intent = PlaybackIntent()
         let generation = intent.beginEpisode()

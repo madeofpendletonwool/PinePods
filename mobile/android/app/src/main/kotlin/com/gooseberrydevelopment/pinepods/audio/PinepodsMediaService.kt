@@ -8,6 +8,7 @@ import android.net.Uri
 import java.io.File
 import android.os.Binder
 import android.os.Handler
+import android.os.SystemClock
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
@@ -59,6 +60,11 @@ class PinepodsMediaService : MediaLibraryService() {
     // only remove silence, not ads (which are content), so ads are skipped by
     // seeking past these ranges from the 1s position poll. Cleared per-episode.
     private var adSkipSegments: List<Pair<Double, Double>> = emptyList()
+    // The range last skipped and when, and ranges given up on because the
+    // playhead landed back inside them (a stream that can't seek there).
+    private var lastAdSkipIndex = -1
+    private var lastAdSkipAt = 0L
+    private val abandonedAdSkips = mutableSetOf<Int>()
 
     inner class LocalBinder : Binder() {
         fun getService(): PinepodsMediaService = this@PinepodsMediaService
@@ -505,7 +511,7 @@ class PinepodsMediaService : MediaLibraryService() {
 
                 // New episode: drop the previous episode's ad-skip ranges. The
                 // Dart layer re-supplies them via setAdSkipSegments after load.
-                adSkipSegments = emptyList()
+                resetAdSkips(emptyList())
 
                 p.setMediaItem(mediaItem)
                 p.prepare()
@@ -549,7 +555,7 @@ class PinepodsMediaService : MediaLibraryService() {
         Log.d(TAG, "stop")
         player?.stop()
         player?.clearMediaItems()
-        adSkipSegments = emptyList()
+        resetAdSkips(emptyList())
     }
 
     fun seek(positionMs: Int) {
@@ -654,21 +660,45 @@ class PinepodsMediaService : MediaLibraryService() {
     // The 1s position poll seeks past any range the playhead enters.
     fun setAdSkipSegments(segments: List<Pair<Double, Double>>) {
         Log.d(TAG, "setAdSkipSegments: ${segments.size} range(s)")
-        adSkipSegments = segments.sortedBy { it.first }
+        resetAdSkips(segments.sortedBy { it.first })
+    }
+
+    private fun resetAdSkips(segments: List<Pair<Double, Double>>) {
+        adSkipSegments = segments
+        lastAdSkipIndex = -1
+        abandonedAdSkips.clear()
     }
 
     // Called every ~1s from the position poll. If the playhead is inside an
     // active ad range, seek to its end. Times are seconds; ExoPlayer is ms.
     // Uses a 0.25s tail tolerance (matching iOS) to avoid boundary seek-loops.
+    //
+    // Waits until the item is ready with a known length: an episode that opens
+    // on an ad would otherwise seek while still preparing, fighting the
+    // start-position seek.
     private fun applyAdSkipIfNeeded() {
         if (adSkipSegments.isEmpty()) return
         val p = player ?: return
+        if (p.playbackState != Player.STATE_READY) return
+        val durationMs = p.duration
+        if (durationMs == C.TIME_UNSET || durationMs <= 0) return
         val posMs = p.currentPosition
         if (posMs < 0) return
-        for ((start, end) in adSkipSegments) {
-            val startMs = (start * 1000).toLong()
-            val endMs = (end * 1000).toLong()
+        for ((index, range) in adSkipSegments.withIndex()) {
+            if (index in abandonedAdSkips) continue
+            val startMs = (range.first * 1000).toLong()
+            val endMs = minOf((range.second * 1000).toLong(), durationMs)
             if (posMs >= startMs && posMs < endMs - 250) {
+                // Back inside the range just skipped: the seek didn't take (or
+                // the user went back to hear it). Leave it alone rather than loop.
+                val now = SystemClock.elapsedRealtime()
+                if (index == lastAdSkipIndex && now - lastAdSkipAt < 5000) {
+                    Log.d(TAG, "Ad-skip: back inside range $index after skipping it; leaving it")
+                    abandonedAdSkips.add(index)
+                    return
+                }
+                lastAdSkipIndex = index
+                lastAdSkipAt = now
                 Log.d(TAG, "Ad-skip: seeking from ${posMs}ms past ad ending ${endMs}ms")
                 p.seekTo(endMs)
                 break

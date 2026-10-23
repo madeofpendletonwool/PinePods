@@ -3383,6 +3383,118 @@ pub async fn clear_podcast_auto_download_delete_days(
     Ok(Json(serde_json::json!({ "message": "Podcast auto-delete downloads reset to global default." })))
 }
 
+// "Delete server downloads when I finish an episode": the user's default (no podcast_id) or a
+// podcast's effective value and whether it overrides the default.
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct GetAutoDeleteOnCompleteRequest {
+    pub user_id: i32,
+    pub podcast_id: Option<i32>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/get_auto_delete_on_complete",
+    tag = "settings",
+    summary = "Get delete-downloads-when-finished",
+    request_body = GetAutoDeleteOnCompleteRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "`enabled` and, for a podcast, whether it is `customized`", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_auto_delete_on_complete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<GetAutoDeleteOnCompleteRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own settings."));
+    }
+
+    let (enabled, customized) = state.db_pool.get_auto_delete_on_complete(request.user_id, request.podcast_id).await?;
+    Ok(Json(serde_json::json!({ "enabled": enabled, "customized": customized })))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct SetAutoDeleteOnCompleteUser {
+    pub user_id: i32,
+    pub enabled: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/user/set_auto_delete_on_complete",
+    tag = "settings",
+    summary = "Set delete-downloads-when-finished (user default)",
+    request_body = SetAutoDeleteOnCompleteUser,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn set_auto_delete_on_complete_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetAutoDeleteOnCompleteUser>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own settings."));
+    }
+
+    state.db_pool.set_auto_delete_on_complete_user(request.user_id, request.enabled).await?;
+    Ok(Json(serde_json::json!({ "detail": "Delete-when-finished setting updated." })))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct SetAutoDeleteOnCompletePodcast {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    /// `null` goes back to the user's default.
+    pub enabled: Option<bool>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/podcast/set_auto_delete_on_complete",
+    tag = "settings",
+    summary = "Set or clear a podcast's delete-downloads-when-finished",
+    request_body = SetAutoDeleteOnCompletePodcast,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn set_podcast_auto_delete_on_complete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetAutoDeleteOnCompletePodcast>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.set_podcast_auto_delete_on_complete(request.user_id, request.podcast_id, request.enabled).await?;
+    Ok(Json(serde_json::json!({ "detail": "Podcast delete-when-finished setting updated." })))
+}
+
 // Request struct for enable_auto_download - matches Python AutoDownloadRequest model
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct AutoDownloadRequest {
@@ -3677,10 +3789,12 @@ pub async fn ai_status(
     } else {
         (false, false)
     };
+    let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
     Ok(Json(serde_json::json!({
         "available": available,
         "transcription_ready": transcription_ready,
         "ad_removal_ready": ad_removal_ready,
+        "downloads_enabled": downloads_enabled,
     })))
 }
 
@@ -3991,7 +4105,15 @@ pub async fn get_episode_skip_segments(
     .await
     .map_err(|e| AppError::internal(&e))?;
 
-    Ok(Json(serde_json::json!({ "segments": segments })))
+    // Which audio copy the ad times fit, so players can hold off skipping on a copy whose ads
+    // sit elsewhere (dynamically inserted ads differ between fetches).
+    let audio = if segments.iter().any(|s| s.kind == crate::services::ad_detection::KIND_AD) {
+        Some(crate::services::ad_detection::ad_audio_match(&state.db_pool, query.user_id, query.episode_id).await)
+    } else {
+        None
+    };
+
+    Ok(Json(serde_json::json!({ "segments": segments, "ad_audio": audio })))
 }
 
 // Manually (re-)run silence detection for one episode as a tracked background task
@@ -4047,6 +4169,10 @@ pub struct DetectAdsRequest {
     pub user_id: i32,
     #[serde(default)]
     pub force: bool,
+    /// Download the episode to the server first (when it isn't) and detect ads on that copy, so
+    /// ad times match what the user plays.
+    #[serde(default)]
+    pub download_first: bool,
 }
 
 #[utoipa::path(
@@ -4078,6 +4204,22 @@ pub async fn detect_ads(
     crate::handlers::require_episode_owner(&state, request.user_id, request.episode_id, false).await?;
     if !state.ai_available.is_available() {
         return Err(AppError::service_unavailable("AI service is not available."));
+    }
+
+    if request.download_first && !state.db_pool.check_downloaded(request.user_id, request.episode_id, false).await? {
+        if !state.db_pool.download_status().await? {
+            return Err(AppError::forbidden("Server downloads are disabled by the administrator."));
+        }
+        crate::services::ad_detection::request_detect_after_download(request.episode_id, request.user_id);
+        let task_id = state
+            .task_spawner
+            .spawn_download_podcast_episode(request.episode_id, request.user_id)
+            .await?;
+        return Ok(Json(serde_json::json!({
+            "task_id": task_id,
+            "waiting_for_download": true,
+            "detail": "Downloading to the server; ads will be detected on that copy when it finishes.",
+        })));
     }
 
     let task_id = state

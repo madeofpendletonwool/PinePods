@@ -107,6 +107,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   bool _autoTranscribe = false;
   bool _autoAdDetect = false;
   bool _adSkipAutoActivate = true; // server default is true
+  // Server-side downloads for this podcast (separate from on-device
+  // auto-download): ad times only fit the copy they were found on, so the
+  // server copy is what makes ad skipping reliable.
+  bool _serverAutoDownload = false;
 
   // Tracks episode being loaded for ghost mini player
   PinepodsEpisode? _pendingEpisode;
@@ -283,6 +287,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         _pinepodsService.getAutoTranscribe(userId, podcastId),
         _pinepodsService.getAutoAdDetect(userId, podcastId),
         _pinepodsService.getAdSkipAutoActivate(userId, podcastId),
+        _pinepodsService.getServerAutoDownload(userId, podcastId),
       ]);
       if (mounted) {
         setState(() {
@@ -290,6 +295,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           _autoTranscribe = results[0];
           _autoAdDetect = results[1];
           _adSkipAutoActivate = results[2];
+          _serverAutoDownload = results[3];
         });
       }
     } catch (e) {
@@ -327,6 +333,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         case 'ad_skip_auto':
           ok = await _pinepodsService.adjustAdSkipAutoActivate(userId, podcastId, value);
           if (ok) _adSkipAutoActivate = value;
+          break;
+        case 'server_download':
+          ok = await _pinepodsService.setServerAutoDownload(userId, podcastId, value);
+          if (ok) _serverAutoDownload = value;
           break;
         default:
           ok = false;
@@ -391,6 +401,15 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                       value: _adSkipAutoActivate,
                       onChanged: (v) => toggle('ad_skip_auto', v),
                     ),
+                  if (_autoAdDetect)
+                    _AdDownloadNotice(
+                      serverAutoDownload: _serverAutoDownload,
+                      onEnable: () => toggle('server_download', true),
+                      onServerDownloads: () {
+                        Navigator.pop(sheetContext);
+                        _showServerDownloadsSheet();
+                      },
+                    ),
                   const SizedBox(height: 8),
                 ],
               ),
@@ -398,6 +417,144 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           },
         );
       },
+    );
+  }
+
+  /// The server's download settings for this podcast: auto-download to the
+  /// server, delete when finished, and delete after a number of days.
+  Future<void> _showServerDownloadsSheet() async {
+    final podcastId = widget.podcast.id;
+    final settings =
+        Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    final userId = settings.pinepodsUserId;
+    if (podcastId <= 0 || userId == null) return;
+    _pinepodsService.setCredentials(
+        settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+    final results = await Future.wait<Object>([
+      _pinepodsService.getServerAutoDownload(userId, podcastId),
+      _pinepodsService.getAutoDeleteOnComplete(userId),
+      _pinepodsService.getAutoDeleteOnComplete(userId, podcastId: podcastId),
+      _pinepodsService.getAutoDeleteDays(userId),
+      _pinepodsService.getAutoDeleteDays(userId, podcastId: podcastId),
+    ]);
+    if (!mounted) return;
+    var autoDownload = results[0] as bool;
+    _serverAutoDownload = autoDownload;
+    final deleteDefault = (results[1] as ({bool enabled, bool customized})).enabled;
+    final finished = results[2] as ({bool enabled, bool customized});
+    // 'default' | 'on' | 'off'
+    var whenFinished =
+        !finished.customized ? 'default' : (finished.enabled ? 'on' : 'off');
+    final daysDefault = (results[3] as ({int days, bool customized})).days;
+    final days = results[4] as ({int days, bool customized});
+    // null = use the default
+    int? afterDays = days.customized ? days.days : null;
+
+    String daysLabel(int d) => d == 0 ? 'Never' : '$d day${d == 1 ? '' : 's'}';
+    const dayChoices = [0, 1, 3, 7, 14, 30, 60, 90];
+
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final theme = Theme.of(context);
+          return SafeArea(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    child: Text('Server downloads',
+                        style: theme.textTheme.titleLarge!
+                            .copyWith(fontWeight: FontWeight.bold)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'Downloads kept on your Pinepods server (separate from '
+                      'downloads on this device).',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  SwitchListTile(
+                    title: const Text('Auto-download to server'),
+                    subtitle: const Text(
+                        'Download new episodes to the server as they arrive.'),
+                    value: autoDownload,
+                    onChanged: (v) async {
+                      if (await _pinepodsService.setServerAutoDownload(
+                          userId, podcastId, v)) {
+                        autoDownload = v;
+                        _serverAutoDownload = v;
+                        setSheetState(() {});
+                        if (mounted) setState(() {});
+                      }
+                    },
+                  ),
+                  ListTile(
+                    title: const Text('Delete when finished'),
+                    subtitle: const Text(
+                        'Remove the server download about an hour after you '
+                        'finish the episode.'),
+                    trailing: DropdownButton<String>(
+                      value: whenFinished,
+                      onChanged: (v) async {
+                        if (v == null) return;
+                        final enabled =
+                            v == 'default' ? null : v == 'on';
+                        if (await _pinepodsService
+                            .setPodcastAutoDeleteOnComplete(
+                                userId, podcastId, enabled)) {
+                          setSheetState(() => whenFinished = v);
+                        }
+                      },
+                      items: [
+                        DropdownMenuItem(
+                            value: 'default',
+                            child: Text(
+                                'Default (${deleteDefault ? 'on' : 'off'})')),
+                        const DropdownMenuItem(value: 'on', child: Text('On')),
+                        const DropdownMenuItem(value: 'off', child: Text('Off')),
+                      ],
+                    ),
+                  ),
+                  ListTile(
+                    title: const Text('Delete after'),
+                    subtitle: const Text(
+                        'Remove server downloads older than this.'),
+                    trailing: DropdownButton<int?>(
+                      value: afterDays,
+                      onChanged: (v) async {
+                        final ok = v == null
+                            ? await _pinepodsService.clearPodcastAutoDeleteDays(
+                                userId, podcastId)
+                            : await _pinepodsService.setPodcastAutoDeleteDays(
+                                userId, podcastId, v);
+                        if (ok) setSheetState(() => afterDays = v);
+                      },
+                      items: [
+                        DropdownMenuItem<int?>(
+                            value: null,
+                            child:
+                                Text('Default (${daysLabel(daysDefault)})')),
+                        for (final d in {...dayChoices, if (afterDays != null) afterDays!})
+                          DropdownMenuItem<int?>(
+                              value: d, child: Text(daysLabel(d))),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -1438,6 +1595,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     case 'ai':
                       _showAiSettingsSheet();
                       break;
+                    case 'server_downloads':
+                      _showServerDownloadsSheet();
+                      break;
                     case 'follow':
                       _toggleFollow();
                       break;
@@ -1448,7 +1608,15 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     CheckedPopupMenuItem<String>(
                       value: 'autodownload',
                       checked: _isAutoDownloadEnabled,
-                      child: const Text('Auto-download'),
+                      child: const Text('Auto-download to device'),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'server_downloads',
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.dns_outlined),
+                        title: Text('Server downloads'),
+                      ),
                     ),
                     CheckedPopupMenuItem<String>(
                       value: 'autoplay',
@@ -2218,6 +2386,85 @@ class _PendingMiniPlayerState extends State<_PendingMiniPlayer>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Shown under "Auto-detect ads": whether ads will be found on the copy that
+/// gets played. Many podcasts insert different ads each time an episode is
+/// fetched, so only a server download keeps detection and playback on one copy.
+class _AdDownloadNotice extends StatelessWidget {
+  final bool serverAutoDownload;
+  final VoidCallback onEnable;
+  final VoidCallback onServerDownloads;
+
+  const _AdDownloadNotice({
+    required this.serverAutoDownload,
+    required this.onEnable,
+    required this.onServerDownloads,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = serverAutoDownload ? Colors.green : Colors.orange;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: color, width: 3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                  serverAutoDownload
+                      ? Icons.check_circle_outline
+                      : Icons.warning_amber,
+                  size: 18,
+                  color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  serverAutoDownload
+                      ? 'Episodes download to the server, so ads are found on '
+                          "the copy you'll play and skips line up exactly."
+                      : 'Server auto-download is off. Many podcasts insert '
+                          'different ads every time an episode is fetched, so '
+                          'ads found on one copy can land at the wrong times in '
+                          'the copy you stream. Pinepods holds off skipping when '
+                          "the stream doesn't match, so some ads won't be "
+                          'skipped. Turn on server auto-download for exact skips; '
+                          '"Delete when finished" keeps it from filling the disk.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (!serverAutoDownload)
+                OutlinedButton.icon(
+                  onPressed: onEnable,
+                  icon: const Icon(Icons.cloud_download_outlined, size: 18),
+                  label: const Text('Turn on server auto-download'),
+                ),
+              TextButton(
+                onPressed: onServerDownloads,
+                child: const Text('Server download settings'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

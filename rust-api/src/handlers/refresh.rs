@@ -382,10 +382,10 @@ async fn refresh_feed_group(
                         }
                         all_new.extend(mine);
                     }
-                    // Auto-transcribe new episodes for opted-in podcasts (independent of
-                    // downloads — the pipeline fetches audio on demand).
+                    // Auto-transcribe new episodes for opted-in podcasts (ones that also
+                    // auto-download wait for the download).
                     for id in ids {
-                        crate::services::transcription::maybe_transcribe_episode(state.db_pool.clone(), id);
+                        crate::services::transcription::maybe_transcribe_new_episode(state.db_pool.clone(), id);
                     }
                     true
                 }

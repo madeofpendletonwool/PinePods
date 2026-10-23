@@ -21,6 +21,17 @@ The API sends a **file path** (under the shared downloads mount) and receives th
 transcript text plus segment-level timestamps. Point the API at this service with
 the `PINEPODS_AI_URL` env var (e.g. `http://pinepods-ai:8100`).
 
+## Dynamic ads
+
+Many podcasts insert different ads each time an episode is fetched, so ad times only
+fit the copy they were detected on. The API prefers a server download when it
+transcribes, records which copy it used (a fingerprint that ignores ID3 tags, plus
+its length), links later server downloads of the episode to that copy, and redoes
+the transcript when a download turns out to be a different copy. Players skip ads
+only on the matching server download or a stream of the same length. For accurate
+skipping, turn on server auto-download for podcasts with auto ad detection; the
+"delete downloads when finished" setting keeps that from filling the disk.
+
 ## Endpoints
 
 - `GET /health` — readiness + loaded model info.

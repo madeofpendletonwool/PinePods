@@ -3407,9 +3407,50 @@ pub struct SkipSegment {
     pub status: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
-struct SkipSegmentsResponse {
-    segments: Vec<SkipSegment>,
+/// The copy of the audio ad times were detected on.
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct AnalyzedAudio {
+    #[serde(default)]
+    pub duration: Option<f64>,
+    /// `download` or `stream`.
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
+/// How the user's playback copy relates to the copy ads were detected on.
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct AdAudio {
+    #[serde(default)]
+    pub analyzed: Option<AnalyzedAudio>,
+    /// `match` (the user's server download is that copy), `mismatch`, `none` (no server
+    /// download) or `unknown`.
+    #[serde(default)]
+    pub download: String,
+}
+
+impl AdAudio {
+    /// Whether ad times can be trusted on what is playing: the user's server download when it is
+    /// the analyzed copy, otherwise a copy whose length matches the analyzed one (dynamically
+    /// inserted ads usually change the length). `duration` is the player's, NaN/0 while unknown.
+    pub fn fits(&self, duration: f64, playing_server_copy: bool) -> bool {
+        if self.download == "match" && playing_server_copy {
+            return true;
+        }
+        match self.analyzed.as_ref().and_then(|a| a.duration) {
+            Some(expected) if expected > 0.0 => {
+                duration.is_finite() && duration > 0.0
+                    && (duration - expected).abs() <= (expected * 0.003).max(2.0)
+            }
+            _ => true,
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct SkipSegmentsInfo {
+    pub segments: Vec<SkipSegment>,
+    #[serde(default)]
+    pub ad_audio: Option<AdAudio>,
 }
 
 pub async fn call_get_episode_skip_segments(
@@ -3417,7 +3458,7 @@ pub async fn call_get_episode_skip_segments(
     api_key: &Option<String>,
     user_id: i32,
     episode_id: i32,
-) -> Result<Vec<SkipSegment>, Error> {
+) -> Result<SkipSegmentsInfo, Error> {
     let url = format!(
         "{}/api/data/episode_skip_segments?episode_id={}&user_id={}",
         server_name, episode_id, user_id
@@ -3432,8 +3473,7 @@ pub async fn call_get_episode_skip_segments(
         .await?;
 
     if response.ok() {
-        let data: SkipSegmentsResponse = response.json().await?;
-        Ok(data.segments)
+        Ok(response.json().await?)
     } else {
         let error_text = response
             .text()
@@ -3670,6 +3710,8 @@ pub struct AiStatus {
     pub transcription_ready: bool,
     #[serde(default)]
     pub ad_removal_ready: bool,
+    #[serde(default)]
+    pub downloads_enabled: bool,
 }
 
 pub async fn call_get_ai_status_full(
@@ -3693,20 +3735,24 @@ pub struct DetectAdsRequest {
     pub episode_id: i32,
     pub user_id: i32,
     pub force: bool,
+    pub download_first: bool,
 }
 
+/// Start ad detection. With `download_first`, an episode that isn't on the server is downloaded
+/// there first and ads are detected on that copy.
 pub async fn call_detect_ads(
     server_name: &str,
     api_key: &Option<String>,
     episode_id: i32,
     user_id: i32,
     force: bool,
+    download_first: bool,
 ) -> Result<(), Error> {
     let url = format!("{}/api/data/detect_ads", server_name);
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-    let body = serde_json::to_string(&DetectAdsRequest { episode_id, user_id, force })?;
+    let body = serde_json::to_string(&DetectAdsRequest { episode_id, user_id, force, download_first })?;
     let response = Request::post(&url)
         .header("Content-Type", "application/json")
         .header("Api-Key", api_key_ref)
@@ -6117,4 +6163,76 @@ pub async fn call_update_youtube_video_filter(
         return Err(anyhow::Error::msg(crate::components::gen_funcs::format_error_message(&text)));
     }
     Ok(response.json().await?)
+}
+
+// ---- Delete server downloads when an episode is finished ----
+
+#[derive(Deserialize, Debug)]
+struct AutoDeleteOnCompleteResponse {
+    enabled: bool,
+    #[serde(default)]
+    customized: bool,
+}
+
+async fn post_json_ok<T: Serialize>(
+    url: &str,
+    api_key: &Option<String>,
+    body: &T,
+) -> Result<gloo_net::http::Response, Error> {
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::post(url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(body)?)?
+        .send()
+        .await?;
+    if response.ok() {
+        Ok(response)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(error_text))
+    }
+}
+
+/// The user's default (`podcast_id` None), or a podcast's effective value; returns
+/// `(enabled, customized)`.
+pub async fn call_get_auto_delete_on_complete(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: Option<i32>,
+) -> Result<(bool, bool), Error> {
+    let url = format!("{}/api/data/get_auto_delete_on_complete", server_name);
+    let body = serde_json::json!({ "user_id": user_id, "podcast_id": podcast_id });
+    let data: AutoDeleteOnCompleteResponse = post_json_ok(&url, api_key, &body).await?.json().await?;
+    Ok((data.enabled, data.customized))
+}
+
+pub async fn call_set_auto_delete_on_complete_user(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    enabled: bool,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/user/set_auto_delete_on_complete", server_name);
+    let body = serde_json::json!({ "user_id": user_id, "enabled": enabled });
+    post_json_ok(&url, api_key, &body).await.map(|_| ())
+}
+
+/// `enabled` None goes back to the user's default.
+pub async fn call_set_podcast_auto_delete_on_complete(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+    enabled: Option<bool>,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/podcast/set_auto_delete_on_complete", server_name);
+    let body = serde_json::json!({ "user_id": user_id, "podcast_id": podcast_id, "enabled": enabled });
+    post_json_ok(&url, api_key, &body).await.map(|_| ())
 }

@@ -28,6 +28,12 @@ class PinepodsAudioPlayer: NSObject {
     // time observer. Times are in seconds.
     private var skipSilenceEnabled = false
     private var skipSegments: [(start: Double, end: Double)] = []
+    // A skip seek still running, the range it last skipped and when, and ranges given up on
+    // because the playhead landed back inside them (a stream that can't seek there).
+    private var skipSeekInFlight = false
+    private var lastSkippedIndex: Int?
+    private var lastSkipTime: TimeInterval = 0
+    private var abandonedSkipIndices = Set<Int>()
     private var playbackIntent = PlaybackIntent()
 
     // The last playEpisode request, so play() can rebuild a failed item, and
@@ -354,7 +360,7 @@ class PinepodsAudioPlayer: NSObject {
         // Clear any silence-skip ranges from the previous episode; the Dart layer
         // re-supplies them (or disables) via setSkipSegments after load.
         skipSilenceEnabled = false
-        skipSegments = []
+        setSkipRanges([])
 
         self.currentMetadata = metadata
 
@@ -622,17 +628,50 @@ class PinepodsAudioPlayer: NSObject {
     func setSkipSegments(enabled: Bool, segments: [(start: Double, end: Double)]) {
         NSLog("[PinepodsAudioPlayer] setSkipSegments: enabled=\(enabled), count=\(segments.count)")
         skipSilenceEnabled = enabled
-        skipSegments = segments.sorted { $0.start < $1.start }
+        setSkipRanges(segments.sorted { $0.start < $1.start })
     }
 
-    /// Called from the 1s periodic observer: if the playhead is inside a silence
+    private func setSkipRanges(_ ranges: [(start: Double, end: Double)]) {
+        skipSegments = ranges
+        skipSeekInFlight = false
+        lastSkippedIndex = nil
+        abandonedSkipIndices.removeAll()
+    }
+
+    /// Called from the 1s periodic observer: if the playhead is inside a skip
     /// range, seek to its end. A small tolerance avoids seeking when we're
     /// essentially already past the range.
+    ///
+    /// Waits until the episode has loaded (including its start-position seek) and
+    /// is ready: an episode that opens on an ad would otherwise seek while still
+    /// loading, cancelling the start seek and leaving playback stuck.
     private func applySilenceSkipIfNeeded(at seconds: Double) {
-        guard skipSilenceEnabled, !skipSegments.isEmpty, seconds.isFinite else { return }
-        if let seg = skipSegments.first(where: { seconds >= $0.start && seconds < $0.end - 0.25 }) {
-            let target = CMTime(seconds: seg.end, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-            player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        guard skipSilenceEnabled, !skipSegments.isEmpty, seconds.isFinite, !skipSeekInFlight,
+              !loadInFlight, playbackIntent.isLoaded,
+              let player = player, let item = player.currentItem, item.status == .readyToPlay else { return }
+        let duration = item.duration.seconds
+        guard duration.isFinite, duration > 0 else { return }
+
+        guard let index = skipSegments.indices.first(where: {
+            !abandonedSkipIndices.contains($0)
+                && seconds >= skipSegments[$0].start && seconds < skipSegments[$0].end - 0.25
+        }) else { return }
+
+        // Back inside the range just skipped: the seek didn't take (or the user
+        // went back to hear it). Leave this range alone rather than loop.
+        let now = Date().timeIntervalSince1970
+        if index == lastSkippedIndex && now - lastSkipTime < 5 {
+            abandonedSkipIndices.insert(index)
+            return
+        }
+        lastSkippedIndex = index
+        lastSkipTime = now
+
+        let end = min(skipSegments[index].end, duration)
+        let target = CMTime(seconds: end, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        skipSeekInFlight = true
+        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            DispatchQueue.main.async { self?.skipSeekInFlight = false }
         }
     }
 

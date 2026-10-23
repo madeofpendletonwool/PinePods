@@ -17567,6 +17567,157 @@ impl DatabasePool {
         Ok(())
     }
 
+    // Delete server downloads of episodes the user has finished, when "delete when finished" is
+    // on for that podcast (per-podcast AutoDeleteOnComplete, else the user's default). Only
+    // downloads made before the episode was finished count, so re-downloading a finished episode
+    // to hear it again keeps it, and an hour's grace lets the last minutes play out first.
+    pub async fn auto_delete_finished_downloads(&self) -> AppResult<()> {
+        let rows: Vec<(i32, i32, Option<String>)> = match self {
+            DatabasePool::Postgres(pool) => sqlx::query(
+                r#"SELECT de.userid, de.episodeid, de.downloadedlocation
+                   FROM "DownloadedEpisodes" de
+                   JOIN "UserEpisodeState" s ON s.userid = de.userid AND s.episodeid = de.episodeid AND s.completed
+                   JOIN "Episodes" e ON e.episodeid = de.episodeid
+                   JOIN "Podcasts" p ON p.feedid = e.feedid AND p.userid = de.userid
+                   JOIN "Users" u ON u.userid = de.userid
+                   WHERE COALESCE(p.autodeleteoncomplete, u.autodeleteoncomplete, FALSE)
+                     AND p.feedurl NOT LIKE 'local://%'
+                     AND (s.completedat IS NULL
+                          OR (s.completedat >= de.downloadeddate AND s.completedat < NOW() - INTERVAL '1 hour'))"#,
+            )
+            .fetch_all(pool)
+            .await?
+            .iter()
+            .map(|r| (
+                r.try_get("userid").unwrap_or(0),
+                r.try_get("episodeid").unwrap_or(0),
+                r.try_get("downloadedlocation").unwrap_or(None),
+            ))
+            .collect(),
+            DatabasePool::MySQL(pool) => sqlx::query(
+                "SELECT de.UserID, de.EpisodeID, de.DownloadedLocation
+                 FROM DownloadedEpisodes de
+                 JOIN UserEpisodeState s ON s.UserID = de.UserID AND s.EpisodeID = de.EpisodeID AND s.Completed = 1
+                 JOIN Episodes e ON e.EpisodeID = de.EpisodeID
+                 JOIN Podcasts p ON p.FeedID = e.FeedID AND p.UserID = de.UserID
+                 JOIN Users u ON u.UserID = de.UserID
+                 WHERE COALESCE(p.AutoDeleteOnComplete, u.AutoDeleteOnComplete, 0) = 1
+                   AND p.FeedURL NOT LIKE 'local://%'
+                   AND (s.CompletedAt IS NULL
+                        OR (s.CompletedAt >= de.DownloadedDate AND s.CompletedAt < NOW() - INTERVAL 1 HOUR))",
+            )
+            .fetch_all(pool)
+            .await?
+            .iter()
+            .map(|r| (
+                r.try_get("UserID").unwrap_or(0),
+                r.try_get("EpisodeID").unwrap_or(0),
+                r.try_get("DownloadedLocation").unwrap_or(None),
+            ))
+            .collect(),
+        };
+
+        let mut deleted = 0;
+        for (user_id, episode_id, location) in rows {
+            Self::remove_download_file(location.as_deref()).await;
+            self.delete_episode(user_id, episode_id, false).await?;
+            deleted += 1;
+        }
+        if deleted > 0 {
+            tracing::info!("Auto-delete: removed {} server download(s) of finished episodes", deleted);
+        }
+        Ok(())
+    }
+
+    // "Delete downloads when finished": the user's default (podcast_id None), or the podcast's
+    // effective value and whether it overrides the default.
+    pub async fn get_auto_delete_on_complete(&self, user_id: i32, podcast_id: Option<i32>) -> AppResult<(bool, bool)> {
+        let (default, podcast): (bool, Option<bool>) = match self {
+            DatabasePool::Postgres(pool) => {
+                let default = sqlx::query(r#"SELECT COALESCE(autodeleteoncomplete, FALSE) AS d FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+                    .and_then(|r| r.try_get::<bool, _>("d").ok())
+                    .unwrap_or(false);
+                let podcast = match podcast_id {
+                    Some(pid) => sqlx::query(r#"SELECT autodeleteoncomplete FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                        .bind(pid)
+                        .bind(user_id)
+                        .fetch_optional(pool)
+                        .await?
+                        .and_then(|r| r.try_get::<Option<bool>, _>("autodeleteoncomplete").ok().flatten()),
+                    None => None,
+                };
+                (default, podcast)
+            }
+            DatabasePool::MySQL(pool) => {
+                let default = sqlx::query("SELECT COALESCE(AutoDeleteOnComplete, 0) AS d FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+                    .and_then(|r| r.try_get::<i8, _>("d").ok())
+                    .map(|v| v != 0)
+                    .unwrap_or(false);
+                let podcast = match podcast_id {
+                    Some(pid) => sqlx::query("SELECT AutoDeleteOnComplete FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                        .bind(pid)
+                        .bind(user_id)
+                        .fetch_optional(pool)
+                        .await?
+                        .and_then(|r| r.try_get::<Option<i8>, _>("AutoDeleteOnComplete").ok().flatten())
+                        .map(|v| v != 0),
+                    None => None,
+                };
+                (default, podcast)
+            }
+        };
+        Ok((podcast.unwrap_or(default), podcast.is_some()))
+    }
+
+    pub async fn set_auto_delete_on_complete_user(&self, user_id: i32, enabled: bool) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Users" SET autodeleteoncomplete = $1 WHERE userid = $2"#)
+                    .bind(enabled)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Users SET AutoDeleteOnComplete = ? WHERE UserID = ?")
+                    .bind(enabled)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Per-podcast override; None goes back to the user's default.
+    pub async fn set_podcast_auto_delete_on_complete(&self, user_id: i32, podcast_id: i32, enabled: Option<bool>) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET autodeleteoncomplete = $1 WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(enabled)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET AutoDeleteOnComplete = ? WHERE PodcastID = ? AND UserID = ?")
+                    .bind(enabled)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     // Decide whether a single downloaded item is due for auto-deletion.
     fn should_auto_delete(
         now: chrono::NaiveDateTime,
