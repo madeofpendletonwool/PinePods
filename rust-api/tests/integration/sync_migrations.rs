@@ -1,7 +1,7 @@
 //! Sync data model migrations: old-shape data is seeded, the
 //! migrations are forgotten and re-run through the real runner, and the result is checked.
 //! 068 moves Users.Pod_Sync_Type to GpodderServerEnabled / SyncTargets / app passwords; 111/112
-//! extend the action and subscription logs; 113 marks Pinepods' own device; 069 makes listen
+//! extend the action and subscription logs (110 first drops old actions newer ones replaced); 113 marks Pinepods' own device; 069 makes listen
 //! history one row per user and episode on MySQL; 116 ties gpodder sessions to the app password
 //! that opened them.
 
@@ -460,4 +460,53 @@ async fn device_names_set_in_pinepods_get_their_own_column() {
     };
     assert_eq!(caption(r#"SELECT DeviceCaption FROM "GpodderDevices" WHERE DeviceName = 'phone'"#).await.as_deref(), Some("Pixel"));
     assert_eq!(caption(r#"SELECT UserCaption FROM "GpodderDevices" WHERE DeviceName = 'phone'"#).await, None);
+}
+
+/// Before 110 rewrites the action log it drops what the nightly compaction would: actions older
+/// than 90 days that a newer action for the same episode replaced. Users with an external target
+/// keep everything (it may not have been pushed).
+#[tokio::test]
+async fn old_replaced_episode_actions_are_dropped_before_the_action_log_is_rewritten() {
+    let app = TestApp::new().await;
+    let (local, external) = (app.user("compact-local").await, app.user("compact-external").await);
+    exec(&app, &format!(
+        r#"INSERT INTO "SyncTargets" (UserID, Kind, Url, EncryptedSecret) VALUES ({}, 'gpodder', 'https://gpodder.example', 'x')"#,
+        external.id
+    ))
+    .await;
+    let old = 1_600_000_000;
+    let recent = chrono::Utc::now().timestamp() - 10 * 86_400;
+    let rows = [
+        (local.id, "x.mp3", "play", old),
+        (local.id, "x.mp3", "Play", old + 10), // same episode and action: replaces the one above
+        (local.id, "x.mp3", "download", old),  // another action: kept
+        (local.id, "y.mp3", "play", old),      // the only row for y: kept
+        (local.id, "z.mp3", "play", recent),
+        (local.id, "z.mp3", "play", recent + 10), // replaced but recent: kept
+        (external.id, "x.mp3", "play", old),
+        (external.id, "x.mp3", "play", old + 10),
+    ];
+    for (uid, ep, action, ts) in rows {
+        exec(&app, &format!(
+            r#"INSERT INTO "GpodderSyncEpisodeActions" (UserID, PodcastURL, EpisodeURL, Action, Timestamp, ServerTs)
+               VALUES ({uid}, 'https://feed.example/rss', 'https://cdn.example/{ep}', '{action}', {ts}, {ts})"#
+        ))
+        .await;
+    }
+
+    rerun_migrations(&app, &["110"]).await;
+
+    let left = |uid: i32, ep: &'static str| {
+        let sql = format!(r#"SELECT COUNT(*) FROM "GpodderSyncEpisodeActions" WHERE UserID = {uid} AND EpisodeURL = 'https://cdn.example/{ep}'"#);
+        let app = &app;
+        async move { int(app, &sql).await.unwrap() }
+    };
+    assert_eq!(left(local.id, "x.mp3").await, 2, "the newer play and the download stay");
+    assert_eq!(
+        int(&app, &format!(r#"SELECT Timestamp FROM "GpodderSyncEpisodeActions" WHERE UserID = {} AND EpisodeURL = 'https://cdn.example/x.mp3' AND LOWER(Action) = 'play'"#, local.id)).await,
+        Some(old + 10)
+    );
+    assert_eq!(left(local.id, "y.mp3").await, 1);
+    assert_eq!(left(local.id, "z.mp3").await, 2, "recent rows are never dropped here");
+    assert_eq!(left(external.id, "x.mp3").await, 2, "users with an external target keep every row");
 }

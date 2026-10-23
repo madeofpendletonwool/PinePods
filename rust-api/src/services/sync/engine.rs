@@ -17,6 +17,7 @@ use tracing::{debug, warn};
 
 use super::apply::{apply_resolved, apply_subscription_changes, in_flight_adds};
 use super::engine_db::{Outbox, SyncTargetRow, TargetKind};
+use super::feeds::feed_url_key;
 use super::model::{ActionKind, EpisodeAction, OutboundAction};
 use super::resolver::{resolve, ResolveKey};
 use super::targets::gpodder::{device_to_use, GpodderTarget, RemoteDevice};
@@ -249,13 +250,14 @@ async fn run_locked(
     // Subscriptions. A local change the target hasn't had yet wins; it's pushed below.
     step(progress, 25.0, "Fetching subscriptions").await;
     let subs = remote.pull_subscriptions(if full { 0 } else { t.subs_pull_cursor }).await?;
-    let mut local = db.sync_user_feed_urls(user_id).await?;
-    local.extend(in_flight_adds(user_id));
-    let add: Vec<String> = subs.add.iter().filter(|u| !unpushed.contains(*u) && !local.contains(*u)).cloned().collect();
+    // Compared as feed_url_keys, aliases included: the server may know a feed under another address.
+    let mut local = db.subscription_url_keys(user_id).await?;
+    local.extend(in_flight_adds(user_id).iter().map(|u| feed_url_key(u)));
+    let add: Vec<String> = subs.add.iter().filter(|u| !unpushed.contains(*u) && !local.contains(&feed_url_key(u))).cloned().collect();
     let remove: Vec<String> = if full {
         Vec::new()
     } else {
-        subs.remove.iter().filter(|u| !unpushed.contains(*u) && local.contains(*u)).cloned().collect()
+        subs.remove.iter().filter(|u| !unpushed.contains(*u) && local.contains(&feed_url_key(u))).cloned().collect()
     };
     if !add.is_empty() || !remove.is_empty() {
         let applied = apply_subscription_changes(db, tasks, user_id, &add, &remove, origin).await?;
@@ -285,9 +287,8 @@ async fn run_locked(
     if full {
         db.sync_reset_push_cursors(t.target_id, user_id).await?;
         let batch = remote.push_batch_size();
-        let on_remote: HashSet<&str> = subs.add.iter().map(String::as_str).collect();
-        let to_add: Vec<String> =
-            db.sync_shareable_feed_urls(user_id).await?.into_iter().filter(|u| !on_remote.contains(u.as_str())).collect();
+        let on_remote = db.feed_urls_known_under(user_id, &subs.add).await?;
+        let to_add: Vec<String> = db.sync_shareable_feed_urls(user_id).await?.into_iter().filter(|u| !on_remote.contains(u)).collect();
         for chunk in to_add.chunks(batch) {
             remote.push_subscriptions(chunk, &[]).await?;
         }

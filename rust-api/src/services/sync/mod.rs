@@ -13,6 +13,7 @@ pub mod db;
 pub mod engine;
 pub mod engine_db;
 pub mod events;
+pub mod feeds;
 pub mod imports;
 pub mod model;
 pub mod push;

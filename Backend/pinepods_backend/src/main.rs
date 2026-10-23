@@ -170,6 +170,9 @@ async fn search_handler(
     }
 
     let search_term = query.query.clone().unwrap_or_default();
+    if search_term.trim().is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({ "error": "empty search" }));
+    }
     let index = query.index.clone().unwrap_or_default().to_lowercase();
     let search_type = query.search_type.clone().unwrap_or_else(|| "term".to_string());
 

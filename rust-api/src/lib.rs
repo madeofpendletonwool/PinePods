@@ -108,8 +108,9 @@ pub fn create_app(state: AppState) -> Router {
             ServiceBuilder::new()
                 .layer(
                     TraceLayer::new_for_http()
-                        .make_span_with(tower_http::trace::DefaultMakeSpan::new()
-                            .level(tracing::Level::INFO))
+                        .make_span_with(|req: &axum::http::Request<_>| {
+                            tracing::info_span!("request", method = %req.method(), uri = %redacted_uri(req.uri()), version = ?req.version())
+                        })
                         .on_response(tower_http::trace::DefaultOnResponse::new()
                             .level(tracing::Level::INFO))
                 )
@@ -117,6 +118,33 @@ pub fn create_app(state: AppState) -> Router {
                 .layer(axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024 * 1024)) // 2GB limit for massive backup files
         )
         .with_state(state)
+}
+
+/// The request URI for logs, with the values of credential-like query parameters (websockets
+/// pass `api_key` in the query) replaced.
+fn redacted_uri(uri: &axum::http::Uri) -> String {
+    let Some(query) = uri.query() else { return uri.path().to_string() };
+    let query = query
+        .split('&')
+        .map(|pair| match pair.split_once('=') {
+            Some((name, _)) if ["key", "token", "password", "secret"].iter().any(|s| name.to_ascii_lowercase().contains(s)) => {
+                format!("{name}=<redacted>")
+            }
+            _ => pair.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("{}?{}", uri.path(), query)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn credentials_are_redacted_from_logged_uris() {
+        let uri = "/ws/api/tasks/2?api_key=secret123&device_name=Web&Token=x".parse().unwrap();
+        assert_eq!(super::redacted_uri(&uri), "/ws/api/tasks/2?api_key=<redacted>&device_name=Web&Token=<redacted>");
+        assert_eq!(super::redacted_uri(&"/api/health".parse().unwrap()), "/api/health");
+    }
 }
 
 fn create_data_routes() -> OpenApiRouter<AppState> {

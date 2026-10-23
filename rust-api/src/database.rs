@@ -7965,7 +7965,7 @@ impl DatabasePool {
             (response.text().await.map_err(AppError::Http)?, etag, last_modified)
         } else if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::NOT_ACCEPTABLE {
             debug!("Feed {} returned {}, retrying with fallbacks", url, status);
-            (self.fetch_feed_fallbacks(url, username, password).await?, None, None)
+            (self.fetch_feed_fallbacks(url, username, password, status).await?, None, None)
         } else if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status == reqwest::StatusCode::SERVICE_UNAVAILABLE {
             let retry_after = response
                 .headers()
@@ -8158,8 +8158,8 @@ impl DatabasePool {
             debug!("Request succeeded with status: {}", response.status());
             return Ok(response.text().await.map_err(AppError::Http)?);
         }
-        warn!("Initial request for {} failed with status: {}", url, response.status());
-        self.fetch_feed_fallbacks(url, username, password).await
+        debug!("Feed {} answered {}, retrying with fallbacks", url, response.status());
+        self.fetch_feed_fallbacks(url, username, password, response.status()).await
     }
 
     /// GET a feed with basic auth when credentials are stored.
@@ -8171,21 +8171,18 @@ impl DatabasePool {
         }
     }
 
-    /// After the normal request failed: retry once with a browser UA (hosts that block podcast
-    /// clients), then once on the www/non-www variant of the URL.
-    async fn fetch_feed_fallbacks(&self, url: &str, username: Option<&str>, password: Option<&str>) -> AppResult<String> {
-        let browser = Self::feed_get(crate::services::http::browser_feed_client(), url, username, password)
-            .send()
-            .await
-            .map_err(|e| {
-                warn!("Browser UA request failed for {}: {}", url, e);
-                AppError::Http(e)
-            })?;
-        if browser.status().is_success() {
-            debug!("Browser UA request succeeded with status: {}", browser.status());
-            return Ok(browser.text().await.map_err(AppError::Http)?);
+    /// After the normal request answered `status`: retry once with a browser UA (hosts that block
+    /// podcast clients), then once on the www/non-www variant of the URL. When both fail too, the
+    /// error is the feed's own answer, so a gone feed is reported as gone.
+    async fn fetch_feed_fallbacks(&self, url: &str, username: Option<&str>, password: Option<&str>, status: reqwest::StatusCode) -> AppResult<String> {
+        match Self::feed_get(crate::services::http::browser_feed_client(), url, username, password).send().await {
+            Ok(browser) if browser.status().is_success() => {
+                debug!("Browser UA request for {} succeeded", url);
+                return Ok(browser.text().await.map_err(AppError::Http)?);
+            }
+            Ok(browser) => debug!("Browser UA request for {} answered {}", url, browser.status()),
+            Err(e) => debug!("Browser UA request for {} failed: {}", url, e),
         }
-        warn!("Browser UA request for {} also failed with status: {}, trying alternate URL", url, browser.status());
 
         let alternate_url = if url.contains("://www.") {
             url.replace("://www.", "://")
@@ -8193,23 +8190,19 @@ impl DatabasePool {
             url.replace("://", "://www.")
         };
         // SSRF guard: alternate_url is a www/non-www variant not covered by the up-front check.
-        if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(&alternate_url).await {
-            warn!("Refusing to fetch alternate feed URL {}: {}", alternate_url, reason);
-            return Err(AppError::bad_request(format!("Refused to fetch feed URL: {}", reason)));
+        match crate::services::url_guard::ensure_safe_public_url_async(&alternate_url).await {
+            Err(reason) => debug!("Not trying alternate feed URL {}: {}", alternate_url, reason),
+            Ok(()) => match Self::feed_get(crate::services::http::feed_client(), &alternate_url, username, password).send().await {
+                Ok(alt) if alt.status().is_success() => {
+                    debug!("Alternate feed URL {} succeeded", alternate_url);
+                    return Ok(alt.text().await.map_err(AppError::Http)?);
+                }
+                Ok(alt) => debug!("Alternate feed URL {} answered {}", alternate_url, alt.status()),
+                Err(e) => debug!("Alternate feed URL {} failed: {}", alternate_url, e),
+            },
         }
-        let alt = Self::feed_get(crate::services::http::feed_client(), &alternate_url, username, password)
-            .send()
-            .await
-            .map_err(|e| {
-                warn!("Alternate HTTP request failed for {}: {}", alternate_url, e);
-                AppError::Http(e)
-            })?;
-        if !alt.status().is_success() {
-            warn!("Alternate request also failed with status: {}", alt.status());
-            return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", alt.status())));
-        }
-        debug!("Alternate request succeeded with status: {}", alt.status());
-        Ok(alt.text().await.map_err(AppError::Http)?)
+        warn!("Feed {} answered HTTP {} (also with a browser user agent and at {})", url, status.as_u16(), alternate_url);
+        Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", status)))
     }
 
     // Custom function to extract raw iTunes durations before feed_rs processes them
@@ -14730,29 +14723,6 @@ impl DatabasePool {
         }
     }
 
-    // Check if podcast exists for user
-    pub(crate) async fn podcast_exists_for_user(&self, user_id: i32, feed_url: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#)
-                    .bind(feed_url)
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
-                
-                Ok(row.is_some())
-            }
-            DatabasePool::MySQL(pool) => {
-                let row = sqlx::query("SELECT PodcastID FROM Podcasts WHERE FeedURL = ? AND UserID = ?")
-                    .bind(feed_url)
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
-                
-                Ok(row.is_some())
-            }
-        }
-    }
 
     // Decrypt password using Fernet - matches Python encryption
     pub async fn decrypt_password(&self, encrypted_password: &str) -> AppResult<String> {
@@ -22498,14 +22468,24 @@ impl DatabasePool {
 
     // Add podcast from URL - used by Nextcloud sync
     pub async fn add_podcast_from_url(&self, user_id: i32, feed_url: &str, _feed_cutoff: Option<i32>, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
-        // Check if podcast already exists for this user
-        if self.podcast_exists_for_user(user_id, feed_url).await? {
+        if let Some(podcast_id) = self.subscription_for_url(user_id, feed_url).await? {
             tracing::info!("Podcast {} already exists for user {}", feed_url, user_id);
-            return Ok(());
+            return self.add_feed_alias(user_id, podcast_id, feed_url).await;
         }
 
         // Get podcast metadata from feed URL using existing function
         let (podcast_values, body) = self.get_podcast_values_with_body(feed_url, user_id, None, None).await?;
+
+        // A sync app may know a show the user has under its new address: remember the address
+        // instead of subscribing twice.
+        let title = podcast_values.get("podcastname").map(String::as_str).unwrap_or_default();
+        if let Some(podcast_id) = self.same_show(user_id, title, &body).await? {
+            tracing::info!("{} is podcast {} under another address for user {}; not adding it again", feed_url, podcast_id, user_id);
+            if !self.adopt_feed_url_if_failing(user_id, podcast_id, feed_url).await? {
+                self.add_feed_alias(user_id, podcast_id, feed_url).await?;
+            }
+            return Ok(());
+        }
         
         // Add podcast using existing function
         let _result = self.add_podcast_from_values(&podcast_values, user_id, 30, None, None, Some(&body), origin).await?;
@@ -22516,19 +22496,7 @@ impl DatabasePool {
 
     // Remove podcast by URL - used by sync (subscription removes)
     pub async fn remove_podcast_by_url(&self, user_id: i32, feed_url: &str, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
-        let podcast_id: Option<i32> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#)
-                .bind(feed_url)
-                .bind(user_id)
-                .fetch_optional(pool)
-                .await?,
-            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT PodcastID FROM Podcasts WHERE FeedURL = ? AND UserID = ?")
-                .bind(feed_url)
-                .bind(user_id)
-                .fetch_optional(pool)
-                .await?,
-        };
-        match podcast_id {
+        match self.subscription_for_url(user_id, feed_url).await? {
             Some(podcast_id) if self.remove_podcast_cascade(podcast_id, user_id, origin).await? => {
                 tracing::info!("Successfully removed podcast {} for user {}", feed_url, user_id);
             }

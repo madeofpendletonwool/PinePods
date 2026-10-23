@@ -160,8 +160,9 @@ async fn no_push_without_an_enabled_target_or_for_the_targets_own_changes() {
     assert!(!push::pending(s.app.db(), s.user.id), "pulled changes don't schedule a push");
 
     // The internal server on, the target disabled: events are still logged, but nothing is pushed.
-    s.app.post("/api/data/gpodder/toggle").key(&s.user).json(&json!({ "enabled": true })).send().await.assert_ok();
+    // Disabled first: turning the server on also starts a sync of enabled targets in the background.
     exec(&s.app, &format!(r#"UPDATE "SyncTargets" SET Enabled = FALSE WHERE TargetID = {}"#, s.target)).await;
+    s.app.post("/api/data/gpodder/toggle").key(&s.user).json(&json!({ "enabled": true })).send().await.assert_ok();
     let runs = s.runs();
     record(&s.app, &s.user, ep, 900.0).await;
     let logged = int(&s.app, &format!(r#"SELECT COUNT(*) FROM "GpodderSyncEpisodeActions" WHERE UserID = {} AND Origin = 'pinepods' AND Position = 900"#, s.user.id)).await;
