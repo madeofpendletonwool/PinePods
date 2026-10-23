@@ -258,10 +258,11 @@ async fn the_dedupe_migration_merges_duplicate_episodes_and_their_state() {
     let e1 = app.episode_id(&user, pod, "Episode 1").await;
     let e2 = app.episode_id(&user, pod, "Episode 2").await;
 
-    // Recreate the pre-065 state: no unique index, duplicate rows from racing refreshes.
+    // Recreate the pre-065 state: no unique index, duplicate rows from racing refreshes (the
+    // copies have no feed, as episodes had none then).
     match app.env.backend {
-        Backend::Postgres => exec(&app, "DROP INDEX idx_episodes_podcastid_guid_unique").await,
-        Backend::MariaDb => exec(&app, "DROP INDEX idx_episodes_podcastid_guidhash_unique ON Episodes").await,
+        Backend::Postgres => exec(&app, "DROP INDEX IF EXISTS idx_episodes_podcastid_guid_unique").await,
+        Backend::MariaDb => exec(&app, "DROP INDEX IF EXISTS idx_episodes_podcastid_guidhash_unique ON Episodes").await,
     }
     let dup = |guid: &str, completed: bool| {
         format!(

@@ -6,7 +6,7 @@ use sqlx::Row;
 use tracing::{debug, warn};
 
 use crate::database::DatabasePool;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 /// Which subscriptions share a feed besides its address: '' for public feeds, a hash of the
 /// credentials for private ones, and the owner for anything that isn't http(s) (uploads are
@@ -140,6 +140,50 @@ impl DatabasePool {
             }
         }
         Ok(Some(feed_id))
+    }
+
+    /// The feed a subscription's episodes belong to, linking it first if it isn't yet.
+    pub async fn feed_of_podcast(&self, podcast_id: i32) -> AppResult<i32> {
+        let current: Option<Option<i32>> = match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_scalar(r#"SELECT feedid FROM "Podcasts" WHERE podcastid = $1"#)
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query_scalar("SELECT FeedID FROM Podcasts WHERE PodcastID = ?")
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?
+            }
+        };
+        match current {
+            Some(Some(feed_id)) => Ok(feed_id),
+            Some(None) => self
+                .link_feed(podcast_id)
+                .await?
+                .ok_or_else(|| AppError::bad_request("Podcast has no feed address")),
+            None => Err(AppError::not_found("Podcast not found")),
+        }
+    }
+
+    /// The subscriptions (podcast ids) of a feed.
+    pub async fn feed_subscriptions(&self, feed_id: i32) -> AppResult<Vec<i32>> {
+        Ok(match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query_scalar(r#"SELECT podcastid FROM "Podcasts" WHERE feedid = $1 ORDER BY podcastid"#)
+                    .bind(feed_id)
+                    .fetch_all(pool)
+                    .await?
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query_scalar("SELECT PodcastID FROM Podcasts WHERE FeedID = ? ORDER BY PodcastID")
+                    .bind(feed_id)
+                    .fetch_all(pool)
+                    .await?
+            }
+        })
     }
 
     /// `link_feed` for callers that carry on regardless: a failure is logged and the next

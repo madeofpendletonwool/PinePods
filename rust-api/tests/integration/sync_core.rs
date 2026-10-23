@@ -119,8 +119,9 @@ async fn position(app: &TestApp, user: &TestUser, ep: i32) -> Option<i64> {
     int(app, &format!(r#"SELECT ListenDuration FROM "UserEpisodeHistory" WHERE UserID = {} AND EpisodeID = {ep}"#, user.id)).await
 }
 
+/// Whether the episode's subscriber finished it (these tests have one per feed).
 async fn completed(app: &TestApp, ep: i32) -> bool {
-    int(app, &format!(r#"SELECT Completed FROM "Episodes" WHERE EpisodeID = {ep}"#)).await == Some(1)
+    int(app, &format!(r#"SELECT COUNT(*) FROM "UserEpisodeState" WHERE EpisodeID = {ep} AND Completed = TRUE"#)).await == Some(1)
 }
 
 async fn listen_date(app: &TestApp, user: &TestUser, ep: i32) -> Option<i64> {
@@ -214,10 +215,10 @@ async fn resolver_matches_guid_then_url_then_url_base_within_the_user() {
     let got = sync::resolve(app.db(), alice.id, &keys).await.unwrap();
     assert_eq!(got, vec![Some(a1), Some(a2), Some(a3), Some(a4), None, None]);
 
-    // Always scoped to the user: bob gets his own copy, carol (not subscribed) nothing.
+    // Subscribers of the feed share its episodes; carol (not subscribed) gets nothing.
     let got = sync::resolve(app.db(), bob.id, &keys[..1]).await.unwrap();
     assert_eq!(got, vec![Some(b1)]);
-    assert_ne!(b1, a1);
+    assert_eq!(b1, a1);
     let got = sync::resolve(app.db(), carol.id, &keys).await.unwrap();
     assert!(got.iter().all(Option::is_none), "{got:?}");
 }

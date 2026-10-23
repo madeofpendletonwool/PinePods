@@ -385,10 +385,11 @@ pub async fn download_episode_file(
                        e."episodedescription", p."username", p."password",
                        p."feedurl", e."episodeguid", e."episodeduration"
                 FROM "Episodes" e
-                JOIN "Podcasts" p ON e."podcastid" = p."podcastid"
+                JOIN "Podcasts" p ON e."feedid" = p."feedid" AND p."userid" = $2
                 WHERE e."episodeid" = $1
             "#)
             .bind(episode_id)
+            .bind(user_id)
             .fetch_one(pool)
             .await?;
 
@@ -415,9 +416,10 @@ pub async fn download_episode_file(
                        e.EpisodeDescription, p.Username, p.Password,
                        p.FeedURL, e.EpisodeGUID, e.EpisodeDuration
                 FROM Episodes e
-                JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ?
                 WHERE e.EpisodeID = ?
             ")
+            .bind(user_id)
             .bind(episode_id)
             .fetch_one(pool)
             .await?;

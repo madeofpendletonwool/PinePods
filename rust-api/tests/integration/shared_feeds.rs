@@ -114,14 +114,20 @@ async fn feeds_without_subscribers_are_deleted() {
     let url = app.feed("shared.xml", &Feed::with_episodes("Shared", 1));
     let a = app.subscribe(&alice, &url, 1).await;
     let b = app.subscribe(&bob, &url, 1).await;
-    let feed = feed_of(&app, a).await.unwrap();
-    exec(&app, &format!(r#"UPDATE "Feeds" SET CreatedAt = '2000-01-01 00:00:00' WHERE FeedID = {feed}"#)).await;
 
     app.db().remove_podcast_id(a, alice.id, SyncOrigin::Unlogged).await.unwrap();
-    assert_eq!(app.db().delete_orphan_feeds().await.unwrap(), 0, "bob still subscribes");
+    assert_eq!(feeds(&app).await, 1, "bob still subscribes");
     app.db().remove_podcast_id(b, bob.id, SyncOrigin::Unlogged).await.unwrap();
+    assert_eq!(feeds(&app).await, 0, "the last unsubscribe removes the feed");
+
+    // A feed left behind another way (its only subscription moved) is swept up later.
+    let c = app.subscribe(&alice, &url, 1).await;
+    let old = feed_of(&app, c).await.unwrap();
+    exec(&app, &format!(r#"UPDATE "Podcasts" SET FeedURL = 'https://example.invalid/moved.xml' WHERE PodcastID = {c}"#)).await;
+    app.db().link_feed(c).await.unwrap();
+    assert_eq!(app.db().delete_orphan_feeds().await.unwrap(), 0, "too young to sweep");
+    exec(&app, &format!(r#"UPDATE "Feeds" SET CreatedAt = '2000-01-01 00:00:00' WHERE FeedID = {old}"#)).await;
     assert_eq!(app.db().delete_orphan_feeds().await.unwrap(), 1);
-    assert_eq!(feeds(&app).await, 0);
 }
 
 #[tokio::test(flavor = "multi_thread")]

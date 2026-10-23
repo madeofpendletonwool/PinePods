@@ -665,17 +665,17 @@ impl DatabasePool {
         let rows: Vec<StateRow> = match self {
             DatabasePool::Postgres(pool) => sqlx::query_as(
                 r#"SELECT p.feedurl, e.episodeurl, NULLIF(e.episodeguid, ''), e.episodeduration,
-                          CASE WHEN COALESCE(e.completed, FALSE) AND COALESCE(e.episodeduration, 0) > 0
+                          CASE WHEN COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) AND COALESCE(e.episodeduration, 0) > 0
                                THEN e.episodeduration ELSE COALESCE(h.listenduration, 0) END::BIGINT,
                           FLOOR(EXTRACT(EPOCH FROM h.listendate))::BIGINT
                    FROM "Episodes" e
-                   JOIN "Podcasts" p ON p.podcastid = e.podcastid
+                   JOIN "Podcasts" p ON p.feedid = e.feedid
                    LEFT JOIN "UserEpisodeHistory" h ON h.episodeid = e.episodeid AND h.userid = $1
                    WHERE p.userid = $1 AND e.episodeurl IS NOT NULL
                      AND (LOWER(p.feedurl) LIKE 'http://%' OR LOWER(p.feedurl) LIKE 'https://%')
                      AND COALESCE(p.username, '') = '' AND COALESCE(p.password, '') = ''
                      AND NOT COALESCE(p.isyoutubechannel, FALSE)
-                     AND (COALESCE(h.listenduration, 0) > 0 OR (COALESCE(e.completed, FALSE) AND COALESCE(e.episodeduration, 0) > 0))
+                     AND (COALESCE(h.listenduration, 0) > 0 OR (COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) AND COALESCE(e.episodeduration, 0) > 0))
                    ORDER BY e.episodeid"#,
             )
             .bind(user_id)
@@ -683,17 +683,17 @@ impl DatabasePool {
             .await?,
             DatabasePool::MySQL(pool) => sqlx::query_as(
                 "SELECT p.FeedURL, e.EpisodeURL, NULLIF(e.EpisodeGUID, ''), e.EpisodeDuration,
-                        CAST(CASE WHEN COALESCE(e.Completed, FALSE) AND COALESCE(e.EpisodeDuration, 0) > 0
+                        CAST(CASE WHEN COALESCE((SELECT ues.Completed FROM UserEpisodeState ues WHERE ues.EpisodeID = e.EpisodeID AND ues.UserID = p.UserID), 0) AND COALESCE(e.EpisodeDuration, 0) > 0
                              THEN e.EpisodeDuration ELSE COALESCE(h.ListenDuration, 0) END AS SIGNED),
                         TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', h.ListenDate)
                  FROM Episodes e
-                 JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                 JOIN Podcasts p ON p.FeedID = e.FeedID
                  LEFT JOIN UserEpisodeHistory h ON h.EpisodeID = e.EpisodeID AND h.UserID = ?
                  WHERE p.UserID = ? AND e.EpisodeURL IS NOT NULL
                    AND (LOWER(p.FeedURL) LIKE 'http://%' OR LOWER(p.FeedURL) LIKE 'https://%')
                    AND COALESCE(p.Username, '') = '' AND COALESCE(p.Password, '') = ''
                    AND NOT COALESCE(p.IsYouTubeChannel, FALSE)
-                   AND (COALESCE(h.ListenDuration, 0) > 0 OR (COALESCE(e.Completed, FALSE) AND COALESCE(e.EpisodeDuration, 0) > 0))
+                   AND (COALESCE(h.ListenDuration, 0) > 0 OR (COALESCE((SELECT ues.Completed FROM UserEpisodeState ues WHERE ues.EpisodeID = e.EpisodeID AND ues.UserID = p.UserID), 0) AND COALESCE(e.EpisodeDuration, 0) > 0))
                  ORDER BY e.EpisodeID",
             )
             .bind(user_id)

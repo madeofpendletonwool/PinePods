@@ -4,6 +4,7 @@ pub mod ai_settings;
 pub mod audio_processing;
 pub mod auth;
 pub mod download_metadata;
+pub mod episode_aliases;
 pub mod feed_health;
 pub mod feeds;
 pub mod http;

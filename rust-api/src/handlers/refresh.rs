@@ -359,37 +359,41 @@ async fn refresh_feed_group(
                     return Err(e);
                 }
             };
-            let mut all_applied = true;
-            for item in group {
-                let art = item.artwork_url.as_deref().unwrap_or("");
-                match state
-                    .db_pool
-                    .apply_parsed_episodes(item.podcast_id, &parsed, art, item.feed_cutoff, true)
-                    .await
-                {
-                    Ok(new_eps) => {
-                        if !new_eps.is_empty() {
-                            info!("Podcast {}: {} new episodes", item.podcast_id, new_eps.len());
-                        }
-                        queue_auto_downloads(state, item.user_id, item.auto_download, &new_eps).await;
-                        queue_auto_new_episodes(state, item.user_id, item.auto_queue, &new_eps).await;
-                        let ids: Vec<i32> = new_eps.iter().map(|e| e.episodeid).collect();
+            // The feed's episodes are shared: insert them once (with the loosest cutoff of its
+            // subscribers), then hand the new ones to each subscription.
+            let cutoff = if group.iter().any(|i| i.feed_cutoff.unwrap_or(0) <= 0) {
+                None
+            } else {
+                group.iter().filter_map(|i| i.feed_cutoff).max()
+            };
+            let art = rep.artwork_url.as_deref().unwrap_or("");
+            let all_applied = match state.db_pool.apply_parsed_episodes(rep.podcast_id, &parsed, art, cutoff, true).await {
+                Ok(new_eps) => {
+                    if !new_eps.is_empty() {
+                        info!("Feed {}: {} new episodes", rep.feed_url, new_eps.len());
+                    }
+                    let ids: Vec<i32> = new_eps.iter().map(|e| e.episodeid).collect();
+                    for item in group {
+                        let mine: Vec<_> = new_eps.iter().cloned().map(|mut e| { e.podcastid = item.podcast_id; e }).collect();
+                        queue_auto_downloads(state, item.user_id, item.auto_download, &mine).await;
+                        queue_auto_new_episodes(state, item.user_id, item.auto_queue, &mine).await;
                         if let Err(e) = state.db_pool.auto_add_category_episodes_for(item.user_id, item.podcast_id, &ids).await {
                             warn!("Category auto-add for podcast {} failed: {}", item.podcast_id, e);
                         }
-                        // Auto-transcribe new episodes for opted-in podcasts (independent
-                        // of downloads — the pipeline fetches audio on demand).
-                        for ep in &new_eps {
-                            crate::services::transcription::maybe_transcribe_episode(state.db_pool.clone(), ep.episodeid);
-                        }
-                        all_new.extend(new_eps);
+                        all_new.extend(mine);
                     }
-                    Err(e) => {
-                        all_applied = false;
-                        warn!("Error applying feed to podcast {}: {}", item.podcast_id, e);
+                    // Auto-transcribe new episodes for opted-in podcasts (independent of
+                    // downloads — the pipeline fetches audio on demand).
+                    for id in ids {
+                        crate::services::transcription::maybe_transcribe_episode(state.db_pool.clone(), id);
                     }
+                    true
                 }
-            }
+                Err(e) => {
+                    warn!("Error applying feed {}: {}", rep.feed_url, e);
+                    false
+                }
+            };
             state.db_pool.store_feed_tags(&ids, &body).await;
             // Only remember the body hash once every subscriber has it applied; otherwise the
             // next cycle would skip the row that failed.

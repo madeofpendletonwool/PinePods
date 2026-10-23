@@ -216,7 +216,7 @@ pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32)
         let any_opted_in = match db_pool {
             DatabasePool::Postgres(ref pool) => sqlx::query(r#"
                 SELECT EXISTS(
-                    SELECT 1 FROM "Episodes" e JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    SELECT 1 FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
                     WHERE e.episodeid = $1 AND COALESCE(p.autoaddetect, FALSE) = TRUE
                 ) AS any_on
             "#)
@@ -229,7 +229,7 @@ pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32)
             .unwrap_or(false),
             DatabasePool::MySQL(ref pool) => sqlx::query("
                 SELECT EXISTS(
-                    SELECT 1 FROM Episodes e JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                    SELECT 1 FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
                     WHERE e.EpisodeID = ? AND COALESCE(p.AutoAdDetect, 0) = 1
                 ) AS any_on
             ")
@@ -379,7 +379,7 @@ pub async fn get_episode_skip_segments_for_user(
             FROM "EpisodeSkipSegments" s
             LEFT JOIN "EpisodeAdSkipReview" r ON r.segmentid = s.segmentid AND r.userid = $2
             LEFT JOIN "Episodes" e ON e.episodeid = s.episodeid
-            LEFT JOIN "Podcasts" p ON p.podcastid = e.podcastid AND p.userid = $2
+            LEFT JOIN "Podcasts" p ON p.feedid = e.feedid AND p.userid = $2
             WHERE s.episodeid = $1
             ORDER BY s.starttime
         "#)
@@ -404,7 +404,7 @@ pub async fn get_episode_skip_segments_for_user(
             FROM EpisodeSkipSegments s
             LEFT JOIN EpisodeAdSkipReview r ON r.SegmentID = s.SegmentID AND r.UserID = ?
             LEFT JOIN Episodes e ON e.EpisodeID = s.EpisodeID
-            LEFT JOIN Podcasts p ON p.PodcastID = e.PodcastID AND p.UserID = ?
+            LEFT JOIN Podcasts p ON p.FeedID = e.FeedID AND p.UserID = ?
             WHERE s.EpisodeID = ?
             ORDER BY s.StartTime
         "#)

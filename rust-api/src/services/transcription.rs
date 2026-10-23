@@ -174,8 +174,8 @@ async fn fetch_episode_audio_temp(db_pool: &DatabasePool, episode_id: i32) -> Re
         DatabasePool::Postgres(pool) => {
             let row = sqlx::query(r#"
                 SELECT e.episodeurl, p.username, p.password
-                FROM "Episodes" e JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                WHERE e.episodeid = $1
+                FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
+                WHERE e.episodeid = $1 LIMIT 1
             "#)
             .bind(episode_id)
             .fetch_one(pool)
@@ -190,8 +190,8 @@ async fn fetch_episode_audio_temp(db_pool: &DatabasePool, episode_id: i32) -> Re
         DatabasePool::MySQL(pool) => {
             let row = sqlx::query("
                 SELECT e.EpisodeURL, p.Username, p.Password
-                FROM Episodes e JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                WHERE e.EpisodeID = ?
+                FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
+                WHERE e.EpisodeID = ? LIMIT 1
             ")
             .bind(episode_id)
             .fetch_one(pool)
@@ -460,8 +460,9 @@ pub fn maybe_transcribe_episode(db_pool: DatabasePool, episode_id: i32) {
         let podcast_enabled = match db_pool {
             DatabasePool::Postgres(ref pool) => sqlx::query(r#"
                 SELECT COALESCE(p.autotranscribe, FALSE) AS a
-                FROM "Episodes" e JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
                 WHERE e.episodeid = $1
+                ORDER BY COALESCE(p.autotranscribe, FALSE) DESC LIMIT 1
             "#)
             .bind(episode_id)
             .fetch_optional(pool)
@@ -472,8 +473,9 @@ pub fn maybe_transcribe_episode(db_pool: DatabasePool, episode_id: i32) {
             .unwrap_or(false),
             DatabasePool::MySQL(ref pool) => sqlx::query("
                 SELECT COALESCE(p.AutoTranscribe, 0) AS a
-                FROM Episodes e JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
                 WHERE e.EpisodeID = ?
+                ORDER BY COALESCE(p.AutoTranscribe, 0) DESC LIMIT 1
             ")
             .bind(episode_id)
             .fetch_optional(pool)

@@ -235,7 +235,7 @@ pub async fn pg_episode_for_event(conn: &mut PgConnection, user_id: i32, episode
     let row = sqlx::query(
         r#"SELECT p.feedurl, p.username, p.password, COALESCE(p.isyoutubechannel, FALSE) AS yt,
                   e.episodeurl, e.episodeguid, e.episodeduration
-           FROM "Episodes" e JOIN "Podcasts" p ON p.podcastid = e.podcastid
+           FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid
            WHERE e.episodeid = $1 AND p.userid = $2"#,
     )
     .bind(episode_id)
@@ -260,7 +260,7 @@ pub async fn mysql_episode_for_event(conn: &mut MySqlConnection, user_id: i32, e
     let row = sqlx::query(
         "SELECT p.FeedURL, p.Username, p.Password, p.IsYouTubeChannel AS yt,
                 e.EpisodeURL, e.EpisodeGUID, e.EpisodeDuration
-         FROM Episodes e JOIN Podcasts p ON p.PodcastID = e.PodcastID
+         FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID
          WHERE e.EpisodeID = ? AND p.UserID = ?",
     )
     .bind(episode_id)
@@ -480,13 +480,13 @@ impl DatabasePool {
                     let base: Vec<&str> = chunk.iter().map(|k| super::resolver::url_base(k.episode_url)).collect();
                     let rows = sqlx::query(
                         r#"SELECT i.idx, COALESCE(
-                             (SELECT MIN(e.episodeid) FROM "Episodes" e JOIN "Podcasts" p ON p.podcastid = e.podcastid
+                             (SELECT MIN(e.episodeid) FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid
                                WHERE p.userid = $1 AND p.feedurl = i.purl AND i.guid <> '' AND e.episodeguid = i.guid),
-                             (SELECT MIN(e.episodeid) FROM "Episodes" e JOIN "Podcasts" p ON p.podcastid = e.podcastid
+                             (SELECT MIN(e.episodeid) FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid
                                WHERE p.userid = $1 AND e.episodeurl = i.eurl),
-                             (SELECT MIN(e.episodeid) FROM "Episodes" e JOIN "Podcasts" p ON p.podcastid = e.podcastid
+                             (SELECT MIN(e.episodeid) FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid
                                WHERE p.userid = $1 AND i.base <> i.eurl AND e.episodeurl = i.base),
-                             (SELECT MIN(e.episodeid) FROM "Episodes" e JOIN "Podcasts" p ON p.podcastid = e.podcastid
+                             (SELECT MIN(e.episodeid) FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid
                                WHERE p.userid = $1 AND p.feedurl = i.purl AND split_part(e.episodeurl, '?', 1) = i.base)
                            ) AS episode_id
                            FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[]) WITH ORDINALITY AS i(purl, eurl, guid, base, idx)"#,
@@ -509,13 +509,13 @@ impl DatabasePool {
                     let derived = vec![row_sql; chunk.len()].join(" UNION ALL ");
                     let sql = format!(
                         "SELECT d.idx, COALESCE(
-                           (SELECT MIN(e.EpisodeID) FROM Episodes e JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                           (SELECT MIN(e.EpisodeID) FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID
                              WHERE p.UserID = ? AND p.FeedURL = d.purl AND d.ghash <> '' AND e.EpisodeGUIDHash = d.ghash),
-                           (SELECT MIN(e.EpisodeID) FROM Episodes e JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                           (SELECT MIN(e.EpisodeID) FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID
                              WHERE p.UserID = ? AND e.EpisodeURLHash = d.uhash AND e.EpisodeURL = d.eurl),
-                           (SELECT MIN(e.EpisodeID) FROM Episodes e JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                           (SELECT MIN(e.EpisodeID) FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID
                              WHERE p.UserID = ? AND d.base <> d.eurl AND e.EpisodeURLHash = d.bhash AND e.EpisodeURL = d.base),
-                           (SELECT MIN(e.EpisodeID) FROM Episodes e JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                           (SELECT MIN(e.EpisodeID) FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID
                              WHERE p.UserID = ? AND p.FeedURL = d.purl AND SUBSTRING_INDEX(e.EpisodeURL, '?', 1) = d.base)
                          ) AS episode_id
                          FROM ({derived}) d"
@@ -559,9 +559,9 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let rows = sqlx::query(
-                    r#"SELECT e.episodeid, e.episodeduration, e.completed, h.listenduration, h.listendate
+                    r#"SELECT e.episodeid, e.episodeduration, COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) AS completed, h.listenduration, h.listendate
                        FROM "Episodes" e
-                       JOIN "Podcasts" p ON p.podcastid = e.podcastid AND p.userid = $1
+                       JOIN "Podcasts" p ON p.feedid = e.feedid AND p.userid = $1
                        LEFT JOIN "UserEpisodeHistory" h ON h.episodeid = e.episodeid AND h.userid = $1
                        WHERE e.episodeid = ANY($2)"#,
                 )
@@ -585,9 +585,9 @@ impl DatabasePool {
                 for chunk in episode_ids.chunks(1000) {
                     let marks = vec!["?"; chunk.len()].join(",");
                     let sql = format!(
-                        "SELECT e.EpisodeID, e.EpisodeDuration, e.Completed, h.ListenDuration, h.ListenDate
+                        "SELECT e.EpisodeID, e.EpisodeDuration, COALESCE((SELECT ues.Completed FROM UserEpisodeState ues WHERE ues.EpisodeID = e.EpisodeID AND ues.UserID = p.UserID), 0) AS Completed, h.ListenDuration, h.ListenDate
                          FROM Episodes e
-                         JOIN Podcasts p ON p.PodcastID = e.PodcastID AND p.UserID = ?
+                         JOIN Podcasts p ON p.FeedID = e.FeedID AND p.UserID = ?
                          LEFT JOIN UserEpisodeHistory h ON h.EpisodeID = e.EpisodeID AND h.UserID = ?
                          WHERE e.EpisodeID IN ({marks})"
                     );

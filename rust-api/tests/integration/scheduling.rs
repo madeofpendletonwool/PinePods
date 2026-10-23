@@ -312,7 +312,10 @@ async fn auto_complete_happens_at_write_time_and_the_sweep_only_looks_back_a_wee
         .send()
         .await
         .assert_ok();
-    let completed = |id: i32| async move { int(app, &format!(r#"SELECT CASE WHEN Completed THEN 1 ELSE 0 END FROM "Episodes" WHERE EpisodeID = {id}"#)).await == Some(1) };
+    let uid = s.user.id;
+    let completed = move |id: i32| async move {
+        int(app, &format!(r#"SELECT COUNT(*) FROM "UserEpisodeState" WHERE UserID = {uid} AND EpisodeID = {id} AND Completed = TRUE"#)).await == Some(1)
+    };
 
     // A client of the internal server reports a position near the end: completed on upload.
     let server = app.rust_gpodder_server().await;

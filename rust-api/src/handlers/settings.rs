@@ -1987,18 +1987,21 @@ pub async fn restore_server(
     // upload itself can take a while; the restore then runs against the streamed file).
     // The guard is moved into the task and released (via Drop) when it finishes.
     let db_pool = state.db_pool.clone();
+    let merged = state.merged_episodes.clone();
     let task_id = state.task_spawner.spawn_progress_task(
         "restore_server".to_string(),
         user_id,
         move |reporter| {
             let db_pool = db_pool.clone();
             let tmp_path = tmp_path.clone();
+            let merged = merged.clone();
             let _restore_guard = restore_guard;
             async move {
                 reporter.update_progress(10.0, Some("Starting restore...".to_string())).await?;
                 reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
 
                 let result = db_pool.restore_server_data_from_path(&tmp_path).await;
+                merged.reset();
 
                 // Always clean up the temp upload, success or failure.
                 if let Err(e) = tokio::fs::remove_file(&tmp_path).await {
@@ -4946,6 +4949,7 @@ pub async fn restore_from_backup_file(
     // Clone for the async closure
     let backup_filename_for_closure = backup_filename.clone();
     let db_pool = state.db_pool.clone();
+    let merged = state.merged_episodes.clone();
 
     // Spawn restoration task
     let task_id = state.task_spawner.spawn_progress_task(
@@ -4955,6 +4959,7 @@ pub async fn restore_from_backup_file(
             let backup_path = backup_path.clone();
             let backup_filename = backup_filename_for_closure;
             let db_pool = db_pool.clone();
+            let merged = merged.clone();
             // Released (via Drop) when the restore task finishes.
             let _restore_guard = restore_guard;
             async move {
@@ -4962,7 +4967,9 @@ pub async fn restore_from_backup_file(
                 reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
 
                 // Clears existing data, then streams the dump into psql/mysql.
-                db_pool.restore_server_data_from_path(std::path::Path::new(&backup_path)).await?;
+                let result = db_pool.restore_server_data_from_path(std::path::Path::new(&backup_path)).await;
+                merged.reset();
+                result?;
 
                 reporter.update_progress(100.0, Some("Restoration completed successfully".to_string())).await?;
 

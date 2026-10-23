@@ -159,7 +159,7 @@ async fn store_community(db: &DatabasePool, podcast_id: i32, community: &Communi
         db,
         r#"SELECT ep.episodeid AS owner, ep.personid AS personid, ep.role AS role, ep.persongroup AS persongroup, ep.verified AS verified
            FROM "EpisodePeople" ep JOIN "Episodes" e ON e.episodeid = ep.episodeid
-           WHERE e.podcastid = $1 AND ep.source = 'podpeople'"#,
+           WHERE e.feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1) AND ep.source = 'podpeople'"#,
         [podcast_id],
         |r| (r.int("owner")? as i32, r.int("personid")? as i32, r.str("role")?, r.opt_str("persongroup")?, r.flag("verified")?)
     );
@@ -174,7 +174,7 @@ async fn store_community(db: &DatabasePool, podcast_id: i32, community: &Communi
     insert_credits(db, "PodcastPeople", "podcastid", SOURCE_PODPEOPLE, &podcast_rows).await?;
     execute!(
         db,
-        r#"DELETE FROM "EpisodePeople" WHERE source = 'podpeople' AND episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#,
+        r#"DELETE FROM "EpisodePeople" WHERE source = 'podpeople' AND episodeid IN (SELECT episodeid FROM "Episodes" WHERE feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1))"#,
         [podcast_id]
     );
     insert_credits(db, "EpisodePeople", "episodeid", SOURCE_PODPEOPLE, &episode_rows).await?;

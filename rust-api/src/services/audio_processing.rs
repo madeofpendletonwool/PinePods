@@ -125,8 +125,9 @@ async fn podcast_silence_settings(db_pool: &DatabasePool, episode_id: i32) -> Re
         DatabasePool::Postgres(pool) => {
             sqlx::query(r#"
                 SELECT COALESCE(p.trimsilence, FALSE) AS trim, COALESCE(p.silencethreshold, 2) AS thr
-                FROM "Episodes" e JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
                 WHERE e.episodeid = $1
+                ORDER BY COALESCE(p.trimsilence, FALSE) DESC LIMIT 1
             "#)
             .bind(episode_id)
             .fetch_optional(pool)
@@ -140,8 +141,9 @@ async fn podcast_silence_settings(db_pool: &DatabasePool, episode_id: i32) -> Re
         DatabasePool::MySQL(pool) => {
             sqlx::query("
                 SELECT COALESCE(p.TrimSilence, 0) AS trim, COALESCE(p.SilenceThreshold, 2) AS thr
-                FROM Episodes e JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
                 WHERE e.EpisodeID = ?
+                ORDER BY COALESCE(p.TrimSilence, 0) DESC LIMIT 1
             ")
             .bind(episode_id)
             .fetch_optional(pool)
