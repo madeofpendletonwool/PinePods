@@ -424,7 +424,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
     // Get best position (furthest of local vs server)
     final bestPosition = resume ? await _getBestEpisodePosition(episode) : 0;
-    if (bestPosition > _currentEpisode!.position) {
+    if (!resume || bestPosition > _currentEpisode!.position) {
       _currentEpisode!.position = bestPosition;
     }
 
