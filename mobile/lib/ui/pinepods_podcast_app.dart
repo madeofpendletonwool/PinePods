@@ -638,7 +638,11 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
       case AppLifecycleState.resumed:
         print('Deep Link: App resumed - checking for pending deep links...');
         audioBloc.transitionLifecycleState(LifecycleState.resume);
-        
+
+        // A suspended app can miss the connectivity event that normally drains
+        // the outbox, so retry whenever we come back to the foreground.
+        GlobalServices.offlineActionQueue?.flush();
+
         // Check for any pending deep links when app resumes
         try {
           final appLinks = AppLinks();

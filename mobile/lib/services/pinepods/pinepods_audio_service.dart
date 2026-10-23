@@ -110,6 +110,19 @@ class PinepodsAudioService {
     }
   }
 
+  /// Where to resume [episode], in seconds: the furthest of the position its
+  /// (possibly stale) list data carries, any position still waiting in the
+  /// offline outbox, and [serverPosition] when one was fetched.
+  Future<double> _resolveResumePosition(PinepodsEpisode episode, {double? serverPosition}) async {
+    if (episode.completed) return 0;
+    var best = (episode.listenDuration ?? 0).toDouble();
+    final pending = await _actionQueue?.pendingPosition(episode.episodeId, episode.isYoutube);
+    for (final p in [pending, serverPosition]) {
+      if (p != null && p > best) best = p;
+    }
+    return best;
+  }
+
   /// Play a PinePods episode with full server integration
   Future<void> playPinepodsEpisode({
     required PinepodsEpisode pinepodsEpisode,
@@ -149,6 +162,9 @@ class PinepodsAudioService {
       final localDownload = await _audioPlayerService.findDownloadedEpisode(episodeId);
       final hasLocalDownload = localDownload != null;
 
+      // Push any progress saved while offline before this playback adds more.
+      unawaited(_actionQueue?.flush());
+
       // Offline-first fast path (#935): a local download plays entirely from
       // disk, so start it immediately and defer every server round-trip. This
       // means tapping a downloaded episode with the server unreachable begins
@@ -176,12 +192,16 @@ class PinepodsAudioService {
         localEpisode.transcriptId = localDownload.transcriptId;
         log.info('Playing local download for episode $episodeId (offline fast path)');
 
+        final initialPosition = resume ? await _resolveResumePosition(pinepodsEpisode) : 0.0;
+        if (resume) localEpisode.position = (initialPosition * 1000).round();
+
         await _audioPlayerService.playEpisode(episode: localEpisode, resume: resume);
 
         // Add to history via the offline outbox (buffered locally when offline).
-        final initialPosition =
-            resume ? (pinepodsEpisode.listenDuration ?? 0).toDouble() : 0.0;
+        // Records the resolved position: the outbox keeps one position per
+        // episode, so a stale value here would replace newer unsynced progress.
         await _recordPosition(episodeId, userId, initialPosition);
+        _lastRecordedPosition = initialPosition;
 
         _startPeriodicUpdates();
         _isPlaying = true;
@@ -204,7 +224,9 @@ class PinepodsAudioService {
       // Get podcast ID for settings, and podcast 2.0 data (chapters/persons/
       // transcripts) in parallel - these two calls don't depend on each other,
       // and running them sequentially only adds latency before playback starts.
-      // Both tolerate offline / failures.
+      // Both tolerate offline / failures. When resuming, the server's current
+      // position is fetched alongside them, since the caller's episode data may
+      // predate progress synced since it was loaded.
       final results = await Future.wait<dynamic>([
         _pinepodsService.getPodcastIdFromEpisode(
           episodeId,
@@ -218,9 +240,14 @@ class PinepodsAudioService {
           log.fine('Could not fetch podcast 2.0 data (continuing): $e');
           return null;
         }),
+        if (resume)
+          getServerPositionForEpisode(episodeId, userId, pinepodsEpisode.isYoutube),
       ]);
       final podcastId = results[0] as int;
       final podcast2Data = results[1] as Map<String, dynamic>?;
+      final initialPosition = resume
+          ? await _resolveResumePosition(pinepodsEpisode, serverPosition: results[2] as double?)
+          : 0.0;
 
       // Get playback settings (speed, skip times). This already returns sane
       // defaults on failure.
@@ -232,6 +259,7 @@ class PinepodsAudioService {
 
       // Convert PinepodsEpisode to Episode for the audio player
       final episode = _convertToEpisode(pinepodsEpisode, playDetails, podcast2Data);
+      if (resume) episode.position = (initialPosition * 1000).round();
 
       // Start playing with the existing audio service
       await _audioPlayerService.playEpisode(episode: episode, resume: resume);
@@ -252,8 +280,8 @@ class PinepodsAudioService {
 
       // Add to history. Routes through the offline outbox so it is not lost when
       // the device is offline (e.g. playing a local download on a plane).
-      final initialPosition = resume ? (pinepodsEpisode.listenDuration ?? 0).toDouble() : 0.0;
       await _recordPosition(episodeId, userId, initialPosition);
+      _lastRecordedPosition = initialPosition;
 
       // Playing an episode makes it the queue anchor: move it to the top of the
       // queue (inserting it if not already queued). Skipped for playlist/serial
@@ -582,23 +610,6 @@ class PinepodsAudioService {
     } catch (e) {
       log.warning('Failed to get server position for episode $episodeId: $e');
       return null;
-    }
-  }
-
-  /// Record listen duration when episode ends or is stopped
-  Future<void> recordListenDuration(double listenDuration) async {
-    if (_currentEpisodeId == null || _currentUserId == null) return;
-
-    try {
-      await _pinepodsService.recordListenDuration(
-        _currentEpisodeId!,
-        _currentUserId!,
-        listenDuration,
-        _isYoutube,
-      );
-      log.info('Recorded listen duration: ${listenDuration}s');
-    } catch (e) {
-      log.warning('Failed to record listen duration: $e');
     }
   }
 

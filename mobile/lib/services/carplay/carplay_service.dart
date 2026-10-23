@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_carplay/flutter_carplay.dart';
 import 'package:logging/logging.dart';
 import 'package:pinepods_mobile/entities/downloadable.dart';
@@ -12,6 +13,7 @@ import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/repository/repository.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart' show AudioPlayerService, AudioState;
+import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
 
@@ -847,6 +849,22 @@ class CarPlayService {
   Future<void> _playEpisode(Episode episode) async {
     log.info('Playing episode from CarPlay: ${episode.title}');
 
+    // PinePods episodes go through the same path as the app UI and Android
+    // Auto, so progress is tracked and synced. Playing them straight on the
+    // native player would leave the server position untouched for the whole
+    // drive, and pause would sync against whatever episode the app last played.
+    final pinepodsAudioService = GlobalServices.pinepodsAudioService;
+    final pinepodsEpisode = toPinepodsEpisode(episode);
+    if (pinepodsAudioService != null && pinepodsEpisode != null) {
+      try {
+        await pinepodsAudioService.playPinepodsEpisode(pinepodsEpisode: pinepodsEpisode, resume: true);
+        log.info('Started playback from CarPlay: ${episode.title}');
+      } catch (e) {
+        log.severe('Failed to play episode from CarPlay: $e');
+      }
+      return;
+    }
+
     // Local-first: episodes converted from PinepodsEpisode/HomeEpisode carry a
     // 'pinepods_<id>' guid but no downloadState, so they'd stream even when a
     // local copy exists. Resolve the on-device download here before playing.
@@ -877,6 +895,39 @@ class CarPlayService {
   }
 
   // MARK: - Episode Conversion
+
+  /// Rebuilds the PinePods episode behind a CarPlay list item, or null when
+  /// the item has no `pinepods_<id>` guid. Built from the item itself (no
+  /// network) so it still works offline; the server-download and YouTube flags
+  /// are recovered from the stream URL the item was given. playPinepodsEpisode
+  /// resolves the up-to-date resume position itself.
+  @visibleForTesting
+  static PinepodsEpisode? toPinepodsEpisode(Episode episode) {
+    if (!episode.guid.startsWith('pinepods_')) return null;
+    final episodeId = int.tryParse(episode.guid.replaceFirst('pinepods_', '').split('_').first);
+    if (episodeId == null || episodeId == 0) return null;
+
+    final contentUrl = episode.contentUrl ?? '';
+    final viaStream = contentUrl.contains('/api/data/stream/');
+    final isYoutube = viaStream && contentUrl.contains('type=youtube');
+
+    return PinepodsEpisode(
+      podcastName: episode.podcast ?? '',
+      episodeTitle: episode.title ?? '',
+      episodePubDate: episode.publicationDate?.toIso8601String() ?? '',
+      episodeDescription: episode.description ?? '',
+      episodeArtwork: episode.imageUrl ?? '',
+      episodeUrl: episode.link ?? contentUrl,
+      episodeDuration: episode.duration ~/ 1000,
+      listenDuration: episode.position ~/ 1000,
+      episodeId: episodeId,
+      completed: episode.played,
+      saved: false,
+      queued: false,
+      downloaded: viaStream && !isYoutube,
+      isYoutube: isYoutube,
+    );
+  }
 
   Episode _convertPinepodsEpisode(PinepodsEpisode ep) {
     String contentUrl = ep.episodeUrl;
