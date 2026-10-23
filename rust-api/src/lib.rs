@@ -11,7 +11,10 @@ use axum::{
 use tower::ServiceBuilder;
 use tower_http::{
     trace::TraceLayer,
-    compression::CompressionLayer,
+    compression::{
+        predicate::{DefaultPredicate, NotForContentType, Predicate},
+        CompressionLayer,
+    },
     services::ServeDir,
 };
 
@@ -118,7 +121,14 @@ pub fn create_app(state: AppState) -> Router {
                         .on_response(tower_http::trace::DefaultOnResponse::new()
                             .level(tracing::Level::INFO))
                 )
-                .layer(CompressionLayer::new())
+                // Media is already compressed, and gzipping a full-file response
+                // also strips Accept-Ranges, which players use to decide whether
+                // they can seek.
+                .layer(CompressionLayer::new().compress_when(
+                    DefaultPredicate::new()
+                        .and(NotForContentType::const_new("audio/"))
+                        .and(NotForContentType::const_new("video/")),
+                ))
                 .layer(axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024 * 1024)) // 2GB limit for massive backup files
         )
         .with_state(state)

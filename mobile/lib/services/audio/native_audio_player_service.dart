@@ -55,7 +55,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
   Episode? _currentEpisode;
   Transcript? _currentTranscript;
 
-  DateTime? _episodeStartTime;
   Timer? _localPositionTimer;
 
   /// Whether we've already reported the decoded duration for the current
@@ -466,8 +465,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
       }
       await _applySkipIntervals();
 
-      // Start tracking
-      _episodeStartTime = DateTime.now();
       _startLocalPositionSaver();
 
     } catch (e) {
@@ -479,7 +476,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
   @override
   Future<void> play() async {
     log.info('play');
-    _episodeStartTime = DateTime.now();
     _startLocalPositionSaver();
 
     try {
@@ -529,7 +525,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
     _stopLocalPositionSaver();
     await _saveLocalPosition();
-    await _recordListenDuration();
 
     if (_pinepodsAudioService != null) {
       try {
@@ -923,9 +918,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
   void _performBackgroundSync() async {
     try {
-      log.info('performBackgroundSync - recording listen duration');
-      await _recordListenDuration();
-
       if (_pinepodsAudioService != null) {
         log.info('performBackgroundSync - syncing to server via pinepodsAudioService');
         await _pinepodsAudioService!.onPause();
@@ -935,17 +927,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
       }
     } catch (e) {
       log.warning('Background sync failed: $e');
-    }
-  }
-
-  Future<void> _recordListenDuration() async {
-    if (_episodeStartTime == null || _pinepodsAudioService == null) return;
-
-    final now = DateTime.now();
-    final sessionDuration = now.difference(_episodeStartTime!);
-
-    if (sessionDuration.inSeconds >= 5) {
-      await _pinepodsAudioService!.recordListenDuration(sessionDuration.inSeconds.toDouble());
     }
   }
 
