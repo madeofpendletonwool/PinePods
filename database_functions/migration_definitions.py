@@ -6353,6 +6353,38 @@ def migration_066_add_episode_url_lookup_index(conn, db_type: str) -> None:
         cursor.close()
 
 
+def _compact_old_episode_actions(cursor, db_type: str) -> None:
+    """Before the episode action log is rewritten: delete the rows the nightly sync log compaction
+    would delete anyway (older than PINEPODS_SYNC_LOG_RETENTION_DAYS, default 90, and replaced by a
+    newer action for the same episode), so large old logs don't make the upgrade take minutes.
+    Users with an external sync target are left alone: their rows may not have been pushed yet."""
+    try:
+        days = int(os.environ.get("PINEPODS_SYNC_LOG_RETENTION_DAYS", "90").strip())
+    except ValueError:
+        days = 90
+    if days <= 0 or not _column_exists(cursor, db_type, "GpodderSyncEpisodeActions", "Timestamp"):
+        return
+    pg = db_type == "postgresql"
+    table = '"GpodderSyncEpisodeActions"' if pg else "GpodderSyncEpisodeActions"
+    has_targets = _table_exists(cursor, db_type, "SyncTargets")
+    targets = ('"SyncTargets"' if pg else "SyncTargets") if has_targets else None
+    skip_targets = f"AND UserID NOT IN (SELECT UserID FROM {targets})" if targets else ""
+    cutoff_sql = f"EXTRACT(EPOCH FROM NOW())::BIGINT - {days * 86400}" if pg else f"UNIX_TIMESTAMP() - {days * 86400}"
+    superseded = f"""
+        SELECT ActionID FROM (
+            SELECT ActionID, Timestamp, ROW_NUMBER() OVER (
+                PARTITION BY UserID, PodcastURL, EpisodeURL, LOWER(Action) ORDER BY ActionID DESC) AS newer
+            FROM {table} WHERE 1 = 1 {skip_targets}
+        ) ranked WHERE newer > 1 AND Timestamp < {cutoff_sql}
+    """
+    if pg:
+        cursor.execute(f"DELETE FROM {table} WHERE ActionID IN ({superseded})")
+    else:
+        cursor.execute(f"DELETE a FROM {table} a JOIN ({superseded}) old ON old.ActionID = a.ActionID")
+    if cursor.rowcount:
+        logger.info(f"Removed {cursor.rowcount} episode actions older than {days} days that newer ones replaced")
+
+
 @register_migration("110", "gpodder_action_server_ts", "Add server receive time (ServerTs) to GpodderSyncEpisodeActions for sync cursors", requires=["100"])
 def migration_110_gpodder_action_server_ts(conn, db_type: str) -> None:
     """Separate when the server received an episode action from when the client says it happened.
@@ -6368,8 +6400,11 @@ def migration_110_gpodder_action_server_ts(conn, db_type: str) -> None:
     pg = db_type == "postgresql"
     table = '"GpodderSyncEpisodeActions"' if pg else "GpodderSyncEpisodeActions"
     try:
+        _compact_old_episode_actions(cursor, db_type)
         if not _column_exists(cursor, db_type, "GpodderSyncEpisodeActions", "ServerTs"):
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN ServerTs BIGINT NULL")
+        cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE ServerTs IS NULL")
+        logger.info(f"Migration 110: setting ServerTs on {cursor.fetchone()[0]} episode actions (a few minutes for millions)")
         cursor.execute(f"UPDATE {table} SET ServerTs = Timestamp WHERE ServerTs IS NULL")
         if pg:
             cursor.execute(f"ALTER TABLE {table} ALTER COLUMN ServerTs SET NOT NULL")
@@ -6884,6 +6919,8 @@ def migration_111_gpodder_episode_action_log(conn, db_type: str) -> None:
         if not _column_exists(cursor, db_type, name, "Origin"):
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN Origin VARCHAR(32) NOT NULL DEFAULT 'client'")
 
+        cursor.execute(f"SELECT COUNT(*) FROM {table} WHERE EpisodeID IS NULL")
+        logger.info(f"Migration 111: matching {cursor.fetchone()[0]} episode actions to episodes (a few minutes for millions)")
         if pg:
             cursor.execute(f"""
                 UPDATE {table} a SET EpisodeID = (
