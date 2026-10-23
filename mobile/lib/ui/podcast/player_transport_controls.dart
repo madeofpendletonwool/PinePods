@@ -33,7 +33,7 @@ class _PlayerTransportControlsState extends State<PlayerTransportControls> {
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       child: StreamBuilder<AudioState>(
           stream: audioBloc.playingState,
-          initialData: AudioState.none,
+          initialData: audioBloc.playingState?.valueOrNull ?? AudioState.none,
           builder: (context, snapshot) {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.center,

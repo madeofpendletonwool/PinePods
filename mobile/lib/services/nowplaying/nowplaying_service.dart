@@ -149,6 +149,11 @@ class NowPlayingService {
   StreamSubscription? _channelSub;
   Timer? _reconnectTimer;
 
+  /// Consecutive failed connects; drives the reconnect backoff so a server
+  /// without this endpoint (or an unreachable one) isn't dialled every 10s
+  /// forever.
+  int _failedAttempts = 0;
+
   String? _deviceId;
   String? _deviceName;
   String _deviceType = 'Mobile';
@@ -288,8 +293,14 @@ class NowPlayingService {
         onDone: () => _onDisconnected(closeCode: channel.closeCode),
         cancelOnError: true,
       );
-      connected.value = true;
       log.info('Now-playing socket connecting to $proto://$clean (device $deviceId)');
+      // A failed handshake also surfaces on the stream (handled above); this
+      // just keeps `ready`'s error from escaping as an unhandled exception.
+      channel.ready.then((_) {
+        if (_channel != channel) return;
+        _failedAttempts = 0;
+        connected.value = true;
+      }, onError: (Object e) {});
     } catch (e) {
       log.fine('Now-playing socket failed to open (continuing): $e');
       _onDisconnected();
@@ -312,11 +323,19 @@ class NowPlayingService {
     // rather than reclaiming the old id and evicting the other one in a loop.
     final replaced = closeCode == _closeReplaced;
     if (replaced) log.info('Now-playing device id taken over elsewhere; rotating');
-    _reconnectTimer = Timer(Duration(seconds: replaced ? 1 : 10), () async {
+    final delay = replaced ? const Duration(seconds: 1) : _nextBackoff();
+    _reconnectTimer = Timer(delay, () async {
       if (_closing) return;
       if (replaced) await _rotateDeviceId();
       connect(server: server, apiKey: apiKey, userId: userId);
     });
+  }
+
+  /// 10s, 20s, 40s ... capped at 5 minutes.
+  Duration _nextBackoff() {
+    final seconds = 10 * (1 << _failedAttempts.clamp(0, 5));
+    _failedAttempts++;
+    return Duration(seconds: seconds.clamp(10, 300));
   }
 
   void _teardown() {
@@ -339,6 +358,7 @@ class NowPlayingService {
   /// Intentionally close the socket (e.g. on logout). Cancels reconnection.
   void disconnect() {
     _closing = true;
+    _failedAttempts = 0;
     _teardown();
     _server = null;
     _apiKey = null;

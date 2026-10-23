@@ -4,7 +4,8 @@ import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
-import 'package:pinepods_mobile/ui/widgets/restart_widget.dart';
+import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
+import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:pinepods_mobile/ui/settings/settings_section_label.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
@@ -178,29 +179,25 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
     });
   }
 
-  void _logOut() async {
-    var settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+  void _logOut() {
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final navigator = Navigator.of(context);
 
-    // Clear all PinePods user data
+    // Nothing from this account should keep playing or reporting.
+    Provider.of<AudioBloc>(context, listen: false).transitionState(TransitionState.stop);
+    LocalDownloadUtils.clearCache();
+
+    // AuthWrapper swaps the home route to the login screen as soon as these
+    // clear (the now-playing socket also disconnects off the same stream).
     settingsBloc.setPinepodsServer(null);
     settingsBloc.setPinepodsApiKey(null);
     settingsBloc.setPinepodsUserId(null);
     settingsBloc.setPinepodsUsername(null);
     settingsBloc.setPinepodsEmail(null);
 
-    setState(() {
-      _isLoggedIn = false;
-      _connectedServer = null;
-    });
-
-    // Wait for the settings to be processed and then restart the app
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future.delayed(const Duration(milliseconds: 100));
-      if (mounted) {
-        // Restart the entire app to reset all state
-        RestartWidget.restartApp(context);
-      }
-    });
+    // Settings is pushed above home; drop back to the root so the login screen
+    // is what's actually showing.
+    navigator.popUntil((route) => route.isFirst);
   }
 
   @override

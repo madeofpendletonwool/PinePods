@@ -277,10 +277,10 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
               AudioBloc(audioPlayerService: widget.audioPlayerService),
           dispose: (_, value) => value.dispose(),
         ),
-        Provider<SettingsBloc?>(
-          create: (_) => widget.settingsBloc,
-          dispose: (_, value) => value!.dispose(),
-        ),
+        // Owned by the app widget (created once in its constructor), so it must
+        // outlive this subtree; disposing it here would leave a remounted tree
+        // holding a closed bloc.
+        Provider<SettingsBloc?>.value(value: widget.settingsBloc),
         Provider<QueueBloc>(
           create: (_) => QueueBloc(
             audioPlayerService: widget.audioPlayerService,

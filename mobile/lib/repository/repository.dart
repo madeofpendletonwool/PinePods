@@ -32,6 +32,10 @@ abstract class Repository {
 
   Future<Episode?> findEpisodeByGuid(String guid);
 
+  /// Rows whose guid is [guid] or starts with `<guid>_` (the legacy
+  /// timestamp-suffixed local-download format).
+  Future<List<Episode>> findEpisodesByGuidOrLegacy(String guid);
+
   Future<List<Episode?>> findEpisodesByPodcastGuid(
     String pguid, {
     PodcastEpisodeFilter filter = PodcastEpisodeFilter.none,

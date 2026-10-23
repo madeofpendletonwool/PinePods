@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
@@ -68,6 +69,18 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   bool _isFollowing = false;
   bool _isFollowButtonLoading = false;
   bool _isFavorite = false;
+
+  /// Header collapse state; the action icons sit on the artwork (white) when
+  /// expanded and on the plain app bar (theme colour) when collapsed.
+  static const double _headerHeight = 300;
+  bool _headerCollapsed = false;
+
+  bool _onScroll(ScrollNotification n) {
+    if (n.depth != 0 || n.metrics.axis != Axis.vertical) return false;
+    final collapsed = n.metrics.pixels > _headerHeight - kToolbarHeight - 24;
+    if (collapsed != _headerCollapsed) setState(() => _headerCollapsed = collapsed);
+    return false;
+  }
   bool _isFavoriteLoading = false;
   String? _errorMessage;
   List<PinepodsEpisode> _episodes = [];
@@ -1303,38 +1316,59 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     );
   }
 
+  Color _headerIconColor(BuildContext context) {
+    if (!_headerCollapsed) return Colors.white;
+    final theme = Theme.of(context);
+    return theme.appBarTheme.foregroundColor ?? theme.colorScheme.onSurface;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(child: Column(
         children: [
           Expanded(
-            child: CustomScrollView(
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onScroll,
+              child: CustomScrollView(
               slivers: [
           SliverAppBar(
-            expandedHeight: 300,
+            expandedHeight: _headerHeight,
             pinned: true,
+            iconTheme: IconThemeData(color: _headerIconColor(context)),
             flexibleSpace: FlexibleSpaceBar(
+              // Leave room for the leading back button and the two trailing
+              // actions so the collapsed title never runs under them.
+              titlePadding: const EdgeInsetsDirectional.only(start: 56, end: 104, bottom: 16),
+              expandedTitleScale: 1.3,
               title: Text(
                 widget.podcast.title,
-                style: const TextStyle(
-                  shadows: [
-                    Shadow(
-                      offset: Offset(0, 1),
-                      blurRadius: 3,
-                      color: Colors.black54,
-                    ),
-                  ],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: _headerIconColor(context),
+                  shadows: _headerCollapsed
+                      ? null
+                      : const [
+                          Shadow(
+                            offset: Offset(0, 1),
+                            blurRadius: 3,
+                            color: Colors.black54,
+                          ),
+                        ],
                 ),
               ),
               background: Stack(
                 fit: StackFit.expand,
                 children: [
                   widget.podcast.artwork.isNotEmpty
-                      ? Image.network(
+                      ? ExtendedImage.network(
                           widget.podcast.artwork,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
+                          cache: true,
+                          cacheWidth: 900,
+                          loadStateChanged: (state) {
+                            if (state.extendedImageLoadState != LoadState.failed) return null;
                             return Container(
                               color: Colors.grey[300],
                               child: const Icon(
@@ -1373,67 +1407,75 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                 IconButton(
                   onPressed: _isFavoriteLoading ? null : _toggleFavorite,
                   icon: _isFavoriteLoading
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 24,
                           height: 24,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.0,
                             valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
+                                AlwaysStoppedAnimation<Color>(_headerIconColor(context)),
                           ),
                         )
                       : Icon(
                           _isFavorite ? Icons.star : Icons.star_border,
-                          color: _isFavorite ? Colors.amber : Colors.white,
+                          color: _isFavorite ? Colors.amber : _headerIconColor(context),
                         ),
                   tooltip: _isFavorite
                       ? 'Remove from favorites'
                       : 'Add to favorites',
                 ),
-              if (_isFollowing && widget.podcast.id > 0)
-                IconButton(
-                  onPressed: _toggleAutoDownload,
-                  icon: Icon(
-                    _isAutoDownloadEnabled
-                        ? Icons.download_for_offline
-                        : Icons.download_for_offline_outlined,
-                    color: _isAutoDownloadEnabled ? Colors.blue[300] : Colors.white,
-                  ),
-                  tooltip: _isAutoDownloadEnabled ? 'Disable auto-download' : 'Enable auto-download',
-                ),
-              if (_isFollowing && widget.podcast.id > 0)
-                IconButton(
-                  onPressed: _toggleAutoPlayNext,
-                  icon: Icon(
-                    _isAutoPlayNextEnabled
-                        ? Icons.skip_next
-                        : Icons.skip_next_outlined,
-                    color: _isAutoPlayNextEnabled ? Colors.green[300] : Colors.white,
-                  ),
-                  tooltip: _isAutoPlayNextEnabled ? 'Disable auto-play next' : 'Enable auto-play next',
-                ),
-              if (_isFollowing && widget.podcast.id > 0 && _aiAvailable)
-                IconButton(
-                  onPressed: _showAiSettingsSheet,
-                  icon: const Icon(Icons.auto_awesome, color: Colors.white),
-                  tooltip: 'AI features',
-                ),
-              IconButton(
-                onPressed: _isFollowButtonLoading ? null : _toggleFollow,
-                icon: _isFollowButtonLoading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.0,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : Icon(
-                      _isFollowing ? Icons.favorite : Icons.favorite_border,
-                      color: _isFollowing ? Colors.red : Colors.white,
+              PopupMenuButton<String>(
+                icon: Icon(Icons.more_vert, color: _headerIconColor(context)),
+                tooltip: 'Podcast options',
+                onSelected: (value) {
+                  switch (value) {
+                    case 'autodownload':
+                      _toggleAutoDownload();
+                      break;
+                    case 'autoplay':
+                      _toggleAutoPlayNext();
+                      break;
+                    case 'ai':
+                      _showAiSettingsSheet();
+                      break;
+                    case 'follow':
+                      _toggleFollow();
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  if (_isFollowing && widget.podcast.id > 0) ...[
+                    CheckedPopupMenuItem<String>(
+                      value: 'autodownload',
+                      checked: _isAutoDownloadEnabled,
+                      child: const Text('Auto-download'),
                     ),
-                tooltip: _isFollowing ? 'Unfollow' : 'Follow',
+                    CheckedPopupMenuItem<String>(
+                      value: 'autoplay',
+                      checked: _isAutoPlayNextEnabled,
+                      child: const Text('Auto-play next'),
+                    ),
+                    if (_aiAvailable)
+                      const PopupMenuItem<String>(
+                        value: 'ai',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.auto_awesome),
+                          title: Text('AI features'),
+                        ),
+                      ),
+                    const PopupMenuDivider(),
+                  ],
+                  PopupMenuItem<String>(
+                    value: 'follow',
+                    enabled: !_isFollowButtonLoading,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(_isFollowing ? Icons.remove_circle_outline : Icons.add_circle_outline),
+                      title: Text(_isFollowing ? 'Unfollow' : 'Follow'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1463,26 +1505,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                           ],
                         ),
                       ),
-                      ElevatedButton.icon(
-                        onPressed: _isFollowButtonLoading ? null : _toggleFollow,
-                        icon: _isFollowButtonLoading 
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.0,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Icon(
-                              _isFollowing ? Icons.remove : Icons.add,
-                              size: 16,
-                            ),
-                        label: Text(_isFollowing ? 'Unfollow' : 'Follow'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isFollowing ? Colors.red : Colors.green,
-                          foregroundColor: Colors.white,
-                        ),
+                      _FollowButton(
+                        following: _isFollowing,
+                        loading: _isFollowButtonLoading,
+                        onPressed: _toggleFollow,
                       ),
                     ],
                   ),
@@ -1658,6 +1684,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             ),
               ],
             ),
+            ),
           ),
           _buildBottomPlayer(),
         ],
@@ -1669,12 +1696,12 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final audioBloc = Provider.of<AudioBloc>(context, listen: false);
     return StreamBuilder<AudioState>(
       stream: audioBloc.playingState,
-      initialData: AudioState.none,
+      initialData: audioBloc.playingState?.valueOrNull ?? AudioState.none,
       builder: (context, snapshot) {
         final audioState = snapshot.data ?? AudioState.none;
+        // Error keeps the mini player up so it can offer a retry.
         final isAudioActive = audioState != AudioState.none &&
-            audioState != AudioState.stopped &&
-            audioState != AudioState.error;
+            audioState != AudioState.stopped;
 
         if (isAudioActive) {
           return const MiniPlayer();
@@ -1988,6 +2015,46 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         },
         childCount: _filteredEpisodes.length,
       ),
+    );
+  }
+}
+
+class _FollowButton extends StatelessWidget {
+  final bool following;
+  final bool loading;
+  final VoidCallback onPressed;
+
+  const _FollowButton({required this.following, required this.loading, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).primaryColor;
+    final onAccent =
+        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark ? Colors.white : Colors.black;
+    final Widget icon = loading
+        ? SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2, color: following ? accent : onAccent),
+          )
+        : Icon(following ? Icons.check_rounded : Icons.add_rounded, size: 18);
+
+    if (following) {
+      return OutlinedButton.icon(
+        onPressed: loading ? null : onPressed,
+        icon: icon,
+        label: const Text('Following'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: accent,
+          side: BorderSide(color: accent.withOpacity(0.5)),
+        ),
+      );
+    }
+    return FilledButton.icon(
+      onPressed: loading ? null : onPressed,
+      icon: icon,
+      label: const Text('Follow'),
+      style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: onAccent),
     );
   }
 }

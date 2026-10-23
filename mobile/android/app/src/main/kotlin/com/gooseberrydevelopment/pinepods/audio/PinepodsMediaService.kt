@@ -18,6 +18,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.upstream.DefaultAllocator
@@ -164,6 +168,7 @@ class PinepodsMediaService : MediaLibraryService() {
         AudioPlayerPlugin.logToFlutter("INFO", TAG, "Media library session initialized early - ready for Android Auto")
     }
 
+    @androidx.annotation.OptIn(UnstableApi::class)
     private fun initializePlayer() {
         // Configure load control for better buffering (fixes rewind rebuffering issue)
         val loadControl = DefaultLoadControl.Builder()
@@ -184,8 +189,21 @@ class PinepodsMediaService : MediaLibraryService() {
             .setUsage(C.USAGE_MEDIA)
             .build()
 
+        // Podcast enclosures commonly sit behind tracking-redirect chains that
+        // hop between http and https; ExoPlayer refuses those by default, which
+        // makes some shows fail to start at all.
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setUserAgent("PinePods/1.0 (Android; Podcast Client)")
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(20_000)
+        val mediaSourceFactory = DefaultMediaSourceFactory(
+            DefaultDataSource.Factory(this, httpDataSourceFactory)
+        )
+
         // Create ExoPlayer with optimized configuration
         player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)  // Auto-pause when headphones disconnect
@@ -512,7 +530,14 @@ class PinepodsMediaService : MediaLibraryService() {
 
     fun play() {
         Log.d(TAG, "play")
-        player?.play()
+        player?.let { p ->
+            // After an error (or a stop) the player is idle and play() alone is a
+            // no-op; re-prepare so the current item loads again from where it was.
+            if (p.playbackState == Player.STATE_IDLE && p.mediaItemCount > 0) {
+                p.prepare()
+            }
+            p.play()
+        }
     }
 
     fun pause() {

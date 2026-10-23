@@ -30,6 +30,14 @@ class PinepodsAudioPlayer: NSObject {
     private var skipSegments: [(start: Double, end: Double)] = []
     private var playbackIntent = PlaybackIntent()
 
+    // The last playEpisode request, so play() can rebuild a failed item, and
+    // whether its asset is still loading (so play() doesn't restart that load).
+    private var lastRequest: (url: String, isLocal: Bool)?
+    private var loadInFlight = false
+
+    // Last healthy playhead (ms), used as the resume point when rebuilding.
+    private var lastKnownPositionMs = 0
+
     init(eventSink: FlutterEventSink?) {
         self.eventSink = eventSink
         super.init()
@@ -105,6 +113,9 @@ class PinepodsAudioPlayer: NSObject {
         // Setup periodic time observer for position updates (every 1s; battery)
         let interval = CMTime(seconds: 1.0, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            if time.isValid && !time.isIndefinite && time.seconds > 0 {
+                self?.lastKnownPositionMs = Int(time.seconds * 1000)
+            }
             self?.applySilenceSkipIfNeeded(at: time.seconds)
             self?.sendPlaybackStateEvent()
         }
@@ -323,6 +334,9 @@ class PinepodsAudioPlayer: NSObject {
     func playEpisode(url: String, startPosition: Int, isLocal: Bool, metadata: [String: Any]?) {
         let generation = playbackIntent.beginEpisode()
         player?.pause()
+        lastRequest = (url: url, isLocal: isLocal)
+        lastKnownPositionMs = startPosition
+        loadInFlight = true
         NSLog("[PinepodsAudioPlayer] playEpisode called")
         NSLog("[PinepodsAudioPlayer] URL: \(url)")
         NSLog("[PinepodsAudioPlayer] startPosition: \(startPosition)ms, isLocal: \(isLocal)")
@@ -372,6 +386,7 @@ class PinepodsAudioPlayer: NSObject {
         guard let finalUrl = audioUrl else {
             NSLog("[PinepodsAudioPlayer] Invalid URL: \(url)")
             sendEvent(["type": "log", "message": "ERROR: Invalid URL - could not parse"])
+            loadInFlight = false
             sendError(code: -1, message: "Invalid URL")
             return
         }
@@ -399,6 +414,7 @@ class PinepodsAudioPlayer: NSObject {
         asset.loadValuesAsynchronously(forKeys: ["playable", "duration"]) { [weak self] in
             DispatchQueue.main.async {
                 guard let self = self, self.playbackIntent.generation == generation else { return }
+                self.loadInFlight = false
 
                 var error: NSError?
                 let playableStatus = asset.statusOfValue(forKey: "playable", error: &error)
@@ -512,6 +528,15 @@ class PinepodsAudioPlayer: NSObject {
     }
 
     func play() {
+        // A failed (or cleared) item can't resume; rebuild it from the last
+        // request at the last known position instead of silently doing nothing.
+        if let request = lastRequest, !loadInFlight,
+           player?.currentItem == nil || player?.currentItem?.status == .failed {
+            NSLog("[PinepodsAudioPlayer] play: current item unusable, reloading")
+            playEpisode(url: request.url, startPosition: lastKnownPositionMs,
+                        isLocal: request.isLocal, metadata: currentMetadata)
+            return
+        }
         playbackIntent.play()
         resumeRequestedPlayback()
     }
@@ -538,6 +563,8 @@ class PinepodsAudioPlayer: NSObject {
 
     func stop() {
         playbackIntent.stop()
+        lastRequest = nil
+        loadInFlight = false
         NSLog("[PinepodsAudioPlayer] stop")
         player?.pause()
         player?.replaceCurrentItem(with: nil)
@@ -684,12 +711,8 @@ class PinepodsAudioPlayer: NSObject {
     }
 
     private func sendError(code: Int, message: String) {
-        DispatchQueue.main.async { [weak self] in
-            self?.eventSink?(FlutterError(
-                code: String(code),
-                message: message,
-                details: nil
-            ))
-        }
+        // A regular event (not a FlutterError) so the Dart side leaves the
+        // buffering state instead of only logging a stream error.
+        sendEvent(["type": "error", "code": code, "message": message])
     }
 }

@@ -28,6 +28,7 @@ class FloatingPlayer extends StatelessWidget {
 
     return StreamBuilder<AudioState>(
         stream: audioBloc.playingState,
+        initialData: audioBloc.playingState?.valueOrNull,
         builder: (context, snapshot) {
           return (snapshot.hasData &&
                   !(snapshot.data == AudioState.stopped ||
