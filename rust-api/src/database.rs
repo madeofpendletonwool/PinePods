@@ -87,6 +87,61 @@ fn mysql_refresh_targets(ids: usize) -> [(&'static str, String); 2] {
     ]
 }
 
+// Whether a user finished episodes: kept per user in UserEpisodeState and, while every user has
+// their own copy of each episode, on Episodes.Completed too. Only the user's own episodes change.
+async fn set_completed_pg(conn: &mut sqlx::PgConnection, user_id: i32, episode_ids: &[i32], completed: bool) -> AppResult<u64> {
+    sqlx::query(
+        r#"INSERT INTO "UserEpisodeState" (userid, episodeid, completed, completedat)
+           SELECT $1, e.episodeid, $3, CASE WHEN $3 THEN NOW() END
+           FROM "Episodes" e JOIN "Podcasts" p ON p.podcastid = e.podcastid AND p.userid = $1
+           WHERE e.episodeid = ANY($2)
+           ON CONFLICT (userid, episodeid) DO UPDATE SET completed = EXCLUDED.completed, completedat = EXCLUDED.completedat"#,
+    )
+    .bind(user_id)
+    .bind(episode_ids)
+    .bind(completed)
+    .execute(&mut *conn)
+    .await?;
+    let changed = sqlx::query(
+        r#"UPDATE "Episodes" SET completed = $3
+           WHERE episodeid = ANY($2) AND podcastid IN (SELECT podcastid FROM "Podcasts" WHERE userid = $1)"#,
+    )
+    .bind(user_id)
+    .bind(episode_ids)
+    .bind(completed)
+    .execute(&mut *conn)
+    .await?;
+    Ok(changed.rows_affected())
+}
+
+async fn set_completed_mysql(conn: &mut sqlx::MySqlConnection, user_id: i32, episode_ids: &[i32], completed: bool) -> AppResult<u64> {
+    if episode_ids.is_empty() {
+        return Ok(0);
+    }
+    let marks = vec!["?"; episode_ids.len()].join(", ");
+    let sql = format!(
+        "INSERT INTO UserEpisodeState (UserID, EpisodeID, Completed, CompletedAt)
+         SELECT ?, e.EpisodeID, ?, CASE WHEN ? THEN NOW() END
+         FROM Episodes e JOIN Podcasts p ON p.PodcastID = e.PodcastID AND p.UserID = ?
+         WHERE e.EpisodeID IN ({marks})
+         ON DUPLICATE KEY UPDATE Completed = ?, CompletedAt = CASE WHEN ? THEN NOW() END"
+    );
+    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql)).bind(user_id).bind(completed).bind(completed).bind(user_id);
+    for id in episode_ids {
+        q = q.bind(id);
+    }
+    q.bind(completed).bind(completed).execute(&mut *conn).await?;
+    let sql = format!(
+        "UPDATE Episodes SET Completed = ?
+         WHERE EpisodeID IN ({marks}) AND PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ?)"
+    );
+    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql)).bind(completed);
+    for id in episode_ids {
+        q = q.bind(id);
+    }
+    Ok(q.bind(user_id).execute(&mut *conn).await?.rows_affected())
+}
+
 /// `Users.GpodderUrl` of users on the PinePods gpodder server. Not a real address any more;
 /// clients and the UI read it as "internal".
 pub const INTERNAL_GPODDER_URL: &str = "http://localhost:8042";
@@ -3125,12 +3180,7 @@ impl DatabasePool {
                         if let Some(duration) = duration {
                             let mut tx = pool.begin().await?;
                             // Update completion status
-                            sqlx::query(
-                                r#"UPDATE "Episodes" SET completed = TRUE WHERE episodeid = $1"#
-                            )
-                            .bind(episode_id)
-                            .execute(&mut *tx)
-                            .await?;
+                            set_completed_pg(&mut tx, user_id, &[episode_id], true).await?;
 
                             // Update history
                             sqlx::query(
@@ -3207,12 +3257,7 @@ impl DatabasePool {
                         if let Some(duration) = duration {
                             let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
                             // Update completion status
-                            sqlx::query(
-                                "UPDATE Episodes SET Completed = 1 WHERE EpisodeID = ?"
-                            )
-                            .bind(episode_id)
-                            .execute(&mut *tx)
-                            .await?;
+                            set_completed_mysql(&mut tx, user_id, &[episode_id], true).await?;
 
                             // Update history
                             sqlx::query(
@@ -5123,10 +5168,7 @@ impl DatabasePool {
                         .await?;
                 } else {
                     // Handle regular episode
-                    sqlx::query(r#"UPDATE "Episodes" SET completed = FALSE WHERE episodeid = $1"#)
-                        .bind(episode_id)
-                        .execute(&mut *transaction)
-                        .await?;
+                    set_completed_pg(&mut transaction, user_id, &[episode_id], false).await?;
                     
                     sqlx::query(r#"UPDATE "UserEpisodeHistory" SET listenduration = 0, listendate = NOW() WHERE userid = $1 AND episodeid = $2"#)
                         .bind(user_id)
@@ -5158,10 +5200,7 @@ impl DatabasePool {
                         .await?;
                 } else {
                     // Handle regular episode
-                    sqlx::query("UPDATE Episodes SET Completed = 0 WHERE EpisodeID = ?")
-                        .bind(episode_id)
-                        .execute(&mut *transaction)
-                        .await?;
+                    set_completed_mysql(&mut transaction, user_id, &[episode_id], false).await?;
                     
                     sqlx::query("UPDATE UserEpisodeHistory SET ListenDuration = 0, ListenDate = NOW() WHERE UserID = ? AND EpisodeID = ?")
                         .bind(user_id)
@@ -22105,17 +22144,7 @@ impl DatabasePool {
                         }
                     }
                 } else {
-                    // Batch update regular episodes
-                    let episode_ids_str: Vec<String> = episode_ids.iter().map(|id| id.to_string()).collect();
-                    let ids_clause = episode_ids_str.join(",");
-                    
-                    let query = format!(
-                        r#"UPDATE "Episodes" SET completed = TRUE WHERE episodeid IN ({})"#,
-                        ids_clause
-                    );
-                    
-                    let result = sqlx::query(sqlx::AssertSqlSafe(query.as_str())).execute(&mut *tx).await?;
-                    processed = result.rows_affected() as i32;
+                    processed = set_completed_pg(&mut tx, user_id, &episode_ids, true).await? as i32;
                 }
                 
                 tx.commit().await?;
@@ -22131,17 +22160,7 @@ impl DatabasePool {
                         }
                     }
                 } else {
-                    // Batch update regular episodes
-                    let episode_ids_str: Vec<String> = episode_ids.iter().map(|id| id.to_string()).collect();
-                    let ids_clause = episode_ids_str.join(",");
-                    
-                    let query = format!(
-                        "UPDATE Episodes SET Completed = TRUE WHERE EpisodeID IN ({})",
-                        ids_clause
-                    );
-                    
-                    let result = sqlx::query(sqlx::AssertSqlSafe(query.as_str())).execute(&mut *tx).await?;
-                    processed = result.rows_affected() as i32;
+                    processed = set_completed_mysql(&mut tx, user_id, &episode_ids, true).await? as i32;
                 }
                 
                 tx.commit().await?;

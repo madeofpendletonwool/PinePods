@@ -7264,6 +7264,63 @@ def migration_080_create_feeds(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("081", "user_episode_state", "UserEpisodeState: whether a user finished an episode, kept per user instead of on the episode", requires=["003", "005", "080"])
+def migration_081_user_episode_state(conn, db_type: str) -> None:
+    """UserEpisodeState: one row per user and episode they finished (Completed, CompletedAt).
+
+    Episodes.Completed only works while every user has their own copy of each episode; this
+    table holds it per user so episodes can be shared. Filled from the completed episodes of
+    each podcast's owner. Episodes.Completed is still written alongside for now.
+    """
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    try:
+        if pg:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "UserEpisodeState" (
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    EpisodeID INT NOT NULL REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE,
+                    Completed BOOLEAN NOT NULL DEFAULT FALSE,
+                    CompletedAt TIMESTAMP,
+                    PRIMARY KEY (UserID, EpisodeID)
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_userepisodestate_episode ON "UserEpisodeState"(EpisodeID)')
+            cursor.execute("""
+                INSERT INTO "UserEpisodeState" (UserID, EpisodeID, Completed)
+                SELECT p.UserID, e.EpisodeID, TRUE
+                FROM "Episodes" e JOIN "Podcasts" p ON p.PodcastID = e.PodcastID
+                WHERE e.Completed = TRUE AND p.UserID IS NOT NULL
+                ON CONFLICT (UserID, EpisodeID) DO NOTHING
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS UserEpisodeState (
+                    UserID INT NOT NULL,
+                    EpisodeID INT NOT NULL,
+                    Completed TINYINT(1) NOT NULL DEFAULT 0,
+                    CompletedAt DATETIME NULL DEFAULT NULL,
+                    PRIMARY KEY (UserID, EpisodeID),
+                    KEY idx_userepisodestate_episode (EpisodeID),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE
+                )
+            """)
+            cursor.execute("""
+                INSERT IGNORE INTO UserEpisodeState (UserID, EpisodeID, Completed)
+                SELECT p.UserID, e.EpisodeID, 1
+                FROM Episodes e JOIN Podcasts p ON p.PodcastID = e.PodcastID
+                WHERE e.Completed = 1 AND p.UserID IS NOT NULL
+            """)
+        logger.info(f"Migration 081: {cursor.rowcount} completed episodes")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 def _feed_credential_key(feed_url, username, password, user_id) -> str:
     """Matches services::feeds::credential_key in rust-api."""
     import hashlib
