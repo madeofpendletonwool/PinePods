@@ -90,8 +90,8 @@ abstract class AudioPlayerService {
   /// Call when the app is about to be suspended.
   Future<void> suspend();
 
-  /// Call to set the playback speed.
-  Future<void> setPlaybackSpeed(double speed);
+  /// Use persist: false for podcast overrides that must not change the user's default.
+  Future<void> setPlaybackSpeed(double speed, {bool persist = true});
 
   /// Call to toggle trim silence.
   Future<void> trimSilence(bool trim);

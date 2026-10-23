@@ -588,10 +588,10 @@ class NativeAudioPlayerService extends AudioPlayerService {
   }
 
   @override
-  Future<void> setPlaybackSpeed(double speed) async {
+  Future<void> setPlaybackSpeed(double speed, {bool persist = true}) async {
     log.info('setPlaybackSpeed: $speed');
     _playbackSpeed = speed;
-    settingsService.playbackSpeed = speed;
+    if (persist) settingsService.playbackSpeed = speed;
 
     try {
       await platform.invokeMethod('setPlaybackSpeed', {'speed': speed});

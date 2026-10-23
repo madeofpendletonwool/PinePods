@@ -28,6 +28,7 @@ class PinepodsAudioPlayer: NSObject {
     // time observer. Times are in seconds.
     private var skipSilenceEnabled = false
     private var skipSegments: [(start: Double, end: Double)] = []
+    private var playbackIntent = PlaybackIntent()
 
     init(eventSink: FlutterEventSink?) {
         self.eventSink = eventSink
@@ -274,16 +275,21 @@ class PinepodsAudioPlayer: NSObject {
         switch type {
         case .began:
             NSLog("[PinepodsAudioPlayer] Audio interruption began (phone call, Siri, etc.)")
-            pause()
+            playbackIntent.interruptionBegan()
+            player?.pause()
+            updateNowPlayingPlaybackInfo()
 
         case .ended:
-            guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else {
-                return
-            }
+            let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            if options.contains(.shouldResume) {
-                NSLog("[PinepodsAudioPlayer] Audio interruption ended - should resume available")
-                // Don't auto-resume for podcasts - let user decide
+            if playbackIntent.interruptionEnded(shouldResume: options.contains(.shouldResume)) {
+                do {
+                    try AVAudioSession.sharedInstance().setActive(true)
+                    resumeRequestedPlayback()
+                } catch {
+                    pause()
+                    NSLog("[PinepodsAudioPlayer] Could not reactivate audio session: \(error)")
+                }
             }
 
         @unknown default:
@@ -315,6 +321,8 @@ class PinepodsAudioPlayer: NSObject {
     }
 
     func playEpisode(url: String, startPosition: Int, isLocal: Bool, metadata: [String: Any]?) {
+        let generation = playbackIntent.beginEpisode()
+        player?.pause()
         NSLog("[PinepodsAudioPlayer] playEpisode called")
         NSLog("[PinepodsAudioPlayer] URL: \(url)")
         NSLog("[PinepodsAudioPlayer] startPosition: \(startPosition)ms, isLocal: \(isLocal)")
@@ -368,11 +376,6 @@ class PinepodsAudioPlayer: NSObject {
             return
         }
 
-        // Remove observer from previous item
-        if let oldItem = playerItem {
-            oldItem.removeObserver(self, forKeyPath: #keyPath(AVPlayerItem.status), context: &itemContext)
-        }
-
         // Create asset with options for better streaming support
         // This helps handle redirects and various server configurations
         var assetOptions: [String: Any] = [:]
@@ -395,7 +398,7 @@ class PinepodsAudioPlayer: NSObject {
         // Load asset asynchronously to avoid blocking
         asset.loadValuesAsynchronously(forKeys: ["playable", "duration"]) { [weak self] in
             DispatchQueue.main.async {
-                guard let self = self else { return }
+                guard let self = self, self.playbackIntent.generation == generation else { return }
 
                 var error: NSError?
                 let playableStatus = asset.statusOfValue(forKey: "playable", error: &error)
@@ -420,12 +423,15 @@ class PinepodsAudioPlayer: NSObject {
                 NSLog("[PinepodsAudioPlayer] Asset loaded, creating player item...")
                 self.sendEvent(["type": "log", "message": "Asset loaded successfully, starting playback..."])
 
-                self.continuePlayback(asset: asset, startPosition: startPosition, metadata: metadata)
+                self.continuePlayback(asset: asset, startPosition: startPosition, metadata: metadata, generation: generation)
             }
         }
     }
 
-    private func continuePlayback(asset: AVURLAsset, startPosition: Int, metadata: [String: Any]?) {
+    private func continuePlayback(asset: AVURLAsset, startPosition: Int, metadata: [String: Any]?, generation: UInt64) {
+        if let oldItem = playerItem {
+            oldItem.removeObserver(self, forKeyPath: #keyPath(AVPlayerItem.status), context: &itemContext)
+        }
         playerItem = AVPlayerItem(asset: asset)
 
         // Configure buffering for streaming
@@ -437,8 +443,7 @@ class PinepodsAudioPlayer: NSObject {
 
         player?.replaceCurrentItem(with: playerItem)
 
-        // Set up now playing info BEFORE starting playback
-        // Use playbackRate 1.0 to indicate we're about to play (not 0 which indicates paused)
+        // Report the actual rate while the initial seek or a user pause is pending.
         if let meta = metadata {
             let title = meta["title"] as? String ?? "Unknown"
             let artist = meta["artist"] as? String ?? "Unknown"
@@ -463,7 +468,7 @@ class PinepodsAudioPlayer: NSObject {
                     artist: artist,
                     artworkUrl: artworkUrl,
                     duration: duration,
-                    playbackRate: 1.0,  // Set to 1.0 since we're about to play
+                    playbackRate: player?.rate ?? 0,
                     elapsedTime: elapsed
                 )
                 NSLog("[PinepodsAudioPlayer] Now Playing info set successfully")
@@ -492,25 +497,30 @@ class PinepodsAudioPlayer: NSObject {
         if startPosition > 0 {
             let time = CMTime(value: CMTimeValue(startPosition), timescale: 1000)
             player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
-                if finished {
-                    NSLog("[PinepodsAudioPlayer] Seeked to start position: \(startPosition)ms")
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.playbackIntent.completeLoad(generation: generation)
+                    if finished && self.playbackIntent.canStart(generation: generation) {
+                        self.resumeRequestedPlayback()
+                    }
                 }
-                self?.player?.play()
-                // Update now playing info again after playback starts
-                self?.updateNowPlayingPlaybackInfo()
             }
         } else {
-            player?.play()
-            // Update now playing info after playback starts
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.updateNowPlayingPlaybackInfo()
-            }
+            playbackIntent.completeLoad(generation: generation)
+            resumeRequestedPlayback()
         }
     }
 
     func play() {
-        NSLog("[PinepodsAudioPlayer] play")
+        playbackIntent.play()
+        resumeRequestedPlayback()
+    }
+
+    private func resumeRequestedPlayback() {
+        guard playbackIntent.canResumeLoadedEpisode else { return }
         player?.play()
+        // AVPlayer.play() resets rate to 1.0, including lock-screen resume.
+        if playbackIntent.rate != 1 { player?.rate = playbackIntent.rate }
         // Slight delay to allow rate to update before refreshing Now Playing
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.updateNowPlayingPlaybackInfo()
@@ -518,6 +528,7 @@ class PinepodsAudioPlayer: NSObject {
     }
 
     func pause() {
+        playbackIntent.pause()
         NSLog("[PinepodsAudioPlayer] pause")
         player?.pause()
         // Update Now Playing immediately with rate 0 to indicate paused state
@@ -526,6 +537,7 @@ class PinepodsAudioPlayer: NSObject {
     }
 
     func stop() {
+        playbackIntent.stop()
         NSLog("[PinepodsAudioPlayer] stop")
         player?.pause()
         player?.replaceCurrentItem(with: nil)
@@ -562,7 +574,11 @@ class PinepodsAudioPlayer: NSObject {
 
     func setPlaybackSpeed(_ speed: Float) {
         NSLog("[PinepodsAudioPlayer] setPlaybackSpeed: \(speed)")
-        player?.rate = speed
+        playbackIntent.setRate(speed)
+        // Changing a preference while paused must not start playback.
+        if playbackIntent.canPlay, let player = player, player.rate != 0 {
+            player.rate = playbackIntent.rate
+        }
         updateNowPlayingPlaybackInfo()
     }
 

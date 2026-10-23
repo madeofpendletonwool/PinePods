@@ -43,8 +43,8 @@ class MockAudioPlayerService extends Mock implements AudioPlayerService {
       );
 
   @override
-  Future<void> setPlaybackSpeed(double? speed) => super.noSuchMethod(
-        Invocation.method(#setPlaybackSpeed, [speed]),
+  Future<void> setPlaybackSpeed(double? speed, {bool? persist = true}) => super.noSuchMethod(
+        Invocation.method(#setPlaybackSpeed, [speed], {#persist: persist}),
         returnValue: Future<void>.value(),
       );
 }
@@ -146,6 +146,14 @@ void main() {
 
       expect(getPodcastIdStarted.isCompleted, isTrue);
       expect(fetchData2Started.isCompleted, isTrue);
+      verifyNever(audioPlayerService.setPlaybackSpeed(any, persist: anyNamed('persist')));
+
+      when(pinepodsService.getPlayEpisodeDetails(any, any, any)).thenAnswer(
+        (_) async => PlayEpisodeDetails(playbackSpeed: 2.25, startSkip: 0, endSkip: 0, playbackSpeedCustomized: true),
+      );
+      when(audioPlayerService.setPlaybackSpeed(2.25, persist: false)).thenAnswer((_) async {});
+      await service.playPinepodsEpisode(pinepodsEpisode: episode, resume: false);
+      verify(audioPlayerService.setPlaybackSpeed(2.25, persist: false)).called(1);
     },
   );
 }
