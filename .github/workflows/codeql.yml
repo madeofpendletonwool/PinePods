@@ -54,6 +54,11 @@ jobs:
           channel: "stable"
           cache: true
 
+      # The NDK Flutter 3.44.5 asks for, installed before CodeQL starts tracing the build.
+      - name: Install Android NDK
+        if: matrix.language == 'java-kotlin'
+        run: sdkmanager --install "ndk;28.2.13676358" > /dev/null
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
