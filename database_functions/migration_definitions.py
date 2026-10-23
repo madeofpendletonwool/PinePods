@@ -7670,7 +7670,8 @@ def _feed_credential_key(feed_url, username, password, user_id) -> str:
         return hashlib.sha256(f"local\0{user_id}".encode()).hexdigest()
     if not username and not password:
         return ""
-    return hashlib.sha256(f"{username or ''}\0{password or ''}".encode()).hexdigest()
+    secret = f"{username or ''}\0{password or ''}".encode()
+    return hashlib.pbkdf2_hmac("sha256", secret, (feed_url or "").encode(), 10_000).hex()
 
 
 def _link_podcasts_to_feeds(cursor, db_type: str) -> int:

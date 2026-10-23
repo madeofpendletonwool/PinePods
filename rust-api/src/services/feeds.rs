@@ -8,9 +8,13 @@ use tracing::{debug, warn};
 use crate::database::DatabasePool;
 use crate::error::{AppError, AppResult};
 
-/// Which subscriptions share a feed besides its address: '' for public feeds, a hash of the
-/// credentials for private ones, and the owner for anything that isn't http(s) (uploads are
-/// never shared). Must match _feed_credential_key in database_functions/migration_definitions.py.
+/// PBKDF2 rounds for the credential key, so a stored key isn't a cheap way back to the password.
+const CREDENTIAL_KEY_ROUNDS: u32 = 10_000;
+
+/// Which subscriptions share a feed besides its address: '' for public feeds, a key derived from
+/// the credentials (salted with the address) for private ones, and the owner for anything that
+/// isn't http(s) (uploads are never shared). Must match _feed_credential_key in
+/// database_functions/migration_definitions.py.
 pub fn credential_key(feed_url: &str, username: Option<&str>, password: Option<&str>, user_id: i32) -> String {
     let url = feed_url.trim().to_ascii_lowercase();
     if !(url.starts_with("http://") || url.starts_with("https://")) {
@@ -20,7 +24,9 @@ pub fn credential_key(feed_url: &str, username: Option<&str>, password: Option<&
     if username.is_empty() && password.is_empty() {
         return String::new();
     }
-    crate::services::http::content_hash(&format!("{username}\0{password}"))
+    let mut key = [0u8; 32];
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(format!("{username}\0{password}").as_bytes(), feed_url.as_bytes(), CREDENTIAL_KEY_ROUNDS, &mut key);
+    hex::encode(key)
 }
 
 /// Feeds.FeedURLHash: the address in the unique key (TEXT can't be indexed on MySQL).
@@ -314,10 +320,11 @@ mod tests {
         let bob = credential_key("https://example.com/feed", Some("bob"), Some("pw"), 1);
         assert_eq!(bob, credential_key("https://example.com/feed", Some("bob"), Some("pw"), 2));
         assert_ne!(bob, credential_key("https://example.com/feed", Some("bob"), Some("pw2"), 1));
+        assert_ne!(bob, credential_key("https://example.com/other", Some("bob"), Some("pw"), 1));
         // Uploads belong to their owner.
         assert_ne!(credential_key("local://1", None, None, 1), credential_key("local://1", None, None, 2));
         // The migration computes the same keys.
-        assert_eq!(bob, "91e3d51d23ba15185dc7a7464f764c8d73c9b3e6be9cb9553c053f42e2aa4905");
+        assert_eq!(bob, "ec0f8243caa905fa30c334393292b9ef44e49a0bb8ba7f5ea16805c4258f24ad");
         assert_eq!(credential_key("local://x", None, None, 1), "c3d6533821de63bde3ba24db9e838433f7299d4fd406145f25557b6e9e6a72dd");
     }
 }
