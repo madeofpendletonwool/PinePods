@@ -1,3 +1,4 @@
+mod media_stream;
 pub mod auth;
 pub mod health;
 pub mod podcasts;

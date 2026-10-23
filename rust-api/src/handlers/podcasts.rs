@@ -3303,6 +3303,8 @@ pub async fn stream_episode(
     State(state): State<crate::AppState>,
     Path(episode_id): Path<i32>,
     Query(query): Query<StreamQuery>,
+    headers: HeaderMap,
+    method: axum::http::Method,
 ) -> Result<axum::response::Response, AppError> {
     let api_key = &query.api_key;
     tracing::debug!("Stream request for episode {} (user_id {})", episode_id, query.user_id);
@@ -3399,26 +3401,7 @@ pub async fn stream_episode(
     if let Some(path) = file_path {
         debug!("Found file at: {}", path);
         
-        // Use tower_http's ServeFile for proper file serving with range support
-        use tower_http::services::ServeFile;
-        use tower::ServiceExt;
-        
-        let service = ServeFile::new(&path);
-        let request = axum::http::Request::builder()
-            .method("GET")
-            .uri("/")
-            .body(axum::body::Body::empty())
-            .map_err(|e| AppError::external_error(&format!("Failed to build request: {}", e)))?;
-            
-        let response = service.oneshot(request).await
-            .map_err(|e| AppError::external_error(&format!("Failed to serve file: {}", e)))?;
-            
-        // Convert the response body to the expected type
-        let (parts, body) = response.into_parts();
-        let body = axum::body::Body::new(body);
-        let response = axum::response::Response::from_parts(parts, body);
-            
-        Ok(response)
+        super::media_stream::serve_episode_file(&path, method, &headers).await
     } else {
         Err(AppError::not_found("Episode not found or not downloaded"))
     }
