@@ -13,6 +13,8 @@ import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 
 class PinepodsSearch extends StatefulWidget {
   final String? searchTerm;
@@ -225,105 +227,58 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
   }
 
   Widget _buildSearchHistorySliver() {
-    return SliverFillRemaining(
-      hasScrollBody: false,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  'Recent Podcast Searches',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).primaryColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Spacer(),
-                if (_searchHistory.isNotEmpty)
-                  TextButton(
-                    onPressed: () async {
-                      await _searchHistoryService.clearPodcastSearchHistory();
-                      await _loadSearchHistory();
-                    },
-                    child: Text(
-                      'Clear All',
-                      style: TextStyle(
-                        color: Theme.of(context).hintColor,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-              ],
+    if (_searchHistory.isEmpty) {
+      return const SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: SoftEmptyState(
+            icon: PhosphorIconsRegular.magnifyingGlass,
+            title: 'Search for podcasts',
+            body: 'Find new shows to follow by name, topic or host',
+          ),
+        ),
+      );
+    }
+
+    final theme = Theme.of(context);
+    return SliverList(
+      delegate: SliverChildListDelegate([
+        SoftSectionHeader(
+          title: 'Recent searches',
+          trailing: [
+            TextButton(
+              onPressed: () async {
+                await _searchHistoryService.clearPodcastSearchHistory();
+                await _loadSearchHistory();
+              },
+              child: const Text('Clear'),
             ),
-            const SizedBox(height: 16),
-            if (_searchHistory.isEmpty)
-              Center(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 50),
-                    Icon(
-                      PhosphorIconsRegular.magnifyingGlass,
-                      size: 64,
-                      color: Theme.of(context).primaryColor.withOpacity(0.5),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Search for Podcasts',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: Theme.of(context).primaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Enter a search term above to find new podcasts to subscribe to',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).hintColor,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              )
-            else
-              ..._searchHistory.take(10).map((searchTerm) => Card(
-                margin: const EdgeInsets.symmetric(vertical: 2),
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(
-                    PhosphorIconsRegular.clockCounterClockwise,
-                    color: Theme.of(context).hintColor,
-                    size: 20,
-                  ),
-                  title: Text(
-                    searchTerm,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: IconButton(
-                    icon: Icon(
-                      PhosphorIconsRegular.x,
-                      size: 18,
-                      color: Theme.of(context).hintColor,
-                    ),
-                    onPressed: () => _removeHistoryItem(searchTerm),
-                  ),
-                  onTap: () => _selectHistoryItem(searchTerm),
-                ),
-              )).toList(),
           ],
         ),
-      ),
+        for (final searchTerm in _searchHistory.take(10))
+          ListTile(
+            contentPadding: const EdgeInsets.only(left: 16, right: 4),
+            leading: Icon(PhosphorIconsRegular.clockCounterClockwise, color: theme.hintColor, size: 20),
+            title: Text(searchTerm, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: IconButton(
+              tooltip: 'Remove',
+              icon: Icon(PhosphorIconsRegular.x, size: 18, color: theme.hintColor),
+              onPressed: () => _removeHistoryItem(searchTerm),
+            ),
+            onTap: () => _selectHistoryItem(searchTerm),
+          ),
+      ]),
     );
   }
 
   Widget _buildPodcastCard(UnifiedPinepodsPodcast podcast) {
+    final theme = Theme.of(context);
     final isAdded = _addedPodcastUrls.contains(podcast.url);
-    
+    final meta = [
+      if (podcast.episodeCount > 0) '${podcast.episodeCount} episode${podcast.episodeCount != 1 ? 's' : ''}',
+      if (podcast.explicit) 'Explicit',
+    ].join('  ·  ');
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
       child: InkWell(
@@ -347,145 +302,66 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
             ),
           );
         },
-        child: Column(
-          children: [
-            // Podcast image and info
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Podcast artwork
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: podcast.artwork.isNotEmpty
-                        ? Image.network(
-                            podcast.artwork,
-                            width: 80,
-                            height: 80,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                width: 80,
-                                height: 80,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[300],
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  PhosphorIconsRegular.musicNote,
-                                  color: Colors.grey,
-                                  size: 32,
-                                ),
-                              );
-                            },
-                          )
-                        : Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              PhosphorIconsRegular.musicNote,
-                              color: Colors.grey,
-                              size: 32,
-                            ),
-                          ),
-                  ),
-                  const SizedBox(width: 12),
-                  
-                  // Podcast info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          podcast.title,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        if (podcast.author.isNotEmpty)
-                          Text(
-                            'By ${podcast.author}',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Theme.of(context).primaryColor,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        const SizedBox(height: 4),
-                        Text(
-                          podcast.description,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Icon(
-                              PhosphorIconsRegular.microphone,
-                              size: 16,
-                              color: Colors.grey[600],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${podcast.episodeCount} episode${podcast.episodeCount != 1 ? 's' : ''}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            if (podcast.explicit)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  'E',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  // Follow/Unfollow button
-                  IconButton(
-                    onPressed: () => _togglePodcast(podcast),
-                    icon: Icon(
-                      isAdded ? PhosphorIconsFill.minusCircle : PhosphorIconsFill.plusCircle,
-                      color: isAdded ? Colors.red : Colors.green,
-                    ),
-                    tooltip: isAdded ? 'Remove podcast' : 'Add podcast',
-                  ),
-                ],
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LazyNetworkImage(
+                imageUrl: podcast.artwork,
+                width: 72,
+                height: 72,
+                borderRadius: BorderRadius.circular(12),
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      podcast.title,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.25),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (podcast.author.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        podcast.author,
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: theme.primaryColor),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    if (podcast.description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        podcast.description,
+                        style: TextStyle(fontSize: 12.5, color: theme.hintColor, height: 1.3),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    if (meta.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(meta, style: TextStyle(fontSize: 12, color: theme.hintColor)),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              CircleAction(
+                size: 40,
+                tooltip: isAdded ? 'Unfollow' : 'Follow',
+                onTap: () => _togglePodcast(podcast),
+                icon: Icon(
+                  isAdded ? PhosphorIconsBold.check : PhosphorIconsBold.plus,
+                  size: 18,
+                  color: isAdded ? theme.primaryColor : softNeutral(theme).withOpacity(0.8),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -493,6 +369,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       body: CustomScrollView(
         slivers: <Widget>[
@@ -500,93 +377,91 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
             leading: IconButton(
               tooltip: 'Back',
               icon: Platform.isAndroid
-                  ? Icon(PhosphorIconsRegular.arrowLeft, color: Theme.of(context).appBarTheme.foregroundColor)
+                  ? Icon(PhosphorIconsRegular.arrowLeft, color: theme.appBarTheme.foregroundColor)
                   : const Icon(PhosphorIconsRegular.caretLeft),
               onPressed: () => Navigator.pop(context),
             ),
-            title: TextField(
-              controller: _searchController,
-              focusNode: _searchFocusNode,
-              autofocus: widget.searchTerm != null ? false : true,
-              keyboardType: TextInputType.text,
-              textInputAction: TextInputAction.search,
-              onTap: () {
-                setState(() {
-                  _showHistory = _searchController.text.isEmpty && _searchHistory.isNotEmpty;
-                });
-              },
-              decoration: const InputDecoration(
-                hintText: 'Search for podcasts',
-                border: InputBorder.none,
+            titleSpacing: 0,
+            title: Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: TextField(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                autofocus: widget.searchTerm != null ? false : true,
+                keyboardType: TextInputType.text,
+                textInputAction: TextInputAction.search,
+                onTap: () {
+                  setState(() {
+                    _showHistory = _searchController.text.isEmpty && _searchHistory.isNotEmpty;
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: 'Search podcasts',
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
+                  enabledBorder:
+                      OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
+                  focusedBorder:
+                      OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
+                  prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass, size: 20),
+                  suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _searchController,
+                    builder: (context, value, _) => value.text.isEmpty
+                        ? const SizedBox.shrink()
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            icon: const Icon(PhosphorIconsRegular.x, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchResults = [];
+                                _errorMessage = null;
+                                _showHistory = _searchHistory.isNotEmpty;
+                              });
+                              FocusScope.of(context).requestFocus(_searchFocusNode);
+                              SystemChannels.textInput.invokeMethod<String>('TextInput.show');
+                            },
+                          ),
+                  ),
+                ),
+                style: const TextStyle(fontSize: 16),
+                onSubmitted: _performSearch,
               ),
-              style: TextStyle(
-                color: Theme.of(context).primaryIconTheme.color,
-                fontSize: 18.0,
-                decorationColor: Theme.of(context).scaffoldBackgroundColor,
-              ),
-              onSubmitted: _performSearch,
             ),
             floating: false,
             pinned: true,
             snap: false,
-            actions: <Widget>[
-              IconButton(
-                tooltip: 'Clear search',
-                icon: const Icon(PhosphorIconsRegular.x),
-                onPressed: () {
-                  _searchController.clear();
-                  setState(() {
-                    _searchResults = [];
-                    _errorMessage = null;
-                    _showHistory = _searchHistory.isNotEmpty;
-                  });
-                  FocusScope.of(context).requestFocus(_searchFocusNode);
-                  SystemChannels.textInput.invokeMethod<String>('TextInput.show');
-                },
-              ),
-            ],
             bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(60),
-              child: Container(
-                padding: const EdgeInsets.all(12.0),
-                child: Row(
+              preferredSize: const Size.fromHeight(52),
+              child: SizedBox(
+                height: 52,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
                   children: [
-                    const Text(
-                      'Search Provider: ',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Expanded(
-                      child: DropdownButton<SearchProvider>(
-                        value: _selectedProvider,
-                        isExpanded: true,
-                        items: SearchProvider.values.map((provider) {
-                          return DropdownMenuItem(
-                            value: provider,
-                            child: Text(provider.name),
-                          );
-                        }).toList(),
-                        onChanged: (provider) {
-                          if (provider != null) {
-                            setState(() {
-                              _selectedProvider = provider;
-                            });
-                            // Re-search with new provider if there's a current search
+                    for (final provider in SearchProvider.values)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterPill(
+                          label: provider.name,
+                          selected: provider == _selectedProvider,
+                          onTap: () {
+                            if (provider == _selectedProvider) return;
+                            setState(() => _selectedProvider = provider);
+                            // Re-search with the new provider if there's a current search
                             if (_searchController.text.isNotEmpty) {
                               _performSearch(_searchController.text);
                             }
-                          }
-                        },
+                          },
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
             ),
           ),
-          
+
           // Search results or history
           if (_showHistory)
             _buildSearchHistorySliver()
@@ -597,8 +472,8 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
             )
           else if (_errorMessage != null)
             SliverServerErrorPage(
-              errorMessage: _errorMessage!.isServerConnectionError 
-                ? null 
+              errorMessage: _errorMessage!.isServerConnectionError
+                ? null
                 : _errorMessage,
               onRetry: () => _performSearch(_searchController.text),
               title: 'Search Unavailable',
@@ -607,58 +482,18 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                 : 'Failed to search for podcasts',
             )
           else if (_searchResults.isEmpty && _searchController.text.isNotEmpty)
-            SliverFillRemaining(
+            const SliverFillRemaining(
               hasScrollBody: false,
               child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      PhosphorIconsRegular.magnifyingGlassMinus,
-                      size: 64,
-                      color: Colors.grey[400],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No podcasts found',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Try searching with different keywords or switch search provider',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                child: SoftEmptyState(
+                  icon: PhosphorIconsRegular.magnifyingGlassMinus,
+                  title: 'No podcasts found',
+                  body: 'Try different keywords or another search provider',
                 ),
               ),
             )
           else if (_searchResults.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      PhosphorIconsRegular.magnifyingGlass,
-                      size: 64,
-                      color: Colors.grey[400],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Search for podcasts',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Enter a search term to find podcasts',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ),
-            )
+            _buildSearchHistorySliver()
           else
             SliverList(
               delegate: SliverChildBuilderDelegate(

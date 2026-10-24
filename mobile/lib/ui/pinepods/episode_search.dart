@@ -13,6 +13,8 @@ import 'package:pinepods_mobile/ui/widgets/paginated_episode_list.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 
 enum _StatusFilter { all, unplayed, inProgress, saved, downloaded }
 
@@ -538,77 +540,45 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   }
 
   Widget _buildSectionHeader(String title) {
-    return Padding(
+    return SoftSectionHeader(
+      title: title,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: Theme.of(context).primaryColor,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
     );
   }
 
   Widget _buildSearchBar() {
     final showClear = _searchController.text.isNotEmpty || _selectedCategories.isNotEmpty;
+    final pill = OutlineInputBorder(borderRadius: BorderRadius.circular(26), borderSide: BorderSide.none);
     return SlideTransition(
       position: _slideAnimation,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        child: Card(
-          elevation: 4,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(30),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(30),
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).primaryColor.withOpacity(0.1),
-                  Theme.of(context).primaryColor.withOpacity(0.05),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: TextField(
-              controller: _searchController,
-              focusNode: _focusNode,
-              style: Theme.of(context).textTheme.bodyLarge,
-              onTap: () {
-                setState(() {});
-              },
-              decoration: InputDecoration(
-                hintText: 'Search for episodes...',
-                hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).hintColor,
-                ),
-                prefixIcon: Icon(
-                  PhosphorIconsRegular.magnifyingGlass,
-                  color: Theme.of(context).primaryColor,
-                ),
-                suffixIcon: showClear
-                    ? IconButton(
-                        icon: Icon(
-                          PhosphorIconsRegular.x,
-                          color: Theme.of(context).primaryColor,
-                        ),
-                        onPressed: () {
-                          _searchController.clear();
-                          _clearResults();
-                          _focusNode.requestFocus();
-                        },
-                      )
-                    : null,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 16,
-                ),
-              ),
-            ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: TextField(
+          controller: _searchController,
+          focusNode: _focusNode,
+          style: Theme.of(context).textTheme.bodyLarge,
+          textInputAction: TextInputAction.search,
+          onTap: () {
+            setState(() {});
+          },
+          decoration: InputDecoration(
+            hintText: 'Search episodes',
+            prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
+            suffixIcon: showClear
+                ? IconButton(
+                    tooltip: 'Clear search',
+                    icon: const Icon(PhosphorIconsRegular.x),
+                    onPressed: () {
+                      _searchController.clear();
+                      _clearResults();
+                      _focusNode.requestFocus();
+                    },
+                  )
+                : null,
+            border: pill,
+            enabledBorder: pill,
+            focusedBorder: pill,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           ),
         ),
       ),
@@ -638,27 +608,28 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   Widget _buildStatusFilterChips() {
     final chips = <(_StatusFilter, String, IconData?)>[
       (_StatusFilter.all, 'All', null),
-      (_StatusFilter.unplayed, 'Unplayed', PhosphorIconsRegular.circle),
-      (_StatusFilter.inProgress, 'In Progress', PhosphorIconsRegular.hourglass),
-      (_StatusFilter.saved, 'Saved', PhosphorIconsRegular.star),
+      (_StatusFilter.unplayed, 'Unplayed', null),
+      (_StatusFilter.inProgress, 'In progress', null),
+      (_StatusFilter.saved, 'Saved', PhosphorIconsRegular.bookmarkSimple),
       (_StatusFilter.downloaded, 'Downloaded', PhosphorIconsRegular.downloadSimple),
     ];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: chips.map((c) {
-          final (filter, label, icon) = c;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilterChip(
-              avatar: icon != null ? Icon(icon, size: 14) : null,
-              label: Text(label),
-              selected: _activeStatusFilter == filter,
-              onSelected: (_) => setState(() => _activeStatusFilter = filter),
+    return SizedBox(
+      height: 52,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+        children: [
+          for (final (filter, label, icon) in chips)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilterPill(
+                label: label,
+                icon: icon,
+                selected: _activeStatusFilter == filter,
+                onTap: () => setState(() => _activeStatusFilter = filter),
+              ),
             ),
-          );
-        }).toList(),
+        ],
       ),
     );
   }
@@ -669,27 +640,18 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
       margin: const EdgeInsets.only(right: 12),
       child: Column(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.network(
-              pod.artworkUrl ?? '',
-              width: 90,
-              height: 90,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                width: 90,
-                height: 90,
-                color: Theme.of(context).colorScheme.surfaceVariant,
-                child: const Icon(PhosphorIconsRegular.microphoneStage),
-              ),
-            ),
+          LazyNetworkImage(
+            imageUrl: pod.artworkUrl ?? '',
+            width: 96,
+            height: 96,
+            borderRadius: BorderRadius.circular(14),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             pod.podcastName,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
             textAlign: TextAlign.center,
           ),
         ],
@@ -723,10 +685,13 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
             child: Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: _availableCategories.map((cat) => FilterChip(
-                label: Text(cat),
-                selected: _selectedCategories.contains(cat),
-                onSelected: (_) => _toggleCategory(cat),
+              children: _availableCategories.map((cat) => SizedBox(
+                height: 34,
+                child: FilterPill(
+                  label: cat,
+                  selected: _selectedCategories.contains(cat),
+                  onTap: () => _toggleCategory(cat),
+                ),
               )).toList(),
             ),
           ),
@@ -737,86 +702,32 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   }
 
   Widget _buildLoadingIndicator() {
-    return Container(
-      padding: const EdgeInsets.all(64),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CircularProgressIndicator(),
-          const SizedBox(height: 16),
-          Text(
-            'Searching...',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Theme.of(context).primaryColor,
-            ),
-          ),
-        ],
-      ),
+    return const Padding(
+      padding: EdgeInsets.all(64),
+      child: Center(child: CircularProgressIndicator()),
     );
   }
 
   Widget _buildEmptyState() {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            PhosphorIconsRegular.magnifyingGlassMinus,
-            size: 64,
-            color: Theme.of(context).hintColor,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No Episodes Found',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Try adjusting your search terms or categories',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).hintColor,
-            ),
-          ),
-        ],
-      ),
+    return const SoftEmptyState(
+      icon: PhosphorIconsRegular.magnifyingGlassMinus,
+      title: 'No episodes found',
+      body: 'Try different search terms or categories',
     );
   }
 
   Widget _buildErrorState() {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            PhosphorIconsRegular.warningCircle,
-            size: 64,
-            color: Theme.of(context).colorScheme.error,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Search Error',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: Theme.of(context).colorScheme.error,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _errorMessage ?? 'Unknown error occurred',
-            style: Theme.of(context).textTheme.bodyMedium,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              if (_currentQuery.isNotEmpty || _selectedCategories.isNotEmpty) {
-                _performSearch(_currentQuery);
-              }
-            },
-            child: const Text('Try Again'),
-          ),
-        ],
+    return SoftEmptyState(
+      icon: PhosphorIconsRegular.warningCircle,
+      title: 'Search failed',
+      body: _errorMessage ?? 'Unknown error occurred',
+      action: FilledButton.tonal(
+        onPressed: () {
+          if (_currentQuery.isNotEmpty || _selectedCategories.isNotEmpty) {
+            _performSearch(_currentQuery);
+          }
+        },
+        child: const Text('Try again'),
       ),
     );
   }
@@ -871,65 +782,35 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   }
 
   Widget _buildSearchHistory() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Recent Searches',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Theme.of(context).primaryColor,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Spacer(),
-              TextButton(
-                onPressed: () async {
-                  await _searchHistoryService.clearEpisodeSearchHistory();
-                  await _loadSearchHistory();
-                },
-                child: Text(
-                  'Clear All',
-                  style: TextStyle(
-                    color: Theme.of(context).hintColor,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ..._searchHistory.take(10).map((searchTerm) => Card(
-            margin: const EdgeInsets.symmetric(vertical: 2),
-            child: ListTile(
-              dense: true,
-              leading: Icon(
-                PhosphorIconsRegular.clockCounterClockwise,
-                color: Theme.of(context).hintColor,
-                size: 20,
-              ),
-              title: Text(
-                searchTerm,
-                style: Theme.of(context).textTheme.bodyMedium,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: IconButton(
-                icon: Icon(
-                  PhosphorIconsRegular.x,
-                  size: 18,
-                  color: Theme.of(context).hintColor,
-                ),
-                onPressed: () => _removeHistoryItem(searchTerm),
-              ),
-              onTap: () => _selectHistoryItem(searchTerm),
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SoftSectionHeader(
+          title: 'Recent searches',
+          trailing: [
+            TextButton(
+              onPressed: () async {
+                await _searchHistoryService.clearEpisodeSearchHistory();
+                await _loadSearchHistory();
+              },
+              child: const Text('Clear'),
             ),
-          )).toList(),
-        ],
-      ),
+          ],
+        ),
+        for (final searchTerm in _searchHistory.take(10))
+          ListTile(
+            contentPadding: const EdgeInsets.only(left: 16, right: 4),
+            leading: Icon(PhosphorIconsRegular.clockCounterClockwise, color: theme.hintColor, size: 20),
+            title: Text(searchTerm, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: IconButton(
+              tooltip: 'Remove',
+              icon: Icon(PhosphorIconsRegular.x, size: 18, color: theme.hintColor),
+              onPressed: () => _removeHistoryItem(searchTerm),
+            ),
+            onTap: () => _selectHistoryItem(searchTerm),
+          ),
+      ],
     );
   }
 
