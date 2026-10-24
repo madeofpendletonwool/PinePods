@@ -125,6 +125,18 @@ class AudioPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     val metadata = call.argument<Map<String, Any>>("metadata")
 
                     if (url != null) {
+                        // Playback options ride along so the episode starts with
+                        // them rather than switching a moment after it begins.
+                        mediaService?.let { service ->
+                            call.argument<Double>("speed")?.let { service.setPlaybackSpeed(it.toFloat()) }
+                            call.argument<Boolean>("trimSilence")?.let { service.setTrimSilence(it) }
+                            call.argument<Boolean>("volumeBoost")?.let { service.setVolumeBoost(it) }
+                            val forwardMs = call.argument<Int>("forwardMs")
+                            val backwardMs = call.argument<Int>("backwardMs")
+                            if (forwardMs != null && backwardMs != null) {
+                                service.setSkipIntervals(forwardMs.toLong(), backwardMs.toLong())
+                            }
+                        }
                         mediaService?.playEpisode(url, startPosition, isLocal, metadata)
                         result.success(null)
                     } else {

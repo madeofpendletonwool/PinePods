@@ -182,8 +182,8 @@ class PinepodsMediaService : MediaLibraryService() {
             .setBufferDurationsMs(
                 60_000,    // min buffer: 60s (increased from buggy 45s)
                 180_000,   // max buffer: 3min
-                5_000,     // buffer for playback start: 5s
-                10_000     // buffer for rebuffer: 10s
+                2_500,     // buffer for playback start: 2.5s (Media3 default)
+                5_000      // buffer for rebuffer: 5s (Media3 default)
             )
             .setBackBuffer(60_000, true)  // Keep 60s back buffer for rewind without rebuffering
             .setPrioritizeTimeOverSizeThresholds(true)
@@ -513,13 +513,10 @@ class PinepodsMediaService : MediaLibraryService() {
                 // Dart layer re-supplies them via setAdSkipSegments after load.
                 resetAdSkips(emptyList())
 
-                p.setMediaItem(mediaItem)
+                // Start at the resume point directly: preparing first and seeking
+                // after would begin loading from 0 and then request again.
+                p.setMediaItem(mediaItem, startPosition.coerceAtLeast(0).toLong())
                 p.prepare()
-
-                if (startPosition > 0) {
-                    p.seekTo(startPosition.toLong())
-                }
-
                 p.play()
 
                 Log.d(TAG, "Episode playback started, player state: ${p.playbackState}, isPlaying: ${p.isPlaying}")

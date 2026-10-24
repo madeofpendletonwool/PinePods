@@ -210,6 +210,9 @@ class AudioBloc extends Bloc {
 
   Stream<Sleep>? get sleepStream => audioPlayerService.sleepStream;
 
+  /// Speed the current episode plays at (the user default or a per-podcast override).
+  ValueStream<double>? get currentSpeed => audioPlayerService.playbackSpeed;
+
   /// Change playback speed
   void Function(double) get playbackSpeed => _playbackSpeedSubject.sink.add;
 

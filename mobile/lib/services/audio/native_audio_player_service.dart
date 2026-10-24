@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
 import 'package:pinepods_mobile/core/download_presence.dart';
 import 'package:pinepods_mobile/core/utils.dart';
-import 'package:pinepods_mobile/entities/chapter.dart';
 import 'package:pinepods_mobile/entities/downloadable.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/sleep.dart';
@@ -57,6 +56,14 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
   Timer? _localPositionTimer;
 
+  /// Serialises local episode saves so a background save can't race the next
+  /// one (an unsaved episode has no id yet, so two concurrent saves add twice).
+  Future<void> _persistChain = Future.value();
+
+  /// Time from a play request to the first `playing` event, for start-latency logs.
+  Stopwatch? _startWatch;
+  bool _startIsLocal = false;
+
   /// Whether we've already reported the decoded duration for the current
   /// episode to the server (see PinepodsAudioService.updateEpisodeDurationIfNeeded).
   bool _actualDurationReported = false;
@@ -65,6 +72,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
   StreamSubscription? _nativeEventSubscription;
 
   final BehaviorSubject<AudioState> _playingState = BehaviorSubject<AudioState>.seeded(AudioState.none);
+  final BehaviorSubject<double> _speedState = BehaviorSubject<double>.seeded(1.0);
   final _sleepTicker = Stream<int>.periodic(const Duration(milliseconds: 500), (count) => count).asBroadcastStream();
   final _playPosition = BehaviorSubject<PositionState>();
   final _episodeEvent = BehaviorSubject<Episode?>(sync: true);
@@ -257,6 +265,13 @@ class NativeAudioPlayerService extends AudioPlayerService {
         _handlingCompletion = false;
       }
 
+      final watch = _startWatch;
+      if (watch != null && audioState == AudioState.playing) {
+        _startWatch = null;
+        log.info('Playback started ${watch.elapsedMilliseconds}ms after request '
+            '(${_startIsLocal ? 'local file' : 'stream'})');
+      }
+
       // Suppress the brief stopped/idle states emitted while tearing down the
       // finished track and loading the next one.
       if (_handlingCompletion &&
@@ -272,7 +287,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
         return;
       }
 
-      _playingState.add(audioState);
+      _setPlayingState(audioState);
     }
 
     // Update position
@@ -283,6 +298,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
         percentage: duration > 0 ? ((position / duration) * 100).toInt() : 0,
         episode: _currentEpisode,
         buffering: state == 'buffering',
+        buffered: Duration(milliseconds: bufferedPosition),
       ));
 
       // Update chapter if needed
@@ -296,6 +312,12 @@ class NativeAudioPlayerService extends AudioPlayerService {
         _pinepodsAudioService?.updateEpisodeDurationIfNeeded(duration / 1000.0);
       }
     }
+  }
+
+  /// Native re-reports the same state with every position tick; only pass on
+  /// real changes so listeners don't rebuild every second.
+  void _setPlayingState(AudioState state) {
+    if (_playingState.valueOrNull != state) _playingState.add(state);
   }
 
   AudioState _parseState(String state) {
@@ -324,7 +346,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
     // resume point. Just stop the periodic saver for the same reason.
     _stopLocalPositionSaver();
     _playbackError.add(code);
-    _playingState.add(AudioState.error);
+    _setPlayingState(AudioState.error);
   }
 
   Future<void> _handleCompletedEvent() async {
@@ -343,7 +365,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
       if (completedEpisode != null) {
         completedEpisode.played = true;
         completedEpisode.position = 0;
-        repository.saveEpisode(completedEpisode);
+        unawaited(_persist(completedEpisode));
       }
 
       // Check sleep timer
@@ -378,7 +400,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
       // PinepodsAudioService knows whether it is tracking an episode and returns
       // false (→ stop) when it is not.
       if (_pinepodsAudioService != null) {
-        _playingState.add(AudioState.buffering);
+        _setPlayingState(AudioState.buffering);
         final advanced = await _pinepodsAudioService!.handleEpisodeCompleted();
         if (advanced) {
           // Leave _handlingCompletion set: the next episode's native
@@ -387,11 +409,11 @@ class NativeAudioPlayerService extends AudioPlayerService {
         } else {
           // Nothing left to play — allow the hide and stop.
           _handlingCompletion = false;
-          _playingState.add(AudioState.stopped);
+          _setPlayingState(AudioState.stopped);
         }
       } else {
         _handlingCompletion = false;
-        _playingState.add(AudioState.stopped);
+        _setPlayingState(AudioState.stopped);
       }
     } finally {
       _advanceInProgress = false;
@@ -423,8 +445,9 @@ class NativeAudioPlayerService extends AudioPlayerService {
   }
 
   @override
-  Future<void> playEpisode({required Episode episode, bool resume = true}) async {
+  Future<void> playEpisode({required Episode episode, bool resume = true, double? playbackSpeed}) async {
     log.info('playEpisode: ${episode.title}, resume: $resume');
+    _startWatch = Stopwatch()..start();
 
     _currentEpisode = episode;
     _currentEpisode!.played = false;
@@ -434,59 +457,56 @@ class NativeAudioPlayerService extends AudioPlayerService {
     final uri = await _generateEpisodeUri(episode);
     if (uri == null) {
       log.severe('Failed to generate episode URI');
-      _playingState.add(AudioState.error);
+      _startWatch = null;
+      _setPlayingState(AudioState.error);
       return;
     }
+    final isLocal = episode.downloadState == DownloadState.downloaded;
+    _startIsLocal = isLocal;
 
-    // Get best position (furthest of local vs server)
-    final bestPosition = resume ? await _getBestEpisodePosition(episode) : 0;
-    if (!resume || bestPosition > _currentEpisode!.position) {
-      _currentEpisode!.position = bestPosition;
-    }
-
-    await repository.saveEpisode(_currentEpisode!);
+    // The caller has already resolved where to resume (see
+    // PinepodsAudioService._resolveResumePosition).
+    if (!resume) _currentEpisode!.position = 0;
 
     // Update state
-    _playingState.add(AudioState.buffering);
+    _setPlayingState(AudioState.buffering);
     _updateQueueState();
     _updateEpisodeState();
 
-    // Set playback settings
-    _playbackSpeed = settingsService.playbackSpeed;
+    // Session speed (a per-podcast override) or the user's default.
+    _playbackSpeed = playbackSpeed ?? settingsService.playbackSpeed;
+    _speedState.add(_playbackSpeed);
     _trimSilence = settingsService.trimSilence;
     _volumeBoost = settingsService.volumeBoost;
 
-    // Load chapters and transcript
-    await _loadChaptersAndTranscript();
-
     try {
-      // Call native platform to play
+      // One call: native starts with the right speed, silence trim, boost and
+      // skip intervals instead of switching a moment after audio begins.
       await platform.invokeMethod('playEpisode', {
         'url': uri,
         'startPosition': _currentEpisode!.position,
-        'isLocal': episode.downloadState == DownloadState.downloaded,
+        'isLocal': isLocal,
+        'speed': _playbackSpeed,
+        'trimSilence': _trimSilence,
+        'volumeBoost': _volumeBoost,
+        'forwardMs': settingsService.fastForwardInterval * 1000,
+        'backwardMs': settingsService.rewindInterval * 1000,
         'metadata': {
           'title': episode.title ?? 'Unknown',
           'artist': episode.podcast ?? 'Unknown',
           'artwork': episode.imageUrl,
-          'duration': episode.duration * 1000,
+          'duration': episode.duration,
         },
       });
 
-      // Apply settings
-      await platform.invokeMethod('setPlaybackSpeed', {'speed': _playbackSpeed});
-      if (Platform.isAndroid) {
-        await platform.invokeMethod('setTrimSilence', {'enabled': _trimSilence});
-        await platform.invokeMethod('setVolumeBoost', {'enabled': _volumeBoost});
-      }
-      await _applySkipIntervals();
-
       _startLocalPositionSaver();
-
     } catch (e) {
       log.severe('Error playing episode: $e');
-      _playingState.add(AudioState.error);
+      _startWatch = null;
+      _setPlayingState(AudioState.error);
     }
+
+    unawaited(_persist(_currentEpisode!));
   }
 
   @override
@@ -515,35 +535,37 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
   @override
   Future<void> pause() async {
-    log.info('pause - starting');
+    log.info('pause');
 
-    // Save position immediately
-    try {
-      await _saveLocalPosition();
-      log.info('pause - position saved locally');
-    } catch (e) {
-      log.warning('Failed to save position before pause: $e');
-    }
-
-    // Pause immediately
+    // Pause first so the tap takes effect at once; the position read after
+    // the pause is also the exact one to save.
     try {
       await platform.invokeMethod('pause');
-      log.info('pause - native player paused');
     } catch (e) {
       log.severe('Error pausing: $e');
     }
 
-    // Stop position saver
     _stopLocalPositionSaver();
+    await _saveLocalPosition();
 
     // Background sync (non-blocking)
-    log.info('pause - starting background sync');
     _performBackgroundSync();
   }
 
   @override
   Future<void> stop() async {
     log.info('stop');
+
+    // Read the position before stopping: native clears the item on stop and
+    // reports 0 afterwards, which would replace newer unsynced progress.
+    int? positionMs;
+    if (_currentEpisode != null && _playingState.valueOrNull != AudioState.error) {
+      try {
+        positionMs = await platform.invokeMethod<int>('getPosition');
+      } catch (e) {
+        log.warning('Could not read position before stop: $e');
+      }
+    }
 
     try {
       await platform.invokeMethod('stop');
@@ -552,7 +574,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
     }
 
     _stopLocalPositionSaver();
-    await _saveLocalPosition();
+    if (positionMs != null) await _saveLocalPosition(positionMs: positionMs);
 
     if (_pinepodsAudioService != null) {
       try {
@@ -563,7 +585,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
     }
 
     _currentEpisode = null;
-    _playingState.add(AudioState.stopped);
+    _setPlayingState(AudioState.stopped);
   }
 
   @override
@@ -609,7 +631,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
       await platform.invokeMethod('seek', {'position': positionMs});
       // Persist the new position immediately so a crash/quick-close right after
       // a scrub doesn't lose it (steady-state saver only runs every 15s).
-      await _saveLocalPosition();
+      await _saveLocalPosition(positionMs: positionMs);
     } catch (e) {
       log.severe('Error seeking: $e');
     }
@@ -619,6 +641,7 @@ class NativeAudioPlayerService extends AudioPlayerService {
   Future<void> setPlaybackSpeed(double speed, {bool persist = true}) async {
     log.info('setPlaybackSpeed: $speed');
     _playbackSpeed = speed;
+    _speedState.add(speed);
     if (persist) settingsService.playbackSpeed = speed;
 
     try {
@@ -809,6 +832,18 @@ class NativeAudioPlayerService extends AudioPlayerService {
   @override
   void setPlaylistContext(int? playlistId) {}
 
+  @override
+  void updateNowPlayingDetails(String guid, void Function(Episode episode) update) {
+    final episode = _currentEpisode;
+    if (episode == null || episode.guid != guid) return;
+    update(episode);
+    final position = _playPosition.valueOrNull;
+    if (position != null) {
+      _updateChapter(position.position.inSeconds, position.length.inSeconds);
+    }
+    _updateEpisodeState();
+  }
+
   void setPinepodsAudioService(PinepodsAudioService? service) {
     _pinepodsAudioService = service;
   }
@@ -869,49 +904,16 @@ class NativeAudioPlayerService extends AudioPlayerService {
     }
   }
 
-  Future<int> _getBestEpisodePosition(Episode episode) async {
-    final localPosition = episode.position;
-    log.info('Local position: ${localPosition}ms');
-
-    int serverPosition = 0;
-    if (_pinepodsAudioService != null && episode.guid.startsWith('pinepods_')) {
-      try {
-        final episodeIdStr = episode.guid.replaceFirst('pinepods_', '').split('_').first;
-        final episodeId = int.tryParse(episodeIdStr);
-
-        if (episodeId != null) {
-          final serverPos = await _pinepodsAudioService!.getServerPositionForEpisode(
-            episodeId,
-            settingsService.pinepodsUserId ?? 0,
-            episode.pguid?.contains('youtube') ?? false,
-          );
-
-          if (serverPos != null) {
-            serverPosition = (serverPos * 1000).round();
-            log.info('Server position: ${serverPosition}ms');
-          }
-        }
-      } catch (e) {
-        log.warning('Failed to get server position: $e');
-      }
-    }
-
-    final bestPosition = localPosition > serverPosition ? localPosition : serverPosition;
-    log.info('Using position: ${bestPosition}ms');
-    return bestPosition;
-  }
-
   void _startLocalPositionSaver() {
     _localPositionTimer?.cancel();
     // Steady-state local resume-position save. Kept infrequent for battery; the
     // important moments (pause/seek/stop/complete) save immediately via
     // _saveLocalPosition() so crash-resume stays accurate.
-    _localPositionTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
-      try {
-        await _saveLocalPosition();
-      } catch (e) {
-        log.warning('Failed to save local position: $e');
-      }
+    _localPositionTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      // The latest native position event is at most a second old; no need to
+      // ask native again.
+      final latest = _playPosition.valueOrNull?.position.inMilliseconds;
+      unawaited(_saveLocalPosition(positionMs: latest));
     });
   }
 
@@ -920,28 +922,37 @@ class NativeAudioPlayerService extends AudioPlayerService {
     _localPositionTimer = null;
   }
 
-  Future<void> _saveLocalPosition() async {
-    if (_currentEpisode == null) return;
+  /// Save the resume position locally and publish it on the position stream
+  /// (server sync reads it from there). Asks native when [positionMs] isn't given.
+  Future<void> _saveLocalPosition({int? positionMs}) async {
+    final episode = _currentEpisode;
+    if (episode == null) return;
 
     try {
-      final position = await platform.invokeMethod<int>('getPosition') ?? 0;
-      _currentEpisode!.position = position;
-      await repository.saveEpisode(_currentEpisode!);
+      final position = positionMs ?? await platform.invokeMethod<int>('getPosition') ?? 0;
+      episode.position = position;
 
-      // Also update the position stream to keep it in sync
-      final duration = await platform.invokeMethod<int>('getDuration') ?? 0;
+      final duration = _playPosition.valueOrNull?.length.inMilliseconds ?? 0;
       _playPosition.add(PositionState(
         position: Duration(milliseconds: position),
         length: Duration(milliseconds: duration),
         percentage: duration > 0 ? ((position / duration) * 100).toInt() : 0,
-        episode: _currentEpisode,
+        episode: episode,
         buffering: false,
+        buffered: _playPosition.valueOrNull?.buffered ?? Duration.zero,
       ));
 
+      await _persist(episode);
       log.fine('Local position saved: ${position}ms');
     } catch (e) {
       log.severe('Failed to save local position: $e');
     }
+  }
+
+  Future<void> _persist(Episode episode) {
+    return _persistChain = _persistChain
+        .then((_) => repository.saveEpisode(episode))
+        .then((_) {}, onError: (Object e) => log.warning('Failed to save episode locally: $e'));
   }
 
   void _performBackgroundSync() async {
@@ -974,16 +985,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
     _episodeEvent.add(_currentEpisode);
   }
 
-  Future<void> _loadChaptersAndTranscript() async {
-    if (_currentEpisode == null) return;
-
-    // Chapters and transcript loading will be handled by PinepodsAudioService
-    // if it's a PinePods episode. For now, just log that we're skipping this.
-    if (_currentEpisode!.guid.startsWith('pinepods_')) {
-      log.fine('PinePods episode detected - chapters/transcript can be loaded separately');
-    }
-  }
-
   void _updateChapter(int seconds, int duration) {
     if (_currentEpisode == null) return;
 
@@ -1004,503 +1005,127 @@ class NativeAudioPlayerService extends AudioPlayerService {
     }
   }
 
-  // Android Auto / CarPlay browsing methods
+  // Android Auto / CarPlay browsing methods. Each reads the same server API as
+  // the matching app screen.
 
-  Future<List<Map<String, dynamic>>> _getSubscriptionsForCar() async {
+  /// The shared PinePods client with credentials applied, and the user id, or
+  /// null when not connected to a server.
+  ({PinepodsService api, int userId})? _carApi(String what) {
+    final api = GlobalServices.pinepodsService;
+    final server = settingsService.pinepodsServer;
+    final apiKey = settingsService.pinepodsApiKey;
+    final userId = settingsService.pinepodsUserId;
+    if (api == null || server == null || apiKey == null || userId == null) {
+      log.warning('Not connected to a PinePods server for $what');
+      return null;
+    }
+    api.setCredentials(server, apiKey);
+    return (api: api, userId: userId);
+  }
+
+  Future<List<Map<String, dynamic>>> _carList(
+    String what,
+    Future<List<Map<String, dynamic>>> Function(PinepodsService api, int userId) load,
+  ) async {
+    final car = _carApi(what);
+    if (car == null) return [];
     try {
-      var podcasts = await repository.subscriptions();
-
-      // If no subscriptions, wait a bit and retry once
-      if (podcasts.isEmpty) {
-        log.info('No subscriptions found, waiting 2s and retrying...');
-        await Future.delayed(const Duration(seconds: 2));
-        podcasts = await repository.subscriptions();
-
-        if (podcasts.isEmpty) {
-          log.warning('Still no subscriptions after retry - user may have no subscriptions or data not synced');
-          return [];
-        }
-      }
-
-      log.info('Returning ${podcasts.length} subscriptions');
-      return podcasts.map((podcast) {
-        return {
-          'id': podcast.guid ?? '',
-          'title': podcast.title,
-          'imageUrl': podcast.imageUrl ?? podcast.thumbImageUrl,
-          'episodeCount': podcast.episodes.length,
-        };
-      }).toList();
+      final items = await load(car.api, car.userId);
+      log.info('$what for car: ${items.length} items');
+      return items;
     } catch (e) {
-      log.severe('Error getting subscriptions for car: $e');
+      log.severe('Error getting $what for car: $e');
       return [];
     }
   }
 
-  Future<List<Map<String, dynamic>>> _getDownloadsForCar() async {
-    try {
-      // Get PinePods service and credentials
-      final pinepodsService = GlobalServices.pinepodsService;
-      if (pinepodsService == null) {
-        log.warning('PinepodsService not available for Downloads');
-        return [];
-      }
-
-      if (settingsService.pinepodsServer == null ||
-          settingsService.pinepodsApiKey == null ||
-          settingsService.pinepodsUserId == null) {
-        log.warning('Not connected to PinePods server for Downloads');
-        return [];
-      }
-
-      // Set credentials and call SAME API as Downloads page
-      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
-      log.info('Calling PinePods API: getServerDownloads for Downloads tab');
-
-      final episodes = await pinepodsService.getServerDownloads(settingsService.pinepodsUserId!);
-
-      log.info('PinePods API returned ${episodes.length} downloaded episodes');
-      return episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
-    } catch (e) {
-      log.severe('Error getting downloads for car: $e');
-      return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _getQueueForCar() async {
-    try {
-      // Get PinePods service and credentials
-      final pinepodsService = GlobalServices.pinepodsService;
-      if (pinepodsService == null) {
-        log.warning('PinepodsService not available for Queue');
-        return [];
-      }
-
-      if (settingsService.pinepodsServer == null ||
-          settingsService.pinepodsApiKey == null ||
-          settingsService.pinepodsUserId == null) {
-        log.warning('Not connected to PinePods server for Queue');
-        return [];
-      }
-
-      // Set credentials and call SAME API as Queue page
-      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
-      log.info('Calling PinePods API: getQueuedEpisodes for Queue tab');
-
-      final episodes = await pinepodsService.getQueuedEpisodes(settingsService.pinepodsUserId!);
-
-      log.info('PinePods API returned ${episodes.length} queued episodes');
-      return episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
-    } catch (e) {
-      log.severe('Error getting queue for car: $e');
-      return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _getRecentForCar() async {
-    try {
-      // Use findAllEpisodes to get episodes directly
-      var allEpisodes = await repository.findAllEpisodes();
-
-      // If no episodes, wait a bit and retry once
-      if (allEpisodes.isEmpty) {
-        log.info('No episodes found for recent, waiting 2s and retrying...');
-        await Future.delayed(const Duration(seconds: 2));
-        allEpisodes = await repository.findAllEpisodes();
-
-        if (allEpisodes.isEmpty) {
-          log.warning('Still no episodes for recent after retry');
-          return [];
-        }
-      }
-
-      // Get episodes with progress
-      final recentEpisodes = allEpisodes.where((e) => e.position > 0).toList();
-
-      // Sort by most recently played (highest position percentage)
-      recentEpisodes.sort((a, b) {
-        final aPercent = a.duration > 0 ? (a.position / (a.duration * 1000)) : 0;
-        final bPercent = b.duration > 0 ? (b.position / (b.duration * 1000)) : 0;
-        return bPercent.compareTo(aPercent);
+  Future<List<Map<String, dynamic>>> _getCurrentForCar() => _carList('Current', (api, userId) async {
+        // Only in-progress episodes, as on the Home screen.
+        final home = await api.getHomeOverview(userId);
+        return home.inProgressEpisodes.map(_homeEpisodeToCarMap).toList();
       });
 
-      log.info('Returning ${recentEpisodes.length} recent episodes from ${allEpisodes.length} total (showing top 20)');
-      // Take top 20
-      return recentEpisodes.take(20).map((episode) => _episodeToCarMap(episode)).toList();
-    } catch (e) {
-      log.severe('Error getting recent for car: $e');
-      return [];
-    }
-  }
+  Future<List<Map<String, dynamic>>> _getDownloadsForCar() => _carList('Downloads',
+      (api, userId) async => (await api.getServerDownloads(userId)).map(_pinepodsEpisodeToCarMap).toList());
 
-  Future<List<Map<String, dynamic>>> _getCurrentForCar() async {
-    try {
-      // Get PinePods service and credentials
-      final pinepodsService = GlobalServices.pinepodsService;
-      if (pinepodsService == null) {
-        log.warning('PinepodsService not available for Current');
-        return [];
-      }
+  Future<List<Map<String, dynamic>>> _getQueueForCar() => _carList('Queue',
+      (api, userId) async => (await api.getQueuedEpisodes(userId)).map(_pinepodsEpisodeToCarMap).toList());
 
-      if (settingsService.pinepodsServer == null ||
-          settingsService.pinepodsApiKey == null ||
-          settingsService.pinepodsUserId == null) {
-        log.warning('Not connected to PinePods server for Current');
-        return [];
-      }
+  Future<List<Map<String, dynamic>>> _getSavedForCar() => _carList('Saved',
+      (api, userId) async => (await api.getSavedEpisodes(userId)).map(_pinepodsEpisodeToCarMap).toList());
 
-      // Set credentials and call SAME API as Home page
-      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
-      log.info('Calling PinePods API: getHomeOverview for Current tab');
+  Future<List<Map<String, dynamic>>> _getHistoryForCar() => _carList('History',
+      (api, userId) async => (await api.getUserHistory(userId)).map(_pinepodsEpisodeToCarMap).toList());
 
-      final homeData = await pinepodsService.getHomeOverview(settingsService.pinepodsUserId!);
+  Future<List<Map<String, dynamic>>> _getPodcastsForCar() => _carList('Podcasts', (api, userId) async {
+        final podcasts = await api.getUserPodcasts(userId);
+        return podcasts
+            .map((podcast) => <String, dynamic>{
+                  'id': podcast.id.toString(),
+                  'title': podcast.title,
+                  'imageUrl': podcast.imageUrl ?? podcast.thumbImageUrl,
+                  'episodeCount': podcast.episodes.length,
+                })
+            .toList();
+      });
 
-      // Only show in-progress episodes for "Current" tab
-      final inProgressEpisodes = homeData.inProgressEpisodes;
+  Future<List<Map<String, dynamic>>> _getPodcastEpisodesForCar(String podcastId) =>
+      _carList('Podcast $podcastId episodes', (api, userId) async {
+        final id = int.tryParse(podcastId);
+        if (id == null) return [];
+        return (await api.getPodcastEpisodes(userId, id)).map(_pinepodsEpisodeToCarMap).toList();
+      });
 
-      log.info('PinePods API returned ${inProgressEpisodes.length} in-progress episodes for Current');
-      return inProgressEpisodes.map((episode) => _homeEpisodeToCarMap(episode)).toList();
-    } catch (e) {
-      log.severe('Error getting current for car: $e');
-      return [];
-    }
-  }
+  Future<List<Map<String, dynamic>>> _getPlaylistsForCar() => _carList('Playlists', (api, userId) async {
+        final response = await api.getPlaylists(userId);
+        return response.playlists
+            .map((playlist) => <String, dynamic>{
+                  'id': playlist.playlistId,
+                  'name': playlist.name,
+                  'description': playlist.description,
+                  'episodeCount': playlist.episodeCount ?? 0,
+                })
+            .toList();
+      });
 
-  Future<List<Map<String, dynamic>>> _getFeedForCar() async {
-    try {
-      // Get PinePods service and credentials
-      final pinepodsService = GlobalServices.pinepodsService;
-      if (pinepodsService == null) {
-        log.warning('PinepodsService not available for Feed');
-        return [];
-      }
-
-      if (settingsService.pinepodsServer == null ||
-          settingsService.pinepodsApiKey == null ||
-          settingsService.pinepodsUserId == null) {
-        log.warning('Not connected to PinePods server for Feed');
-        return [];
-      }
-
-      // Set credentials and call SAME API as Feed page
-      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
-      log.info('Calling PinePods API: getRecentEpisodes for Feed tab');
-
-      final page = await pinepodsService.getRecentEpisodes(settingsService.pinepodsUserId!);
-
-      log.info('PinePods API returned ${page.episodes.length} recent episodes for Feed (total: ${page.total})');
-      return page.episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
-    } catch (e) {
-      log.severe('Error getting feed for car: $e');
-      return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _getSavedForCar() async {
-    try {
-      // Get PinePods service and credentials
-      final pinepodsService = GlobalServices.pinepodsService;
-      if (pinepodsService == null) {
-        log.warning('PinepodsService not available for Saved');
-        return [];
-      }
-
-      if (settingsService.pinepodsServer == null ||
-          settingsService.pinepodsApiKey == null ||
-          settingsService.pinepodsUserId == null) {
-        log.warning('Not connected to PinePods server for Saved');
-        return [];
-      }
-
-      // Set credentials and call SAME API as Saved page
-      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
-      log.info('Calling PinePods API: getSavedEpisodes for Saved tab');
-
-      final episodes = await pinepodsService.getSavedEpisodes(settingsService.pinepodsUserId!);
-
-      log.info('PinePods API returned ${episodes.length} saved episodes');
-      return episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
-    } catch (e) {
-      log.severe('Error getting saved for car: $e');
-      return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _getHistoryForCar() async {
-    try {
-      // Get PinePods service and credentials
-      final pinepodsService = GlobalServices.pinepodsService;
-      if (pinepodsService == null) {
-        log.warning('PinepodsService not available for History');
-        return [];
-      }
-
-      if (settingsService.pinepodsServer == null ||
-          settingsService.pinepodsApiKey == null ||
-          settingsService.pinepodsUserId == null) {
-        log.warning('Not connected to PinePods server for History');
-        return [];
-      }
-
-      // Set credentials and call SAME API as History page
-      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
-      log.info('Calling PinePods API: getUserHistory for History tab');
-
-      final episodes = await pinepodsService.getUserHistory(settingsService.pinepodsUserId!);
-
-      log.info('PinePods API returned ${episodes.length} history episodes');
-      return episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
-    } catch (e) {
-      log.severe('Error getting history for car: $e');
-      return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _getPodcastsForCar() async {
-    try {
-      // Get PinePods service and credentials
-      final pinepodsService = GlobalServices.pinepodsService;
-      if (pinepodsService == null) {
-        log.warning('PinepodsService not available for Podcasts');
-        return [];
-      }
-
-      if (settingsService.pinepodsServer == null ||
-          settingsService.pinepodsApiKey == null ||
-          settingsService.pinepodsUserId == null) {
-        log.warning('Not connected to PinePods server for Podcasts');
-        return [];
-      }
-
-      // Set credentials and call SAME API as Podcasts page
-      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
-      log.info('Calling PinePods API: getUserPodcasts for Podcasts tab');
-
-      final podcasts = await pinepodsService.getUserPodcasts(settingsService.pinepodsUserId!);
-
-      log.info('PinePods API returned ${podcasts.length} podcasts');
-      return podcasts.map((podcast) {
-        return {
-          'id': podcast.id.toString(),
-          'title': podcast.title,
-          'imageUrl': podcast.imageUrl ?? podcast.thumbImageUrl,
-          'episodeCount': podcast.episodes.length,
-        };
-      }).toList();
-    } catch (e) {
-      log.severe('Error getting podcasts for car: $e');
-      return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _getPodcastEpisodesForCar(String podcastId) async {
-    try {
-      // Get PinePods service and credentials
-      final pinepodsService = GlobalServices.pinepodsService;
-      if (pinepodsService == null) {
-        log.warning('PinepodsService not available for Podcast Episodes');
-        return [];
-      }
-
-      if (settingsService.pinepodsServer == null ||
-          settingsService.pinepodsApiKey == null ||
-          settingsService.pinepodsUserId == null) {
-        log.warning('Not connected to PinePods server for Podcast Episodes');
-        return [];
-      }
-
-      final podcastIdInt = int.tryParse(podcastId);
-      if (podcastIdInt == null) {
-        log.warning('Invalid podcast ID: $podcastId');
-        return [];
-      }
-
-      // Set credentials and call API
-      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
-      log.info('Calling PinePods API: getPodcastEpisodes for podcast $podcastId');
-
-      final episodes = await pinepodsService.getPodcastEpisodes(
-        settingsService.pinepodsUserId!,
-        podcastIdInt,
-      );
-
-      log.info('PinePods API returned ${episodes.length} episodes for podcast $podcastId');
-      return episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
-    } catch (e) {
-      log.severe('Error getting podcast episodes for car: $e');
-      return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _getPlaylistsForCar() async {
-    try {
-      // Get PinePods service and credentials
-      final pinepodsService = GlobalServices.pinepodsService;
-      if (pinepodsService == null) {
-        log.warning('PinepodsService not available for Playlists');
-        return [];
-      }
-
-      if (settingsService.pinepodsServer == null ||
-          settingsService.pinepodsApiKey == null ||
-          settingsService.pinepodsUserId == null) {
-        log.warning('Not connected to PinePods server for Playlists');
-        return [];
-      }
-
-      // Set credentials and call SAME API as Playlists page
-      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
-      log.info('Calling PinePods API: getPlaylists for Playlists tab');
-
-      final response = await pinepodsService.getPlaylists(settingsService.pinepodsUserId!);
-
-      log.info('PinePods API returned ${response.playlists.length} playlists');
-      return response.playlists.map((playlist) {
-        return {
-          'id': playlist.playlistId,
-          'name': playlist.name,
-          'description': playlist.description,
-          'episodeCount': playlist.episodeCount ?? 0,
-        };
-      }).toList();
-    } catch (e) {
-      log.severe('Error getting playlists for car: $e');
-      return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _getPlaylistEpisodesForCar(String playlistId) async {
-    try {
-      // Get PinePods service and credentials
-      final pinepodsService = GlobalServices.pinepodsService;
-      if (pinepodsService == null) {
-        log.warning('PinepodsService not available for Playlist Episodes');
-        return [];
-      }
-
-      if (settingsService.pinepodsServer == null ||
-          settingsService.pinepodsApiKey == null ||
-          settingsService.pinepodsUserId == null) {
-        log.warning('Not connected to PinePods server for Playlist Episodes');
-        return [];
-      }
-
-      final playlistIdInt = int.tryParse(playlistId);
-      if (playlistIdInt == null) {
-        log.warning('Invalid playlist ID: $playlistId');
-        return [];
-      }
-
-      // Set credentials and call API
-      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
-      log.info('Calling PinePods API: getPlaylistEpisodes for playlist $playlistId');
-
-      final response = await pinepodsService.getPlaylistEpisodes(
-        settingsService.pinepodsUserId!,
-        playlistIdInt,
-      );
-
-      log.info('PinePods API returned ${response.episodes.length} episodes for playlist $playlistId');
-      return response.episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
-    } catch (e) {
-      log.severe('Error getting playlist episodes for car: $e');
-      return [];
-    }
-  }
+  Future<List<Map<String, dynamic>>> _getPlaylistEpisodesForCar(String playlistId) =>
+      _carList('Playlist $playlistId episodes', (api, userId) async {
+        final id = int.tryParse(playlistId);
+        if (id == null) return [];
+        return (await api.getPlaylistEpisodes(userId, id)).episodes.map(_pinepodsEpisodeToCarMap).toList();
+      });
 
   Future<void> _playFromMediaIdForCar(String guid) async {
+    // Car media ids are "pinepods_<episodeId>".
+    final episodeId = guid.startsWith('pinepods_') ? int.tryParse(guid.replaceFirst('pinepods_', '')) : null;
+    if (episodeId == null) {
+      log.warning('Invalid car media id: $guid');
+      return;
+    }
+    final car = _carApi('playback');
+    final pinepodsAudioService = GlobalServices.pinepodsAudioService;
+    if (car == null || pinepodsAudioService == null) return;
+
     try {
-      log.info('Playing episode from car: $guid');
-
-      // Extract episode ID from guid (format: "pinepods_123")
-      if (!guid.startsWith('pinepods_')) {
-        log.warning('Invalid guid format: $guid');
-        return;
-      }
-
-      final episodeIdStr = guid.replaceFirst('pinepods_', '');
-      final episodeId = int.tryParse(episodeIdStr);
-
-      if (episodeId == null) {
-        log.warning('Could not parse episode ID from guid: $guid');
-        return;
-      }
-
-      // Get PinePods service and credentials
-      final pinepodsService = GlobalServices.pinepodsService;
-      final pinepodsAudioService = GlobalServices.pinepodsAudioService;
-
-      if (pinepodsService == null || pinepodsAudioService == null) {
-        log.warning('PinePods services not available');
-        return;
-      }
-
-      if (settingsService.pinepodsServer == null ||
-          settingsService.pinepodsApiKey == null ||
-          settingsService.pinepodsUserId == null) {
-        log.warning('Not connected to PinePods server');
-        return;
-      }
-
-      // Set credentials
-      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
-      final userId = settingsService.pinepodsUserId!;
-
-      // Fetch full episode metadata from API
-      log.info('Fetching episode metadata for ID: $episodeId');
-      final episode = await pinepodsService.getEpisodeMetadata(episodeId, userId);
-
+      final episode = await car.api.getEpisodeMetadata(episodeId, car.userId);
       if (episode == null) {
         log.warning('Episode metadata not found for ID: $episodeId');
         return;
       }
-
       // Play using the SAME method as the app UI
-      log.info('Playing PinePods episode: ${episode.episodeTitle}');
-      await pinepodsAudioService.playPinepodsEpisode(
-        pinepodsEpisode: episode,
-        resume: true,
-      );
-
-      log.info('Episode started playing from Android Auto');
+      await pinepodsAudioService.playPinepodsEpisode(pinepodsEpisode: episode, resume: true);
     } catch (e) {
       log.severe('Error playing from media ID: $e');
     }
   }
 
+  /// Voice/text search from the car, against the server's episode search.
   Future<Map<String, dynamic>> _searchForCar(String query) async {
-    try {
-      final podcasts = await repository.subscriptions();
-      final results = <Episode>[];
-      final queryLower = query.toLowerCase();
-
-      for (final podcast in podcasts) {
-        results.addAll(
-          podcast.episodes.where((episode) =>
-              (episode.title ?? '').toLowerCase().contains(queryLower) ||
-              (episode.description?.toLowerCase().contains(queryLower) ?? false)),
-        );
-      }
-
-      // Limit to 50 results
-      return {
-        'episodes': results.take(50).map((episode) => _episodeToCarMap(episode)).toList(),
-      };
-    } catch (e) {
-      log.severe('Error searching for car: $e');
-      return {'episodes': []};
-    }
-  }
-
-  Map<String, dynamic> _episodeToCarMap(Episode episode) {
-    return {
-      'guid': episode.guid ?? '',
-      'title': episode.title ?? 'Unknown Episode',
-      'podcast': episode.podcast ?? 'Unknown Podcast',
-      'imageUrl': episode.imageUrl,
-      'duration': episode.duration,
-      'position': episode.position,  // Add progress information for display
-    };
+    final episodes = await _carList('Search', (api, userId) async {
+      final page = await api.searchEpisodes(userId, query, limit: 50);
+      return page.results.map((r) => _pinepodsEpisodeToCarMap(r.toPinepodsEpisode())).toList();
+    });
+    return {'episodes': episodes};
   }
 
   /// Convert PinepodsEpisode to car map format
@@ -1537,6 +1162,9 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
   @override
   ValueStream<PositionState> get playPosition => _playPosition.stream;
+
+  @override
+  ValueStream<double> get playbackSpeed => _speedState.stream;
 
   @override
   ValueStream<Episode?> get episodeEvent => _episodeEvent.stream;

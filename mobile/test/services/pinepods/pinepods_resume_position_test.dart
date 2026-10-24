@@ -53,7 +53,11 @@ void main() {
     when(() => settingsBloc.currentSettings)
         .thenReturn(AppSettings.sensibleDefaults().copyWith(pinepodsUserId: 42));
     when(() => audio.findDownloadedEpisode(any())).thenAnswer((_) async => null);
-    when(() => audio.playEpisode(episode: any(named: 'episode'), resume: any(named: 'resume')))
+    when(() => audio.playEpisode(
+          episode: any(named: 'episode'),
+          resume: any(named: 'resume'),
+          playbackSpeed: any(named: 'playbackSpeed'),
+        ))
         .thenAnswer((_) async {});
     when(() => audio.setPlaybackSpeed(any())).thenAnswer((_) async {});
     when(() => api.getPodcastIdFromEpisode(any(), any(), any())).thenAnswer((_) async => 7);
@@ -69,7 +73,11 @@ void main() {
   }
 
   Episode playedEpisode() => verify(
-        () => audio.playEpisode(episode: captureAny(named: 'episode'), resume: true),
+        () => audio.playEpisode(
+          episode: captureAny(named: 'episode'),
+          resume: true,
+          playbackSpeed: any(named: 'playbackSpeed'),
+        ),
       ).captured.single as Episode;
 
   test('resumes from the server when the list data is stale', () async {

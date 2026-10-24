@@ -32,7 +32,11 @@ void main() {
 
     when(() => settingsBloc.currentSettings)
         .thenReturn(AppSettings.sensibleDefaults().copyWith(pinepodsUserId: 42));
-    when(() => audio.playEpisode(episode: any(named: 'episode'), resume: any(named: 'resume')))
+    when(() => audio.playEpisode(
+          episode: any(named: 'episode'),
+          resume: any(named: 'resume'),
+          playbackSpeed: any(named: 'playbackSpeed'),
+        ))
         .thenAnswer((_) async {});
     when(() => audio.applyEpisodeSkipSegments(
           silenceEnabled: any(named: 'silenceEnabled'),
@@ -45,7 +49,11 @@ void main() {
     await service.playPinepodsEpisode(pinepodsEpisode: buildPinepodsEpisode(episodeId: 0));
 
     final played = verify(
-      () => audio.playEpisode(episode: captureAny(named: 'episode'), resume: false),
+      () => audio.playEpisode(
+        episode: captureAny(named: 'episode'),
+        resume: false,
+        playbackSpeed: any(named: 'playbackSpeed'),
+      ),
     ).captured.single as Episode;
     expect(played.contentUrl, 'https://example.com/episode.mp3');
     expect(service.currentEpisodeId, isNull);
