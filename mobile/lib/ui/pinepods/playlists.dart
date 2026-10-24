@@ -9,6 +9,7 @@ import 'package:pinepods_mobile/ui/pinepods/playlist_episodes.dart';
 import 'package:pinepods_mobile/ui/pinepods/create_playlist.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 
 class PinepodsPlaylists extends StatefulWidget {
   const PinepodsPlaylists({Key? key}) : super(key: key);
@@ -282,36 +283,16 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
     if (_playlists == null || _playlists!.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              Icon(
-                PhosphorIconsRegular.playlist,
-                size: 75,
-                color: Theme.of(context).primaryColor,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No playlists found',
-                style: Theme.of(context).textTheme.titleLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Create a smart playlist to get started!',
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _createPlaylist,
-                icon: const Icon(PhosphorIconsRegular.plus),
-                label: const Text('Create Playlist'),
-              ),
-            ],
+        child: Center(
+          child: SoftEmptyState(
+            icon: PhosphorIconsRegular.playlist,
+            title: 'No playlists yet',
+            body: 'Create a smart playlist to get started',
+            action: FilledButton.icon(
+              onPressed: _createPlaylist,
+              icon: const Icon(PhosphorIconsRegular.plus),
+              label: const Text('Create playlist'),
+            ),
           ),
         ),
       );
@@ -324,47 +305,37 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header with action buttons
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Smart Playlists',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+              SoftSectionHeader(
+                title: 'Playlists',
+                count: _playlists!.length,
+                padding: const EdgeInsets.only(bottom: 4),
+                trailing: [
+                  if (_isSelectionMode) ...[
+                    IconButton(
+                      icon: const Icon(PhosphorIconsRegular.x),
+                      onPressed: _toggleSelectionMode,
+                      tooltip: 'Cancel',
                     ),
-                  ),
-                  Row(
-                    children: [
-                      if (_isSelectionMode) ...[
-                        IconButton(
-                          icon: const Icon(PhosphorIconsRegular.x),
-                          onPressed: _toggleSelectionMode,
-                          tooltip: 'Cancel',
-                        ),
-                        IconButton(
-                          icon: const Icon(PhosphorIconsRegular.trash),
-                          onPressed: _selectedPlaylists.isNotEmpty ? _deleteSelectedPlaylists : null,
-                          tooltip: 'Delete selected (${_selectedPlaylists.length})',
-                        ),
-                      ] else ...[
-                        IconButton(
-                          icon: const Icon(PhosphorIconsRegular.selectionAll),
-                          onPressed: _toggleSelectionMode,
-                          tooltip: 'Select multiple',
-                        ),
-                        IconButton(
-                          icon: const Icon(PhosphorIconsRegular.plus),
-                          onPressed: _createPlaylist,
-                          tooltip: 'Create playlist',
-                        ),
-                      ],
-                    ],
-                  ),
+                    IconButton(
+                      icon: const Icon(PhosphorIconsRegular.trash),
+                      onPressed: _selectedPlaylists.isNotEmpty ? _deleteSelectedPlaylists : null,
+                      tooltip: 'Delete selected (${_selectedPlaylists.length})',
+                    ),
+                  ] else ...[
+                    IconButton(
+                      icon: const Icon(PhosphorIconsRegular.selectionAll),
+                      onPressed: _toggleSelectionMode,
+                      tooltip: 'Select multiple',
+                    ),
+                    IconButton(
+                      icon: const Icon(PhosphorIconsRegular.plus),
+                      onPressed: _createPlaylist,
+                      tooltip: 'Create playlist',
+                    ),
+                  ],
                 ],
               ),
-              
+
               // Info banner for selection mode
               if (_isSelectionMode)
                 Container(
@@ -372,10 +343,7 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Theme.of(context).primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Theme.of(context).primaryColor.withOpacity(0.3),
-                    ),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Row(
                     children: [
