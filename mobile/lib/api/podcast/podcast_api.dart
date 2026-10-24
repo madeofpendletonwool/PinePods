@@ -10,32 +10,6 @@ import 'package:podcast_search/podcast_search.dart' as pslib;
 ///
 /// TODO: Make this more generic so it's not tied to podcast_search
 abstract class PodcastApi {
-  /// Search for podcasts matching the search criteria. Returns a
-  /// [SearchResult] instance.
-  Future<pslib.SearchResult> search(
-    String term, {
-    String? country,
-    String? attribute,
-    int? limit,
-    String? language,
-    int version = 0,
-    bool explicit = false,
-    String? searchProvider,
-  });
-
-  /// Request the top podcast charts from iTunes, and at most [size] records.
-  Future<pslib.SearchResult> charts({
-    int? size,
-    String? searchProvider,
-    String? genre,
-    String? countryCode,
-    String? languageCode,
-  });
-
-  List<String> genres(
-    String searchProvider,
-  );
-
   /// URL representing the RSS feed for a podcast.
   Future<pslib.Podcast> loadFeed(String url);
 

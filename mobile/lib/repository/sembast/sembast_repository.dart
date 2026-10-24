@@ -7,12 +7,10 @@ import 'package:pinepods_mobile/entities/downloadable.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/pending_action.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
-import 'package:pinepods_mobile/entities/queue.dart';
 import 'package:pinepods_mobile/entities/transcript.dart';
 import 'package:pinepods_mobile/repository/repository.dart';
 import 'package:pinepods_mobile/repository/sembast/sembast_database_service.dart';
 import 'package:pinepods_mobile/state/episode_state.dart';
-import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:sembast/sembast.dart';
@@ -28,11 +26,9 @@ class SembastRepository extends Repository {
 
   final _podcastStore = intMapStoreFactory.store('podcast');
   final _episodeStore = intMapStoreFactory.store('episode');
-  final _queueStore = intMapStoreFactory.store('queue');
   final _transcriptStore = intMapStoreFactory.store('transcript');
   final _pendingActionStore = intMapStoreFactory.store('pending_action');
 
-  final _queueGuids = <String>[];
 
   late DatabaseService _databaseService;
 
@@ -392,56 +388,6 @@ class SembastRepository extends Repository {
     }
 
     return updatedEpisodes;
-  }
-
-  @override
-  Future<List<Episode>> loadQueue() async {
-    var episodes = <Episode>[];
-
-    final RecordSnapshot<int, Map<String, Object?>>? snapshot = await _queueStore.record(1).getSnapshot(await _db);
-
-    if (snapshot != null) {
-      var queue = Queue.fromMap(snapshot.key, snapshot.value);
-
-      var episodeFinder = Finder(filter: Filter.inList('guid', queue.guids));
-
-      final List<RecordSnapshot<int, Map<String, Object?>>> recordSnapshots =
-          await _episodeStore.find(await _db, finder: episodeFinder);
-
-      episodes = recordSnapshots.map((snapshot) {
-        final episode = Episode.fromMap(snapshot.key, snapshot.value);
-
-        return episode;
-      }).toList();
-    }
-
-    return episodes;
-  }
-
-  @override
-  Future<void> saveQueue(List<Episode> episodes) async {
-    /// Check to see if we have any ad-hoc episodes and save them first. These
-    /// must be awaited: the queue record we write below only stores guids, so if
-    /// the episodes aren't persisted before saveQueue returns, a subsequent
-    /// loadQueue (or an app restart) finds the queue referencing episodes that
-    /// don't exist yet.
-    for (var e in episodes) {
-      if (e.pguid == null || e.pguid!.isEmpty) {
-        await _saveEpisode(e, false);
-      }
-    }
-
-    var guids = episodes.map((e) => e.guid).toList();
-
-    /// Only bother saving if the queue has changed
-    if (!listEquals(guids, _queueGuids)) {
-      final queue = Queue(guids: guids);
-
-      await _queueStore.record(1).put(await _db, queue.toMap());
-
-      _queueGuids.clear();
-      _queueGuids.addAll(guids);
-    }
   }
 
   @override

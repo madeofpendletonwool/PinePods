@@ -3,9 +3,7 @@
 // found in the LICENSE file.
 
 import 'package:pinepods_mobile/bloc/bloc.dart';
-import 'package:pinepods_mobile/core/environment.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
-import 'package:pinepods_mobile/entities/search_providers.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:logging/logging.dart';
@@ -21,7 +19,6 @@ class SettingsBloc extends Bloc {
   final BehaviorSubject<bool> _deleteDownloadedPlayedEpisodes = BehaviorSubject<bool>();
   final BehaviorSubject<bool> _storeDownloadOnSDCard = BehaviorSubject<bool>();
   final BehaviorSubject<double> _playbackSpeed = BehaviorSubject<double>();
-  final BehaviorSubject<String> _searchProvider = BehaviorSubject<String>();
   final BehaviorSubject<bool> _externalLinkConsent = BehaviorSubject<bool>();
   final BehaviorSubject<bool> _autoOpenNowPlaying = BehaviorSubject<bool>();
   final BehaviorSubject<bool> _showFunding = BehaviorSubject<bool>();
@@ -86,21 +83,12 @@ class SettingsBloc extends Bloc {
 
   void _init() {
     /// Load all settings
-    // Add our available search providers.
-    var providers = <SearchProvider>[SearchProvider(key: 'itunes', name: 'iTunes')];
-
-    if (podcastIndexKey.isNotEmpty) {
-      providers.add(SearchProvider(key: 'podcastindex', name: 'PodcastIndex'));
-    }
-
     _currentSettings = AppSettings(
       theme: _settingsService.theme,
       markDeletedEpisodesAsPlayed: _settingsService.markDeletedEpisodesAsPlayed,
       deleteDownloadedPlayedEpisodes: _settingsService.deleteDownloadedPlayedEpisodes,
       storeDownloadsSDCard: _settingsService.storeDownloadsSDCard,
       playbackSpeed: _settingsService.playbackSpeed,
-      searchProvider: _settingsService.searchProvider,
-      searchProviders: providers,
       externalLinkConsent: _settingsService.externalLinkConsent,
       autoOpenNowPlaying: _settingsService.autoOpenNowPlaying,
       showFunding: _settingsService.showFunding,
@@ -182,11 +170,6 @@ class SettingsBloc extends Bloc {
       _settings.add(_currentSettings);
     });
 
-    _searchProvider.listen((search) {
-      _currentSettings = _currentSettings.copyWith(searchProvider: search);
-      _settings.add(_currentSettings);
-      _settingsService.searchProvider = search;
-    });
 
     _externalLinkConsent.listen((consent) {
       // If the setting has not changed, don't bother updating it
@@ -327,7 +310,6 @@ class SettingsBloc extends Bloc {
 
   void Function(bool) get setAutoOpenNowPlaying => _autoOpenNowPlaying.add;
 
-  void Function(String) get setSearchProvider => _searchProvider.add;
 
   void Function(bool) get setExternalLinkConsent => _externalLinkConsent.add;
 
@@ -433,7 +415,6 @@ class SettingsBloc extends Bloc {
     _deleteDownloadedPlayedEpisodes.close();
     _storeDownloadOnSDCard.close();
     _playbackSpeed.close();
-    _searchProvider.close();
     _externalLinkConsent.close();
     _autoOpenNowPlaying.close();
     _showFunding.close();

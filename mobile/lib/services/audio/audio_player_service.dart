@@ -4,7 +4,6 @@
 
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/sleep.dart';
-import 'package:pinepods_mobile/state/queue_event_state.dart';
 import 'package:rxdart/rxdart.dart';
 
 enum AudioState {
@@ -85,18 +84,6 @@ abstract class AudioPlayerService {
   /// Call when the app is resumed to re-establish the audio service.
   Future<Episode?> resume();
 
-  /// Add an episode to the playback queue
-  Future<void> addUpNextEpisode(Episode episode);
-
-  /// Remove an episode from the playback queue if it exists
-  Future<bool> removeUpNextEpisode(Episode episode);
-
-  /// Remove an episode from the playback queue if it exists
-  Future<bool> moveUpNextEpisode(Episode episode, int oldIndex, int newIndex);
-
-  /// Empty the up next queue
-  Future<void> clearUpNext();
-
   /// Call when the app is about to be suspended.
   Future<void> suspend();
 
@@ -139,6 +126,5 @@ abstract class AudioPlayerService {
   ValueStream<PositionState>? playPosition;
   ValueStream<Episode?>? episodeEvent;
   Stream<int>? playbackError;
-  Stream<QueueListState>? queueState;
   Stream<Sleep>? sleepStream;
 }

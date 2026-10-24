@@ -18,7 +18,6 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
-import 'package:pinepods_mobile/state/queue_event_state.dart';
 import 'package:rxdart/rxdart.dart';
 
 class NativeAudioPlayerService extends AudioPlayerService {
@@ -33,7 +32,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
   var _playbackSpeed = 1.0;
   var _trimSilence = false;
   var _volumeBoost = false;
-  var _queue = <Episode>[];
   var _sleep = Sleep(type: SleepType.none);
   var _sleepEpisodesRemaining = 0;
 
@@ -74,7 +72,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
   final _playPosition = BehaviorSubject<PositionState>();
   final _episodeEvent = BehaviorSubject<Episode?>(sync: true);
   final _playbackError = PublishSubject<int>();
-  final _queueState = BehaviorSubject<QueueListState>();
   final _sleepState = BehaviorSubject<Sleep>();
 
   NativeAudioPlayerService({
@@ -108,7 +105,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
       }
     });
 
-    _loadQueue();
   }
 
   void _subscribeToEventChannelWithRetry([int attempt = 0]) {
@@ -378,15 +374,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
         }
       }
 
-      // Legacy Anytime "Up Next" queue (never populated by PinePods playback,
-      // but kept for the non-PinePods path).
-      if (_queue.isNotEmpty) {
-        final nextEpisode = _queue.removeAt(0);
-        _updateQueueState();
-        await playEpisode(episode: nextEpisode, resume: false);
-        return;
-      }
-
       // PinePods auto-advance: continue the playlist / auto-play-next / server
       // queue. Keep the player on screen (buffering) during the network round
       // trip so it doesn't flicker to "stopped"; the next episode's playEpisode
@@ -468,7 +455,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
     // Update state
     _setPlayingState(AudioState.buffering);
-    _updateQueueState();
     _updateEpisodeState();
 
     // Session speed (a per-podcast override) or the user's default.
@@ -727,49 +713,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
   }
 
   @override
-  Future<void> addUpNextEpisode(Episode episode) async {
-    log.info('addUpNextEpisode: ${episode.title}');
-    _queue.add(episode);
-    await repository.saveQueue(_queue);
-    _updateQueueState();
-  }
-
-  @override
-  Future<bool> removeUpNextEpisode(Episode episode) async {
-    log.info('removeUpNextEpisode: ${episode.title}');
-    final initialLength = _queue.length;
-    _queue.removeWhere((e) => e.guid == episode.guid);
-    final removed = _queue.length < initialLength;
-    if (removed) {
-      await repository.saveQueue(_queue);
-      _updateQueueState();
-    }
-    return removed;
-  }
-
-  @override
-  Future<bool> moveUpNextEpisode(Episode episode, int oldIndex, int newIndex) async {
-    log.info('moveUpNextEpisode from $oldIndex to $newIndex');
-    if (oldIndex < 0 || oldIndex >= _queue.length) return false;
-    if (newIndex < 0 || newIndex >= _queue.length) return false;
-
-    final item = _queue.removeAt(oldIndex);
-    _queue.insert(newIndex, item);
-
-    await repository.saveQueue(_queue);
-    _updateQueueState();
-    return true;
-  }
-
-  @override
-  Future<void> clearUpNext() async {
-    log.info('clearUpNext');
-    _queue.clear();
-    await repository.saveQueue(_queue);
-    _updateQueueState();
-  }
-
-  @override
   Future<Episode?> resume() async {
     log.info('resume');
     // Resume current episode if exists
@@ -976,18 +919,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
     }
   }
 
-  Future<void> _loadQueue() async {
-    _queue = await repository.loadQueue();
-    _updateQueueState();
-  }
-
-  void _updateQueueState() {
-    _queueState.add(QueueListState(
-      playing: _currentEpisode,
-      queue: List.from(_queue),
-    ));
-  }
-
   void _updateEpisodeState() {
     _episodeEvent.add(_currentEpisode);
   }
@@ -1183,9 +1114,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
   @override
   Stream<int> get playbackError => _playbackError.stream;
-
-  @override
-  Stream<QueueListState> get queueState => _queueState.stream;
 
   @override
   Stream<Sleep> get sleepStream => _sleepState.stream;

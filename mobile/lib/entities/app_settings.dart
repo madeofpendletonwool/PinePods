@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:pinepods_mobile/entities/search_providers.dart';
 
 /// Every bottom-bar page, in the default order.
 const List<String> defaultBottomBarOrder = [
@@ -31,12 +30,6 @@ class AppSettings {
 
   /// The default playback speed.
   final double playbackSpeed;
-
-  /// The search provider: itunes or podcastindex.
-  final String? searchProvider;
-
-  /// List of search providers: currently itunes or podcastindex.
-  final List<SearchProvider> searchProviders;
 
   /// True if the user has confirmed dialog accepting funding links.
   final bool externalLinkConsent;
@@ -106,8 +99,6 @@ class AppSettings {
     required this.deleteDownloadedPlayedEpisodes,
     required this.storeDownloadsSDCard,
     required this.playbackSpeed,
-    required this.searchProvider,
-    required this.searchProviders,
     required this.externalLinkConsent,
     required this.autoOpenNowPlaying,
     required this.showFunding,
@@ -138,8 +129,6 @@ class AppSettings {
         deleteDownloadedPlayedEpisodes = false,
         storeDownloadsSDCard = false,
         playbackSpeed = 1.0,
-        searchProvider = 'itunes',
-        searchProviders = <SearchProvider>[],
         externalLinkConsent = false,
         autoOpenNowPlaying = false,
         showFunding = true,
@@ -169,8 +158,6 @@ class AppSettings {
     bool? deleteDownloadedPlayedEpisodes,
     bool? storeDownloadsSDCard,
     double? playbackSpeed,
-    String? searchProvider,
-    List<SearchProvider>? searchProviders,
     bool? externalLinkConsent,
     bool? autoOpenNowPlaying,
     bool? showFunding,
@@ -200,8 +187,6 @@ class AppSettings {
         deleteDownloadedPlayedEpisodes: deleteDownloadedPlayedEpisodes ?? this.deleteDownloadedPlayedEpisodes,
         storeDownloadsSDCard: storeDownloadsSDCard ?? this.storeDownloadsSDCard,
         playbackSpeed: playbackSpeed ?? this.playbackSpeed,
-        searchProvider: searchProvider ?? this.searchProvider,
-        searchProviders: searchProviders ?? this.searchProviders,
         externalLinkConsent: externalLinkConsent ?? this.externalLinkConsent,
         autoOpenNowPlaying: autoOpenNowPlaying ?? this.autoOpenNowPlaying,
         showFunding: showFunding ?? this.showFunding,

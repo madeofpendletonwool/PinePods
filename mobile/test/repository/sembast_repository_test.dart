@@ -112,36 +112,6 @@ void main() {
     });
   });
 
-  group('queue', () {
-    test('saveQueue then loadQueue round-trips already-saved episodes', () async {
-      // Regular (non-ad-hoc) episodes are persisted independently, then queued.
-      final a = await repo.saveEpisode(buildEpisode(guid: 'q1'));
-      final b = await repo.saveEpisode(buildEpisode(guid: 'q2'));
-
-      await repo.saveQueue([a, b]);
-
-      final loaded = await repo.loadQueue();
-      expect(loaded.map((e) => e.guid), containsAll(['q1', 'q2']));
-    });
-
-    test('saveQueue persists ad-hoc (empty-pguid) episodes so loadQueue finds them', () async {
-      // Ad-hoc episodes are saved by saveQueue itself. This used to be
-      // fire-and-forget, so the queue record could reference episodes that
-      // weren't persisted yet; loadQueue must now find them.
-      final a = buildEpisode(guid: 'adhoc1', pguid: '');
-      final b = buildEpisode(guid: 'adhoc2', pguid: '');
-
-      await repo.saveQueue([a, b]);
-
-      final loaded = await repo.loadQueue();
-      expect(loaded.map((e) => e.guid), containsAll(['adhoc1', 'adhoc2']));
-    });
-
-    test('loadQueue is empty when nothing has been queued', () async {
-      expect(await repo.loadQueue(), isEmpty);
-    });
-  });
-
   group('pending actions (offline queue)', () {
     test('savePendingAction assigns an id', () async {
       final saved = await repo.savePendingAction(

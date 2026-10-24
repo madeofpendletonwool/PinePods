@@ -65,9 +65,7 @@ abstract class Repository {
   Future<void> deleteTranscriptsById(List<int> id);
 
   /// Queue
-  Future<void> saveQueue(List<Episode> episodes);
 
-  Future<List<Episode>> loadQueue();
 
   /// Offline action queue (pending server interactions)
   Future<PendingAction> savePendingAction(PendingAction action);

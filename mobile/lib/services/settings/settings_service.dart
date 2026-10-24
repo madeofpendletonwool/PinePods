@@ -33,10 +33,6 @@ abstract class SettingsService {
 
   double get playbackSpeed;
 
-  set searchProvider(String provider);
-
-  String get searchProvider;
-
   set externalLinkConsent(bool consent);
 
   bool get externalLinkConsent;
