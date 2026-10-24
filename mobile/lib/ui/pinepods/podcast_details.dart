@@ -2028,7 +2028,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   }
                 : null,
             onLongPress: _isFollowing && hasServerId ? () => _showEpisodeContextMenu(originalIndex) : null,
-            onPlayPressed: _isFollowing ? () => _playEpisode(episode) : null,
+            // Unfollowed (feed) episodes play untracked.
+            onPlayPressed: () => _playEpisode(episode),
           );
         },
         childCount: _filteredEpisodes.length,
