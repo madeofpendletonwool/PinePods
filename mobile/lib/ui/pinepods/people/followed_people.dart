@@ -212,10 +212,6 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
           suffixIcon: _searchController.text.isEmpty
               ? null
               : IconButton(icon: const Icon(PhosphorIconsRegular.x), tooltip: 'Clear', onPressed: _clearSearch),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          filled: true,
-          fillColor: Theme.of(context).cardColor,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
       ),
     );

@@ -26,6 +26,7 @@ import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/utils/artwork_colors.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
@@ -73,7 +74,6 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   /// Drives the app bar title only, so scrolling never rebuilds the page.
   final ValueNotifier<bool> _collapsed = ValueNotifier<bool>(false);
   Color? _artColor;
-  bool _searchOpen = false;
   Timer? _searchDebounce;
   bool _isFavoriteLoading = false;
   String? _errorMessage;
@@ -1643,7 +1643,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 
   Widget _buildActionRow(ThemeData theme, Color accent) {
-    final onAccent = ThemeData.estimateBrightnessForColor(accent) == Brightness.dark ? Colors.white : Colors.black;
+    final onAccent = onColor(accent);
     final pillStyle = FilledButton.styleFrom(
       backgroundColor: accent,
       foregroundColor: onAccent,
@@ -1682,7 +1682,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         Expanded(child: primary),
         if (_isFollowing) ...[
           const SizedBox(width: 10),
-          _CircleAction(
+          CircleAction(
             tooltip: 'Unfollow',
             icon: _isFollowButtonLoading
                 ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: accent))
@@ -1692,11 +1692,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         ],
         if (widget.podcast.id > 0) ...[
           const SizedBox(width: 10),
-          _CircleAction(
+          CircleAction(
             tooltip: _isFavorite ? 'Remove from favorites' : 'Add to favorites',
             icon: Icon(
               _isFavorite ? PhosphorIconsFill.star : PhosphorIconsRegular.star,
-              color: _isFavorite ? Colors.amber : theme.colorScheme.onSurface.withOpacity(0.8),
+              color: _isFavorite ? Colors.amber : softNeutral(theme).withOpacity(0.8),
               size: 20,
             ),
             onTap: _isFavoriteLoading ? null : _toggleFavorite,
@@ -1771,9 +1771,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           ),
         ),
       ],
-      child: _CircleAction(
+      child: CircleAction(
         tooltip: null,
-        icon: Icon(PhosphorIconsBold.dotsThree, color: theme.colorScheme.onSurface.withOpacity(0.8), size: 20),
+        icon: Icon(PhosphorIconsBold.dotsThree, color: softNeutral(theme).withOpacity(0.8), size: 20),
         onTap: null,
       ),
     );
@@ -1781,19 +1781,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
   List<Widget> _buildEpisodeSlivers(ThemeData theme, Color accent) {
     Widget message(IconData icon, String title, String body, {Widget? action}) => SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(32, 32, 32, 48),
-            child: Column(
-              children: [
-                Icon(icon, size: 40, color: theme.hintColor),
-                const SizedBox(height: 12),
-                Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
-                const SizedBox(height: 6),
-                Text(body, style: theme.textTheme.bodyMedium!.copyWith(color: theme.hintColor), textAlign: TextAlign.center),
-                if (action != null) ...[const SizedBox(height: 16), action],
-              ],
-            ),
-          ),
+          child: SoftEmptyState(icon: icon, title: title, body: body, action: action),
         );
 
     if (_isLoading) {
@@ -1826,14 +1814,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     }
 
     return [
-      SliverPersistentHeader(
-        pinned: true,
-        delegate: _PinnedBarDelegate(
-          height: 56,
-          color: theme.scaffoldBackgroundColor,
-          child: _buildEpisodeToolbar(theme, accent),
-        ),
-      ),
+      ListToolbar.sliver(context, _buildEpisodeToolbar(accent)),
       if (_filteredEpisodes.isEmpty)
         message(
           PhosphorIconsRegular.magnifyingGlassMinus,
@@ -1846,45 +1827,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     ];
   }
 
-  Widget _buildEpisodeToolbar(ThemeData theme, Color accent) {
-    if (_searchOpen) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                textInputAction: TextInputAction.search,
-                decoration: InputDecoration(
-                  hintText: 'Search episodes',
-                  isDense: true,
-                  prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass, size: 20),
-                  filled: true,
-                  fillColor: theme.colorScheme.onSurface.withOpacity(0.06),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
-            ),
-            IconButton(
-              tooltip: 'Close search',
-              icon: const Icon(PhosphorIconsRegular.x),
-              onPressed: () {
-                _searchController.clear();
-                setState(() {
-                  _searchOpen = false;
-                  _searchQuery = '';
-                  _filterEpisodes();
-                });
-              },
-            ),
-          ],
-        ),
-      );
-    }
-
+  ListToolbar<EpisodeSortDirection> _buildEpisodeToolbar(Color accent) {
     final _EpisodeFilter current = _showInProgress
         ? _EpisodeFilter.inProgress
         : switch (_completedFilter) {
@@ -1893,68 +1836,42 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             CompletedFilter.showOnly => _EpisodeFilter.played,
           };
 
-    return Row(
-      children: [
-        Expanded(
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
-            children: [
-              for (final f in _EpisodeFilter.values)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: _FilterPill(
-                    label: f.label,
-                    selected: f == current,
-                    accent: accent,
-                    onTap: () => setState(() {
-                      _showInProgress = f == _EpisodeFilter.inProgress;
-                      _completedFilter = switch (f) {
-                        _EpisodeFilter.unplayed => CompletedFilter.hide,
-                        _EpisodeFilter.played => CompletedFilter.showOnly,
-                        _ => CompletedFilter.showAll,
-                      };
-                      _filterEpisodes();
-                    }),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        IconButton(
-          tooltip: 'Search episodes',
-          icon: const Icon(PhosphorIconsRegular.magnifyingGlass),
-          onPressed: () => setState(() => _searchOpen = true),
-        ),
-        PopupMenuButton<EpisodeSortDirection>(
-          tooltip: 'Sort',
-          icon: const Icon(PhosphorIconsRegular.sortAscending),
-          initialValue: _sortDirection,
-          onSelected: (value) {
-            setState(() {
-              _sortDirection = value;
+    return ListToolbar<EpisodeSortDirection>(
+      accent: accent,
+      searchController: _searchController,
+      searchHint: 'Search episodes',
+      filters: [
+        for (final f in _EpisodeFilter.values)
+          ToolbarFilter(
+            label: f.label,
+            selected: f == current,
+            onTap: () => setState(() {
+              _showInProgress = f == _EpisodeFilter.inProgress;
+              _completedFilter = switch (f) {
+                _EpisodeFilter.unplayed => CompletedFilter.hide,
+                _EpisodeFilter.played => CompletedFilter.showOnly,
+                _ => CompletedFilter.showAll,
+              };
               _filterEpisodes();
-            });
-            _saveSortPreference();
-          },
-          itemBuilder: (context) => [
-            for (final entry in const {
-              EpisodeSortDirection.newestFirst: 'Newest first',
-              EpisodeSortDirection.oldestFirst: 'Oldest first',
-              EpisodeSortDirection.shortestFirst: 'Shortest first',
-              EpisodeSortDirection.longestFirst: 'Longest first',
-              EpisodeSortDirection.titleAZ: 'Title A–Z',
-              EpisodeSortDirection.titleZA: 'Title Z–A',
-            }.entries)
-              CheckedPopupMenuItem(
-                value: entry.key,
-                checked: entry.key == _sortDirection,
-                child: Text(entry.value),
-              ),
-          ],
-        ),
-        const SizedBox(width: 4),
+            }),
+          ),
       ],
+      sortOptions: const {
+        EpisodeSortDirection.newestFirst: 'Newest first',
+        EpisodeSortDirection.oldestFirst: 'Oldest first',
+        EpisodeSortDirection.shortestFirst: 'Shortest first',
+        EpisodeSortDirection.longestFirst: 'Longest first',
+        EpisodeSortDirection.titleAZ: 'Title A–Z',
+        EpisodeSortDirection.titleZA: 'Title Z–A',
+      },
+      sortValue: _sortDirection,
+      onSort: (value) {
+        setState(() {
+          _sortDirection = value;
+          _filterEpisodes();
+        });
+        _saveSortPreference();
+      },
     );
   }
 
@@ -2034,93 +1951,6 @@ class _EpisodeKeys {
         date = DateTime.tryParse(e.episodePubDate)?.millisecondsSinceEpoch ?? 0;
 }
 
-class _PinnedBarDelegate extends SliverPersistentHeaderDelegate {
-  final double height;
-  final Color color;
-  final Widget child;
-
-  _PinnedBarDelegate({required this.height, required this.color, required this.child});
-
-  @override
-  double get minExtent => height;
-
-  @override
-  double get maxExtent => height;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Material(
-      color: color,
-      elevation: overlapsContent || shrinkOffset > 0 ? 1 : 0,
-      child: child,
-    );
-  }
-
-  @override
-  bool shouldRebuild(_PinnedBarDelegate old) => true;
-}
-
-class _FilterPill extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final Color accent;
-  final VoidCallback onTap;
-
-  const _FilterPill({required this.label, required this.selected, required this.accent, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final onAccent = ThemeData.estimateBrightnessForColor(accent) == Brightness.dark ? Colors.white : Colors.black;
-    return Material(
-      color: selected ? accent : theme.colorScheme.onSurface.withOpacity(0.07),
-      shape: const StadiumBorder(),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Center(
-            widthFactor: 1,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                color: selected ? onAccent : theme.colorScheme.onSurface.withOpacity(0.8),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Round secondary button used beside the header's play/follow pill.
-class _CircleAction extends StatelessWidget {
-  final String? tooltip;
-  final Widget icon;
-  final VoidCallback? onTap;
-
-  const _CircleAction({required this.tooltip, required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final button = Material(
-      color: theme.colorScheme.onSurface.withOpacity(0.08),
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(width: 46, height: 46, child: Center(child: icon)),
-      ),
-    );
-    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
-  }
-}
-
 class _ExpandableDescription extends StatefulWidget {
   final String description;
   final Color accent;
@@ -2148,7 +1978,7 @@ class _ExpandableDescriptionState extends State<_ExpandableDescription> {
           children: [
             Text(
               widget.description,
-              style: theme.textTheme.bodyMedium!.copyWith(height: 1.4, color: theme.colorScheme.onSurface.withOpacity(0.85)),
+              style: theme.textTheme.bodyMedium!.copyWith(height: 1.4, color: softNeutral(theme).withOpacity(0.85)),
               maxLines: _expanded ? null : 2,
               overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
             ),

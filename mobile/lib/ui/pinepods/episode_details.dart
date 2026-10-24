@@ -23,6 +23,7 @@ import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:pinepods_mobile/ui/utils/action_guard.dart';
 import 'package:pinepods_mobile/ui/utils/artwork_colors.dart';
 import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart' show humanDuration;
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
@@ -1172,7 +1173,7 @@ class _EpisodeAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final base = active ? accent : theme.colorScheme.onSurface.withOpacity(0.8);
+    final base = active ? accent : softNeutral(theme).withOpacity(0.8);
     final color = onTap == null ? base.withOpacity(0.4) : base;
     return Expanded(
       child: Semantics(

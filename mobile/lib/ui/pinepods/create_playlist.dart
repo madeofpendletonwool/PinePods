@@ -171,7 +171,6 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
               controller: _nameController,
               decoration: const InputDecoration(
                 labelText: 'Playlist Name',
-                border: OutlineInputBorder(),
                 hintText: 'Enter playlist name',
               ),
               validator: (value) {
@@ -189,7 +188,6 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
               controller: _descriptionController,
               decoration: const InputDecoration(
                 labelText: 'Description (Optional)',
-                border: OutlineInputBorder(),
                 hintText: 'Enter playlist description',
               ),
               maxLines: 3,
@@ -304,7 +302,6 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
                   child: TextFormField(
                     decoration: const InputDecoration(
                       labelText: 'Min',
-                      border: OutlineInputBorder(),
                       hintText: 'Any',
                     ),
                     keyboardType: TextInputType.number,
@@ -318,7 +315,6 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
                   child: TextFormField(
                     decoration: const InputDecoration(
                       labelText: 'Max',
-                      border: OutlineInputBorder(),
                       hintText: 'Any',
                     ),
                     keyboardType: TextInputType.number,
@@ -337,7 +333,6 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
               value: _sortOrder,
               decoration: const InputDecoration(
                 labelText: 'Sort Order',
-                border: OutlineInputBorder(),
               ),
               items: const [
                 DropdownMenuItem(value: 'newest_first', child: Text('Newest First')),
@@ -358,7 +353,6 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
             TextFormField(
               decoration: const InputDecoration(
                 labelText: 'Max Episodes (Optional)',
-                border: OutlineInputBorder(),
                 hintText: 'Leave blank for no limit',
               ),
               keyboardType: TextInputType.number,

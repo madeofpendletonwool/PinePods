@@ -239,7 +239,6 @@ class _AddPeopleSheetState extends State<_AddPeopleSheet> {
               decoration: InputDecoration(
                 hintText: _pending.isEmpty ? 'Name, or several: Alice, Bob and Carol' : 'Add another',
                 prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
-                border: const OutlineInputBorder(),
               ),
               onChanged: _onChanged,
               onSubmitted: (_) {

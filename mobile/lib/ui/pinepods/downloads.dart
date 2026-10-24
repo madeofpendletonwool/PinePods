@@ -23,6 +23,7 @@ import 'package:logging/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 
 /// Sort direction options for downloads
 enum DownloadSortDirection {
@@ -928,52 +929,39 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
           if (hasActiveFilters) {
             return MultiSliver(
               children: [
-                _buildSearchAndFilterBar(),
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(PhosphorIconsRegular.funnelSimpleX, size: 64, color: Theme.of(context).primaryColor),
-                        const SizedBox(height: 16),
-                        Text('No downloads found', style: Theme.of(context).textTheme.headlineSmall),
-                        const SizedBox(height: 8),
-                        Text(_getNoResultsMessage(), style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        TextButton.icon(
-                          onPressed: _clearAllFilters,
-                          icon: const Icon(PhosphorIconsRegular.broom),
-                          label: const Text('Clear Filters'),
-                        ),
-                      ],
-                    ),
+                ..._buildHeaderSlivers(),
+                SliverToBoxAdapter(
+                  child: SoftEmptyState(
+                    icon: PhosphorIconsRegular.funnelSimpleX,
+                    title: 'No downloads found',
+                    body: _getNoResultsMessage(),
+                    action: TextButton(onPressed: _clearAllFilters, child: const Text('Clear filters')),
                   ),
                 ),
               ],
             );
           } else {
-            return SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(PhosphorIconsRegular.downloadSimple, size: 64, color: Colors.grey[400]),
-                    const SizedBox(height: 16),
-                    Text('No downloads found', style: Theme.of(context).textTheme.headlineSmall),
-                    const SizedBox(height: 8),
-                    Text('Downloaded episodes will appear here', style: Theme.of(context).textTheme.bodyMedium),
-                  ],
+            return MultiSliver(
+              children: [
+                SliverToBoxAdapter(child: _buildSectionHeader()),
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: SoftEmptyState(
+                      icon: PhosphorIconsRegular.downloadSimple,
+                      title: 'No downloads yet',
+                      body: 'Downloaded episodes will appear here',
+                    ),
+                  ),
                 ),
-              ),
+              ],
             );
           }
         }
 
         return MultiSliver(
           children: [
-            _buildSearchAndFilterBar(),
+            ..._buildHeaderSlivers(),
             _buildDownloadsList(visibleServer, hasVisibleLocal),
           ],
         );
@@ -993,16 +981,18 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
           future: repository.getPendingActions().then((a) => a.length),
           builder: (context, snapshot) {
             final count = snapshot.data ?? 0;
-            return TextButton.icon(
+            return IconButton(
+              tooltip: count > 0 ? 'Action queue ($count pending)' : 'Action queue',
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ActionQueue()),
               ),
-              icon: Icon(count > 0 ? PhosphorIconsRegular.warning : PhosphorIconsRegular.arrowsClockwise, size: 16),
-              label: Text(count > 0 ? 'Action Queue ($count)' : 'Action Queue'),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                visualDensity: VisualDensity.compact,
-                foregroundColor: count > 0 ? Colors.orange[700] : null,
+              icon: Badge(
+                isLabelVisible: count > 0,
+                label: Text('$count'),
+                child: Icon(
+                  count > 0 ? PhosphorIconsRegular.warning : PhosphorIconsRegular.arrowsClockwise,
+                  color: count > 0 ? Colors.orange[700] : null,
+                ),
               ),
             );
           },
@@ -1011,130 +1001,60 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
     );
   }
 
-  Widget _buildSearchAndFilterBar() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                _buildActionQueueButton(),
-                const SizedBox(width: 4),
-                TextButton.icon(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const DownloadActivity()),
-                  ),
-                  icon: const Icon(PhosphorIconsRegular.clockCounterClockwise, size: 16),
-                  label: const Text('Download Activity'),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search downloads...',
-                      prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(icon: const Icon(PhosphorIconsRegular.x), onPressed: () => _searchController.clear())
-                          : null,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Theme.of(context).cardColor,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Theme.of(context).dividerColor),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<DownloadSortDirection>(
-                      value: _sortDirection,
-                      icon: const Icon(PhosphorIconsRegular.sortAscending),
-                      items: const [
-                        DropdownMenuItem(value: DownloadSortDirection.newestFirst, child: Text('Newest')),
-                        DropdownMenuItem(value: DownloadSortDirection.oldestFirst, child: Text('Oldest')),
-                        DropdownMenuItem(value: DownloadSortDirection.titleAZ, child: Text('Title A-Z')),
-                        DropdownMenuItem(value: DownloadSortDirection.titleZA, child: Text('Title Z-A')),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) _setSortDirection(value);
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildFilterChip(label: 'Clear All', icon: PhosphorIconsRegular.broom, isActive: false, onTap: _clearAllFilters),
-                  const SizedBox(width: 8),
-                  _buildFilterChip(
-                    label: 'Server',
-                    icon: PhosphorIconsFill.cloudArrowDown,
-                    isActive: _typeFilter == DownloadTypeFilter.serverOnly,
-                    onTap: () => _setTypeFilter(_typeFilter == DownloadTypeFilter.serverOnly ? DownloadTypeFilter.all : DownloadTypeFilter.serverOnly),
-                  ),
-                  const SizedBox(width: 8),
-                  _buildFilterChip(
-                    label: 'Local',
-                    icon: PhosphorIconsRegular.deviceMobile,
-                    isActive: _typeFilter == DownloadTypeFilter.localOnly,
-                    onTap: () => _setTypeFilter(_typeFilter == DownloadTypeFilter.localOnly ? DownloadTypeFilter.all : DownloadTypeFilter.localOnly),
-                  ),
-                ],
-              ),
-            ),
-          ],
+  Widget _buildSectionHeader() {
+    return SoftSectionHeader(
+      title: 'Downloads',
+      trailing: [
+        _buildActionQueueButton(),
+        IconButton(
+          tooltip: 'Download activity',
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const DownloadActivity()),
+          ),
+          icon: const Icon(PhosphorIconsRegular.clockCounterClockwise),
         ),
-      ),
+      ],
     );
   }
 
-  Widget _buildFilterChip({required String label, required IconData icon, required bool isActive, required VoidCallback onTap}) {
-    final theme = Theme.of(context);
-    return Material(
-      color: isActive ? theme.primaryColor : theme.cardColor,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: isActive ? theme.primaryColor : theme.dividerColor),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: isActive ? Colors.white : theme.iconTheme.color),
-              const SizedBox(width: 6),
-              Text(label, style: TextStyle(color: isActive ? Colors.white : theme.textTheme.bodyMedium?.color, fontWeight: FontWeight.w500)),
-            ],
-          ),
+  List<Widget> _buildHeaderSlivers() {
+    return [
+      SliverToBoxAdapter(child: _buildSectionHeader()),
+      ListToolbar.sliver(
+        context,
+        ListToolbar<DownloadSortDirection>(
+          searchController: _searchController,
+          searchHint: 'Search downloads',
+          filters: [
+            ToolbarFilter(
+              label: 'All',
+              selected: _typeFilter == DownloadTypeFilter.all,
+              onTap: () => _setTypeFilter(DownloadTypeFilter.all),
+            ),
+            ToolbarFilter(
+              label: 'Server',
+              icon: PhosphorIconsRegular.cloud,
+              selected: _typeFilter == DownloadTypeFilter.serverOnly,
+              onTap: () => _setTypeFilter(DownloadTypeFilter.serverOnly),
+            ),
+            ToolbarFilter(
+              label: 'On device',
+              icon: PhosphorIconsRegular.deviceMobile,
+              selected: _typeFilter == DownloadTypeFilter.localOnly,
+              onTap: () => _setTypeFilter(DownloadTypeFilter.localOnly),
+            ),
+          ],
+          sortOptions: const {
+            DownloadSortDirection.newestFirst: 'Newest first',
+            DownloadSortDirection.oldestFirst: 'Oldest first',
+            DownloadSortDirection.titleAZ: 'Title A–Z',
+            DownloadSortDirection.titleZA: 'Title Z–A',
+          },
+          sortValue: _sortDirection,
+          onSort: _setSortDirection,
         ),
       ),
-    );
+    ];
   }
 
   Widget _buildDownloadsList(List<PodcastDownloadSummary> serverSummaries, bool hasVisibleLocal) {
@@ -1238,82 +1158,59 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
   }
 
   Widget _buildOfflineDownloadsView(Map<String, List<Episode>> localDownloadsByPodcast) {
+    final warn = Colors.orange[700]!;
     return MultiSliver(
       children: [
         SliverToBoxAdapter(
           child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16.0),
-            margin: const EdgeInsets.all(12.0),
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
             decoration: BoxDecoration(
-              color: Colors.orange[100],
-              border: Border.all(color: Colors.orange[300]!),
-              borderRadius: BorderRadius.circular(8),
+              color: warn.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
               children: [
-                Icon(PhosphorIconsRegular.cloudSlash, color: Colors.orange[800], size: 24),
+                Icon(PhosphorIconsRegular.cloudSlash, color: warn, size: 22),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Offline Mode', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange[800], fontSize: 16)),
-                      const SizedBox(height: 4),
-                      Text('Server unavailable. Showing local downloads only.', style: TextStyle(color: Colors.orange[700], fontSize: 14)),
+                      Text('Offline', style: TextStyle(fontWeight: FontWeight.w700, color: warn, fontSize: 15)),
+                      const SizedBox(height: 2),
+                      Text('Server unavailable. Showing downloads on this device.',
+                          style: TextStyle(color: warn, fontSize: 13)),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                ElevatedButton.icon(
+                TextButton(
                   onPressed: () {
                     setState(() { _errorMessage = null; });
                     _loadDownloads();
                   },
-                  icon: Icon(PhosphorIconsRegular.arrowClockwise, size: 16, color: Colors.orange[800]),
-                  label: Text('Retry', style: TextStyle(color: Colors.orange[800], fontSize: 12, fontWeight: FontWeight.w500)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange[50],
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
+                  style: TextButton.styleFrom(foregroundColor: warn),
+                  child: const Text('Retry'),
                 ),
               ],
             ),
           ),
         ),
-        _buildSearchAndFilterBar(),
+        ..._buildHeaderSlivers(),
         if (localDownloadsByPodcast.isEmpty)
-          SliverFillRemaining(
+          const SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(PhosphorIconsRegular.cloudSlash, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  Text('No local downloads', style: Theme.of(context).textTheme.headlineSmall),
-                  const SizedBox(height: 8),
-                  Text('Download episodes while online to access them here', style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
-                ],
+              child: SoftEmptyState(
+                icon: PhosphorIconsRegular.cloudSlash,
+                title: 'No downloads on this device',
+                body: 'Download episodes while online to access them here',
               ),
             ),
           )
         else
           SliverList(
             delegate: SliverChildListDelegate([
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  children: [
-                    Icon(PhosphorIconsRegular.deviceMobile, color: Colors.green[600]),
-                    const SizedBox(width: 8),
-                    Text('Local Downloads', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.green[600])),
-                  ],
-                ),
-              ),
               ..._flattenLocalDownloads(localDownloadsByPodcast).map(_buildLocalEpisodeCard),
               const SizedBox(height: 100),
             ]),
