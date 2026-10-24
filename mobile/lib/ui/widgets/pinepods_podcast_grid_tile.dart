@@ -55,9 +55,8 @@ class PinepodsPodcastGridTile extends StatelessWidget {
       child: Semantics(
         label: podcast.title,
         child: GridTile(
-          child: Hero(
+          child: KeyedSubtree(
             key: Key('tilehero${podcast.imageUrl}:${podcast.link}'),
-            tag: '${podcast.imageUrl}:${podcast.link}',
             child: TileImage(
               url: podcast.imageUrl!,
               size: 18.0,
@@ -116,9 +115,8 @@ class PinepodsPodcastTitledGridTile extends StatelessWidget {
         );
       },
       child: GridTile(
-        child: Hero(
+        child: KeyedSubtree(
           key: Key('tilehero${podcast.imageUrl}:${podcast.link}'),
-          tag: '${podcast.imageUrl}:${podcast.link}',
           child: Column(
             children: [
               TileImage(

@@ -21,6 +21,7 @@ import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This class handles the rendering of the podcast transcript (where available).
 // ignore: must_be_immutable
@@ -248,9 +249,9 @@ class _TranscriptViewState extends State<TranscriptView> {
                             controller: _transcriptSearchController,
                             decoration: InputDecoration(
                               contentPadding: const EdgeInsets.all(0.0),
-                              prefixIcon: const Icon(Icons.search),
+                              prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
                               suffixIcon: IconButton(
-                                icon: const Icon(Icons.close),
+                                icon: const Icon(PhosphorIconsRegular.x),
                                 onPressed: () {
                                   _transcriptSearchController.clear();
                                   audioBloc.filterTranscript(TranscriptClearEvent());

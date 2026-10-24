@@ -54,9 +54,8 @@ class PinepodsPodcastTile extends StatelessWidget {
       },
       minVerticalPadding: 9,
       leading: ExcludeSemantics(
-        child: Hero(
+        child: KeyedSubtree(
           key: Key('tilehero${podcast.imageUrl}:${podcast.link}'),
-          tag: '${podcast.imageUrl}:${podcast.link}',
           child: TileImage(
             url: podcast.imageUrl!,
             size: 60,

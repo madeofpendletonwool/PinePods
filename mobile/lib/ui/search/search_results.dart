@@ -8,6 +8,7 @@ import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_list.dart';
 import 'package:flutter/material.dart';
 import 'package:podcast_search/podcast_search.dart' as search;
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class SearchResults extends StatelessWidget {
   final Stream<BlocState> data;
@@ -48,7 +49,7 @@ class SearchResults extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: <Widget>[
                     Icon(
-                      Icons.search,
+                      PhosphorIconsRegular.magnifyingGlass,
                       size: 75,
                       color: Theme.of(context).primaryColor,
                     ),

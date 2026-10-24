@@ -166,9 +166,12 @@ class _NowPlayingOptionsSelectorState extends State<NowPlayingOptionsSelector> {
                           ],
                         ),
                       ),
-                      const Padding(padding: EdgeInsets.only(bottom: 12.0)),
+                      // Spacing lives inside the expanding area so the collapsed
+                      // sheet (baseSize tall) doesn't overflow.
                       Expanded(
-                        child: Consumer<SettingsBloc>(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 12.0),
+                          child: Consumer<SettingsBloc>(
                           builder: (context, settingsBloc, child) {
                             final settings = settingsBloc.currentSettings;
                             final isPinepodsConnected = settings.pinepodsServer != null &&
@@ -185,6 +188,7 @@ class _NowPlayingOptionsSelectorState extends State<NowPlayingOptionsSelector> {
                               ],
                             );
                           },
+                          ),
                         ),
                       ),
                     ],

@@ -10,6 +10,7 @@ import 'package:pinepods_mobile/ui/widgets/tile_image.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Renders an episode within the queue which can be dragged to re-order the queue.
 class DraggableEpisodeTile extends StatelessWidget {
@@ -50,7 +51,7 @@ class DraggableEpisodeTile extends StatelessWidget {
       trailing: draggable
           ? ReorderableDragStartListener(
               index: index,
-              child: const Icon(Icons.drag_handle),
+              child: const Icon(PhosphorIconsRegular.dotsSix),
             )
           : const SizedBox(
               width: 0.0,

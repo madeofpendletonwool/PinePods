@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:math';
 import 'dart:async';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PinepodsStartupLogin extends StatefulWidget {
   final VoidCallback? onLoginSuccess;
@@ -479,7 +480,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                                       borderRadius: BorderRadius.circular(16),
                                     ),
                                     child: Icon(
-                                      Icons.headset,
+                                      PhosphorIconsRegular.headset,
                                       size: 48,
                                       color: Colors.white,
                                     ),
@@ -513,7 +514,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                           decoration: InputDecoration(
                             labelText: 'Server URL',
                             hintText: 'https://your-pinepods-server.com',
-                            prefixIcon: const Icon(Icons.dns),
+                            prefixIcon: const Icon(PhosphorIconsRegular.hardDrives),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -543,7 +544,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                             controller: _usernameController,
                             decoration: InputDecoration(
                               labelText: 'Username',
-                              prefixIcon: const Icon(Icons.person),
+                              prefixIcon: const Icon(PhosphorIconsRegular.user),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -564,7 +565,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                           controller: _passwordController,
                           decoration: InputDecoration(
                             labelText: 'Password',
-                            prefixIcon: const Icon(Icons.lock),
+                            prefixIcon: const Icon(PhosphorIconsRegular.lock),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -593,12 +594,12 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                             decoration: InputDecoration(
                               labelText: 'MFA Code',
                               hintText: 'Enter 6-digit code',
-                              prefixIcon: const Icon(Icons.security),
+                              prefixIcon: const Icon(PhosphorIconsRegular.shieldCheck),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               suffixIcon: IconButton(
-                                icon: const Icon(Icons.close),
+                                icon: const Icon(PhosphorIconsRegular.x),
                                 onPressed: _resetMfa,
                                 tooltip: 'Cancel MFA',
                               ),
@@ -631,7 +632,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.error_outline, color: Colors.red.shade700),
+                                Icon(PhosphorIconsRegular.warningCircle, color: Colors.red.shade700),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
@@ -655,7 +656,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                           child: ExpansionTile(
                             tilePadding: EdgeInsets.zero,
                             childrenPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.security),
+                            leading: const Icon(PhosphorIconsRegular.shieldCheck),
                             title: const Text('Advanced: Certificates'),
                             subtitle: const Text(
                               'Custom server CA / client certificate (mTLS)',
@@ -735,7 +736,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                                         width: 20,
                                         height: 20,
                                         margin: const EdgeInsets.only(right: 8),
-                                        child: const Icon(Icons.account_circle, size: 20),
+                                        child: const Icon(PhosphorIconsRegular.userCircle, size: 20),
                                       ),
                                     Text(
                                       provider.displayText,

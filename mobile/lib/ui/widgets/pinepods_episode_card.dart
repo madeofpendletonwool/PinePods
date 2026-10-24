@@ -1,14 +1,19 @@
 // lib/ui/widgets/pinepods_episode_card.dart
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
+import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/ui/utils/artwork_colors.dart';
 import 'package:pinepods_mobile/ui/utils/live_progress.dart';
 import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PinepodsEpisodeCard extends StatefulWidget {
   final PinepodsEpisode episode;
@@ -55,9 +60,26 @@ class _PinepodsEpisodeCardState extends State<PinepodsEpisodeCard> {
   StreamSubscription? _audioStateSub;
   StreamSubscription? _positionSub;
 
+  SettingsBloc? _settingsBloc;
+  StreamSubscription<AppSettings>? _settingsSub;
+  String _buttonStyle = 'ring';
+  bool _artworkAccent = true;
+
+  Color? _artColor;
+  Brightness? _artBrightness;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    if (_settingsBloc != settingsBloc) {
+      _settingsSub?.cancel();
+      _settingsBloc = settingsBloc;
+      _applySettings(settingsBloc.currentSettings, rebuild: false);
+      _settingsSub = settingsBloc.settings.listen((s) => _applySettings(s, rebuild: true));
+    }
+    _resolveArtColor();
+
     final bloc = Provider.of<AudioBloc>(context, listen: false);
     if (_audioBloc != bloc) {
       _nowPlayingSub?.cancel();
@@ -103,7 +125,48 @@ class _PinepodsEpisodeCardState extends State<PinepodsEpisodeCard> {
   }
 
   @override
+  void didUpdateWidget(PinepodsEpisodeCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.episode.episodeArtwork != widget.episode.episodeArtwork ||
+        oldWidget.episode.localImagePath != widget.episode.localImagePath) {
+      _artBrightness = null;
+      _resolveArtColor();
+    }
+  }
+
+  void _applySettings(AppSettings settings, {required bool rebuild}) {
+    if (settings.playButtonStyle == _buttonStyle && settings.artworkAccentColors == _artworkAccent) return;
+    _buttonStyle = settings.playButtonStyle;
+    _artworkAccent = settings.artworkAccentColors;
+    if (rebuild && mounted) {
+      setState(() {});
+      _resolveArtColor();
+    }
+  }
+
+  /// Artwork colours are tuned against the card surface, so they're keyed on
+  /// its brightness rather than the theme's (some themes mix the two).
+  void _resolveArtColor() {
+    if (!_artworkAccent) return;
+    final theme = Theme.of(context);
+    final brightness = ThemeData.estimateBrightnessForColor(theme.cardTheme.color ?? theme.cardColor);
+    if (_artBrightness == brightness) return;
+    _artBrightness = brightness;
+
+    final url = widget.episode.episodeArtwork;
+    final local = widget.episode.localImagePath;
+    _artColor = ArtworkColors.cached(url, local, brightness);
+    if (_artColor != null) return;
+    ArtworkColors.resolve(url, local, brightness).then((color) {
+      if (!mounted || color == null || _artBrightness != brightness) return;
+      if (url != widget.episode.episodeArtwork) return;
+      setState(() => _artColor = color);
+    });
+  }
+
+  @override
   void dispose() {
+    _settingsSub?.cancel();
     _nowPlayingSub?.cancel();
     _audioStateSub?.cancel();
     _positionSub?.cancel();
@@ -169,14 +232,15 @@ class _PinepodsEpisodeCardState extends State<PinepodsEpisodeCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final accent = theme.primaryColor;
+    final accent = (_artworkAccent ? _artColor : null) ?? theme.primaryColor;
+    final ringStyle = _buttonStyle == 'ring' && widget.onPlayPressed != null;
     final muted = theme.hintColor;
 
     final statusIcons = <Widget>[
-      if (widget.isLocalDownload) Icon(Icons.offline_pin, size: 14, color: Colors.green[600]),
-      if (widget.episode.saved) Icon(Icons.bookmark, size: 14, color: Colors.orange[600]),
-      if (widget.episode.downloaded) Icon(Icons.download_done, size: 14, color: Colors.green[600]),
-      if (widget.episode.queued) Icon(Icons.queue_music, size: 14, color: Colors.blue[400]),
+      if (widget.isLocalDownload) Icon(PhosphorIconsFill.checkCircle, size: 14, color: Colors.green[600]),
+      if (widget.episode.saved) Icon(PhosphorIconsFill.bookmarkSimple, size: 14, color: Colors.orange[600]),
+      if (widget.episode.downloaded) Icon(PhosphorIconsRegular.checkCircle, size: 14, color: Colors.green[600]),
+      if (widget.episode.queued) Icon(PhosphorIconsRegular.queue, size: 14, color: Colors.blue[400]),
     ];
 
     return Card(
@@ -243,7 +307,8 @@ class _PinepodsEpisodeCardState extends State<PinepodsEpisodeCard> {
             ),
             // Pinned to the bottom edge so showing progress never changes the
             // card's height.
-            if (_showProgress)
+            // The ring style draws progress around the button instead.
+            if (_showProgress && !ringStyle)
               Positioned(
                 left: 0,
                 right: 0,
@@ -281,7 +346,7 @@ class _PinepodsEpisodeCardState extends State<PinepodsEpisodeCard> {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
-              _isPlaying ? Icons.graphic_eq : Icons.pause,
+              _isPlaying ? PhosphorIconsRegular.waveform : PhosphorIconsFill.pause,
               color: Colors.white,
               size: 26,
             ),
@@ -294,28 +359,77 @@ class _PinepodsEpisodeCardState extends State<PinepodsEpisodeCard> {
   Widget _playButton(Color accent) {
     final showSpinner = _isLoading && !_isCurrentEpisode;
     final completed = widget.episode.completed && !_isCurrentEpisode;
+    final onAccent = ThemeData.estimateBrightnessForColor(accent) == Brightness.dark ? Colors.white : Colors.black;
+    final done = Colors.green[600]!;
+    final progress = _showProgress ? (_displayProgressPercentage / 100).clamp(0.0, 1.0) : 0.0;
 
-    final Color fg;
-    final Color bg;
-    final IconData icon;
-    if (_isPlaying) {
-      bg = accent;
-      fg = ThemeData.estimateBrightnessForColor(accent) == Brightness.dark ? Colors.white : Colors.black;
-      icon = Icons.pause_rounded;
-    } else if (completed) {
-      bg = Colors.green.withOpacity(0.15);
-      fg = Colors.green[600]!;
-      icon = Icons.check_rounded;
-    } else {
-      bg = accent.withOpacity(0.14);
-      fg = accent;
-      icon = Icons.play_arrow_rounded;
+    final IconData icon = _isPlaying
+        ? PhosphorIconsFill.pause
+        : completed
+            ? PhosphorIconsBold.check
+            : PhosphorIconsFill.play;
+
+    Color? fill;
+    Color fg;
+    Widget? decoration;
+    double iconSize = 22;
+
+    switch (_buttonStyle) {
+      case 'outline':
+        fill = _isPlaying ? accent : null;
+        fg = _isPlaying ? onAccent : (completed ? done : accent);
+        decoration = _isPlaying
+            ? null
+            : DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: (completed ? done : accent).withOpacity(0.7), width: 1.5),
+                ),
+              );
+        break;
+      case 'bare':
+        fg = completed ? done : accent;
+        iconSize = 30;
+        break;
+      case 'tinted':
+        fill = _isPlaying ? accent : (completed ? done.withOpacity(0.15) : accent.withOpacity(0.14));
+        fg = _isPlaying ? onAccent : (completed ? done : accent);
+        iconSize = 26;
+        break;
+      case 'ring':
+      default:
+        fg = completed ? done : accent;
+        decoration = CustomPaint(
+          painter: _ProgressRingPainter(
+            progress: completed ? 1.0 : progress,
+            color: completed ? done : accent,
+            trackColor: (completed ? done : accent).withOpacity(0.2),
+            fillColor: _isPlaying ? accent : null,
+          ),
+        );
+        if (_isPlaying) fg = onAccent;
+        iconSize = 20;
+        break;
     }
+
+    // Spinner sits on the ring itself for the ring style, inside otherwise.
+    final spinner = _buttonStyle == 'ring' || _buttonStyle == 'outline'
+        ? SizedBox.expand(child: CircularProgressIndicator(strokeWidth: 2.5, color: accent))
+        : Padding(
+            padding: const EdgeInsets.all(12),
+            child: CircularProgressIndicator(strokeWidth: 2.2, color: fg),
+          );
+
+    // The play triangle's visual centre sits left of its box centre.
+    final glyph = Icon(icon, color: fg, size: iconSize);
+    final iconWidget = icon == PhosphorIconsFill.play
+        ? Transform.translate(offset: Offset(iconSize * 0.06, 0), child: glyph)
+        : glyph;
 
     return Tooltip(
       message: _isPlaying ? 'Pause' : 'Play',
       child: Material(
-        color: bg,
+        color: fill ?? Colors.transparent,
         shape: const CircleBorder(),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -323,21 +437,73 @@ class _PinepodsEpisodeCardState extends State<PinepodsEpisodeCard> {
           child: SizedBox(
             width: 44,
             height: 44,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: showSpinner
-                  ? Padding(
-                      key: const ValueKey('loading'),
-                      padding: const EdgeInsets.all(12),
-                      child: CircularProgressIndicator(strokeWidth: 2.2, color: fg),
-                    )
-                  : Icon(icon, key: ValueKey(icon), color: fg, size: 28),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                if (decoration != null && !(showSpinner && _buttonStyle == 'ring')) Positioned.fill(child: decoration),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: showSpinner
+                      ? KeyedSubtree(key: const ValueKey('loading'), child: spinner)
+                      : KeyedSubtree(key: ValueKey(icon), child: iconWidget),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
+
+class _ProgressRingPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+  final Color trackColor;
+  final Color? fillColor;
+
+  _ProgressRingPainter({
+    required this.progress,
+    required this.color,
+    required this.trackColor,
+    this.fillColor,
+  });
+
+  static const double _stroke = 2.5;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = (math.min(size.width, size.height) - _stroke) / 2;
+
+    if (fillColor != null) {
+      canvas.drawCircle(center, radius - _stroke - 1.5, Paint()..color = fillColor!);
+    }
+
+    final track = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _stroke
+      ..color = trackColor;
+    canvas.drawCircle(center, radius, track);
+
+    if (progress <= 0) return;
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _stroke
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -math.pi / 2,
+      2 * math.pi * progress,
+      false,
+      arc,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ProgressRingPainter old) =>
+      old.progress != progress || old.color != color || old.trackColor != trackColor || old.fillColor != fillColor;
 }
 
 /// Compact human duration: "1h 5m", "45m", "<1m".

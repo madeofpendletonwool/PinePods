@@ -13,15 +13,15 @@ import 'package:pinepods_mobile/ui/widgets/placeholder_builder.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Displays a mini podcast player widget if a podcast is playing or paused.
 ///
 /// If stopped a zero height box is built instead. Tapping on the mini player
 /// will open the main player window.
 ///
-/// Every page builds its own instance, so it seeds from the current playback
-/// state (otherwise each push would start collapsed and grow back in) and
-/// shares a [Hero] tag so it stays put while pages transition around it.
+/// The app shell builds one instance outside the tab navigator, so it stays
+/// mounted while pages are pushed and popped above it.
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({
     super.key,
@@ -45,11 +45,7 @@ class MiniPlayer extends StatelessWidget {
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeOut,
             child: active
-                ? const Hero(
-                    tag: 'pinepods-mini-player',
-                    transitionOnUserGestures: true,
-                    child: Material(type: MaterialType.transparency, child: _MiniPlayerBody()),
-                  )
+                ? const Material(type: MaterialType.transparency, child: _MiniPlayerBody())
                 : const SizedBox(width: double.infinity),
           );
         });
@@ -192,7 +188,7 @@ class _MiniPlayerBody extends StatelessWidget {
                                           ? () => audioBloc.transitionState(TransitionState.fastforward)
                                           : null,
                                       icon: Icon(
-                                        Icons.forward_30,
+                                        PhosphorIconsRegular.clockClockwise,
                                         semanticLabel: L.of(context)!.fast_forward_button_label,
                                       ),
                                       iconSize: 30,
@@ -219,10 +215,10 @@ class _MiniPlayerBody extends StatelessWidget {
                                                 ),
                                                 icon: Icon(
                                                   failed
-                                                      ? Icons.refresh_rounded
+                                                      ? PhosphorIconsRegular.arrowClockwise
                                                       : playing
-                                                          ? Icons.pause_rounded
-                                                          : Icons.play_arrow_rounded,
+                                                          ? PhosphorIconsFill.pause
+                                                          : PhosphorIconsFill.play,
                                                   semanticLabel: playing
                                                       ? L.of(context)!.pause_button_label
                                                       : L.of(context)!.play_button_label,

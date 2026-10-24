@@ -20,6 +20,9 @@ import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
+import 'package:sliver_tools/sliver_tools.dart';
 
 class PinepodsFeed extends StatefulWidget {
   // Constructor with optional key parameter
@@ -831,16 +834,8 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const SliverFillRemaining(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading recent episodes...'),
-            ],
-          ),
-        ),
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -859,38 +854,54 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
 
     if (_episodes.isEmpty) {
       return const SliverFillRemaining(
+        hasScrollBody: false,
         child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.inbox_outlined,
-                size: 64,
-                color: Colors.grey,
-              ),
-              SizedBox(height: 16),
-              Text(
-                'No recent episodes found',
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.grey,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Episodes from the last 30 days will appear here',
-                style: TextStyle(
-                  color: Colors.grey,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+          child: SoftEmptyState(
+            icon: PhosphorIconsRegular.tray,
+            title: 'No recent episodes',
+            body: 'Episodes from the last 30 days will appear here',
           ),
         ),
       );
     }
 
-    return _buildEpisodesList();
+    return MultiSliver(
+      children: [
+        SliverToBoxAdapter(
+          child: SoftSectionHeader(
+            title: 'Feed',
+            trailing: [
+              IconButton(
+                tooltip: 'Refresh',
+                icon: const Icon(PhosphorIconsRegular.arrowClockwise),
+                onPressed: _refresh,
+              ),
+            ],
+          ),
+        ),
+        ListToolbar.sliver(
+          context,
+          ListToolbar<void>(
+            filters: [
+              ToolbarFilter(
+                label: 'All',
+                selected: !_favoritesOnly,
+                onTap: () {
+                  if (_favoritesOnly) _toggleFavoritesFilter();
+                },
+              ),
+              ToolbarFilter(
+                label: 'Favorites',
+                icon: _favoritesOnly ? PhosphorIconsFill.star : PhosphorIconsRegular.star,
+                selected: _favoritesOnly,
+                onTap: _toggleFavoritesFilter,
+              ),
+            ],
+          ),
+        ),
+        _buildEpisodesList(),
+      ],
+    );
   }
 
   Widget _buildEpisodesList() {
@@ -901,56 +912,15 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
-          if (index == 0) {
-            // Header
-            return Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Recent Episodes',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          _favoritesOnly ? Icons.star : Icons.star_border,
-                          color: _favoritesOnly
-                              ? Colors.amber
-                              : Theme.of(context).iconTheme.color,
-                        ),
-                        tooltip: _favoritesOnly
-                            ? 'Show all podcasts'
-                            : 'Show favorites only',
-                        onPressed: _toggleFavoritesFilter,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.refresh),
-                        onPressed: _refresh,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+          if (showEmptyFavorites && index == 0) {
+            return const SoftEmptyState(
+              icon: PhosphorIconsRegular.star,
+              title: 'No favorite episodes',
+              body: 'Star podcasts to see their new episodes here',
             );
           }
 
-          if (showEmptyFavorites && index == 1) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 32.0, horizontal: 16.0),
-              child: Center(
-                child: Text('No episodes from favorite podcasts.'),
-              ),
-            );
-          }
-
-          final position = index - 1;
+          final position = index;
 
           // Footer: loading spinner that triggers the next page when rendered
           if (showFooter && position == visibleIndices.length) {
@@ -981,200 +951,10 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
             onPlayPressed: () => _playEpisode(_episodes[episodeIndex]),
           );
         },
-        // +1 header, + visible episodes, + optional footer or empty message
-        childCount: 1 +
-            (showEmptyFavorites ? 1 : visibleIndices.length) +
+        // Visible episodes, + optional footer or empty message
+        childCount: (showEmptyFavorites ? 1 : visibleIndices.length) +
             (showFooter ? 1 : 0),
       ),
     );
   }
-
-  Widget _buildEpisodeCard(PinepodsEpisode episode, int episodeIndex) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-      elevation: 1,
-      child: InkWell(
-        onTap: () {
-          // TODO: Navigate to episode details or start playing
-        },
-        onLongPress: () => _showContextMenu(episodeIndex),
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Episode artwork (smaller)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: episode.episodeArtwork.isNotEmpty
-                    ? Image.network(
-                        episode.episodeArtwork,
-                        width: 50,
-                        height: 50,
-                        fit: BoxFit.cover,
-                        cacheWidth: 100, // Optimize memory usage
-                        cacheHeight: 100,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300],
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Icon(
-                              Icons.music_note,
-                              color: Colors.grey,
-                              size: 24,
-                            ),
-                          );
-                        },
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[200],
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Center(
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                            ),
-                          );
-                        },
-                      )
-                    : Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(
-                          Icons.music_note,
-                          color: Colors.grey,
-                          size: 24,
-                        ),
-                      ),
-              ),
-              const SizedBox(width: 12),
-              
-              // Episode info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      episode.episodeTitle,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      episode.podcastName,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).primaryColor,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          episode.formattedPubDate,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          episode.formattedDuration,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                    
-                    // Progress bar if episode has been started
-                    if (episode.isStarted) ...[
-                      const SizedBox(height: 6),
-                      LinearProgressIndicator(
-                        value: episode.progressPercentage / 100,
-                        backgroundColor: Colors.grey[300],
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Theme.of(context).primaryColor,
-                        ),
-                        minHeight: 2,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              
-              // Action button (just play)
-              IconButton(
-                icon: Icon(
-                  episode.completed ? Icons.replay : Icons.play_arrow,
-                  color: Theme.of(context).primaryColor,
-                ),
-                onPressed: () => _playEpisode(episode),
-                iconSize: 24,
-                padding: const EdgeInsets.all(8),
-                constraints: const BoxConstraints(
-                  minWidth: 40,
-                  minHeight: 40,
-                ),
-              ),
-              
-              // Status indicators (compact)
-              if (episode.saved || episode.downloaded || episode.queued)
-                SizedBox(
-                  width: 20,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (episode.saved)
-                        Icon(
-                          Icons.bookmark,
-                          color: Colors.orange[600],
-                          size: 14,
-                        ),
-                      if (episode.downloaded)
-                        Icon(
-                          Icons.download_done,
-                          color: Colors.blue[600],
-                          size: 14,
-                        ),
-                      if (episode.queued)
-                        Icon(
-                          Icons.queue_music,
-                          color: Colors.purple[600],
-                          size: 14,
-                        ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
 }

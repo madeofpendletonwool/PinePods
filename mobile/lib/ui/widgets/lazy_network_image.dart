@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class LazyNetworkImage extends StatefulWidget {
   final String imageUrl;
@@ -91,10 +92,10 @@ class _LazyNetworkImageState extends State<LazyNetworkImage> {
         height: widget.height,
         fit: widget.fit,
         cacheWidth: cacheWidth,
-        errorBuilder: (context, error, stackTrace) => widget.errorWidget ?? _box(Icons.podcasts),
+        errorBuilder: (context, error, stackTrace) => widget.errorWidget ?? _box(PhosphorIconsRegular.microphoneStage),
       );
     } else if (widget.imageUrl.isEmpty) {
-      image = widget.placeholder ?? _box(Icons.podcasts);
+      image = widget.placeholder ?? _box(PhosphorIconsRegular.microphoneStage);
     } else {
       image = ExtendedImage.network(
         widget.imageUrl,
@@ -106,9 +107,9 @@ class _LazyNetworkImageState extends State<LazyNetworkImage> {
         loadStateChanged: (state) {
           switch (state.extendedImageLoadState) {
             case LoadState.loading:
-              return widget.placeholder ?? _box(Icons.podcasts);
+              return widget.placeholder ?? _box(PhosphorIconsRegular.microphoneStage);
             case LoadState.failed:
-              return widget.errorWidget ?? _box(Icons.podcasts);
+              return widget.errorWidget ?? _box(PhosphorIconsRegular.microphoneStage);
             case LoadState.completed:
               return null;
           }

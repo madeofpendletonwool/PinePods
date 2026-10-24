@@ -11,6 +11,7 @@ import 'package:pinepods_mobile/ui/widgets/podcast_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:podcast_search/podcast_search.dart' as search;
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PodcastList extends StatelessWidget {
   const PodcastList({
@@ -81,7 +82,7 @@ class PodcastList extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               Icon(
-                Icons.search,
+                PhosphorIconsRegular.magnifyingGlass,
                 size: 75,
                 color: Theme.of(context).primaryColor,
               ),

@@ -2296,18 +2296,26 @@ ThemeData _buildHotDogStandTheme() {
 }
 
 const double kCardRadius = 14.0;
-const double kButtonRadius = 12.0;
+const double kInputRadius = 14.0;
 
 /// Shared shape language layered over every theme: rounded cards, buttons,
 /// dialogs, sheets and menus. Colours stay whatever each theme defines; only
 /// null style fields are filled in.
 ThemeData polishTheme(ThemeData t) {
-  final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(kButtonRadius));
+  final buttonShape = const StadiumBorder();
   final shapeStyle = ButtonStyle(
     shape: WidgetStatePropertyAll(buttonShape),
-    padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
+    padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
   );
   ButtonStyle withShape(ButtonStyle? existing) => existing?.merge(shapeStyle) ?? shapeStyle;
+
+  // Neutral from the body text: some themes set onSurface to their accent.
+  final neutral = t.textTheme.bodyLarge?.color ?? (t.brightness == Brightness.dark ? Colors.white : Colors.black);
+  final fill = neutral.withOpacity(0.07);
+  final noBorder = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(kInputRadius),
+    borderSide: BorderSide.none,
+  );
 
   return t.copyWith(
     cardTheme: t.cardTheme.copyWith(
@@ -2321,27 +2329,47 @@ ThemeData polishTheme(ThemeData t) {
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(style: withShape(t.filledButtonTheme.style)),
-    outlinedButtonTheme: OutlinedButtonThemeData(style: withShape(t.outlinedButtonTheme.style)),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: withShape(t.outlinedButtonTheme.style).merge(
+        ButtonStyle(side: WidgetStatePropertyAll(BorderSide(color: neutral.withOpacity(0.2)))),
+      ),
+    ),
     textButtonTheme: TextButtonThemeData(
       style: t.textButtonTheme.style?.merge(ButtonStyle(shape: WidgetStatePropertyAll(buttonShape))) ??
           ButtonStyle(shape: WidgetStatePropertyAll(buttonShape)),
     ),
+    // Filled, borderless fields; a focus ring in the accent only while editing.
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: fill,
+      border: noBorder,
+      enabledBorder: noBorder,
+      disabledBorder: noBorder,
+      focusedBorder: noBorder.copyWith(borderSide: BorderSide(color: t.primaryColor, width: 1.5)),
+      errorBorder: noBorder.copyWith(borderSide: BorderSide(color: t.colorScheme.error)),
+      focusedErrorBorder: noBorder.copyWith(borderSide: BorderSide(color: t.colorScheme.error, width: 1.5)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      hintStyle: TextStyle(color: t.hintColor),
+    ),
     dialogTheme: t.dialogTheme.copyWith(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
     ),
     bottomSheetTheme: t.bottomSheetTheme.copyWith(
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       clipBehavior: Clip.antiAlias,
     ),
     popupMenuTheme: t.popupMenuTheme.copyWith(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    ),
+    chipTheme: t.chipTheme.copyWith(shape: const StadiumBorder(), side: BorderSide.none),
+    listTileTheme: t.listTileTheme.copyWith(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
-    chipTheme: t.chipTheme.copyWith(shape: const StadiumBorder()),
     snackBarTheme: t.snackBarTheme.copyWith(
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
   );
 }

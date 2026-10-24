@@ -6,6 +6,7 @@ import 'package:pinepods_mobile/repository/repository.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Shows the offline "outbox" — episode interactions (progress, completion,
 /// saved, queue) that were recorded while offline and are waiting to sync to
@@ -75,17 +76,17 @@ class _ActionQueueState extends State<ActionQueue> {
     switch (type) {
       case PendingActionType.recordPosition:
       case PendingActionType.addHistory:
-        return Icons.timelapse;
+        return PhosphorIconsRegular.circleNotch;
       case PendingActionType.markCompleted:
-        return Icons.check_circle;
+        return PhosphorIconsFill.checkCircle;
       case PendingActionType.markUncompleted:
-        return Icons.unpublished;
+        return PhosphorIconsRegular.prohibit;
       case PendingActionType.saveEpisode:
-        return Icons.bookmark_add;
+        return PhosphorIconsRegular.bookmarkSimple;
       case PendingActionType.removeSaved:
-        return Icons.bookmark_remove;
+        return PhosphorIconsFill.bookmarkSimple;
       case PendingActionType.queue:
-        return Icons.queue_music;
+        return PhosphorIconsRegular.queue;
     }
   }
 
@@ -96,7 +97,7 @@ class _ActionQueueState extends State<ActionQueue> {
         title: const Text('Action Queue'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.sync),
+            icon: const Icon(PhosphorIconsRegular.arrowsClockwise),
             tooltip: 'Sync now',
             onPressed: _syncing ? null : _syncNow,
           ),
@@ -110,7 +111,7 @@ class _ActionQueueState extends State<ActionQueue> {
                   ? ListView(
                       children: [
                         SizedBox(height: MediaQuery.of(context).size.height * 0.3),
-                        Icon(Icons.cloud_done, size: 64, color: Colors.green[400]),
+                        Icon(PhosphorIconsRegular.cloudCheck, size: 64, color: Colors.green[400]),
                         const SizedBox(height: 16),
                         Center(
                           child: Text('Everything is synced',
@@ -147,7 +148,7 @@ class _ActionQueueState extends State<ActionQueue> {
                                 trailing: a.retryCount > 0
                                     ? Tooltip(
                                         message: 'Failed ${a.retryCount} time(s)',
-                                        child: Icon(Icons.error_outline, size: 18, color: Colors.orange[700]),
+                                        child: Icon(PhosphorIconsRegular.warningCircle, size: 18, color: Colors.orange[700]),
                                       )
                                     : null,
                               );

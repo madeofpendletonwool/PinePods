@@ -10,6 +10,7 @@ import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/ui/widgets/slider_handle.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This widget allows the user to change the playback speed and toggle audio effects.
 ///
@@ -66,11 +67,11 @@ class _SleepSelectorWidgetState extends State<SleepSelectorWidget> {
 
                       return IconButton(
                         icon: sleepSnapshot.data?.type != SleepType.none ? Icon(
-                          Icons.bedtime,
+                          PhosphorIconsFill.moon,
                           semanticLabel: '${L.of(context)!.sleep_timer_label}. $sl',
                           size: 20.0,
                         ) : Icon(
-                          Icons.bedtime_outlined,
+                          PhosphorIconsRegular.moon,
                           semanticLabel: L.of(context)!.sleep_timer_label,
                           size: 20.0,
                         ),
@@ -334,7 +335,7 @@ class SleepSelectorEntry extends StatelessWidget {
               ),
             if (sleep == current)
               const Icon(
-                Icons.check,
+                PhosphorIconsRegular.check,
                 size: 18.0,
               ),
           ],

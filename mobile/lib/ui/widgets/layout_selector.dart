@@ -8,6 +8,7 @@ import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/ui/widgets/slider_handle.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Allows the user to select the layout for the library and discovery panes.
 /// Can select from a list or different sized grids.
@@ -60,7 +61,7 @@ class _LayoutSelectorWidgetState extends State<LayoutSelectorWidget> {
                           const Padding(
                             padding: EdgeInsets.only(left: 8.0, right: 8.0),
                             child: Icon(
-                              Icons.grid_view,
+                              PhosphorIconsRegular.squaresFour,
                               size: 18,
                             ),
                           ),
@@ -88,7 +89,7 @@ class _LayoutSelectorWidgetState extends State<LayoutSelectorWidget> {
                             selected: mode == 0,
                             label: L.of(context)!.semantics_layout_option_list,
                             child: Icon(
-                              Icons.list,
+                              PhosphorIconsRegular.list,
                               color: mode == 0 ? Theme.of(context).canvasColor : Theme.of(context).primaryColor,
                             ),
                           ),
@@ -109,7 +110,7 @@ class _LayoutSelectorWidgetState extends State<LayoutSelectorWidget> {
                             selected: mode == 1,
                             label: L.of(context)!.semantics_layout_option_compact_grid,
                             child: Icon(
-                              Icons.grid_on,
+                              PhosphorIconsRegular.gridFour,
                               color: mode == 1 ? Theme.of(context).canvasColor : Theme.of(context).primaryColor,
                             ),
                           ),
@@ -130,7 +131,7 @@ class _LayoutSelectorWidgetState extends State<LayoutSelectorWidget> {
                             selected: mode == 2,
                             label: L.of(context)!.semantics_layout_option_grid,
                             child: Icon(
-                              Icons.grid_view,
+                              PhosphorIconsRegular.squaresFour,
                               color: mode == 2 ? Theme.of(context).canvasColor : Theme.of(context).primaryColor,
                             ),
                           ),

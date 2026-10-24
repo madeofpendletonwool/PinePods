@@ -9,6 +9,7 @@ import 'package:pinepods_mobile/state/bloc_state.dart';
 import 'package:pinepods_mobile/ui/widgets/slider_handle.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This widget allows the user to filter the episodes.
 class EpisodeFilterSelectorWidget extends StatefulWidget {
@@ -45,8 +46,8 @@ class _EpisodeFilterSelectorWidgetState extends State<EpisodeFilterSelectorWidge
                   child: IconButton(
                     icon: Icon(
                       widget.podcast == null || widget.podcast!.filter == PodcastEpisodeFilter.none
-                          ? Icons.filter_alt_outlined
-                          : Icons.filter_alt_off_outlined,
+                          ? PhosphorIconsRegular.funnel
+                          : PhosphorIconsRegular.funnelX,
                       semanticLabel: L.of(context)!.episode_filter_semantic_label,
                     ),
                     visualDensity: VisualDensity.compact,
@@ -201,7 +202,7 @@ class EpisodeFilterSelectorEntry extends StatelessWidget {
             ),
             if (filter == selectedFilter)
               const Icon(
-                Icons.check,
+                PhosphorIconsRegular.check,
                 size: 18.0,
               ),
           ],

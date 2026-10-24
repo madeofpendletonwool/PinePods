@@ -5,6 +5,7 @@ import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/shimmer_episode_tile.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PaginatedEpisodeList extends StatefulWidget {
   final List<dynamic> episodes; // Can be PinepodsEpisode or Episode
@@ -128,7 +129,7 @@ class _PaginatedEpisodeListState extends State<PaginatedEpisodeList> {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: _loadMoreEpisodes,
-                  icon: const Icon(Icons.expand_more),
+                  icon: const Icon(PhosphorIconsRegular.caretDown),
                   label: Text(
                     'Load ${(_displayedCount + widget.pageSize).clamp(0, widget.episodes.length) - _displayedCount} more episodes '
                     '(${widget.episodes.length - _displayedCount} remaining)',

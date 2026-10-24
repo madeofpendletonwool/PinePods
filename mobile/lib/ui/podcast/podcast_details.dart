@@ -34,6 +34,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_dialogs/flutter_dialogs.dart';
 import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This Widget takes a search result and builds a list of currently available podcasts.
 ///
@@ -267,7 +268,7 @@ class _PodcastDetailsState extends State<PodcastDetails> {
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: <Widget>[
                                   const Icon(
-                                    Icons.error_outline,
+                                    PhosphorIconsRegular.warningCircle,
                                     size: 50,
                                   ),
                                   Text(
@@ -469,7 +470,7 @@ class _PodcastTitleState extends State<PodcastTitle> with SingleTickerProviderSt
                                   visualDensity: VisualDensity.compact,
                                 ),
                                 child: Icon(
-                                  Icons.expand_less,
+                                  PhosphorIconsRegular.caretUp,
                                   semanticLabel: L.of(context)!.semantics_collapse_podcast_description,
                                 ),
                                 onPressed: () {
@@ -479,7 +480,7 @@ class _PodcastTitleState extends State<PodcastTitle> with SingleTickerProviderSt
                             : TextButton(
                                 style: const ButtonStyle(visualDensity: VisualDensity.compact),
                                 child: Icon(
-                                  Icons.expand_more,
+                                  PhosphorIconsRegular.caretDown,
                                   semanticLabel: L.of(context)!.semantics_expand_podcast_description,
                                 ),
                                 onPressed: () {
@@ -517,7 +518,7 @@ class _PodcastTitleState extends State<PodcastTitle> with SingleTickerProviderSt
                     });
                   },
                   icon: Icon(
-                    Icons.search,
+                    PhosphorIconsRegular.magnifyingGlass,
                     semanticLabel: L.of(context)!.search_episodes_label,
                   ),
                   visualDensity: VisualDensity.compact,
@@ -547,10 +548,10 @@ class _PodcastTitleState extends State<PodcastTitle> with SingleTickerProviderSt
                     controller: _episodeSearchController,
                     decoration: InputDecoration(
                       contentPadding: const EdgeInsets.all(0.0),
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          Icons.close,
+                          PhosphorIconsRegular.x,
                           semanticLabel: L.of(context)!.clear_search_button_label,
                         ),
                         onPressed: () {
@@ -774,7 +775,7 @@ class _FollowButtonState extends State<FollowButton> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
                     ),
                     icon: const Icon(
-                      Icons.delete_outline,
+                      PhosphorIconsRegular.trash,
                     ),
                     label: Text(L.of(context)!.unsubscribe_label),
                     onPressed: ready
@@ -819,7 +820,7 @@ class _FollowButtonState extends State<FollowButton> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
                     ),
                     icon: const Icon(
-                      Icons.add,
+                      PhosphorIconsRegular.plus,
                     ),
                     label: Text(L.of(context)!.subscribe_label),
                     onPressed: ready && !_isLoading

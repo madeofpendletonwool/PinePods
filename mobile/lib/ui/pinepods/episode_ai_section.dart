@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// A single transcript cue parsed from the stored `segments` JSON.
 class _Cue {
@@ -262,7 +263,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
       const SizedBox(height: 32),
       Row(
         children: [
-          Icon(Icons.auto_awesome, size: 20, color: theme.primaryColor),
+          Icon(PhosphorIconsRegular.sparkle, size: 20, color: theme.primaryColor),
           const SizedBox(width: 8),
           Text(
             'AI Features',
@@ -282,13 +283,13 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
         if (_aiStatus.adRemovalReady)
           OutlinedButton.icon(
             onPressed: _busy ? null : _detectAds,
-            icon: const Icon(Icons.block, size: 18),
+            icon: const Icon(PhosphorIconsRegular.prohibit, size: 18),
             label: const Text('Detect ads'),
           ),
         if (_aiStatus.transcriptionReady)
           OutlinedButton.icon(
             onPressed: _busy ? null : _transcribe,
-            icon: const Icon(Icons.record_voice_over, size: 18),
+            icon: const Icon(PhosphorIconsRegular.userSound, size: 18),
             label: Text(_transcript?.status == 'complete'
                 ? 'Re-transcribe'
                 : 'Transcribe'),
@@ -378,7 +379,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(ok ? Icons.check_circle_outline : Icons.warning_amber,
+              Icon(ok ? PhosphorIconsRegular.checkCircle : PhosphorIconsRegular.warning,
                   size: 18, color: color),
               const SizedBox(width: 8),
               Expanded(child: Text(text, style: theme.textTheme.bodySmall)),
@@ -388,7 +389,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
             const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: _busy ? null : () => _startDetect(downloadFirst: true),
-              icon: const Icon(Icons.cloud_download_outlined, size: 18),
+              icon: const Icon(PhosphorIconsRegular.cloudArrowDown, size: 18),
               label: const Text('Download to server'),
             ),
           ],
@@ -425,14 +426,14 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
           IconButton(
             tooltip: 'Confirm ad (skip)',
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.check, size: 20),
+            icon: const Icon(PhosphorIconsRegular.check, size: 20),
             color: Colors.green,
             onPressed: _busy ? null : () => _review(ad, 'confirmed'),
           ),
           IconButton(
             tooltip: 'Keep (do not skip)',
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.close, size: 20),
+            icon: const Icon(PhosphorIconsRegular.x, size: 20),
             color: Colors.red,
             onPressed: _busy ? null : () => _review(ad, 'rejected'),
           ),

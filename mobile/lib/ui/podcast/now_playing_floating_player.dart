@@ -12,6 +12,7 @@ import 'package:pinepods_mobile/ui/widgets/placeholder_builder.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This widget is based upon [MiniPlayer] and provides an additional play/pause control when
 /// the episode queue is expanded.
@@ -143,7 +144,7 @@ class _FloatingPlayerBuilderState extends State<_FloatingPlayerBuilder> with Sin
                             }
                           },
                           child: const Icon(
-                            Icons.forward_30,
+                            PhosphorIconsRegular.clockClockwise,
                             size: 36.0,
                           ),
                         ),

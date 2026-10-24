@@ -14,6 +14,7 @@ import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// A [PinepodsService] with the signed-in user's credentials, or null when
 /// there is no server connection.
@@ -90,7 +91,7 @@ class PersonAvatar extends StatelessWidget {
       width: size,
       height: size,
       color: scheme.surfaceContainerHighest,
-      child: Icon(Icons.person, size: size * 0.55, color: scheme.onSurfaceVariant),
+      child: Icon(PhosphorIconsRegular.user, size: size * 0.55, color: scheme.onSurfaceVariant),
     );
     return ClipOval(
       child: SizedBox(
@@ -153,7 +154,7 @@ class PeopleStrip extends StatelessWidget {
             if (onAdd != null && people.isNotEmpty)
               TextButton.icon(
                 onPressed: onAdd,
-                icon: const Icon(Icons.person_add_alt_1, size: 18),
+                icon: const Icon(PhosphorIconsRegular.userPlus, size: 18),
                 label: const Text('Add'),
               ),
           ],
@@ -262,13 +263,13 @@ class _EmptyInvite extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.groups_outlined, color: theme.colorScheme.onSurfaceVariant),
+          Icon(PhosphorIconsRegular.usersThree, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: 12),
           Expanded(child: Text(prompt, style: theme.textTheme.bodyMedium)),
           const SizedBox(width: 8),
           FilledButton.tonalIcon(
             onPressed: onAdd,
-            icon: const Icon(Icons.person_add_alt_1, size: 18),
+            icon: const Icon(PhosphorIconsRegular.userPlus, size: 18),
             label: const Text('Add'),
           ),
         ],
@@ -331,12 +332,12 @@ class _PersonFollowButtonState extends State<PersonFollowButton> {
     return _followed
         ? OutlinedButton.icon(
             onPressed: _toggle,
-            icon: const Icon(Icons.check, size: 18),
+            icon: const Icon(PhosphorIconsRegular.check, size: 18),
             label: const Text('Following'),
           )
         : FilledButton.icon(
             onPressed: _toggle,
-            icon: const Icon(Icons.add, size: 18),
+            icon: const Icon(PhosphorIconsRegular.plus, size: 18),
             label: const Text('Follow'),
           );
   }
