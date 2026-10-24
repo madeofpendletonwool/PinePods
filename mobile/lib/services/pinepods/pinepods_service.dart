@@ -3157,6 +3157,15 @@ class AiStatus {
 
 // Stored AI transcript from GET /api/data/episode_transcript.
 // `segments` is the raw JSON string of [{start,end,text}] (seconds), or null.
+/// One timed line of a transcript (times in seconds).
+class TranscriptCue {
+  final double start;
+  final double end;
+  final String text;
+
+  const TranscriptCue({required this.start, required this.end, required this.text});
+}
+
 class StoredTranscript {
   final String source;
   final String? language;
@@ -3173,6 +3182,30 @@ class StoredTranscript {
     this.fullText,
     this.segments,
   });
+
+  /// The timed lines parsed from [segments]; empty when there are none.
+  List<TranscriptCue> get cues {
+    final json = segments;
+    if (json == null || json.isEmpty) return const [];
+    try {
+      final raw = jsonDecode(json);
+      if (raw is! List) return const [];
+      final cues = <TranscriptCue>[];
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final text = (item['text'] as String?)?.trim() ?? '';
+        if (text.isEmpty) continue;
+        cues.add(TranscriptCue(
+          start: (item['start'] as num?)?.toDouble() ?? 0.0,
+          end: (item['end'] as num?)?.toDouble() ?? 0.0,
+          text: text,
+        ));
+      }
+      return cues;
+    } catch (_) {
+      return const [];
+    }
+  }
 }
 
 // Playlist Data Classes

@@ -11,6 +11,9 @@ class PinepodsAudioPlayer: NSObject {
     private var playerItem: AVPlayerItem?
     private var eventSink: FlutterEventSink?
     private var timeObserver: Any?
+    // Fires as playback reaches the start of a skip range, so it is skipped as
+    // it begins rather than at the next 1s tick.
+    private var skipBoundaryObserver: Any?
     private var remoteCommandManager: RemoteCommandManager?
     private var nowPlayingManager: NowPlayingManager?
 
@@ -74,11 +77,6 @@ class PinepodsAudioPlayer: NSObject {
             setupRemoteCommands()
         }
 
-        // Send status to Flutter for debugging
-        sendEvent([
-            "type": "log",
-            "message": "Setup complete - nowPlayingManager:\(nowPlayingManager != nil), remoteCommandManager:\(remoteCommandManager != nil)"
-        ])
     }
 
     deinit {
@@ -123,7 +121,7 @@ class PinepodsAudioPlayer: NSObject {
                 self?.lastKnownPositionMs = Int(time.seconds * 1000)
             }
             self?.applySilenceSkipIfNeeded(at: time.seconds)
-            self?.sendPlaybackStateEvent()
+            self?.sendPlaybackStateEvent(updateNowPlaying: false)
         }
 
         // Setup notification for playback end
@@ -179,6 +177,10 @@ class PinepodsAudioPlayer: NSObject {
             player?.removeTimeObserver(observer)
             timeObserver = nil
         }
+        if let observer = skipBoundaryObserver {
+            player?.removeTimeObserver(observer)
+            skipBoundaryObserver = nil
+        }
 
         // Safely remove observers
         if player != nil {
@@ -228,7 +230,11 @@ class PinepodsAudioPlayer: NSObject {
         switch item.status {
         case .readyToPlay:
             NSLog("[PinepodsAudioPlayer] Player item ready to play")
-            sendEvent(["type": "log", "message": "Player ready to play"])
+            loadInFlight = false
+            let seconds = CMTimeGetSeconds(item.duration)
+            if seconds.isFinite && seconds > 0 {
+                nowPlayingManager?.updateDuration(seconds)
+            }
             sendPlaybackStateEvent()
         case .failed:
             var errorMessage = "Unknown error"
@@ -264,7 +270,7 @@ class PinepodsAudioPlayer: NSObject {
             }
 
             NSLog("[PinepodsAudioPlayer] Player item failed: \(errorMessage)")
-            sendEvent(["type": "log", "message": "Playback error: \(errorMessage)"])
+            loadInFlight = false
             sendError(code: errorCode, message: "Playback failed: \(errorMessage)")
         case .unknown:
             NSLog("[PinepodsAudioPlayer] Player item status unknown")
@@ -337,21 +343,14 @@ class PinepodsAudioPlayer: NSObject {
         self.eventSink = sink
     }
 
-    func playEpisode(url: String, startPosition: Int, isLocal: Bool, metadata: [String: Any]?) {
+    func playEpisode(url: String, startPosition: Int, isLocal: Bool, metadata: [String: Any]?, speed: Float? = nil) {
         let generation = playbackIntent.beginEpisode()
         player?.pause()
         lastRequest = (url: url, isLocal: isLocal)
         lastKnownPositionMs = startPosition
         loadInFlight = true
-        NSLog("[PinepodsAudioPlayer] playEpisode called")
-        NSLog("[PinepodsAudioPlayer] URL: \(url)")
-        NSLog("[PinepodsAudioPlayer] startPosition: \(startPosition)ms, isLocal: \(isLocal)")
-
-        // Send URL info to Flutter for debugging
-        sendEvent([
-            "type": "log",
-            "message": "playEpisode URL: \(url.prefix(100))..."
-        ])
+        if let speed = speed { playbackIntent.setRate(speed) }
+        NSLog("[PinepodsAudioPlayer] playEpisode: \(url), startPosition: \(startPosition)ms, isLocal: \(isLocal)")
 
         // CRITICAL: Ensure all components are set up before playback
         // This prevents issues where now playing info isn't displayed
@@ -373,7 +372,6 @@ class PinepodsAudioPlayer: NSObject {
             } else {
                 audioUrl = URL(fileURLWithPath: url)
             }
-            NSLog("[PinepodsAudioPlayer] Using local file URL: \(audioUrl?.absoluteString ?? "nil")")
         } else {
             // For remote URLs, try creating URL directly first
             // Only attempt encoding if direct creation fails
@@ -386,12 +384,10 @@ class PinepodsAudioPlayer: NSObject {
                     NSLog("[PinepodsAudioPlayer] URL required encoding")
                 }
             }
-            NSLog("[PinepodsAudioPlayer] Using remote URL: \(audioUrl?.absoluteString ?? "nil")")
         }
 
         guard let finalUrl = audioUrl else {
             NSLog("[PinepodsAudioPlayer] Invalid URL: \(url)")
-            sendEvent(["type": "log", "message": "ERROR: Invalid URL - could not parse"])
             loadInFlight = false
             sendError(code: -1, message: "Invalid URL")
             return
@@ -409,48 +405,17 @@ class PinepodsAudioPlayer: NSObject {
             ]
         }
 
-        NSLog("[PinepodsAudioPlayer] Creating AVURLAsset with URL: \(finalUrl.absoluteString)")
         let asset = AVURLAsset(url: finalUrl, options: assetOptions.isEmpty ? nil : assetOptions)
 
-        // Check if the asset is playable before proceeding
-        NSLog("[PinepodsAudioPlayer] Loading asset keys...")
-        sendEvent(["type": "log", "message": "Loading asset for playback..."])
-
-        // Load asset asynchronously to avoid blocking
-        asset.loadValuesAsynchronously(forKeys: ["playable", "duration"]) { [weak self] in
-            DispatchQueue.main.async {
-                guard let self = self, self.playbackIntent.generation == generation else { return }
-                self.loadInFlight = false
-
-                var error: NSError?
-                let playableStatus = asset.statusOfValue(forKey: "playable", error: &error)
-
-                if playableStatus == .failed {
-                    let errorMsg = error?.localizedDescription ?? "Unknown error"
-                    NSLog("[PinepodsAudioPlayer] Asset failed to load: \(errorMsg)")
-                    self.sendEvent(["type": "log", "message": "Asset load failed: \(errorMsg)"])
-                    self.sendError(code: -3, message: "Failed to load audio: \(errorMsg)")
-                    return
-                }
-
-                if playableStatus == .loaded {
-                    if !asset.isPlayable {
-                        NSLog("[PinepodsAudioPlayer] Asset is not playable")
-                        self.sendEvent(["type": "log", "message": "ERROR: Asset is not playable"])
-                        self.sendError(code: -4, message: "Audio format not supported")
-                        return
-                    }
-                }
-
-                NSLog("[PinepodsAudioPlayer] Asset loaded, creating player item...")
-                self.sendEvent(["type": "log", "message": "Asset loaded successfully, starting playback..."])
-
-                self.continuePlayback(asset: asset, startPosition: startPosition, metadata: metadata, generation: generation)
-            }
-        }
+        // Hand the asset straight to the player. Loading "duration" up front can
+        // read a large part of a remote MP3 before anything plays; load failures
+        // and unplayable formats surface through the item's status instead.
+        continuePlayback(asset: asset, startPosition: startPosition, isLocal: isLocal,
+                         metadata: metadata, generation: generation)
     }
 
-    private func continuePlayback(asset: AVURLAsset, startPosition: Int, metadata: [String: Any]?, generation: UInt64) {
+    private func continuePlayback(asset: AVURLAsset, startPosition: Int, isLocal: Bool,
+                                  metadata: [String: Any]?, generation: UInt64) {
         if let oldItem = playerItem {
             oldItem.removeObserver(self, forKeyPath: #keyPath(AVPlayerItem.status), context: &itemContext)
         }
@@ -463,62 +428,36 @@ class PinepodsAudioPlayer: NSObject {
         // Observe player item status
         playerItem?.addObserver(self, forKeyPath: #keyPath(AVPlayerItem.status), options: [.new], context: &itemContext)
 
+        // A file on disk has nothing to stall on, so start it immediately.
+        player?.automaticallyWaitsToMinimizeStalling = !isLocal
         player?.replaceCurrentItem(with: playerItem)
 
-        // Report the actual rate while the initial seek or a user pause is pending.
         if let meta = metadata {
             let title = meta["title"] as? String ?? "Unknown"
             let artist = meta["artist"] as? String ?? "Unknown"
             let artworkUrl = meta["artwork"] as? String
-            // Prefer the real asset duration (the "duration" key was just loaded
-            // above) over the metadata duration. The metadata duration's unit has
-            // historically been unreliable across play sources (PinepodsEpisode vs
-            // queue/resume from the DB), which produced a wildly inflated lock
-            // screen length. Fall back to metadata only if the asset duration
-            // isn't known yet (e.g. live/indefinite streams).
-            let assetSeconds = CMTimeGetSeconds(asset.duration)
-            let metaSeconds = (meta["duration"] as? Int).map { Double($0) / 1000.0 } ?? 0
-            let duration = (assetSeconds.isFinite && assetSeconds > 0) ? assetSeconds : metaSeconds
+            // The item's real length replaces this once it's ready to play.
+            let duration = (meta["duration"] as? Int).map { Double($0) / 1000.0 } ?? 0
             let elapsed = Double(startPosition) / 1000.0
 
-            NSLog("[PinepodsAudioPlayer] Setting Now Playing: title='\(title)', artist='\(artist)', duration=\(duration)s, elapsed=\(elapsed)s")
-            NSLog("[PinepodsAudioPlayer] nowPlayingManager is \(nowPlayingManager != nil ? "available" : "NIL!")")
-
-            if let npm = nowPlayingManager {
-                npm.updateNowPlaying(
-                    title: title,
-                    artist: artist,
-                    artworkUrl: artworkUrl,
-                    duration: duration,
-                    playbackRate: player?.rate ?? 0,
-                    elapsedTime: elapsed
-                )
-                NSLog("[PinepodsAudioPlayer] Now Playing info set successfully")
-
-                // Send confirmation to Flutter
-                sendEvent([
-                    "type": "log",
-                    "message": "Now Playing set: '\(title)' by '\(artist)'"
-                ])
-            } else {
-                NSLog("[PinepodsAudioPlayer] ERROR: nowPlayingManager is nil!")
-                sendEvent([
-                    "type": "log",
-                    "message": "ERROR: nowPlayingManager is nil, cannot set Now Playing info"
-                ])
-            }
+            nowPlayingManager?.updateNowPlaying(
+                title: title,
+                artist: artist,
+                artworkUrl: artworkUrl,
+                duration: duration,
+                playbackRate: player?.rate ?? 0,
+                elapsedTime: elapsed
+            )
         } else {
             NSLog("[PinepodsAudioPlayer] WARNING: No metadata provided for Now Playing")
-            sendEvent([
-                "type": "log",
-                "message": "WARNING: No metadata for Now Playing"
-            ])
         }
 
-        // Seek to start position if needed
+        // Seek to start position if needed. An exact seek into a remote MP3 can
+        // mean reading far into the file; a second early is fine for a resume.
         if startPosition > 0 {
             let time = CMTime(value: CMTimeValue(startPosition), timescale: 1000)
-            player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            let before = isLocal ? CMTime.zero : CMTime(seconds: 1, preferredTimescale: 1000)
+            player?.seek(to: time, toleranceBefore: before, toleranceAfter: .zero) { [weak self] finished in
                 DispatchQueue.main.async {
                     guard let self = self else { return }
                     self.playbackIntent.completeLoad(generation: generation)
@@ -580,8 +519,9 @@ class PinepodsAudioPlayer: NSObject {
     func seek(toMilliseconds milliseconds: Int) {
         NSLog("[PinepodsAudioPlayer] seek to \(milliseconds)ms")
         let time = CMTime(value: CMTimeValue(milliseconds), timescale: 1000)
-        player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-        updateNowPlayingPlaybackInfo()
+        player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            DispatchQueue.main.async { self?.updateNowPlayingPlaybackInfo() }
+        }
     }
 
     func fastForward(milliseconds: Int) {
@@ -603,6 +543,11 @@ class PinepodsAudioPlayer: NSObject {
         let currentMs = Int(CMTimeGetSeconds(currentTime) * 1000)
         let newPosition = max(0, currentMs - milliseconds)
         seek(toMilliseconds: newPosition)
+    }
+
+    /// Player output volume (0-1), used to fade out at the end of a sleep timer.
+    func setVolume(_ volume: Float) {
+        player?.volume = max(0, min(1, volume))
     }
 
     func setPlaybackSpeed(_ speed: Float) {
@@ -636,6 +581,19 @@ class PinepodsAudioPlayer: NSObject {
         skipSeekInFlight = false
         lastSkippedIndex = nil
         abandonedSkipIndices.removeAll()
+
+        if let observer = skipBoundaryObserver {
+            player?.removeTimeObserver(observer)
+            skipBoundaryObserver = nil
+        }
+        guard let player = player, !ranges.isEmpty else { return }
+        let times = ranges.map {
+            NSValue(time: CMTime(seconds: $0.start + 0.05, preferredTimescale: CMTimeScale(NSEC_PER_SEC)))
+        }
+        skipBoundaryObserver = player.addBoundaryTimeObserver(forTimes: times, queue: .main) { [weak self] in
+            guard let self = self, let now = self.player?.currentTime(), now.isValid else { return }
+            self.applySilenceSkipIfNeeded(at: now.seconds)
+        }
     }
 
     /// Called from the 1s periodic observer: if the playhead is inside a skip
@@ -696,7 +654,7 @@ class PinepodsAudioPlayer: NSObject {
 
     // MARK: - Private Helpers
 
-    private func sendPlaybackStateEvent() {
+    private func sendPlaybackStateEvent(updateNowPlaying: Bool = true) {
         guard let player = player else { return }
 
         let position = getCurrentPosition()
@@ -724,8 +682,9 @@ class PinepodsAudioPlayer: NSObject {
             "speed": player.rate
         ])
 
-        // Update now playing info
-        updateNowPlayingPlaybackInfo()
+        // The lock screen extrapolates elapsed time from the rate, so it only
+        // needs refreshing on state changes, not every tick.
+        if updateNowPlaying { updateNowPlayingPlaybackInfo() }
     }
 
     private func getBufferedPosition() -> Int {

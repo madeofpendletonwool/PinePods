@@ -5,7 +5,6 @@
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/sleep.dart';
 import 'package:pinepods_mobile/state/queue_event_state.dart';
-import 'package:pinepods_mobile/state/transcript_state_event.dart';
 import 'package:rxdart/rxdart.dart';
 
 enum AudioState {
@@ -25,27 +24,38 @@ class PositionState {
   Episode? episode;
   final bool buffering;
 
+  /// How far ahead of the start the player has audio loaded.
+  final Duration buffered;
+
   PositionState({
     required this.position,
     required this.length,
     required this.percentage,
     this.episode,
     this.buffering = false,
+    this.buffered = Duration.zero,
   });
 
   PositionState.emptyState()
       : position = const Duration(seconds: 0),
         length = const Duration(seconds: 0),
         percentage = 0,
-        buffering = false;
+        buffering = false,
+        buffered = Duration.zero;
 }
 
 /// This class defines the audio playback options supported by Pinepods.
 ///
 /// The implementing classes will then handle the specifics for the platform we are running on.
 abstract class AudioPlayerService {
-  /// Play a new episode, optionally resume at last save point.
-  Future<void> playEpisode({required Episode episode, bool resume = true});
+  /// Play a new episode, resuming at [Episode.position] when [resume] is set.
+  /// [playbackSpeed] is a session override (e.g. per podcast) that isn't saved
+  /// as the user's default.
+  Future<void> playEpisode({required Episode episode, bool resume = true, double? playbackSpeed});
+
+  /// Apply details that arrive after playback started (chapters, people,
+  /// transcript links) to the playing episode, if it is still [guid].
+  void updateNowPlayingDetails(String guid, void Function(Episode episode) update);
 
   /// Look up a locally-downloaded copy of a PinePods episode by its server
   /// episode id. Returns the stored [Episode] (carrying filepath/filename) if a
@@ -114,10 +124,6 @@ abstract class AudioPlayerService {
   /// Call to toggle trim silence.
   Future<void> volumeBoost(bool boost);
 
-  Future<void> searchTranscript(String search);
-
-  Future<void> clearTranscript();
-
   void sleep(Sleep sleep);
 
   void setPlaylistContext(int? playlistId);
@@ -125,10 +131,13 @@ abstract class AudioPlayerService {
   Episode? nowPlaying;
 
   /// Event listeners
+  /// Only emits when the state actually changes.
   ValueStream<AudioState>? playingState;
+
+  /// Speed the current episode plays at, including a per-podcast override.
+  ValueStream<double>? playbackSpeed;
   ValueStream<PositionState>? playPosition;
   ValueStream<Episode?>? episodeEvent;
-  Stream<TranscriptState>? transcriptEvent;
   Stream<int>? playbackError;
   Stream<QueueListState>? queueState;
   Stream<Sleep>? sleepStream;

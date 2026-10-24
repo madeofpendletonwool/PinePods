@@ -62,6 +62,8 @@ class _SleepSelectorWidgetState extends State<SleepSelectorWidget> {
                             sl = '${L.of(context)!.semantic_current_value_label} ${L.of(context)!.sleep_episode_label}';
                           case SleepType.episodes:
                             sl = '${L.of(context)!.semantic_current_value_label} ${s.episodeCount} episodes';
+                          case SleepType.chapter:
+                            sl = '${L.of(context)!.semantic_current_value_label} end of chapter';
                         }
                       }
 
@@ -168,6 +170,12 @@ class _SleepSliderState extends State<SleepSlider> {
                         '${L.of(context)!.semantic_current_value_label} ${L.of(context)!.sleep_episode_label}',
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
+                if (s != null && s.type == SleepType.chapter)
+                  Text(
+                    '(End of chapter)',
+                    semanticsLabel: '${L.of(context)!.semantic_current_value_label} end of chapter',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
                 if (s != null && s.type == SleepType.episodes)
                   Text(
                     '(${s.episodeCount} episodes)',
@@ -239,6 +247,13 @@ class _SleepSliderState extends State<SleepSlider> {
                         ),
                         current: s,
                       ),
+                      if (audioBloc.nowPlaying?.valueOrNull?.hasChapters ?? false) ...[
+                        const Divider(),
+                        SleepSelectorEntry(
+                          sleep: Sleep(type: SleepType.chapter),
+                          current: s,
+                        ),
+                      ],
                       const Divider(),
                       SleepSelectorEntry(
                         sleep: Sleep(
@@ -331,6 +346,11 @@ class SleepSelectorEntry extends StatelessWidget {
             if (sleep.type == SleepType.episodes)
               Text(
                 '${sleep.episodeCount} episodes',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            if (sleep.type == SleepType.chapter)
+              Text(
+                'End of chapter',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
             if (sleep == current)

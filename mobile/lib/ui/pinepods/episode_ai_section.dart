@@ -11,14 +11,6 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
-/// A single transcript cue parsed from the stored `segments` JSON.
-class _Cue {
-  final double start;
-  final double end;
-  final String text;
-  const _Cue({required this.start, required this.end, required this.text});
-}
-
 class EpisodeAiSection extends StatefulWidget {
   final PinepodsEpisode episode;
   final int userId;
@@ -52,7 +44,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
   StoredTranscript? _transcript;
   List<SkipSegment> _adSegments = const [];
   AdAudio? _adAudio;
-  List<_Cue> _cues = const [];
+  List<TranscriptCue> _cues = const [];
   bool _busy = false; // guards Detect/Transcribe/review buttons
 
   @override
@@ -87,7 +79,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
           _transcript = transcript;
           _adSegments = info.segments.where((s) => s.kind == 'ad').toList();
           _adAudio = info.adAudio;
-          _cues = _parseCues(transcript?.segments);
+          _cues = transcript?.cues ?? const [];
           _loading = false;
         });
       }
@@ -112,29 +104,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
     } catch (_) {}
   }
 
-  List<_Cue> _parseCues(String? segmentsJson) {
-    if (segmentsJson == null || segmentsJson.isEmpty) return const [];
-    try {
-      final raw = jsonDecode(segmentsJson);
-      if (raw is! List) return const [];
-      final cues = <_Cue>[];
-      for (final item in raw) {
-        if (item is! Map) continue;
-        final text = (item['text'] as String?)?.trim() ?? '';
-        if (text.isEmpty) continue;
-        cues.add(_Cue(
-          start: (item['start'] as num?)?.toDouble() ?? 0.0,
-          end: (item['end'] as num?)?.toDouble() ?? 0.0,
-          text: text,
-        ));
-      }
-      return cues;
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  bool _cueIsAd(_Cue cue) {
+  bool _cueIsAd(TranscriptCue cue) {
     for (final ad in _adSegments) {
       // Overlap test (matches the web player's ad highlight).
       if (cue.start < ad.endTime && cue.end > ad.startTime) return true;

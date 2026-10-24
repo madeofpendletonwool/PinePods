@@ -45,6 +45,7 @@ import 'package:pinepods_mobile/ui/library/downloads.dart';
 import 'package:pinepods_mobile/ui/library/library.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/podcast/podcast_details.dart';
+import 'package:pinepods_mobile/ui/tab_navigator.dart';
 import 'package:pinepods_mobile/ui/search/search.dart';
 import 'package:pinepods_mobile/ui/pinepods/people/followed_people.dart';
 import 'package:pinepods_mobile/ui/pinepods/search.dart';
@@ -303,7 +304,7 @@ class PinepodsHomePage extends StatefulWidget {
 class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBindingObserver {
   StreamSubscription<Uri>? deepLinkSubscription;
 
-  final GlobalKey<NavigatorState> _tabNavigatorKey = GlobalKey<NavigatorState>();
+  GlobalKey<NavigatorState> get _tabNavigatorKey => tabNavigatorKey;
   final HeroController _heroController = MaterialApp.createMaterialHeroController();
   final _TabDepthObserver _tabDepth = _TabDepthObserver();
   StreamSubscription<int>? _pageSub;

@@ -66,13 +66,19 @@ void main() {
             .arguments['speed'],
         2.25,
       );
+      // A new episode starts at the saved default, carried on the play call.
       await service.playEpisode(episode: episode);
       expect(
-        calls
-            .lastWhere((c) => c.method == 'setPlaybackSpeed')
-            .arguments['speed'],
+        calls.lastWhere((c) => c.method == 'playEpisode').arguments['speed'],
         persist ? 2.25 : 1.75,
       );
+      // A session override applies to that episode without being saved.
+      await service.playEpisode(episode: episode, playbackSpeed: 3.0);
+      expect(
+        calls.lastWhere((c) => c.method == 'playEpisode').arguments['speed'],
+        3.0,
+      );
+      expect(preferredSpeed, persist ? 2.25 : 1.75);
       await service.stop();
       await tester.pump(const Duration(milliseconds: 1));
     });

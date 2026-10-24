@@ -106,6 +106,12 @@ class NowPlayingManager {
         nowPlayingInfoCenter.playbackState = playbackRate > 0 ? .playing : .paused
     }
 
+    func updateDuration(_ duration: Double) {
+        guard var nowPlayingInfo = nowPlayingInfoCenter.nowPlayingInfo else { return }
+        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
+        nowPlayingInfoCenter.nowPlayingInfo = nowPlayingInfo
+    }
+
     func clearNowPlaying() {
         nowPlayingInfoCenter.nowPlayingInfo = nil
         nowPlayingInfoCenter.playbackState = .stopped

@@ -20,7 +20,11 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -65,6 +69,10 @@ class PinepodsMediaService : MediaLibraryService() {
     private var lastAdSkipIndex = -1
     private var lastAdSkipAt = 0L
     private val abandonedAdSkips = mutableSetOf<Int>()
+
+    // A one-off check timed to the start of the next ad, so it is skipped as
+    // it begins rather than up to a poll interval later.
+    private val exactAdSkipRunnable = Runnable { applyAdSkipIfNeeded() }
 
     inner class LocalBinder : Binder() {
         fun getService(): PinepodsMediaService = this@PinepodsMediaService
@@ -182,8 +190,8 @@ class PinepodsMediaService : MediaLibraryService() {
             .setBufferDurationsMs(
                 60_000,    // min buffer: 60s (increased from buggy 45s)
                 180_000,   // max buffer: 3min
-                5_000,     // buffer for playback start: 5s
-                10_000     // buffer for rebuffer: 10s
+                2_500,     // buffer for playback start: 2.5s (Media3 default)
+                5_000      // buffer for rebuffer: 5s (Media3 default)
             )
             .setBackBuffer(60_000, true)  // Keep 60s back buffer for rewind without rebuffering
             .setPrioritizeTimeOverSizeThresholds(true)
@@ -203,8 +211,16 @@ class PinepodsMediaService : MediaLibraryService() {
             .setUserAgent("PinePods/1.0 (Android; Podcast Client)")
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(20_000)
+        // Streams go through a disk cache, so rewinding past the in-memory
+        // back buffer or replaying an episode doesn't download it again.
+        // DefaultDataSource sends file:// (downloads) straight to disk and only
+        // network URIs through the cache.
+        val cachedHttpFactory = CacheDataSource.Factory()
+            .setCache(streamCache(this))
+            .setUpstreamDataSourceFactory(httpDataSourceFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val mediaSourceFactory = DefaultMediaSourceFactory(
-            DefaultDataSource.Factory(this, httpDataSourceFactory)
+            DefaultDataSource.Factory(this, cachedHttpFactory)
         )
 
         // Create ExoPlayer with optimized configuration
@@ -452,6 +468,7 @@ class PinepodsMediaService : MediaLibraryService() {
         positionUpdateRunnable = object : Runnable {
             override fun run() {
                 applyAdSkipIfNeeded()
+                scheduleExactAdSkip()
                 sendPlaybackStateEvent()
                 handler.postDelayed(this, 1000)  // Update every 1s (battery: halves channel/UI work)
             }
@@ -460,6 +477,7 @@ class PinepodsMediaService : MediaLibraryService() {
     }
 
     private fun stopPositionUpdates() {
+        handler.removeCallbacks(exactAdSkipRunnable)
         positionUpdateRunnable?.let {
             handler.removeCallbacks(it)
             positionUpdateRunnable = null
@@ -513,13 +531,10 @@ class PinepodsMediaService : MediaLibraryService() {
                 // Dart layer re-supplies them via setAdSkipSegments after load.
                 resetAdSkips(emptyList())
 
-                p.setMediaItem(mediaItem)
+                // Start at the resume point directly: preparing first and seeking
+                // after would begin loading from 0 and then request again.
+                p.setMediaItem(mediaItem, startPosition.coerceAtLeast(0).toLong())
                 p.prepare()
-
-                if (startPosition > 0) {
-                    p.seekTo(startPosition.toLong())
-                }
-
                 p.play()
 
                 Log.d(TAG, "Episode playback started, player state: ${p.playbackState}, isPlaying: ${p.isPlaying}")
@@ -664,9 +679,25 @@ class PinepodsMediaService : MediaLibraryService() {
     }
 
     private fun resetAdSkips(segments: List<Pair<Double, Double>>) {
+        handler.removeCallbacks(exactAdSkipRunnable)
         adSkipSegments = segments
         lastAdSkipIndex = -1
         abandonedAdSkips.clear()
+    }
+
+    // If an ad starts before the next poll, check again right as it starts.
+    private fun scheduleExactAdSkip() {
+        handler.removeCallbacks(exactAdSkipRunnable)
+        val p = player ?: return
+        if (adSkipSegments.isEmpty() || !p.isPlaying) return
+        val posMs = p.currentPosition
+        val speed = p.playbackParameters.speed.takeIf { it > 0f } ?: 1f
+        val nextStartMs = adSkipSegments
+            .filterIndexed { index, _ -> index !in abandonedAdSkips }
+            .map { (it.first * 1000).toLong() }
+            .firstOrNull { it > posMs } ?: return
+        val delayMs = ((nextStartMs - posMs) / speed).toLong()
+        if (delayMs < 1000) handler.postDelayed(exactAdSkipRunnable, delayMs + 20)
     }
 
     // Called every ~1s from the position poll. If the playhead is inside an
@@ -704,6 +735,11 @@ class PinepodsMediaService : MediaLibraryService() {
                 break
             }
         }
+    }
+
+    // Player output volume (0-1), used to fade out at the end of a sleep timer.
+    fun setVolume(volume: Float) {
+        player?.volume = volume.coerceIn(0f, 1f)
     }
 
     fun setVolumeBoost(enabled: Boolean) {
@@ -768,5 +804,18 @@ class PinepodsMediaService : MediaLibraryService() {
         private const val TAG = "PinepodsMediaService"
         private const val NOTIFICATION_CHANNEL_ID = "pinepods_playback"
         private const val NOTIFICATION_ID = 1
+        private const val STREAM_CACHE_BYTES = 256L * 1024 * 1024
+
+        // One SimpleCache per directory per process, so it outlives the service.
+        private var streamCache: SimpleCache? = null
+
+        @androidx.annotation.OptIn(UnstableApi::class)
+        @Synchronized
+        private fun streamCache(context: android.content.Context): SimpleCache =
+            streamCache ?: SimpleCache(
+                File(context.cacheDir, "stream_cache"),
+                LeastRecentlyUsedCacheEvictor(STREAM_CACHE_BYTES),
+                StandaloneDatabaseProvider(context),
+            ).also { streamCache = it }
     }
 }

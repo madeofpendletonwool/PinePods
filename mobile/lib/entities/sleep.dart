@@ -7,6 +7,8 @@ enum SleepType {
   time,
   episode,
   episodes,
+  /// Stop when the current chapter ends.
+  chapter,
 }
 
 final class Sleep {

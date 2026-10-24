@@ -129,6 +129,11 @@ public class AudioPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             player.rewind(milliseconds: milliseconds)
             result(nil)
 
+        case "setVolume":
+            let volume = (call.arguments as? [String: Any])?["volume"] as? Double ?? 1.0
+            player.setVolume(Float(volume))
+            result(nil)
+
         case "setPlaybackSpeed":
             if let args = call.arguments as? [String: Any],
                let speed = args["speed"] as? Double {
@@ -190,27 +195,19 @@ public class AudioPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         let startPosition = args["startPosition"] as? Int ?? 0
         let isLocal = args["isLocal"] as? Bool ?? false
         let metadata = args["metadata"] as? [String: Any]
+        let speed = (args["speed"] as? Double).map { Float($0) }
 
-        NSLog("[AudioPlayerPlugin] playEpisode called: url=\(url.prefix(50))..., startPosition=\(startPosition)ms, isLocal=\(isLocal)")
-
-        // Log metadata for debugging
-        if let meta = metadata {
-            NSLog("[AudioPlayerPlugin] Metadata received: title=\(meta["title"] ?? "nil"), artist=\(meta["artist"] ?? "nil"), duration=\(meta["duration"] ?? "nil"), artwork=\(meta["artwork"] != nil ? "present" : "nil")")
-        } else {
-            NSLog("[AudioPlayerPlugin] WARNING: No metadata received!")
+        // Skip intervals ride along so the remote commands are right from the start.
+        if let forwardMs = args["forwardMs"] as? Int, let backwardMs = args["backwardMs"] as? Int {
+            player.setSkipIntervals(forwardMs: forwardMs, backwardMs: backwardMs)
         }
-
-        // Send log event to Flutter for debugging
-        eventSink?([
-            "type": "log",
-            "message": "Native playEpisode called with metadata: \(metadata != nil ? "present" : "nil")"
-        ])
 
         player.playEpisode(
             url: url,
             startPosition: startPosition,
             isLocal: isLocal,
-            metadata: metadata
+            metadata: metadata,
+            speed: speed
         )
         result(nil)
     }
