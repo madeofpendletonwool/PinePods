@@ -91,6 +91,9 @@ class AppSettings {
   /// Keep local downloads mirrored to the server's downloaded episodes.
   final bool mirrorServerDownloads;
 
+  /// Remove device downloads older than this many days (0 = never).
+  final int deleteDownloadsAfterDays;
+
   /// Episode card play button style: ring, outline, bare or tinted.
   final String playButtonStyle;
 
@@ -124,6 +127,7 @@ class AppSettings {
     this.preferServerDownloadSource = true,
     this.autoDownloadQueueCount = 0,
     this.mirrorServerDownloads = false,
+    this.deleteDownloadsAfterDays = 0,
     this.playButtonStyle = 'ring',
     this.artworkAccentColors = true,
   });
@@ -155,6 +159,7 @@ class AppSettings {
         preferServerDownloadSource = true,
         autoDownloadQueueCount = 0,
         mirrorServerDownloads = false,
+        deleteDownloadsAfterDays = 0,
         playButtonStyle = 'ring',
         artworkAccentColors = true;
 
@@ -185,6 +190,7 @@ class AppSettings {
     bool? preferServerDownloadSource,
     int? autoDownloadQueueCount,
     bool? mirrorServerDownloads,
+    int? deleteDownloadsAfterDays,
     String? playButtonStyle,
     bool? artworkAccentColors,
   }) =>
@@ -215,6 +221,7 @@ class AppSettings {
         preferServerDownloadSource: preferServerDownloadSource ?? this.preferServerDownloadSource,
         autoDownloadQueueCount: autoDownloadQueueCount ?? this.autoDownloadQueueCount,
         mirrorServerDownloads: mirrorServerDownloads ?? this.mirrorServerDownloads,
+        deleteDownloadsAfterDays: deleteDownloadsAfterDays ?? this.deleteDownloadsAfterDays,
         playButtonStyle: playButtonStyle ?? this.playButtonStyle,
         artworkAccentColors: artworkAccentColors ?? this.artworkAccentColors,
       );

@@ -328,6 +328,15 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  int get deleteDownloadsAfterDays => _sharedPreferences.getInt('deleteDownloadsAfterDays') ?? 0;
+
+  @override
+  set deleteDownloadsAfterDays(int value) {
+    _sharedPreferences.setInt('deleteDownloadsAfterDays', value);
+    settingsNotifier.sink.add('deleteDownloadsAfterDays');
+  }
+
+  @override
   String get playButtonStyle => _sharedPreferences.getString('playButtonStyle') ?? 'ring';
 
   @override

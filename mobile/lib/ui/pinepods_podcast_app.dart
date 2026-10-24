@@ -80,6 +80,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/services/auto_download/download_cleanup_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
@@ -590,6 +591,13 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
         // A suspended app can miss the connectivity event that normally drains
         // the outbox, so retry whenever we come back to the foreground.
         GlobalServices.offlineActionQueue?.flush();
+
+        final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+        DownloadCleanupService.run(
+          context: context,
+          pinepodsService: GlobalServices.pinepodsService,
+          userId: settings.pinepodsUserId,
+        );
 
         // Check for any pending deep links when app resumes
         try {

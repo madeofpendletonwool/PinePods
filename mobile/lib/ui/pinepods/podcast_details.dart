@@ -5,6 +5,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/core/download_cleanup.dart';
+import 'package:pinepods_mobile/services/auto_download/download_cleanup_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
@@ -451,9 +453,6 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     // null = use the default
     int? afterDays = days.customized ? days.days : null;
 
-    String daysLabel(int d) => d == 0 ? 'Never' : '$d day${d == 1 ? '' : 's'}';
-    const dayChoices = [0, 1, 3, 7, 14, 30, 60, 90];
-
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -541,10 +540,117 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         DropdownMenuItem<int?>(
                             value: null,
                             child:
-                                Text('Default (${daysLabel(daysDefault)})')),
-                        for (final d in {...dayChoices, if (afterDays != null) afterDays!})
+                                Text('Default (${deleteAfterDaysLabel(daysDefault)})')),
+                        for (final d in {...deleteAfterDayChoices, if (afterDays != null) afterDays!})
                           DropdownMenuItem<int?>(
-                              value: d, child: Text(daysLabel(d))),
+                              value: d, child: Text(deleteAfterDaysLabel(d))),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// This device's download settings for this podcast: auto-download new
+  /// episodes, delete when finished, and delete after a number of days.
+  Future<void> _showDeviceDownloadsSheet() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0) return;
+    final settings =
+        Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    final finishedOverride =
+        await DownloadCleanupService.getFinishedOverride(podcastId);
+    int? afterDays = await DownloadCleanupService.getDaysOverride(podcastId);
+    if (!mounted) return;
+    // 'default' | 'on' | 'off'
+    var whenFinished = finishedOverride == null
+        ? 'default'
+        : (finishedOverride ? 'on' : 'off');
+
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final theme = Theme.of(context);
+          return SafeArea(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    child: Text('Device downloads',
+                        style: theme.textTheme.titleLarge!
+                            .copyWith(fontWeight: FontWeight.bold)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'Downloads kept on this device (separate from '
+                      'downloads on your server).',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  SwitchListTile(
+                    title: const Text('Auto-download to device'),
+                    subtitle: const Text(
+                        'Download new episodes to this device as they arrive.'),
+                    value: _isAutoDownloadEnabled,
+                    onChanged: (_) async {
+                      await _toggleAutoDownload();
+                      setSheetState(() {});
+                    },
+                  ),
+                  ListTile(
+                    title: const Text('Delete when finished'),
+                    subtitle: const Text(
+                        'Remove the download about an hour after you finish '
+                        'the episode.'),
+                    trailing: DropdownButton<String>(
+                      value: whenFinished,
+                      onChanged: (v) async {
+                        if (v == null) return;
+                        await DownloadCleanupService.setFinishedOverride(
+                            podcastId, v == 'default' ? null : v == 'on');
+                        setSheetState(() => whenFinished = v);
+                      },
+                      items: [
+                        DropdownMenuItem(
+                            value: 'default',
+                            child: Text(
+                                'Default (${settings.deleteDownloadedPlayedEpisodes ? 'on' : 'off'})')),
+                        const DropdownMenuItem(value: 'on', child: Text('On')),
+                        const DropdownMenuItem(value: 'off', child: Text('Off')),
+                      ],
+                    ),
+                  ),
+                  ListTile(
+                    title: const Text('Delete after'),
+                    subtitle: const Text('Remove downloads older than this.'),
+                    trailing: DropdownButton<int?>(
+                      value: afterDays,
+                      onChanged: (v) async {
+                        await DownloadCleanupService.setDaysOverride(
+                            podcastId, v);
+                        setSheetState(() => afterDays = v);
+                      },
+                      items: [
+                        DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text(
+                                'Default (${deleteAfterDaysLabel(settings.deleteDownloadsAfterDays)})')),
+                        for (final d in {...deleteAfterDayChoices, if (afterDays != null) afterDays!})
+                          DropdownMenuItem<int?>(
+                              value: d, child: Text(deleteAfterDaysLabel(d))),
                       ],
                     ),
                   ),
@@ -1713,8 +1819,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       tooltip: 'Podcast options',
       onSelected: (value) {
         switch (value) {
-          case 'autodownload':
-            _toggleAutoDownload();
+          case 'device_downloads':
+            _showDeviceDownloadsSheet();
             break;
           case 'autoplay':
             _toggleAutoPlayNext();
@@ -1732,10 +1838,13 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       },
       itemBuilder: (context) => [
         if (_isFollowing && widget.podcast.id > 0) ...[
-          CheckedPopupMenuItem<String>(
-            value: 'autodownload',
-            checked: _isAutoDownloadEnabled,
-            child: const Text('Auto-download to device'),
+          const PopupMenuItem<String>(
+            value: 'device_downloads',
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(PhosphorIconsRegular.deviceMobile),
+              title: Text('Device downloads'),
+            ),
           ),
           const PopupMenuItem<String>(
             value: 'server_downloads',
