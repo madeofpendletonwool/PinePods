@@ -2295,6 +2295,9 @@ ThemeData _buildHotDogStandTheme() {
   );
 }
 
+/// The app's typeface, the same as the web app's (IBM Plex Sans).
+const String kAppFont = 'IBMPlexSans';
+
 const double kCardRadius = 14.0;
 const double kInputRadius = 14.0;
 
@@ -2318,6 +2321,12 @@ ThemeData polishTheme(ThemeData t) {
   );
 
   return t.copyWith(
+    textTheme: t.textTheme.apply(fontFamily: kAppFont),
+    primaryTextTheme: t.primaryTextTheme.apply(fontFamily: kAppFont),
+    appBarTheme: t.appBarTheme.copyWith(
+      titleTextStyle: t.appBarTheme.titleTextStyle?.copyWith(fontFamily: kAppFont),
+      toolbarTextStyle: t.appBarTheme.toolbarTextStyle?.copyWith(fontFamily: kAppFont),
+    ),
     cardTheme: t.cardTheme.copyWith(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kCardRadius)),
       clipBehavior: Clip.antiAlias,

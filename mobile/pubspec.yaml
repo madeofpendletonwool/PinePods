@@ -99,15 +99,22 @@ flutter:
     - assets/ca/globalsign-gcc-r6-alphassl-ca-2023.pem
 
   fonts:
-    - family: MontserratMedium
+    # IBM Plex Sans (OFL, see assets/fonts/IBMPlexSans-LICENSE.txt), the web app's typeface
+    - family: IBMPlexSans
       fonts:
-        - asset: assets/fonts/Montserrat-Medium.otf
-    - family: MontserratRegular
-      fonts:
-        - asset: assets/fonts/Montserrat-Regular.otf
-    - family: MontserratBold
-      fonts:
-        - asset: assets/fonts/Montserrat-Bold.otf
+        - asset: assets/fonts/IBMPlexSans-Light.ttf
+          weight: 300
+        - asset: assets/fonts/IBMPlexSans-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/IBMPlexSans-Italic.ttf
+          weight: 400
+          style: italic
+        - asset: assets/fonts/IBMPlexSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/IBMPlexSans-Bold.ttf
+          weight: 700
     # Phosphor icons (MIT, see assets/fonts/Phosphor-LICENSE.txt); constants in lib/ui/icons/phosphor_icons.dart
     - family: PhosphorRegular
       fonts:
