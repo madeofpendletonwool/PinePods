@@ -46,6 +46,7 @@ class PinepodsAudioService {
 
   /// Public getters used by the now-playing reporter.
   int? get currentEpisodeId => _currentEpisodeId;
+  int? get currentPodcastId => _currentPodcastId;
   bool get isYoutube => _isYoutube;
 
   /// The playlist the current episode is being played from, if any. Used to

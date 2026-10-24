@@ -105,8 +105,10 @@ class _SpeedSliderState extends State<SpeedSlider> {
   @override
   void initState() {
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final audioBloc = Provider.of<AudioBloc>(context, listen: false);
 
-    speed = settingsBloc.currentSettings.playbackSpeed;
+    // The speed actually playing, which can be a per-podcast override.
+    speed = audioBloc.currentSpeed?.valueOrNull ?? settingsBloc.currentSettings.playbackSpeed;
     trimSilence = settingsBloc.currentSettings.trimSilence;
     volumeBoost = settingsBloc.currentSettings.volumeBoost;
 

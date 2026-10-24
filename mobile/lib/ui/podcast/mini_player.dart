@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:ui';
-
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/ui/podcast/now_playing.dart';
+import 'package:pinepods_mobile/ui/podcast/skip_interval_icon.dart';
 import 'package:pinepods_mobile/ui/widgets/placeholder_builder.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:flutter/material.dart';
@@ -55,37 +55,7 @@ class MiniPlayer extends StatelessWidget {
 class _MiniPlayerBody extends StatelessWidget {
   const _MiniPlayerBody();
 
-  void _openNowPlaying(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      routeSettings: const RouteSettings(name: 'nowplaying'),
-      isScrollControlled: true,
-      builder: (BuildContext modalContext) {
-        final contextPadding = MediaQuery.of(context).padding.top;
-        final modalPadding = MediaQuery.of(modalContext).padding.top;
-
-        // Get the actual system safe area from the window (works on both iOS and Android)
-        final window = PlatformDispatcher.instance.views.first;
-        final systemPadding = window.padding.top / window.devicePixelRatio;
-
-        // Use the best available padding value
-        double topPadding;
-        if (contextPadding > 0) {
-          topPadding = contextPadding;
-        } else if (modalPadding > 0) {
-          topPadding = modalPadding;
-        } else {
-          // Fall back to system padding if both contexts have 0
-          topPadding = systemPadding;
-        }
-
-        return Padding(
-          padding: EdgeInsets.only(top: topPadding),
-          child: const NowPlaying(),
-        );
-      },
-    );
-  }
+  void _openNowPlaying(BuildContext context) => showNowPlaying(context);
 
   @override
   Widget build(BuildContext context) {
@@ -187,11 +157,14 @@ class _MiniPlayerBody extends StatelessWidget {
                                       onPressed: playing
                                           ? () => audioBloc.transitionState(TransitionState.fastforward)
                                           : null,
-                                      icon: Icon(
-                                        PhosphorIconsRegular.clockClockwise,
+                                      icon: SkipIntervalIcon(
+                                        icon: PhosphorIconsRegular.arrowClockwise,
+                                        seconds: Provider.of<SettingsBloc>(context, listen: false)
+                                            .currentSettings
+                                            .fastForwardInterval,
+                                        size: 32,
                                         semanticLabel: L.of(context)!.fast_forward_button_label,
                                       ),
-                                      iconSize: 30,
                                     ),
                                   Padding(
                                     padding: const EdgeInsets.only(right: 6),
