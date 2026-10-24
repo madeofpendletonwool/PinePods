@@ -33,6 +33,7 @@ import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/services/auto_download/auto_download_service.dart';
 import 'package:pinepods_mobile/services/auto_download/queue_download_service.dart';
 import 'package:pinepods_mobile/services/auto_download/mirror_download_service.dart';
+import 'package:pinepods_mobile/services/auto_download/download_cleanup_service.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -186,12 +187,21 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         userId: settings.pinepodsUserId!,
       );
 
-      // Mirror the server's downloaded episodes to this device (fire-and-forget)
-      MirrorDownloadService.syncMirror(
+      // Clean up finished/old device downloads, then mirror the server's
+      // downloads to this device (fire-and-forget)
+      final userId = settings.pinepodsUserId!;
+      DownloadCleanupService.run(
         context: context,
         pinepodsService: _pinepodsService,
-        userId: settings.pinepodsUserId!,
-      );
+        userId: userId,
+      ).then((_) {
+        if (!mounted) return;
+        MirrorDownloadService.syncMirror(
+          context: context,
+          pinepodsService: _pinepodsService,
+          userId: userId,
+        );
+      });
 
       // Load home data and playlists in parallel
       final futures = await Future.wait([

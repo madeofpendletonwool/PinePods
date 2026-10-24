@@ -133,6 +133,12 @@ class PinepodsAudioService {
     _currentPlaylistId = playlistId;
     _audioPlayerService.setPlaylistContext(playlistId);
     try {
+      // Not on the server (an unfollowed podcast's feed): nothing to track.
+      if (pinepodsEpisode.episodeId == 0) {
+        await _playUntracked(pinepodsEpisode);
+        return;
+      }
+
       final settings = _settingsBloc.currentSettings;
       final userId = settings.pinepodsUserId;
 
@@ -146,11 +152,6 @@ class PinepodsAudioService {
 
       // Use the episode ID that's already available from the PinepodsEpisode
       final episodeId = pinepodsEpisode.episodeId;
-
-      if (episodeId == 0) {
-        log.warning('Episode ID is 0 - cannot track playback');
-        return;
-      }
 
       _currentEpisodeId = episodeId;
       _currentEpisodeDuration = pinepodsEpisode.episodeDuration;
@@ -340,6 +341,33 @@ class PinepodsAudioService {
       log.severe('Error playing PinePods episode: $e');
       rethrow;
     }
+  }
+
+  /// Play an episode the server has no record of straight from its feed URL,
+  /// with no position sync, history, queue or skip ranges. Clears the previous
+  /// episode's tracking so its timers don't keep reporting under the old id.
+  Future<void> _playUntracked(PinepodsEpisode pinepodsEpisode) async {
+    if (pinepodsEpisode.episodeUrl.isEmpty) {
+      throw Exception('Episode has no audio URL');
+    }
+    _stopPeriodicUpdates();
+    _currentEpisodeId = null;
+    _currentEpisodeDuration = null;
+    _currentTitle = pinepodsEpisode.episodeTitle;
+    _currentArtwork = pinepodsEpisode.episodeArtwork;
+    _isYoutube = false;
+
+    final episode = _convertToEpisode(
+      pinepodsEpisode,
+      PlayEpisodeDetails(playbackSpeed: 1.0, startSkip: 0, endSkip: 0),
+      null,
+    );
+    log.info('Playing untracked episode: ${pinepodsEpisode.episodeTitle}');
+    await _audioPlayerService.playEpisode(episode: episode, resume: false);
+    // Drop skip ranges left over from the previous episode.
+    await _audioPlayerService.applyEpisodeSkipSegments(
+        silenceEnabled: false, silenceRanges: const [], adRanges: const []);
+    _isPlaying = true;
   }
 
   /// Background, best-effort application of server-side playback niceties for a

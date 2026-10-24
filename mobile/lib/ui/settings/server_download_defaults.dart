@@ -6,6 +6,7 @@
 // them. Hidden until signed in to a server.
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/core/download_cleanup.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
@@ -18,8 +19,6 @@ class ServerDownloadDefaults extends StatefulWidget {
 }
 
 class _ServerDownloadDefaultsState extends State<ServerDownloadDefaults> {
-  static const _dayChoices = [0, 1, 3, 7, 14, 30, 60, 90];
-
   final PinepodsService _service = PinepodsService();
   int? _userId;
   bool _loaded = false;
@@ -53,8 +52,6 @@ class _ServerDownloadDefaultsState extends State<ServerDownloadDefaults> {
       });
     } catch (_) {}
   }
-
-  String _daysLabel(int d) => d == 0 ? 'Never' : '$d day${d == 1 ? '' : 's'}';
 
   @override
   Widget build(BuildContext context) {
@@ -94,8 +91,8 @@ class _ServerDownloadDefaultsState extends State<ServerDownloadDefaults> {
                 }
               },
               items: [
-                for (final d in {..._dayChoices, _deleteAfterDays})
-                  DropdownMenuItem(value: d, child: Text(_daysLabel(d))),
+                for (final d in {...deleteAfterDayChoices, _deleteAfterDays})
+                  DropdownMenuItem(value: d, child: Text(deleteAfterDaysLabel(d))),
               ],
             ),
           ),

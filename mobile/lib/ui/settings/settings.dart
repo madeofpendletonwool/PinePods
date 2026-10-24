@@ -4,6 +4,7 @@
 
 import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/core/download_cleanup.dart';
 import 'package:pinepods_mobile/core/utils.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
@@ -286,6 +287,36 @@ class _SettingsState extends State<Settings> {
                   trailing: Switch.adaptive(
                     value: snapshot.data!.mirrorServerDownloads,
                     onChanged: (value) => setState(() => settingsBloc.setMirrorServerDownloads(value)),
+                  ),
+                ),
+              ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(PhosphorIconsRegular.checks),
+                  title: const Text('Delete downloads when finished'),
+                  subtitle: const Text(
+                      "Remove an episode's download from this device about an hour after you finish it"),
+                  trailing: Switch.adaptive(
+                    value: snapshot.data!.deleteDownloadedPlayedEpisodes,
+                    onChanged: (value) => setState(() => settingsBloc.deleteDownloadedPlayedEpisodes(value)),
+                  ),
+                ),
+              ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(PhosphorIconsRegular.clockCountdown),
+                  title: const Text('Delete downloads after'),
+                  subtitle: const Text('Remove downloads on this device older than this'),
+                  trailing: DropdownButton<int>(
+                    value: snapshot.data!.deleteDownloadsAfterDays,
+                    underline: Container(),
+                    items: [
+                      for (final d in {...deleteAfterDayChoices, snapshot.data!.deleteDownloadsAfterDays})
+                        DropdownMenuItem(value: d, child: Text(deleteAfterDaysLabel(d))),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => settingsBloc.setDeleteDownloadsAfterDays(value));
+                    },
                   ),
                 ),
               ),
