@@ -2,7 +2,6 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
@@ -24,10 +23,11 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
+import 'package:pinepods_mobile/ui/utils/artwork_colors.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
+import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sliver_tools/sliver_tools.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 // Sort direction for episodes within a podcast
@@ -70,21 +70,18 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   bool _isFollowButtonLoading = false;
   bool _isFavorite = false;
 
-  /// Header collapse state; the action icons sit on the artwork (white) when
-  /// expanded and on the plain app bar (theme colour) when collapsed.
-  static const double _headerHeight = 300;
-  bool _headerCollapsed = false;
-
-  bool _onScroll(ScrollNotification n) {
-    if (n.depth != 0 || n.metrics.axis != Axis.vertical) return false;
-    final collapsed = n.metrics.pixels > _headerHeight - kToolbarHeight - 24;
-    if (collapsed != _headerCollapsed) setState(() => _headerCollapsed = collapsed);
-    return false;
-  }
+  /// Drives the app bar title only, so scrolling never rebuilds the page.
+  final ValueNotifier<bool> _collapsed = ValueNotifier<bool>(false);
+  Color? _artColor;
+  bool _searchOpen = false;
+  Timer? _searchDebounce;
   bool _isFavoriteLoading = false;
   String? _errorMessage;
   List<PinepodsEpisode> _episodes = [];
   List<PinepodsEpisode> _filteredEpisodes = [];
+  // Index into [_episodes] for each filtered entry, for the context menu.
+  List<int> _filteredIndexes = [];
+  final Expando<_EpisodeKeys> _episodeKeys = Expando<_EpisodeKeys>();
   int? _contextMenuEpisodeIndex;
   // Use global audio service instead of creating local instance
   final TextEditingController _searchController = TextEditingController();
@@ -127,6 +124,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _checkFollowStatus();
     _checkFavoriteStatus();
     _searchController.addListener(_onSearchChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _resolveArtColor();
+    });
   }
 
   Future<void> _loadSortPreference() async {
@@ -588,79 +588,65 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchDebounce?.cancel();
+    _collapsed.dispose();
     // Don't dispose global audio service - it should persist across pages
     super.dispose();
   }
 
   void _onSearchChanged() {
-    setState(() {
-      _searchQuery = _searchController.text;
-      _filterEpisodes();
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted || _searchQuery == _searchController.text) return;
+      setState(() {
+        _searchQuery = _searchController.text;
+        _filterEpisodes();
+      });
     });
   }
+
+  _EpisodeKeys _keysFor(PinepodsEpisode e) => _episodeKeys[e] ??= _EpisodeKeys(e);
 
   void _filterEpisodes() {
-    // Start with all episodes
-    List<PinepodsEpisode> filtered = List.from(_episodes);
-
-    // Apply search filter (search both title and description)
-    if (_searchQuery.isNotEmpty) {
-      final query = _searchQuery.toLowerCase();
-      filtered = filtered.where((episode) {
-        return episode.episodeTitle.toLowerCase().contains(query) ||
-            episode.episodeDescription.toLowerCase().contains(query);
-      }).toList();
-    }
-
-    // Apply completed filter (3-state)
-    if (_showInProgress) {
-      // In Progress: not completed but has some listen duration
-      filtered = filtered.where((episode) {
-        return !episode.completed && (episode.listenDuration ?? 0) > 0;
-      }).toList();
-    } else {
-      switch (_completedFilter) {
-        case CompletedFilter.showOnly:
-          filtered = filtered.where((episode) => episode.completed).toList();
-          break;
-        case CompletedFilter.hide:
-          filtered = filtered.where((episode) => !episode.completed).toList();
-          break;
-        case CompletedFilter.showAll:
-          // No filtering
-          break;
+    final query = _searchQuery.trim().toLowerCase();
+    final indexes = <int>[];
+    for (var i = 0; i < _episodes.length; i++) {
+      final e = _episodes[i];
+      if (query.isNotEmpty) {
+        final keys = _keysFor(e);
+        if (!keys.title.contains(query) && !keys.description.contains(query)) continue;
       }
+      if (_showInProgress) {
+        if (e.completed || (e.listenDuration ?? 0) <= 0) continue;
+      } else if (_completedFilter == CompletedFilter.showOnly && !e.completed) {
+        continue;
+      } else if (_completedFilter == CompletedFilter.hide && e.completed) {
+        continue;
+      }
+      indexes.add(i);
     }
 
-    // Apply sorting
-    filtered.sort((a, b) {
+    indexes.sort((ia, ib) {
+      final a = _episodes[ia];
+      final b = _episodes[ib];
       switch (_sortDirection) {
         case EpisodeSortDirection.newestFirst:
-          return _compareDates(b.episodePubDate, a.episodePubDate);
+          return _keysFor(b).date.compareTo(_keysFor(a).date);
         case EpisodeSortDirection.oldestFirst:
-          return _compareDates(a.episodePubDate, b.episodePubDate);
+          return _keysFor(a).date.compareTo(_keysFor(b).date);
         case EpisodeSortDirection.shortestFirst:
-          return (a.episodeDuration ?? 0).compareTo(b.episodeDuration ?? 0);
+          return a.episodeDuration.compareTo(b.episodeDuration);
         case EpisodeSortDirection.longestFirst:
-          return (b.episodeDuration ?? 0).compareTo(a.episodeDuration ?? 0);
+          return b.episodeDuration.compareTo(a.episodeDuration);
         case EpisodeSortDirection.titleAZ:
-          return a.episodeTitle.toLowerCase().compareTo(b.episodeTitle.toLowerCase());
+          return _keysFor(a).title.compareTo(_keysFor(b).title);
         case EpisodeSortDirection.titleZA:
-          return b.episodeTitle.toLowerCase().compareTo(a.episodeTitle.toLowerCase());
+          return _keysFor(b).title.compareTo(_keysFor(a).title);
       }
     });
 
-    _filteredEpisodes = filtered;
-  }
-
-  int _compareDates(String dateA, String dateB) {
-    try {
-      final a = DateTime.parse(dateA);
-      final b = DateTime.parse(dateB);
-      return a.compareTo(b);
-    } catch (e) {
-      return 0;
-    }
+    _filteredIndexes = indexes;
+    _filteredEpisodes = [for (final i in indexes) _episodes[i]];
   }
 
   void _initializeCredentials() {
@@ -1473,390 +1459,502 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     );
   }
 
-  Color _headerIconColor(BuildContext context) {
-    if (!_headerCollapsed) return Colors.white;
-    final theme = Theme.of(context);
-    return theme.appBarTheme.foregroundColor ?? theme.colorScheme.onSurface;
+  /// Artwork-derived accent when that setting is on, else the theme's.
+  Color _accentColor(ThemeData theme) {
+    final enabled = Provider.of<SettingsBloc>(context, listen: false).currentSettings.artworkAccentColors;
+    return (enabled ? _artColor : null) ?? theme.primaryColor;
+  }
+
+  void _resolveArtColor() {
+    final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    if (!settings.artworkAccentColors) return;
+    final brightness = ThemeData.estimateBrightnessForColor(Theme.of(context).scaffoldBackgroundColor);
+    final url = widget.podcast.artwork;
+    _artColor = ArtworkColors.cached(url, null, brightness);
+    if (_artColor != null) return;
+    ArtworkColors.resolve(url, null, brightness).then((color) {
+      if (!mounted || color == null) return;
+      setState(() => _artColor = color);
+    });
+  }
+
+  /// Newest episode that hasn't been finished, for the header's play button.
+  PinepodsEpisode? get _latestUnplayed {
+    PinepodsEpisode? best;
+    var bestDate = -1;
+    for (final e in _episodes) {
+      if (e.completed || e.episodeId <= 0) continue;
+      final date = _keysFor(e).date;
+      if (date > bestDate) {
+        best = e;
+        bestDate = date;
+      }
+    }
+    return best;
+  }
+
+  bool _onScroll(ScrollNotification n) {
+    if (n.depth != 0 || n.metrics.axis != Axis.vertical) return false;
+    _collapsed.value = n.metrics.pixels > 140;
+    return false;
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // Eases the header between colours when the artwork colour arrives.
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: _accentColor(theme)),
+      duration: const Duration(milliseconds: 350),
+      builder: (context, accent, _) => _buildPage(theme, accent!),
+    );
+  }
+
+  Widget _buildPage(ThemeData theme, Color accent) {
+    final bg = theme.scaffoldBackgroundColor;
+    final headerTint = Color.alphaBlend(accent.withOpacity(0.18), bg);
+
     return Scaffold(
-      body: SafeArea(child: Column(
+      body: Column(
         children: [
           Expanded(
             child: NotificationListener<ScrollNotification>(
               onNotification: _onScroll,
               child: CustomScrollView(
-              slivers: [
-          SliverAppBar(
-            expandedHeight: _headerHeight,
-            pinned: true,
-            iconTheme: IconThemeData(color: _headerIconColor(context)),
-            flexibleSpace: FlexibleSpaceBar(
-              // Leave room for the leading back button and the two trailing
-              // actions so the collapsed title never runs under them.
-              titlePadding: const EdgeInsetsDirectional.only(start: 56, end: 104, bottom: 16),
-              expandedTitleScale: 1.3,
-              title: Text(
-                widget.podcast.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: _headerIconColor(context),
-                  shadows: _headerCollapsed
-                      ? null
-                      : const [
-                          Shadow(
-                            offset: Offset(0, 1),
-                            blurRadius: 3,
-                            color: Colors.black54,
-                          ),
-                        ],
-                ),
-              ),
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  widget.podcast.artwork.isNotEmpty
-                      ? ExtendedImage.network(
-                          widget.podcast.artwork,
-                          fit: BoxFit.cover,
-                          cache: true,
-                          cacheWidth: 900,
-                          loadStateChanged: (state) {
-                            if (state.extendedImageLoadState != LoadState.failed) return null;
-                            return Container(
-                              color: Colors.grey[300],
-                              child: const Icon(
-                                PhosphorIconsRegular.musicNote,
-                                size: 80,
-                                color: Colors.grey,
-                              ),
-                            );
-                          },
-                        )
-                      : Container(
-                          color: Colors.grey[300],
-                          child: const Icon(
-                            PhosphorIconsRegular.musicNote,
-                            size: 80,
-                            color: Colors.grey,
-                          ),
-                        ),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.7),
-                        ],
+                slivers: [
+                  SliverAppBar(
+                    pinned: true,
+                    backgroundColor: headerTint,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                    scrolledUnderElevation: 0,
+                    title: ValueListenableBuilder<bool>(
+                      valueListenable: _collapsed,
+                      builder: (context, collapsed, child) => AnimatedOpacity(
+                        opacity: collapsed ? 1 : 0,
+                        duration: const Duration(milliseconds: 180),
+                        child: child,
                       ),
+                      child: Text(widget.podcast.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                     ),
                   ),
+                  SliverToBoxAdapter(child: _buildHeader(theme, accent, headerTint, bg)),
+                  ..._buildEpisodeSlivers(theme, accent),
                 ],
               ),
-            ),
-            actions: [
-              if (widget.podcast.id > 0)
-                IconButton(
-                  onPressed: _isFavoriteLoading ? null : _toggleFavorite,
-                  icon: _isFavoriteLoading
-                      ? SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.0,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(_headerIconColor(context)),
-                          ),
-                        )
-                      : Icon(
-                          _isFavorite ? PhosphorIconsFill.star : PhosphorIconsRegular.star,
-                          color: _isFavorite ? Colors.amber : _headerIconColor(context),
-                        ),
-                  tooltip: _isFavorite
-                      ? 'Remove from favorites'
-                      : 'Add to favorites',
-                ),
-              PopupMenuButton<String>(
-                icon: Icon(PhosphorIconsRegular.dotsThreeVertical, color: _headerIconColor(context)),
-                tooltip: 'Podcast options',
-                onSelected: (value) {
-                  switch (value) {
-                    case 'autodownload':
-                      _toggleAutoDownload();
-                      break;
-                    case 'autoplay':
-                      _toggleAutoPlayNext();
-                      break;
-                    case 'ai':
-                      _showAiSettingsSheet();
-                      break;
-                    case 'server_downloads':
-                      _showServerDownloadsSheet();
-                      break;
-                    case 'follow':
-                      _toggleFollow();
-                      break;
-                  }
-                },
-                itemBuilder: (context) => [
-                  if (_isFollowing && widget.podcast.id > 0) ...[
-                    CheckedPopupMenuItem<String>(
-                      value: 'autodownload',
-                      checked: _isAutoDownloadEnabled,
-                      child: const Text('Auto-download to device'),
-                    ),
-                    const PopupMenuItem<String>(
-                      value: 'server_downloads',
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(PhosphorIconsRegular.hardDrives),
-                        title: Text('Server downloads'),
-                      ),
-                    ),
-                    CheckedPopupMenuItem<String>(
-                      value: 'autoplay',
-                      checked: _isAutoPlayNextEnabled,
-                      child: const Text('Auto-play next'),
-                    ),
-                    if (_aiAvailable)
-                      const PopupMenuItem<String>(
-                        value: 'ai',
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(PhosphorIconsRegular.sparkle),
-                          title: Text('AI features'),
-                        ),
-                      ),
-                    const PopupMenuDivider(),
-                  ],
-                  PopupMenuItem<String>(
-                    value: 'follow',
-                    enabled: !_isFollowButtonLoading,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(_isFollowing ? PhosphorIconsRegular.minusCircle : PhosphorIconsRegular.plusCircle),
-                      title: Text(_isFollowing ? 'Unfollow' : 'Follow'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Podcast info with follow/unfollow button
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (widget.podcast.author.isNotEmpty)
-                              Text(
-                                'By ${widget.podcast.author}',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Theme.of(context).primaryColor,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      _FollowButton(
-                        following: _isFollowing,
-                        loading: _isFollowButtonLoading,
-                        onPressed: _toggleFollow,
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 8),
-                  
-                  _ExpandableDescription(description: widget.podcast.description),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // Podcast stats
-                  Row(
-                    children: [
-                      Icon(
-                        PhosphorIconsRegular.microphone,
-                        size: 16,
-                        color: Colors.grey[600],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${_episodes.length} episode${_episodes.length != 1 ? 's' : ''}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      if (widget.podcast.explicit)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'Explicit',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  
-                  if (_credits.people.isNotEmpty || _peoplePodcastId != null) ...[
-                    const SizedBox(height: 16),
-                    PeopleStrip(
-                      title: 'Hosts',
-                      people: _credits.people,
-                      onAdd: _peoplePodcastId != null ? _addPeople : null,
-                      emptyPrompt: 'Who hosts this show? Add them so everyone can find them.',
-                    ),
-                  ],
-                  if (_credits.guests.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    PeopleStrip(title: 'Guests', people: _credits.guests, showEpisodeCount: true),
-                  ],
-
-                  const SizedBox(height: 24),
-                  
-                  // Episodes section header
-                  Row(
-                    children: [
-                      const Text(
-                        'Episodes',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (_isLoading)
-                        const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
-          ),
-          
-          // Episodes list
-          if (_isLoading)
-            const SliverToBoxAdapter(
-              child: Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32.0),
-                  child: PlatformProgressIndicator(),
-                ),
-              ),
-            )
-          else if (_errorMessage != null)
-            SliverToBoxAdapter(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Column(
-                    children: [
-                      Icon(
-                        PhosphorIconsRegular.warningCircle,
-                        size: 64,
-                        color: Colors.red[300],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _errorMessage!,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadPodcastFeed,
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            )
-          else if (_episodes.isEmpty)
-            SliverToBoxAdapter(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Column(
-                    children: [
-                      Icon(
-                        PhosphorIconsRegular.info,
-                        size: 64,
-                        color: Colors.blue[300],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _isFollowing ? 'No episodes found' : 'Episodes available after following',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _isFollowing
-                            ? 'Episodes from your PinePods library will appear here'
-                            : 'Follow this podcast to add it to your library and view episodes',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        onPressed: _isFollowing ? _loadPodcastFeed : _toggleFollow,
-                        icon: Icon(_isFollowing ? PhosphorIconsRegular.arrowClockwise : PhosphorIconsRegular.plus),
-                        label: Text(_isFollowing ? 'Retry' : 'Follow'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            )
-          else
-            MultiSliver(
-              children: [
-                _buildSearchAndFilterBar(),
-                _buildEpisodesList(),
-              ],
-            ),
-              ],
-            ),
             ),
           ),
           _buildBottomPlayer(),
         ],
-      )),
+      ),
+    );
+  }
+
+  Widget _buildHeader(ThemeData theme, Color accent, Color headerTint, Color bg) {
+    final muted = theme.hintColor;
+    final count = _episodes.isNotEmpty ? _episodes.length : widget.podcast.episodeCount;
+    final meta = [
+      if (count > 0) '$count episode${count == 1 ? '' : 's'}',
+      if (widget.podcast.explicit) 'Explicit',
+    ].join('  ·  ');
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [headerTint, bg],
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 18, offset: const Offset(0, 6)),
+                    ],
+                  ),
+                  child: LazyNetworkImage(
+                    imageUrl: widget.podcast.artwork,
+                    width: 116,
+                    height: 116,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.podcast.title,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold, height: 1.2),
+                      ),
+                      if (widget.podcast.author.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.podcast.author,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall!.copyWith(color: accent, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                      if (meta.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(meta, style: theme.textTheme.bodySmall!.copyWith(color: muted, fontSize: 12.5)),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildActionRow(theme, accent),
+            if (widget.podcast.description.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              _ExpandableDescription(description: widget.podcast.description, accent: accent),
+            ],
+            if (_credits.people.isNotEmpty || _peoplePodcastId != null) ...[
+              const SizedBox(height: 16),
+              PeopleStrip(
+                title: 'Hosts',
+                people: _credits.people,
+                onAdd: _peoplePodcastId != null ? _addPeople : null,
+                emptyPrompt: 'Who hosts this show? Add them so everyone can find them.',
+              ),
+            ],
+            if (_credits.guests.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              PeopleStrip(title: 'Guests', people: _credits.guests, showEpisodeCount: true),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionRow(ThemeData theme, Color accent) {
+    final onAccent = ThemeData.estimateBrightnessForColor(accent) == Brightness.dark ? Colors.white : Colors.black;
+    final pillStyle = FilledButton.styleFrom(
+      backgroundColor: accent,
+      foregroundColor: onAccent,
+      disabledBackgroundColor: accent.withOpacity(0.5),
+      disabledForegroundColor: onAccent.withOpacity(0.7),
+      shape: const StadiumBorder(),
+      minimumSize: const Size(0, 46),
+      textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+    );
+
+    final Widget primary;
+    if (!_isFollowing) {
+      primary = FilledButton.icon(
+        style: pillStyle,
+        onPressed: _isFollowButtonLoading ? null : _toggleFollow,
+        icon: _isFollowButtonLoading
+            ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: onAccent))
+            : const Icon(PhosphorIconsBold.plus, size: 18),
+        label: const Text('Follow'),
+      );
+    } else {
+      final latest = _latestUnplayed;
+      final starting = latest != null && _pendingEpisode == latest;
+      primary = FilledButton.icon(
+        style: pillStyle,
+        onPressed: latest == null || starting ? null : () => _playEpisode(latest),
+        icon: starting
+            ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: onAccent))
+            : const Icon(PhosphorIconsFill.play, size: 18),
+        label: Text(latest != null && latest.isStarted ? 'Resume latest' : 'Play latest'),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(child: primary),
+        if (_isFollowing) ...[
+          const SizedBox(width: 10),
+          _CircleAction(
+            tooltip: 'Unfollow',
+            icon: _isFollowButtonLoading
+                ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: accent))
+                : Icon(PhosphorIconsBold.check, color: accent, size: 20),
+            onTap: _isFollowButtonLoading ? null : _toggleFollow,
+          ),
+        ],
+        if (widget.podcast.id > 0) ...[
+          const SizedBox(width: 10),
+          _CircleAction(
+            tooltip: _isFavorite ? 'Remove from favorites' : 'Add to favorites',
+            icon: Icon(
+              _isFavorite ? PhosphorIconsFill.star : PhosphorIconsRegular.star,
+              color: _isFavorite ? Colors.amber : theme.colorScheme.onSurface.withOpacity(0.8),
+              size: 20,
+            ),
+            onTap: _isFavoriteLoading ? null : _toggleFavorite,
+          ),
+        ],
+        const SizedBox(width: 10),
+        _buildOptionsMenu(theme),
+      ],
+    );
+  }
+
+  Widget _buildOptionsMenu(ThemeData theme) {
+    return PopupMenuButton<String>(
+      tooltip: 'Podcast options',
+      onSelected: (value) {
+        switch (value) {
+          case 'autodownload':
+            _toggleAutoDownload();
+            break;
+          case 'autoplay':
+            _toggleAutoPlayNext();
+            break;
+          case 'ai':
+            _showAiSettingsSheet();
+            break;
+          case 'server_downloads':
+            _showServerDownloadsSheet();
+            break;
+          case 'follow':
+            _toggleFollow();
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        if (_isFollowing && widget.podcast.id > 0) ...[
+          CheckedPopupMenuItem<String>(
+            value: 'autodownload',
+            checked: _isAutoDownloadEnabled,
+            child: const Text('Auto-download to device'),
+          ),
+          const PopupMenuItem<String>(
+            value: 'server_downloads',
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(PhosphorIconsRegular.hardDrives),
+              title: Text('Server downloads'),
+            ),
+          ),
+          CheckedPopupMenuItem<String>(
+            value: 'autoplay',
+            checked: _isAutoPlayNextEnabled,
+            child: const Text('Auto-play next'),
+          ),
+          if (_aiAvailable)
+            const PopupMenuItem<String>(
+              value: 'ai',
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(PhosphorIconsRegular.sparkle),
+                title: Text('AI features'),
+              ),
+            ),
+          const PopupMenuDivider(),
+        ],
+        PopupMenuItem<String>(
+          value: 'follow',
+          enabled: !_isFollowButtonLoading,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(_isFollowing ? PhosphorIconsRegular.minusCircle : PhosphorIconsRegular.plusCircle),
+            title: Text(_isFollowing ? 'Unfollow' : 'Follow'),
+          ),
+        ),
+      ],
+      child: _CircleAction(
+        tooltip: null,
+        icon: Icon(PhosphorIconsBold.dotsThree, color: theme.colorScheme.onSurface.withOpacity(0.8), size: 20),
+        onTap: null,
+      ),
+    );
+  }
+
+  List<Widget> _buildEpisodeSlivers(ThemeData theme, Color accent) {
+    Widget message(IconData icon, String title, String body, {Widget? action}) => SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(32, 32, 32, 48),
+            child: Column(
+              children: [
+                Icon(icon, size: 40, color: theme.hintColor),
+                const SizedBox(height: 12),
+                Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
+                const SizedBox(height: 6),
+                Text(body, style: theme.textTheme.bodyMedium!.copyWith(color: theme.hintColor), textAlign: TextAlign.center),
+                if (action != null) ...[const SizedBox(height: 16), action],
+              ],
+            ),
+          ),
+        );
+
+    if (_isLoading) {
+      return const [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(40),
+            child: Center(child: PlatformProgressIndicator()),
+          ),
+        ),
+      ];
+    }
+    if (_errorMessage != null) {
+      return [
+        message(PhosphorIconsRegular.warningCircle, _errorMessage!, 'Check your connection and try again.',
+            action: FilledButton.tonal(onPressed: _loadPodcastFeed, child: const Text('Retry'))),
+      ];
+    }
+    if (_episodes.isEmpty) {
+      return [
+        message(
+          PhosphorIconsRegular.info,
+          _isFollowing ? 'No episodes found' : 'Episodes available after following',
+          _isFollowing
+              ? 'Episodes from your PinePods library will appear here'
+              : 'Follow this podcast to add it to your library and view episodes',
+          action: _isFollowing ? FilledButton.tonal(onPressed: _loadPodcastFeed, child: const Text('Retry')) : null,
+        ),
+      ];
+    }
+
+    return [
+      SliverPersistentHeader(
+        pinned: true,
+        delegate: _PinnedBarDelegate(
+          height: 56,
+          color: theme.scaffoldBackgroundColor,
+          child: _buildEpisodeToolbar(theme, accent),
+        ),
+      ),
+      if (_filteredEpisodes.isEmpty)
+        message(
+          PhosphorIconsRegular.magnifyingGlassMinus,
+          'No episodes found',
+          _searchQuery.isNotEmpty ? 'No episodes match "$_searchQuery"' : 'No episodes match this filter',
+        )
+      else
+        _buildEpisodesList(),
+      const SliverToBoxAdapter(child: SizedBox(height: 12)),
+    ];
+  }
+
+  Widget _buildEpisodeToolbar(ThemeData theme, Color accent) {
+    if (_searchOpen) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: 'Search episodes',
+                  isDense: true,
+                  prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass, size: 20),
+                  filled: true,
+                  fillColor: theme.colorScheme.onSurface.withOpacity(0.06),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Close search',
+              icon: const Icon(PhosphorIconsRegular.x),
+              onPressed: () {
+                _searchController.clear();
+                setState(() {
+                  _searchOpen = false;
+                  _searchQuery = '';
+                  _filterEpisodes();
+                });
+              },
+            ),
+          ],
+        ),
+      );
+    }
+
+    final _EpisodeFilter current = _showInProgress
+        ? _EpisodeFilter.inProgress
+        : switch (_completedFilter) {
+            CompletedFilter.showAll => _EpisodeFilter.all,
+            CompletedFilter.hide => _EpisodeFilter.unplayed,
+            CompletedFilter.showOnly => _EpisodeFilter.played,
+          };
+
+    return Row(
+      children: [
+        Expanded(
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+            children: [
+              for (final f in _EpisodeFilter.values)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _FilterPill(
+                    label: f.label,
+                    selected: f == current,
+                    accent: accent,
+                    onTap: () => setState(() {
+                      _showInProgress = f == _EpisodeFilter.inProgress;
+                      _completedFilter = switch (f) {
+                        _EpisodeFilter.unplayed => CompletedFilter.hide,
+                        _EpisodeFilter.played => CompletedFilter.showOnly,
+                        _ => CompletedFilter.showAll,
+                      };
+                      _filterEpisodes();
+                    }),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Search episodes',
+          icon: const Icon(PhosphorIconsRegular.magnifyingGlass),
+          onPressed: () => setState(() => _searchOpen = true),
+        ),
+        PopupMenuButton<EpisodeSortDirection>(
+          tooltip: 'Sort',
+          icon: const Icon(PhosphorIconsRegular.sortAscending),
+          initialValue: _sortDirection,
+          onSelected: (value) {
+            setState(() {
+              _sortDirection = value;
+              _filterEpisodes();
+            });
+            _saveSortPreference();
+          },
+          itemBuilder: (context) => [
+            for (final entry in const {
+              EpisodeSortDirection.newestFirst: 'Newest first',
+              EpisodeSortDirection.oldestFirst: 'Oldest first',
+              EpisodeSortDirection.shortestFirst: 'Shortest first',
+              EpisodeSortDirection.longestFirst: 'Longest first',
+              EpisodeSortDirection.titleAZ: 'Title A–Z',
+              EpisodeSortDirection.titleZA: 'Title Z–A',
+            }.entries)
+              CheckedPopupMenuItem(
+                value: entry.key,
+                checked: entry.key == _sortDirection,
+                child: Text(entry.value),
+              ),
+          ],
+        ),
+        const SizedBox(width: 4),
+      ],
     );
   }
 
@@ -1882,304 +1980,29 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     );
   }
 
-  Widget _buildSearchAndFilterBar() {
-    return SliverToBoxAdapter(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Search bar with sort dropdown
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
-            child: Row(
-              children: [
-                // Search field
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search episodes...',
-                      prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(PhosphorIconsRegular.x),
-                              onPressed: () {
-                                _searchController.clear();
-                              },
-                            )
-                          : null,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      filled: true,
-                      fillColor: Theme.of(context).cardColor,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Sort dropdown
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Theme.of(context).dividerColor),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<EpisodeSortDirection>(
-                      value: _sortDirection,
-                      icon: const Icon(PhosphorIconsRegular.sortAscending),
-                      items: const [
-                        DropdownMenuItem(
-                          value: EpisodeSortDirection.newestFirst,
-                          child: Text('Newest'),
-                        ),
-                        DropdownMenuItem(
-                          value: EpisodeSortDirection.oldestFirst,
-                          child: Text('Oldest'),
-                        ),
-                        DropdownMenuItem(
-                          value: EpisodeSortDirection.shortestFirst,
-                          child: Text('Shortest'),
-                        ),
-                        DropdownMenuItem(
-                          value: EpisodeSortDirection.longestFirst,
-                          child: Text('Longest'),
-                        ),
-                        DropdownMenuItem(
-                          value: EpisodeSortDirection.titleAZ,
-                          child: Text('Title A-Z'),
-                        ),
-                        DropdownMenuItem(
-                          value: EpisodeSortDirection.titleZA,
-                          child: Text('Title Z-A'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() {
-                            _sortDirection = value;
-                            _filterEpisodes();
-                          });
-                          _saveSortPreference();
-                        }
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Filter chips
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 8.0),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  // Clear all filters chip
-                  _buildFilterChip(
-                    label: 'Clear All',
-                    icon: PhosphorIconsRegular.broom,
-                    isActive: false,
-                    onTap: () {
-                      setState(() {
-                        _completedFilter = CompletedFilter.showAll;
-                        _showInProgress = false;
-                        _filterEpisodes();
-                      });
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  // Completed filter chip (3-state)
-                  _buildFilterChip(
-                    label: _getCompletedFilterLabel(),
-                    icon: _getCompletedFilterIcon(),
-                    isActive: _completedFilter != CompletedFilter.showAll,
-                    isAlert: _completedFilter == CompletedFilter.hide,
-                    onTap: () {
-                      setState(() {
-                        // Cycle through states: showAll -> showOnly -> hide -> showAll
-                        switch (_completedFilter) {
-                          case CompletedFilter.showAll:
-                            _completedFilter = CompletedFilter.showOnly;
-                            _showInProgress = false;
-                            break;
-                          case CompletedFilter.showOnly:
-                            _completedFilter = CompletedFilter.hide;
-                            _showInProgress = false;
-                            break;
-                          case CompletedFilter.hide:
-                            _completedFilter = CompletedFilter.showAll;
-                            break;
-                        }
-                        _filterEpisodes();
-                      });
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  // In Progress filter chip
-                  _buildFilterChip(
-                    label: 'In Progress',
-                    icon: PhosphorIconsRegular.playCircle,
-                    isActive: _showInProgress,
-                    onTap: () {
-                      setState(() {
-                        _showInProgress = !_showInProgress;
-                        if (_showInProgress) {
-                          _completedFilter = CompletedFilter.showAll;
-                        }
-                        _filterEpisodes();
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _getCompletedFilterLabel() {
-    switch (_completedFilter) {
-      case CompletedFilter.showAll:
-        return 'Completed';
-      case CompletedFilter.showOnly:
-        return 'Completed Only';
-      case CompletedFilter.hide:
-        return 'Hide Completed';
-    }
-  }
-
-  IconData _getCompletedFilterIcon() {
-    switch (_completedFilter) {
-      case CompletedFilter.showAll:
-        return PhosphorIconsRegular.circle;
-      case CompletedFilter.showOnly:
-        return PhosphorIconsFill.checkCircle;
-      case CompletedFilter.hide:
-        return PhosphorIconsFill.xCircle;
-    }
-  }
-
-  Widget _buildFilterChip({
-    required String label,
-    required IconData icon,
-    required bool isActive,
-    bool isAlert = false,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    final Color backgroundColor;
-    final Color foregroundColor;
-
-    if (isAlert) {
-      backgroundColor = Colors.orange.withOpacity(0.2);
-      foregroundColor = Colors.orange;
-    } else if (isActive) {
-      backgroundColor = theme.primaryColor.withOpacity(0.2);
-      foregroundColor = theme.primaryColor;
-    } else {
-      backgroundColor = theme.cardColor;
-      foregroundColor = theme.textTheme.bodyMedium?.color ?? Colors.grey;
-    }
-
-    return Material(
-      color: backgroundColor,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isActive || isAlert ? foregroundColor : theme.dividerColor,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: foregroundColor),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: foregroundColor,
-                  fontWeight: isActive || isAlert ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildEpisodesList() {
-    // Check if search returned no results
-    if (_filteredEpisodes.isEmpty && _searchQuery.isNotEmpty) {
-      return SliverFillRemaining(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                PhosphorIconsRegular.magnifyingGlassMinus,
-                size: 64,
-                color: Theme.of(context).primaryColor,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No episodes found',
-                style: Theme.of(context).textTheme.titleLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'No episodes match "$_searchQuery"',
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
           final episode = _filteredEpisodes[index];
-          // Find the original index for context menu operations
-          final originalIndex = _episodes.indexOf(episode);
-          final bool hasValidServerEpisodeId = episode.episodeId > 0;
-          
-          if (!hasValidServerEpisodeId) {
-            print('Episode "${episode.episodeTitle}" has no server ID (RSS fallback) - disabling episode details navigation');
-          }
-          
+          final originalIndex = _filteredIndexes[index];
+          // RSS fallback episodes have no server id, so no details or actions.
+          final hasServerId = episode.episodeId > 0;
+
           return PinepodsEpisodeCard(
             episode: episode,
-            onTap: _isFollowing && hasValidServerEpisodeId ? () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PinepodsEpisodeDetails(
-                    initialEpisode: episode,
-                  ),
-                ),
-              );
-            } : null,
-            onLongPress: _isFollowing && hasValidServerEpisodeId ? () {
-              _showEpisodeContextMenu(originalIndex);
-            } : null,
-            onPlayPressed: _isFollowing ? () {
-              _playEpisode(episode);
-            } : null,
+            onTap: _isFollowing && hasServerId
+                ? () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PinepodsEpisodeDetails(initialEpisode: episode),
+                      ),
+                    );
+                  }
+                : null,
+            onLongPress: _isFollowing && hasServerId ? () => _showEpisodeContextMenu(originalIndex) : null,
+            onPlayPressed: _isFollowing ? () => _playEpisode(episode) : null,
           );
         },
         childCount: _filteredEpisodes.length,
@@ -2188,49 +2011,120 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 }
 
-class _FollowButton extends StatelessWidget {
-  final bool following;
-  final bool loading;
-  final VoidCallback onPressed;
+enum _EpisodeFilter {
+  all('All'),
+  unplayed('Unplayed'),
+  inProgress('In progress'),
+  played('Played');
 
-  const _FollowButton({required this.following, required this.loading, required this.onPressed});
+  final String label;
+  const _EpisodeFilter(this.label);
+}
+
+/// Lowercased search text and parsed date, computed once per episode instead
+/// of on every keystroke and sort comparison.
+class _EpisodeKeys {
+  final String title;
+  final String description;
+  final int date;
+
+  _EpisodeKeys(PinepodsEpisode e)
+      : title = e.episodeTitle.toLowerCase(),
+        description = e.episodeDescription.toLowerCase(),
+        date = DateTime.tryParse(e.episodePubDate)?.millisecondsSinceEpoch ?? 0;
+}
+
+class _PinnedBarDelegate extends SliverPersistentHeaderDelegate {
+  final double height;
+  final Color color;
+  final Widget child;
+
+  _PinnedBarDelegate({required this.height, required this.color, required this.child});
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Material(
+      color: color,
+      elevation: overlapsContent || shrinkOffset > 0 ? 1 : 0,
+      child: child,
+    );
+  }
+
+  @override
+  bool shouldRebuild(_PinnedBarDelegate old) => true;
+}
+
+class _FilterPill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _FilterPill({required this.label, required this.selected, required this.accent, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).primaryColor;
-    final onAccent =
-        ThemeData.estimateBrightnessForColor(accent) == Brightness.dark ? Colors.white : Colors.black;
-    final Widget icon = loading
-        ? SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2, color: following ? accent : onAccent),
-          )
-        : Icon(following ? PhosphorIconsBold.check : PhosphorIconsRegular.plus, size: 18);
-
-    if (following) {
-      return OutlinedButton.icon(
-        onPressed: loading ? null : onPressed,
-        icon: icon,
-        label: const Text('Following'),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: accent,
-          side: BorderSide(color: accent.withOpacity(0.5)),
+    final theme = Theme.of(context);
+    final onAccent = ThemeData.estimateBrightnessForColor(accent) == Brightness.dark ? Colors.white : Colors.black;
+    return Material(
+      color: selected ? accent : theme.colorScheme.onSurface.withOpacity(0.07),
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Center(
+            widthFactor: 1,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: selected ? onAccent : theme.colorScheme.onSurface.withOpacity(0.8),
+              ),
+            ),
+          ),
         ),
-      );
-    }
-    return FilledButton.icon(
-      onPressed: loading ? null : onPressed,
-      icon: icon,
-      label: const Text('Follow'),
-      style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: onAccent),
+      ),
     );
+  }
+}
+
+/// Round secondary button used beside the header's play/follow pill.
+class _CircleAction extends StatelessWidget {
+  final String? tooltip;
+  final Widget icon;
+  final VoidCallback? onTap;
+
+  const _CircleAction({required this.tooltip, required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final button = Material(
+      color: theme.colorScheme.onSurface.withOpacity(0.08),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(width: 46, height: 46, child: Center(child: icon)),
+      ),
+    );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }
 
 class _ExpandableDescription extends StatefulWidget {
   final String description;
-  const _ExpandableDescription({required this.description});
+  final Color accent;
+  const _ExpandableDescription({required this.description, required this.accent});
 
   @override
   State<_ExpandableDescription> createState() => _ExpandableDescriptionState();
@@ -2241,30 +2135,31 @@ class _ExpandableDescriptionState extends State<_ExpandableDescription> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          widget.description,
-          style: const TextStyle(fontSize: 14),
-          maxLines: _expanded ? null : 3,
-          overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-        ),
-        GestureDetector(
-          onTap: () => setState(() => _expanded = !_expanded),
-          child: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              _expanded ? 'Show less' : 'Show more',
-              style: TextStyle(
-                fontSize: 13,
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w500,
-              ),
+    final theme = Theme.of(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _expanded = !_expanded),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        alignment: Alignment.topCenter,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.description,
+              style: theme.textTheme.bodyMedium!.copyWith(height: 1.4, color: theme.colorScheme.onSurface.withOpacity(0.85)),
+              maxLines: _expanded ? null : 2,
+              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
             ),
-          ),
+            const SizedBox(height: 2),
+            Text(
+              _expanded ? 'Less' : 'More',
+              style: TextStyle(fontSize: 13, color: widget.accent, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
