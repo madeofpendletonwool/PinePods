@@ -564,6 +564,32 @@ class PinepodsService {
     }
   }
 
+  // Read a podcast's feed again now and take its current details (name,
+  // artwork, author, description, website). [resetEdits] also drops the
+  // user's own edits to them. Throws with the server's message on failure.
+  Future<void> refreshPodcastDetails(int podcastId, {bool resetEdits = false}) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/refresh_podcast_details');
+    // Reading a slow feed can take longer than an ordinary request.
+    final response = await _client
+        .post(
+          url,
+          headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+          body: jsonEncode({'podcast_id': podcastId, 'reset_edits': resetEdits}),
+        )
+        .timeout(const Duration(seconds: 90));
+    if (response.statusCode != 200) {
+      String message = 'HTTP ${response.statusCode}';
+      try {
+        message = (jsonDecode(response.body) as Map<String, dynamic>)['message'] as String? ?? message;
+      } catch (_) {}
+      throw Exception(message);
+    }
+  }
+
   // Get a podcast's favorite status.
   Future<bool> getPodcastFavoriteStatus(int podcastId, int userId) async {
     if (_server == null || _apiKey == null) {

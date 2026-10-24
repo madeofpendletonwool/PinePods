@@ -68,6 +68,9 @@ class PinepodsPodcastDetails extends StatefulWidget {
 
 class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   final PinepodsService _pinepodsService = PinepodsService();
+  // The podcast as shown; replaced when its details are read from the feed again.
+  late UnifiedPinepodsPodcast _podcast = widget.podcast;
+  bool _isRefreshingDetails = false;
   bool _isLoading = false;
   bool _isFollowing = false;
   bool _isFollowButtonLoading = false;
@@ -134,7 +137,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   Future<void> _loadSortPreference() async {
     final prefs = await SharedPreferences.getInstance();
     // Use podcast URL as key for per-podcast sort preference
-    final key = 'episode_sort_${widget.podcast.url.hashCode}';
+    final key = 'episode_sort_${_podcast.url.hashCode}';
     final savedSort = prefs.getString(key);
     if (savedSort != null && mounted) {
       setState(() {
@@ -164,7 +167,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 
   Future<void> _loadAutoDownloadPreference() async {
-    final podcastId = widget.podcast.id;
+    final podcastId = _podcast.id;
     if (podcastId <= 0) return;
     final prefs = await SharedPreferences.getInstance();
     if (mounted) {
@@ -175,7 +178,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 
   Future<void> _toggleAutoDownload() async {
-    final podcastId = widget.podcast.id;
+    final podcastId = _podcast.id;
     if (podcastId <= 0) return;
     final prefs = await SharedPreferences.getInstance();
     final newValue = !_isAutoDownloadEnabled;
@@ -200,7 +203,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 
   Future<void> _loadAutoPlayNextPreference() async {
-    final podcastId = widget.podcast.id;
+    final podcastId = _podcast.id;
     if (podcastId <= 0) return;
 
     try {
@@ -220,8 +223,54 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     }
   }
 
+  // Read the feed again so a rebrand (new name, artwork, hosts) shows now.
+  Future<void> _refreshDetails() async {
+    final podcastId = _podcast.id;
+    if (podcastId <= 0) return;
+    final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    final userId = settings.pinepodsUserId;
+    if (settings.pinepodsServer == null || settings.pinepodsApiKey == null || userId == null) return;
+    setState(() => _isRefreshingDetails = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+      await _pinepodsService.refreshPodcastDetails(podcastId);
+      final d = await _pinepodsService.getPodcastDetailsById(podcastId, userId);
+      if (!mounted) return;
+      if (d != null) {
+        final p = _podcast;
+        setState(() {
+          _podcast = UnifiedPinepodsPodcast(
+            id: p.id,
+            indexId: p.indexId,
+            title: d['podcastname'] as String? ?? p.title,
+            url: p.url,
+            originalUrl: p.originalUrl,
+            link: d['websiteurl'] as String? ?? p.link,
+            description: d['description'] as String? ?? p.description,
+            author: d['author'] as String? ?? p.author,
+            ownerName: p.ownerName,
+            image: d['artworkurl'] as String? ?? p.image,
+            artwork: d['artworkurl'] as String? ?? p.artwork,
+            lastUpdateTime: p.lastUpdateTime,
+            categories: p.categories,
+            explicit: p.explicit,
+            episodeCount: d['episodecount'] as int? ?? p.episodeCount,
+          );
+        });
+        _resolveArtColor();
+      }
+      await _loadPodcastFeed();
+      messenger.showSnackBar(const SnackBar(content: Text('Podcast details refreshed from the feed')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text("Couldn't refresh from the feed: $e")));
+    } finally {
+      if (mounted) setState(() => _isRefreshingDetails = false);
+    }
+  }
+
   Future<void> _toggleAutoPlayNext() async {
-    final podcastId = widget.podcast.id;
+    final podcastId = _podcast.id;
     if (podcastId <= 0) return;
 
     final newValue = !_isAutoPlayNextEnabled;
@@ -265,7 +314,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
   // Load AI availability + the three per-podcast AI toggles (#726/#790).
   Future<void> _loadAiPreferences() async {
-    final podcastId = widget.podcast.id;
+    final podcastId = _podcast.id;
     if (podcastId <= 0) return;
     try {
       final settings =
@@ -308,7 +357,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   // Persist one AI toggle; returns whether it succeeded. Updates widget state
   // so the bottom sheet and header reflect the new value after it closes.
   Future<bool> _setAiToggle(String which, bool value) async {
-    final podcastId = widget.podcast.id;
+    final podcastId = _podcast.id;
     if (podcastId <= 0) return false;
     try {
       final settings =
@@ -425,7 +474,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   /// The server's download settings for this podcast: auto-download to the
   /// server, delete when finished, and delete after a number of days.
   Future<void> _showServerDownloadsSheet() async {
-    final podcastId = widget.podcast.id;
+    final podcastId = _podcast.id;
     final settings =
         Provider.of<SettingsBloc>(context, listen: false).currentSettings;
     final userId = settings.pinepodsUserId;
@@ -560,7 +609,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   /// This device's download settings for this podcast: auto-download new
   /// episodes, delete when finished, and delete after a number of days.
   Future<void> _showDeviceDownloadsSheet() async {
-    final podcastId = widget.podcast.id;
+    final podcastId = _podcast.id;
     if (podcastId <= 0) return;
     final settings =
         Provider.of<SettingsBloc>(context, listen: false).currentSettings;
@@ -666,7 +715,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
   Future<void> _saveSortPreference() async {
     final prefs = await SharedPreferences.getInstance();
-    final key = 'episode_sort_${widget.podcast.url.hashCode}';
+    final key = 'episode_sort_${_podcast.url.hashCode}';
     String value;
     switch (_sortDirection) {
       case EpisodeSortDirection.newestFirst:
@@ -783,8 +832,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
     try {
       // If we have a valid podcast ID (> 0), assume it's followed since we got it from episode metadata
-      if (widget.podcast.id > 0 && widget.isFollowing) {
-        print('Using podcast ID ${widget.podcast.id} - assuming followed');
+      if (_podcast.id > 0 && widget.isFollowing) {
+        print('Using podcast ID ${_podcast.id} - assuming followed');
         setState(() {
           _isFollowing = true;
         });
@@ -792,10 +841,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         return;
       }
 
-      print('Checking follow status for: ${widget.podcast.title}');
+      print('Checking follow status for: ${_podcast.title}');
       final isFollowing = await _pinepodsService.checkPodcastExists(
-        widget.podcast.title,
-        widget.podcast.url,
+        _podcast.title,
+        _podcast.url,
         userId,
       );
       
@@ -813,7 +862,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 
   Future<void> _checkFavoriteStatus() async {
-    final podcastId = widget.podcast.id;
+    final podcastId = _podcast.id;
     if (podcastId <= 0) return;
 
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
@@ -842,7 +891,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 
   Future<void> _toggleFavorite() async {
-    final podcastId = widget.podcast.id;
+    final podcastId = _podcast.id;
     if (podcastId <= 0 || _isFavoriteLoading) return;
 
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
@@ -889,11 +938,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   // Convert Episode objects to PinepodsEpisode objects
   PinepodsEpisode _convertEpisodeToPinepodsEpisode(Episode episode) {
     return PinepodsEpisode(
-      podcastName: episode.podcast ?? widget.podcast.title,
+      podcastName: episode.podcast ?? _podcast.title,
       episodeTitle: episode.title ?? '',
       episodePubDate: episode.publicationDate?.toIso8601String() ?? '',
       episodeDescription: episode.description ?? '',
-      episodeArtwork: episode.imageUrl ?? widget.podcast.artwork,
+      episodeArtwork: episode.imageUrl ?? _podcast.artwork,
       episodeUrl: episode.contentUrl ?? '',
       episodeDuration: episode.duration,
       listenDuration: 0, // RSS episodes don't have listen duration
@@ -921,20 +970,20 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       
       if (_isFollowing && userId != null) {
         try {
-          print('Loading episodes for followed podcast: ${widget.podcast.title}');
+          print('Loading episodes for followed podcast: ${_podcast.title}');
           
           int? podcastId;
           
           // If we already have a podcast ID (from episode metadata), use it directly
-          if (widget.podcast.id > 0) {
-            podcastId = widget.podcast.id;
+          if (_podcast.id > 0) {
+            podcastId = _podcast.id;
             print('Using existing podcast ID: $podcastId');
           } else {
             // Get the actual podcast ID using the dedicated endpoint
             podcastId = await _pinepodsService.getPodcastId(
               userId,
-              widget.podcast.url,
-              widget.podcast.title,
+              _podcast.url,
+              _podcast.title,
             );
             print('Got podcast ID from lookup: $podcastId');
           }
@@ -949,14 +998,14 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             // If server has no episodes, this podcast may need episode sync
             if (episodes.isEmpty) {
               print('Server has no episodes for subscribed podcast. This should not happen.');
-              print('Podcast ID: $podcastId, Title: ${widget.podcast.title}');
+              print('Podcast ID: $podcastId, Title: ${_podcast.title}');
               
               // For subscribed podcasts, we should NOT fall back to RSS
               // The server should have episodes. This indicates a server-side sync issue.
               // Fall back to RSS ONLY as emergency backup, but episodes won't be clickable
               try {
                 final podcastService = Provider.of<PodcastService>(context, listen: false);
-                final rssPodcast = Podcast.fromUrl(url: widget.podcast.url);
+                final rssPodcast = Podcast.fromUrl(url: _podcast.url);
                 
                 final loadedPodcast = await podcastService.loadPodcast(podcast: rssPodcast);
                 
@@ -979,11 +1028,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         }
       } else {
         try {
-          print('Loading episodes from RSS feed for non-followed podcast: ${widget.podcast.url}');
+          print('Loading episodes from RSS feed for non-followed podcast: ${_podcast.url}');
           
           // Use the existing podcast service to parse RSS feed
           final podcastService = Provider.of<PodcastService>(context, listen: false);
-          final rssePodcast = Podcast.fromUrl(url: widget.podcast.url);
+          final rssePodcast = Podcast.fromUrl(url: _podcast.url);
           
           final loadedPodcast = await podcastService.loadPodcast(podcast: rssePodcast);
           
@@ -1076,7 +1125,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         builder: (context) => AlertDialog(
           title: const Text('Unfollow Podcast'),
           content: Text(
-            'Are you sure you want to unfollow "${widget.podcast.title}"?\n\nThis will remove the podcast and all episode history from your library.',
+            'Are you sure you want to unfollow "${_podcast.title}"?\n\nThis will remove the podcast and all episode history from your library.',
           ),
           actions: [
             TextButton(
@@ -1112,8 +1161,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (oldFollowingState) {
         print('PinePods: Attempting to remove podcast');
         success = await _pinepodsService.removePodcast(
-          widget.podcast.title,
-          widget.podcast.url,
+          _podcast.title,
+          _podcast.url,
           userId,
         );
         print('PinePods: Remove podcast result: $success');
@@ -1128,7 +1177,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         }
       } else {
         print('PinePods: Attempting to add podcast');
-        success = await _pinepodsService.addPodcast(widget.podcast, userId);
+        success = await _pinepodsService.addPodcast(_podcast, userId);
         print('PinePods: Add podcast result: $success');
         if (success) {
           setState(() {
@@ -1575,7 +1624,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
     if (!settings.artworkAccentColors) return;
     final brightness = ThemeData.estimateBrightnessForColor(Theme.of(context).scaffoldBackgroundColor);
-    final url = widget.podcast.artwork;
+    final url = _podcast.artwork;
     _artColor = ArtworkColors.cached(url, null, brightness);
     if (_artColor != null) return;
     ArtworkColors.resolve(url, null, brightness).then((color) {
@@ -1641,7 +1690,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         duration: const Duration(milliseconds: 180),
                         child: child,
                       ),
-                      child: Text(widget.podcast.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      child: Text(_podcast.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                     ),
                   ),
                   SliverToBoxAdapter(child: _buildHeader(theme, accent, headerTint, bg)),
@@ -1658,10 +1707,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
   Widget _buildHeader(ThemeData theme, Color accent, Color headerTint, Color bg) {
     final muted = theme.hintColor;
-    final count = _episodes.isNotEmpty ? _episodes.length : widget.podcast.episodeCount;
+    final count = _episodes.isNotEmpty ? _episodes.length : _podcast.episodeCount;
     final meta = [
       if (count > 0) '$count episode${count == 1 ? '' : 's'}',
-      if (widget.podcast.explicit) 'Explicit',
+      if (_podcast.explicit) 'Explicit',
     ].join('  ·  ');
 
     return DecoratedBox(
@@ -1688,7 +1737,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     ],
                   ),
                   child: LazyNetworkImage(
-                    imageUrl: widget.podcast.artwork,
+                    imageUrl: _podcast.artwork,
                     width: 116,
                     height: 116,
                     borderRadius: BorderRadius.circular(14),
@@ -1700,15 +1749,15 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.podcast.title,
+                        _podcast.title,
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold, height: 1.2),
                       ),
-                      if (widget.podcast.author.isNotEmpty) ...[
+                      if (_podcast.author.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
-                          widget.podcast.author,
+                          _podcast.author,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleSmall!.copyWith(color: accent, fontWeight: FontWeight.w600),
@@ -1725,9 +1774,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             ),
             const SizedBox(height: 16),
             _buildActionRow(theme, accent),
-            if (widget.podcast.description.isNotEmpty) ...[
+            if (_podcast.description.isNotEmpty) ...[
               const SizedBox(height: 14),
-              _ExpandableDescription(description: widget.podcast.description, accent: accent),
+              _ExpandableDescription(description: _podcast.description, accent: accent),
             ],
             if (_credits.people.isNotEmpty || _peoplePodcastId != null) ...[
               const SizedBox(height: 16),
@@ -1796,7 +1845,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             onTap: _isFollowButtonLoading ? null : _toggleFollow,
           ),
         ],
-        if (widget.podcast.id > 0) ...[
+        if (_podcast.id > 0) ...[
           const SizedBox(width: 10),
           CircleAction(
             tooltip: _isFavorite ? 'Remove from favorites' : 'Add to favorites',
@@ -1834,10 +1883,13 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           case 'follow':
             _toggleFollow();
             break;
+          case 'refresh_details':
+            _refreshDetails();
+            break;
         }
       },
       itemBuilder: (context) => [
-        if (_isFollowing && widget.podcast.id > 0) ...[
+        if (_isFollowing && _podcast.id > 0) ...[
           const PopupMenuItem<String>(
             value: 'device_downloads',
             child: ListTile(
@@ -1858,6 +1910,15 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             value: 'autoplay',
             checked: _isAutoPlayNextEnabled,
             child: const Text('Auto-play next'),
+          ),
+          PopupMenuItem<String>(
+            value: 'refresh_details',
+            enabled: !_isRefreshingDetails,
+            child: const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(PhosphorIconsRegular.arrowsClockwise),
+              title: Text('Refresh from feed'),
+            ),
           ),
           if (_aiAvailable)
             const PopupMenuItem<String>(

@@ -6,6 +6,7 @@ pub mod auth;
 pub mod download_metadata;
 pub mod episode_aliases;
 pub mod feed_health;
+pub mod feed_metadata;
 pub mod feeds;
 pub mod http;
 pub mod people;

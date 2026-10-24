@@ -19,6 +19,7 @@ mod moved_feeds;
 mod opml;
 mod people;
 mod playback;
+mod podcast_details;
 mod podcasting20;
 mod podcasts;
 mod podping;
