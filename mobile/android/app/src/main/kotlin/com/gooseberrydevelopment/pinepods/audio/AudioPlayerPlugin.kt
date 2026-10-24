@@ -208,6 +208,12 @@ class AudioPlayerPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                     result.success(null)
                 }
 
+                "setVolume" -> {
+                    val volume = call.argument<Double>("volume") ?: 1.0
+                    mediaService?.setVolume(volume.toFloat())
+                    result.success(null)
+                }
+
                 "setVolumeBoost" -> {
                     val enabled = call.argument<Boolean>("enabled") ?: false
                     mediaService?.setVolumeBoost(enabled)

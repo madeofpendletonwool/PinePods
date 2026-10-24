@@ -8,7 +8,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
@@ -18,6 +20,9 @@ import 'package:pinepods_mobile/entities/sleep.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
+import 'package:pinepods_mobile/entities/transcript.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/podcast/person_avatar.dart';
@@ -492,16 +497,23 @@ class _ScrubBarState extends State<_ScrubBar> {
                   child: SizedBox(
                     height: 32,
                     width: width,
-                    child: CustomPaint(
-                      painter: _ScrubPainter(
-                        played: fraction,
-                        buffered: fractionOf(data?.buffered ?? Duration.zero),
-                        chapterMarks: chapterMarks,
-                        dragging: _dragFraction != null,
-                        accent: widget.accent,
-                        track: neutral.withOpacity(0.12),
-                        bufferedColor: neutral.withOpacity(0.24),
-                        gap: theme.scaffoldBackgroundColor,
+                    child: ValueListenableBuilder<List<({double start, double end})>>(
+                      valueListenable: _skippedAds,
+                      builder: (context, ads, _) => CustomPaint(
+                        painter: _ScrubPainter(
+                          played: fraction,
+                          buffered: fractionOf(data?.buffered ?? Duration.zero),
+                          chapterMarks: chapterMarks,
+                          adRanges: canSeek
+                              ? [for (final a in ads) (a.start * 1000 / lengthMs, a.end * 1000 / lengthMs)]
+                              : const [],
+                          dragging: _dragFraction != null,
+                          accent: widget.accent,
+                          track: neutral.withOpacity(0.12),
+                          bufferedColor: neutral.withOpacity(0.24),
+                          adColor: _adColor,
+                          gap: theme.scaffoldBackgroundColor,
+                        ),
                       ),
                     ),
                   ),
@@ -526,24 +538,37 @@ class _ScrubBarState extends State<_ScrubBar> {
   }
 }
 
+/// Skipped ads, as shown on the scrub bar and in the transcript.
+const _adColor = Color(0xFFF2A33A);
+
+/// The playing episode's skipped ad ranges, or none outside a tracked episode.
+ValueListenable<List<({double start, double end})>> get _skippedAds =>
+    GlobalServices.pinepodsAudioService?.skippedAds ?? ValueNotifier(const []);
+
 class _ScrubPainter extends CustomPainter {
   final double played;
   final double buffered;
   final List<double> chapterMarks;
+
+  /// Skipped ad ranges as (start, end) fractions of the episode.
+  final List<(double, double)> adRanges;
   final bool dragging;
   final Color accent;
   final Color track;
   final Color bufferedColor;
+  final Color adColor;
   final Color gap;
 
   _ScrubPainter({
     required this.played,
     required this.buffered,
     required this.chapterMarks,
+    required this.adRanges,
     required this.dragging,
     required this.accent,
     required this.track,
     required this.bufferedColor,
+    required this.adColor,
     required this.gap,
   });
 
@@ -558,6 +583,11 @@ class _ScrubPainter extends CustomPainter {
     canvas.drawRRect(bar(0, 1), Paint()..color = track);
     if (buffered > played) canvas.drawRRect(bar(0, buffered), Paint()..color = bufferedColor);
     canvas.drawRRect(bar(0, played), Paint()..color = accent);
+
+    final adPaint = Paint()..color = adColor.withOpacity(0.85);
+    for (final (start, end) in adRanges) {
+      canvas.drawRRect(bar(start.clamp(0.0, 1.0), end.clamp(0.0, 1.0)), adPaint);
+    }
 
     // Chapter boundaries as small gaps in the bar.
     final gapPaint = Paint()..color = gap;
@@ -580,7 +610,8 @@ class _ScrubPainter extends CustomPainter {
       old.dragging != dragging ||
       old.accent != accent ||
       old.track != track ||
-      old.chapterMarks.length != chapterMarks.length;
+      old.chapterMarks.length != chapterMarks.length ||
+      old.adRanges.length != adRanges.length;
 }
 
 class _Transport extends StatelessWidget {
@@ -799,6 +830,17 @@ class _ActionRow extends StatelessWidget {
             icon: const Icon(PhosphorIconsRegular.listNumbers, size: 22),
             onTap: () => _showChaptersSheet(context),
           ),
+        ValueListenableBuilder<List<TranscriptCue>>(
+          valueListenable: _transcriptCues,
+          builder: (context, cues, _) => cues.isEmpty && !episode.hasTranscripts
+              ? const SizedBox.shrink()
+              : _Action(
+                  label: l.transcript_label,
+                  accent: accent,
+                  icon: const Icon(PhosphorIconsRegular.article, size: 22),
+                  onTap: () => _showTranscriptSheet(context, episode),
+                ),
+        ),
         _Action(
           label: l.up_next_queue_label,
           accent: accent,
@@ -1056,6 +1098,223 @@ class _ChapterListState extends State<_ChapterList> {
           },
         );
       },
+    );
+  }
+}
+
+/// The playing episode's AI transcript, or none outside a tracked episode.
+ValueListenable<List<TranscriptCue>> get _transcriptCues =>
+    GlobalServices.pinepodsAudioService?.transcriptCues ?? ValueNotifier(const []);
+
+void _showTranscriptSheet(BuildContext context, Episode episode) {
+  _showDraggableSheet(
+    context,
+    title: L.of(context)!.transcript_label,
+    builder: (context, controller) => _TranscriptList(controller: controller, episode: episode),
+  );
+}
+
+/// The transcript, following playback. Uses the server's AI transcript, else
+/// the feed's own (Podcast 2.0) transcript. Tap a line to play from it.
+class _TranscriptList extends StatefulWidget {
+  final ScrollController controller;
+  final Episode episode;
+
+  const _TranscriptList({required this.controller, required this.episode});
+
+  @override
+  State<_TranscriptList> createState() => _TranscriptListState();
+}
+
+class _TranscriptListState extends State<_TranscriptList> {
+  /// Rough row height, used to jump near a line before it has been built.
+  static const _estimatedRowHeight = 56.0;
+
+  List<TranscriptCue>? _cues;
+  bool _failed = false;
+  int _current = -1;
+  bool _follow = true;
+  final _currentKey = GlobalKey();
+  StreamSubscription<PositionState>? _positionSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    final ai = _transcriptCues.value;
+    if (ai.isNotEmpty) {
+      _cues = ai;
+    } else {
+      _loadFeedTranscript();
+    }
+
+    final audioBloc = Provider.of<AudioBloc>(context, listen: false);
+    _positionSubscription = audioBloc.playPosition?.listen((p) => _onPosition(p.position));
+    final now = audioBloc.playPosition?.valueOrNull?.position;
+    if (now != null) _onPosition(now, jump: true);
+  }
+
+  @override
+  void dispose() {
+    _positionSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadFeedTranscript() async {
+    final urls = widget.episode.transcriptUrls;
+    if (urls.isEmpty) {
+      setState(() => _failed = true);
+      return;
+    }
+    // Timed formats first; HTML has no timings.
+    final url = urls.firstWhere((u) => u.type != TranscriptFormat.html, orElse: () => urls.first);
+    try {
+      final transcript =
+          await Provider.of<PodcastService>(context, listen: false).loadTranscriptByUrl(transcriptUrl: url);
+      final cues = [
+        for (final s in transcript.subtitles)
+          if ((s.data ?? '').trim().isNotEmpty)
+            TranscriptCue(
+              start: s.start.inMilliseconds / 1000,
+              end: (s.end ?? s.start).inMilliseconds / 1000,
+              text: _plainText(s.data!),
+            ),
+      ];
+      if (!mounted) return;
+      setState(() {
+        _cues = cues;
+        _failed = cues.isEmpty;
+      });
+      final now = Provider.of<AudioBloc>(context, listen: false).playPosition?.valueOrNull?.position;
+      if (now != null) _onPosition(now, jump: true);
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  static String _plainText(String data) => data
+      .replaceAll('{{HTMLFULL}}', '')
+      .replaceAll(RegExp(r'<[^>]*>'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  void _onPosition(Duration position, {bool jump = false}) {
+    final cues = _cues;
+    if (cues == null || cues.isEmpty) return;
+    final seconds = position.inMilliseconds / 1000;
+    final index = cues.lastIndexWhere((c) => c.start <= seconds);
+    if (index == _current && !jump) return;
+    if (mounted) setState(() => _current = index);
+    if (_follow && index >= 0) _scrollToCurrent(jump: jump);
+  }
+
+  void _scrollToCurrent({bool jump = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.controller.hasClients) return;
+      final row = _currentKey.currentContext;
+      if (row != null) {
+        Scrollable.ensureVisible(row, alignment: 0.3, duration: Duration(milliseconds: jump ? 0 : 300));
+      } else {
+        // Not built yet: jump close to it, then settle on it next frame.
+        final max = widget.controller.position.maxScrollExtent;
+        widget.controller.jumpTo(((_current - 2) * _estimatedRowHeight).clamp(0.0, max));
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final settled = _currentKey.currentContext;
+          if (settled != null) Scrollable.ensureVisible(settled, alignment: 0.3);
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final audioBloc = Provider.of<AudioBloc>(context, listen: false);
+    final cues = _cues;
+
+    if (cues == null && !_failed) return const Center(child: CircularProgressIndicator());
+    if (cues == null || cues.isEmpty) {
+      return Center(
+        child: Text('No transcript available', style: theme.textTheme.bodyMedium!.copyWith(color: theme.hintColor)),
+      );
+    }
+
+    return Stack(
+      children: [
+        NotificationListener<UserScrollNotification>(
+          onNotification: (n) {
+            if (n.direction != ScrollDirection.idle && _follow) setState(() => _follow = false);
+            return false;
+          },
+          child: ValueListenableBuilder<List<({double start, double end})>>(
+            valueListenable: _skippedAds,
+            builder: (context, ads, _) => ListView.builder(
+              controller: widget.controller,
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 72),
+              itemCount: cues.length,
+              itemBuilder: (context, index) {
+                final cue = cues[index];
+                final current = index == _current;
+                final isAd = ads.any((a) => cue.start < a.end && cue.end > a.start);
+                return InkWell(
+                  key: current ? _currentKey : null,
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => audioBloc.transitionPosition(cue.start),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isAd ? _adColor.withOpacity(0.12) : null,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 52,
+                          child: Text(
+                            _formatTime(Duration(milliseconds: (cue.start * 1000).round())),
+                            style: theme.textTheme.bodySmall!.copyWith(
+                              color: theme.hintColor,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            cue.text,
+                            style: theme.textTheme.bodyLarge!.copyWith(
+                              height: 1.35,
+                              color: current ? theme.primaryColor : softNeutral(theme).withOpacity(0.8),
+                              fontWeight: current ? FontWeight.w600 : FontWeight.normal,
+                              fontStyle: isAd ? FontStyle.italic : FontStyle.normal,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        if (!_follow)
+          Positioned(
+            bottom: 16,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: FilterPill(
+                label: 'Follow along',
+                icon: PhosphorIconsRegular.arrowDown,
+                selected: true,
+                onTap: () {
+                  setState(() => _follow = true);
+                  _scrollToCurrent();
+                },
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

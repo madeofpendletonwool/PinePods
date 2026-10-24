@@ -5,7 +5,6 @@
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/sleep.dart';
 import 'package:pinepods_mobile/state/queue_event_state.dart';
-import 'package:pinepods_mobile/state/transcript_state_event.dart';
 import 'package:rxdart/rxdart.dart';
 
 enum AudioState {
@@ -125,10 +124,6 @@ abstract class AudioPlayerService {
   /// Call to toggle trim silence.
   Future<void> volumeBoost(bool boost);
 
-  Future<void> searchTranscript(String search);
-
-  Future<void> clearTranscript();
-
   void sleep(Sleep sleep);
 
   void setPlaylistContext(int? playlistId);
@@ -143,7 +138,6 @@ abstract class AudioPlayerService {
   ValueStream<double>? playbackSpeed;
   ValueStream<PositionState>? playPosition;
   ValueStream<Episode?>? episodeEvent;
-  Stream<TranscriptState>? transcriptEvent;
   Stream<int>? playbackError;
   Stream<QueueListState>? queueState;
   Stream<Sleep>? sleepStream;

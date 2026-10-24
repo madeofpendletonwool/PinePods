@@ -10,7 +10,6 @@ import 'package:pinepods_mobile/core/utils.dart';
 import 'package:pinepods_mobile/entities/downloadable.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/sleep.dart';
-import 'package:pinepods_mobile/entities/transcript.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/repository/repository.dart';
@@ -20,7 +19,6 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
 import 'package:pinepods_mobile/state/queue_event_state.dart';
-import 'package:pinepods_mobile/state/transcript_state_event.dart';
 import 'package:rxdart/rxdart.dart';
 
 class NativeAudioPlayerService extends AudioPlayerService {
@@ -52,7 +50,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
   bool _advanceInProgress = false;
 
   Episode? _currentEpisode;
-  Transcript? _currentTranscript;
 
   Timer? _localPositionTimer;
 
@@ -76,7 +73,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
   final _sleepTicker = Stream<int>.periodic(const Duration(milliseconds: 500), (count) => count).asBroadcastStream();
   final _playPosition = BehaviorSubject<PositionState>();
   final _episodeEvent = BehaviorSubject<Episode?>(sync: true);
-  final _transcriptEvent = BehaviorSubject<TranscriptState>(sync: true);
   final _playbackError = PublishSubject<int>();
   final _queueState = BehaviorSubject<QueueListState>();
   final _sleepState = BehaviorSubject<Sleep>();
@@ -369,10 +365,12 @@ class NativeAudioPlayerService extends AudioPlayerService {
       }
 
       // Check sleep timer
-      if (_sleep.type == SleepType.episode) {
+      if (_sleep.type == SleepType.episode || _sleep.type == SleepType.episodes) {
         _sleepEpisodesRemaining--;
         if (_sleepEpisodesRemaining <= 0) {
           log.info('Sleep timer triggered - episode count reached');
+          _sleep = Sleep(type: SleepType.none);
+          _sleepState.add(_sleep);
           // Don't suppress the stop that follows — we intend to hide the player.
           _handlingCompletion = false;
           stop();
@@ -788,45 +786,54 @@ class NativeAudioPlayerService extends AudioPlayerService {
     _stopLocalPositionSaver();
   }
 
+  /// How long a timed sleep fades the volume out before pausing.
+  static const _sleepFade = Duration(seconds: 8);
+
   @override
   void sleep(Sleep sleep) {
     log.info('sleep: ${sleep.type}');
     _sleep = sleep;
     _sleepState.add(sleep);
 
-    // Cancel existing timer
+    // Cancel existing timer, and undo any fade it had started.
     _sleepSubscription?.cancel();
     _sleepSubscription = null;
+    unawaited(_setVolume(1.0));
 
     if (sleep.type == SleepType.time) {
-      // Time-based sleep
+      // Time-based sleep, fading out over its last few seconds.
       _sleepSubscription = _sleepTicker.listen((_) {
-        if (DateTime.now().isAfter(sleep.endTime)) {
+        final remaining = sleep.endTime.difference(DateTime.now());
+        if (remaining <= Duration.zero) {
           log.info('Sleep timer triggered - time limit reached');
-          pause();
-          _sleepSubscription?.cancel();
+          unawaited(_endSleep());
+        } else if (remaining < _sleepFade) {
+          unawaited(_setVolume(remaining.inMilliseconds / _sleepFade.inMilliseconds));
         }
       });
     } else if (sleep.type == SleepType.episode || sleep.type == SleepType.episodes) {
-      // Episode-based sleep
-      _sleepEpisodesRemaining = sleep.episodeCount;
+      // Episode-based sleep: the current episode counts as the first.
+      _sleepEpisodesRemaining = sleep.type == SleepType.episode ? 1 : sleep.episodeCount;
     }
   }
 
-  @override
-  Future<void> searchTranscript(String search) async {
-    // Transcript search logic - just update the transcript
-    // The search filtering is handled by the UI/bloc layer
-    if (_currentTranscript == null) return;
-
-    _transcriptEvent.add(TranscriptUpdateState(
-      transcript: _currentTranscript!,
-    ));
+  /// The sleep timer ran out: pause, restore the volume for next time and
+  /// clear the timer.
+  Future<void> _endSleep() async {
+    _sleepSubscription?.cancel();
+    _sleepSubscription = null;
+    _sleep = Sleep(type: SleepType.none);
+    _sleepState.add(_sleep);
+    await pause();
+    await _setVolume(1.0);
   }
 
-  @override
-  Future<void> clearTranscript() async {
-    _transcriptEvent.add(TranscriptUnavailableState());
+  Future<void> _setVolume(double volume) async {
+    try {
+      await platform.invokeMethod('setVolume', {'volume': volume.clamp(0.0, 1.0)});
+    } catch (e) {
+      log.fine('Could not set volume: $e');
+    }
   }
 
   @override
@@ -997,7 +1004,12 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
       if (seconds >= startTime && seconds < endTime) {
         if (chapters[chapterPtr] != _currentEpisode!.currentChapter) {
+          final finishedChapter = _currentEpisode!.currentChapter != null;
           _currentEpisode!.currentChapter = chapters[chapterPtr];
+          if (finishedChapter && _sleep.type == SleepType.chapter) {
+            log.info('Sleep timer triggered - chapter ended');
+            unawaited(_endSleep());
+          }
           _episodeEvent.add(_currentEpisode!);
           break;
         }
@@ -1168,9 +1180,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
 
   @override
   ValueStream<Episode?> get episodeEvent => _episodeEvent.stream;
-
-  @override
-  Stream<TranscriptState> get transcriptEvent => _transcriptEvent.stream;
 
   @override
   Stream<int> get playbackError => _playbackError.stream;

@@ -1,6 +1,7 @@
 // lib/services/pinepods/pinepods_audio_service.dart
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:pinepods_mobile/entities/downloadable.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
@@ -13,6 +14,9 @@ import 'package:pinepods_mobile/services/offline/offline_action_queue.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:logging/logging.dart';
+
+/// An episode to play next, and how to play it.
+typedef _NextEpisode = ({PinepodsEpisode episode, int? playlistId, bool skipQueue});
 
 class PinepodsAudioService {
   final log = Logger('PinepodsAudioService');
@@ -43,6 +47,12 @@ class PinepodsAudioService {
   /// Best-effort now-playing reporter (cross-device awareness + remote control).
   /// Optional: a null service, or one that isn't connected, never affects playback.
   NowPlayingService? _nowPlayingService;
+
+  /// AI transcript lines for the playing episode; empty when it has none.
+  final ValueNotifier<List<TranscriptCue>> transcriptCues = ValueNotifier(const []);
+
+  /// Ad ranges (seconds) being skipped in the playing episode.
+  final ValueNotifier<List<({double start, double end})>> skippedAds = ValueNotifier(const []);
 
   /// Public getters used by the now-playing reporter.
   int? get currentEpisodeId => _currentEpisodeId;
@@ -171,6 +181,8 @@ class PinepodsAudioService {
       final knownPodcastId = pinepodsEpisode.podcastId;
       _currentPodcastId = knownPodcastId != null && knownPodcastId > 0 ? knownPodcastId : null;
       _currentAutoPlayNext = null;
+      transcriptCues.value = const [];
+      skippedAds.value = const [];
 
       // Is there a local download for this episode? If so we play the on-disk
       // file and tolerate the server being unreachable for everything else.
@@ -423,6 +435,15 @@ class PinepodsAudioService {
         }
       }
 
+      Future<void> loadTranscript() async {
+        try {
+          final transcript = await _pinepodsService.getEpisodeTranscript(episodeId, userId);
+          if (transcript != null && stillPlaying()) transcriptCues.value = transcript.cues;
+        } catch (e) {
+          log.fine('Could not load transcript (continuing): $e');
+        }
+      }
+
       Future<void> countPlay() async {
         try {
           await _pinepodsService.incrementPlayed(userId);
@@ -439,6 +460,7 @@ class PinepodsAudioService {
         refreshSkipSegments(episodeId, userId, podcastId),
         episodeDetails(),
         anchorInQueue(),
+        loadTranscript(),
         countPlay(),
       ]);
     } catch (e) {
@@ -457,6 +479,8 @@ class PinepodsAudioService {
     _currentEpisodeId = null;
     _currentPodcastId = null;
     _currentAutoPlayNext = null;
+    transcriptCues.value = const [];
+    skippedAds.value = const [];
     _currentEpisodeDuration = null;
     _currentTitle = pinepodsEpisode.episodeTitle;
     _currentArtwork = pinepodsEpisode.episodeArtwork;
@@ -540,12 +564,14 @@ class PinepodsAudioService {
       final adsFitNow = adAudio == null ||
           adAudio.fits(0, playingServerCopy: playingServerCopy);
 
-      Future<void> apply(List<Map<String, double>> ads) =>
-          _audioPlayerService.applyEpisodeSkipSegments(
-            silenceEnabled: trimSettings.enabled,
-            silenceRanges: silenceRanges,
-            adRanges: ads,
-          );
+      Future<void> apply(List<Map<String, double>> ads) {
+        skippedAds.value = [for (final a in ads) (start: a['start']!, end: a['end']!)];
+        return _audioPlayerService.applyEpisodeSkipSegments(
+          silenceEnabled: trimSettings.enabled,
+          silenceRanges: silenceRanges,
+          adRanges: ads,
+        );
+      }
 
       if (_currentEpisodeId != episodeId) return;
       await apply(adsFitNow ? adRanges : []);
@@ -599,6 +625,7 @@ class PinepodsAudioService {
       (_) {
         _safeUpdateEpisodePosition();
         _reportNowPlaying();
+        prefetchNextIfNearEnd();
       },
     );
 
@@ -755,6 +782,9 @@ class PinepodsAudioService {
   ///   2. Per-podcast auto-play-next (next episode of the same podcast)
   ///   3. Server-side queue (next queued episode)
   ///
+  /// The next episode is normally worked out shortly before the end (see
+  /// [prefetchNextIfNearEnd]), so the advance doesn't wait on those lookups.
+  ///
   /// Returns `true` if a next episode was started, `false` if there was nothing
   /// to play (so the caller can stop playback / hide the player). Every network
   /// call is guarded so a transient failure never leaves playback wedged.
@@ -778,11 +808,10 @@ class PinepodsAudioService {
       settings.pinepodsApiKey!,
     );
 
-    // Mark the finished episode completed on the server. On natural completion
-    // nothing else records the final state (periodic sync can be up to 15s
-    // stale), so do it explicitly to keep history/queue correct. Fire-and-forget
-    // — it doesn't influence which episode plays next, so don't make the user
-    // wait on it before playback resumes.
+    // Mark the finished episode completed on the server (which also drops it
+    // from the queue). On natural completion nothing else records the final
+    // state (periodic sync can be up to 15s stale), so do it explicitly.
+    // Fire-and-forget — it doesn't influence which episode plays next.
     unawaited(
       _pinepodsService.markEpisodeCompleted(episodeId, userId, _isYoutube).catchError((e) {
         log.fine('Could not mark episode completed (continuing): $e');
@@ -790,106 +819,96 @@ class PinepodsAudioService {
       }),
     );
 
+    final prefetch = _prefetch;
+    _prefetch = null;
+    final fresh = prefetch != null &&
+        prefetch.episodeId == episodeId &&
+        DateTime.now().difference(prefetch.at) < const Duration(minutes: 5);
+    final next = await (fresh ? prefetch.next : _resolveNext(episodeId, userId));
+
+    if (next == null) {
+      log.info('Nothing left to play - stopping playback');
+      return false;
+    }
+
+    try {
+      log.info('Auto-advancing to ${next.episode.episodeTitle}');
+      await playPinepodsEpisode(
+        pinepodsEpisode: next.episode,
+        resume: false,
+        playlistId: next.playlistId,
+        // Auto-play-next episodes shouldn't be added to the queue.
+        skipQueue: next.skipQueue,
+      );
+      return true;
+    } catch (e) {
+      log.warning('Failed to start the next episode: $e');
+      return false;
+    }
+  }
+
+  /// The next episode decided ahead of the end of [episodeId], with when.
+  ({int episodeId, DateTime at, Future<_NextEpisode?> next})? _prefetch;
+
+  /// Once the playing episode is within [prefetchLead] of its end, work out
+  /// what plays next so completion can start it straight away.
+  static const prefetchLead = Duration(seconds: 90);
+
+  @visibleForTesting
+  void prefetchNextIfNearEnd() {
+    final episodeId = _currentEpisodeId;
+    final userId = _currentUserId;
+    if (episodeId == null || userId == null || _prefetch?.episodeId == episodeId) return;
+    final position = _audioPlayerService.playPosition?.valueOrNull;
+    if (position == null || position.length <= Duration.zero) return;
+    if (position.length - position.position > prefetchLead) return;
+
+    log.fine('Resolving the episode after $episodeId ahead of its end');
+    _prefetch = (episodeId: episodeId, at: DateTime.now(), next: _resolveNext(episodeId, userId));
+  }
+
+  /// What plays after [episodeId]: playlist, then auto-play-next, then queue.
+  Future<_NextEpisode?> _resolveNext(int episodeId, int userId) async {
     // PRIORITY 1: Playlist continuation.
     final playlistId = _currentPlaylistId;
     if (playlistId != null) {
       try {
-        final next = await _pinepodsService.getNextPlaylistEpisode(
-          episodeId,
-          playlistId,
-          userId,
-        );
-        if (next != null) {
-          log.info('Auto-advancing to next playlist episode: ${next.episodeTitle}');
-          await playPinepodsEpisode(
-            pinepodsEpisode: next,
-            resume: false,
-            playlistId: playlistId,
-          );
-          return true;
-        }
-        // Playlist exhausted - clear the context and fall through.
-        log.info('Playlist exhausted, clearing playlist context');
-        _currentPlaylistId = null;
+        final next = await _pinepodsService.getNextPlaylistEpisode(episodeId, playlistId, userId);
+        if (next != null) return (episode: next, playlistId: playlistId, skipQueue: false);
+        log.info('Playlist exhausted, continuing outside it');
       } catch (e) {
         log.fine('Could not get next playlist episode (continuing): $e');
       }
     }
 
     // PRIORITY 2: Per-podcast auto-play-next. Uses what was learned when the
-    // episode started where possible, to keep the gap between episodes short.
+    // episode started where possible.
     try {
-      final podcastId = _currentPodcastId ??
-          await _pinepodsService.getPodcastIdFromEpisode(
-            episodeId,
-            userId,
-            _isYoutube,
-          );
-      final autoPlayNext = _currentAutoPlayNext ??
-          await _pinepodsService.getAutoPlayNextStatus(
-            podcastId,
-            userId,
-          );
+      final podcastId = _currentPodcastId ?? await _pinepodsService.getPodcastIdFromEpisode(episodeId, userId, _isYoutube);
+      final autoPlayNext = _currentAutoPlayNext ?? await _pinepodsService.getAutoPlayNextStatus(podcastId, userId);
       if (autoPlayNext) {
         final next = await _pinepodsService.getNextPodcastEpisode(episodeId, userId);
-        if (next != null) {
-          log.info('Auto-play-next enabled, playing next podcast episode: ${next.episodeTitle}');
-          await playPinepodsEpisode(
-            pinepodsEpisode: next,
-            resume: false,
-            // Auto-play-next episodes shouldn't be added to the queue.
-            skipQueue: true,
-          );
-          return true;
-        }
+        if (next != null) return (episode: next, playlistId: null, skipQueue: true);
         log.info('No next episode found in podcast, falling through to queue');
       }
     } catch (e) {
       log.fine('Could not evaluate auto-play-next (continuing): $e');
     }
 
-    // PRIORITY 3: Server-side queue.
+    // PRIORITY 3: Server-side queue. The backend returns it ORDER BY
+    // queueposition ASC, so the first entry that isn't the finishing episode
+    // (and isn't already completed) is next.
     try {
       final queued = await _pinepodsService.getQueuedEpisodes(userId);
-      log.info('Found ${queued.length} episodes in queue');
-
-      // Backend returns episodes ORDER BY queueposition ASC, so the first entry
-      // that isn't the just-finished episode (and isn't already completed) is
-      // next. Pick it locally so we don't need a second round-trip.
-      PinepodsEpisode? next;
       for (final ep in queued) {
         if (ep.episodeId != episodeId && !ep.completed) {
-          next = ep;
-          break;
+          return (episode: ep, playlistId: null, skipQueue: false);
         }
       }
-
-      // Drop the finished episode and any completed leftovers from the queue in
-      // the background so we don't block playback of the next episode on these
-      // round-trips.
-      for (final ep in queued) {
-        if (ep.episodeId == episodeId || ep.completed) {
-          unawaited(
-            _pinepodsService.removeQueuedEpisode(ep.episodeId, userId, ep.isYoutube).catchError((e) {
-              log.fine('Could not remove queued episode ${ep.episodeId}: $e');
-              return false;
-            }),
-          );
-        }
-      }
-
-      if (next == null) {
-        log.info('Queue empty after cleanup - stopping playback');
-        return false;
-      }
-
-      log.info('Auto-advancing to next queued episode: ${next.episodeTitle}');
-      await playPinepodsEpisode(pinepodsEpisode: next, resume: false);
-      return true;
     } catch (e) {
-      log.warning('Failed to advance from queue on completion: $e');
-      return false;
+      log.warning('Could not read the queue for the next episode: $e');
     }
+    return null;
   }
 
   /// Correct the server's stored episode duration to the real decoded length.

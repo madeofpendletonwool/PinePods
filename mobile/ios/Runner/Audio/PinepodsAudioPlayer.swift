@@ -11,6 +11,9 @@ class PinepodsAudioPlayer: NSObject {
     private var playerItem: AVPlayerItem?
     private var eventSink: FlutterEventSink?
     private var timeObserver: Any?
+    // Fires as playback reaches the start of a skip range, so it is skipped as
+    // it begins rather than at the next 1s tick.
+    private var skipBoundaryObserver: Any?
     private var remoteCommandManager: RemoteCommandManager?
     private var nowPlayingManager: NowPlayingManager?
 
@@ -173,6 +176,10 @@ class PinepodsAudioPlayer: NSObject {
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
             timeObserver = nil
+        }
+        if let observer = skipBoundaryObserver {
+            player?.removeTimeObserver(observer)
+            skipBoundaryObserver = nil
         }
 
         // Safely remove observers
@@ -538,6 +545,11 @@ class PinepodsAudioPlayer: NSObject {
         seek(toMilliseconds: newPosition)
     }
 
+    /// Player output volume (0-1), used to fade out at the end of a sleep timer.
+    func setVolume(_ volume: Float) {
+        player?.volume = max(0, min(1, volume))
+    }
+
     func setPlaybackSpeed(_ speed: Float) {
         NSLog("[PinepodsAudioPlayer] setPlaybackSpeed: \(speed)")
         playbackIntent.setRate(speed)
@@ -569,6 +581,19 @@ class PinepodsAudioPlayer: NSObject {
         skipSeekInFlight = false
         lastSkippedIndex = nil
         abandonedSkipIndices.removeAll()
+
+        if let observer = skipBoundaryObserver {
+            player?.removeTimeObserver(observer)
+            skipBoundaryObserver = nil
+        }
+        guard let player = player, !ranges.isEmpty else { return }
+        let times = ranges.map {
+            NSValue(time: CMTime(seconds: $0.start + 0.05, preferredTimescale: CMTimeScale(NSEC_PER_SEC)))
+        }
+        skipBoundaryObserver = player.addBoundaryTimeObserver(forTimes: times, queue: .main) { [weak self] in
+            guard let self = self, let now = self.player?.currentTime(), now.isValid else { return }
+            self.applySilenceSkipIfNeeded(at: now.seconds)
+        }
     }
 
     /// Called from the 1s periodic observer: if the playhead is inside a skip

@@ -129,6 +129,11 @@ public class AudioPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             player.rewind(milliseconds: milliseconds)
             result(nil)
 
+        case "setVolume":
+            let volume = (call.arguments as? [String: Any])?["volume"] as? Double ?? 1.0
+            player.setVolume(Float(volume))
+            result(nil)
+
         case "setPlaybackSpeed":
             if let args = call.arguments as? [String: Any],
                let speed = args["speed"] as? Double {
