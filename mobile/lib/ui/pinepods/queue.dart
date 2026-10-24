@@ -13,6 +13,7 @@ import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:pinepods_mobile/ui/utils/position_utils.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PinepodsQueue extends StatefulWidget {
   const PinepodsQueue({Key? key}) : super(key: key);
@@ -655,7 +656,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  Icons.error_outline,
+                  PhosphorIconsRegular.warningCircle,
                   color: Theme.of(context).colorScheme.error,
                   size: 48,
                 ),
@@ -686,7 +687,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.queue_music_outlined,
+                PhosphorIconsRegular.queue,
                 size: 64,
                 color: Colors.grey,
               ),
@@ -743,7 +744,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
                     ),
                     const SizedBox(width: 8),
                     IconButton(
-                      icon: const Icon(Icons.refresh),
+                      icon: const Icon(PhosphorIconsRegular.arrowClockwise),
                       onPressed: _refresh,
                     ),
                   ],

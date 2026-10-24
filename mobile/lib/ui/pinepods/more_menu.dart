@@ -4,6 +4,7 @@ import 'package:pinepods_mobile/ui/library/downloads.dart';
 import 'package:pinepods_mobile/ui/settings/settings.dart';
 import 'package:pinepods_mobile/ui/pinepods/saved.dart';
 import 'package:pinepods_mobile/ui/pinepods/history.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PinepodsMoreMenu extends StatelessWidget {
   // Constructor with optional key parameter
@@ -29,7 +30,7 @@ class PinepodsMoreMenu extends StatelessWidget {
               _buildMenuItem(
                 context,
                 'Downloads',
-                Icons.download_outlined,
+                PhosphorIconsRegular.downloadSimple,
                     () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -46,7 +47,7 @@ class PinepodsMoreMenu extends StatelessWidget {
               _buildMenuItem(
                 context,
                 'Saved Episodes',
-                Icons.bookmark_outline,
+                PhosphorIconsRegular.bookmarkSimple,
                     () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -63,7 +64,7 @@ class PinepodsMoreMenu extends StatelessWidget {
               _buildMenuItem(
                 context,
                 'History',
-                Icons.history,
+                PhosphorIconsRegular.clockCounterClockwise,
                     () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -80,7 +81,7 @@ class PinepodsMoreMenu extends StatelessWidget {
               _buildMenuItem(
                 context,
                 'Settings',
-                Icons.settings_outlined,
+                PhosphorIconsRegular.gear,
                     () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -108,7 +109,7 @@ class PinepodsMoreMenu extends StatelessWidget {
       child: ListTile(
         leading: Icon(icon),
         title: Text(title),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        trailing: const Icon(PhosphorIconsRegular.caretRight, size: 16),
         onTap: onTap,
       ),
     );

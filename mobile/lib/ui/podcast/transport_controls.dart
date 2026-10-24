@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dialogs/flutter_dialogs.dart';
 import 'package:provider/provider.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Handles the state of the episode transport controls.
 ///
@@ -61,14 +62,14 @@ class PlayControl extends StatelessWidget {
                       child: PlayPauseButton(
                         title: episode.title!,
                         label: L.of(context)!.pause_button_label,
-                        icon: Icons.pause,
+                        icon: PhosphorIconsFill.pause,
                       ),
                     );
                   } else if (audioState == AudioState.buffering) {
                     return PlayPauseBusyButton(
                       title: episode.title!,
                       label: L.of(context)!.pause_button_label,
-                      icon: Icons.pause,
+                      icon: PhosphorIconsFill.pause,
                     );
                   } else if (audioState == AudioState.pausing) {
                     return InkWell(
@@ -79,7 +80,7 @@ class PlayControl extends StatelessWidget {
                       child: PlayPauseButton(
                         title: episode.title!,
                         label: L.of(context)!.play_button_label,
-                        icon: Icons.play_arrow,
+                        icon: PhosphorIconsFill.play,
                       ),
                     );
                   }
@@ -95,7 +96,7 @@ class PlayControl extends StatelessWidget {
                   child: PlayPauseButton(
                     title: episode.title!,
                     label: L.of(context)!.play_button_label,
-                    icon: Icons.play_arrow,
+                    icon: PhosphorIconsFill.play,
                   ),
                 );
               } else {
@@ -106,7 +107,7 @@ class PlayControl extends StatelessWidget {
                   child: PlayPauseButton(
                     title: episode.title!,
                     label: L.of(context)!.play_button_label,
-                    icon: Icons.play_arrow,
+                    icon: PhosphorIconsFill.play,
                   ),
                 );
               }
@@ -122,7 +123,7 @@ class PlayControl extends StatelessWidget {
                   child: PlayPauseButton(
                     title: episode.title!,
                     label: L.of(context)!.play_button_label,
-                    icon: Icons.play_arrow,
+                    icon: PhosphorIconsFill.play,
                   ),
                 );
               } else {
@@ -131,7 +132,7 @@ class PlayControl extends StatelessWidget {
                   child: PlayPauseButton(
                     title: episode.title!,
                     label: L.of(context)!.play_button_label,
-                    icon: Icons.play_arrow,
+                    icon: PhosphorIconsFill.play,
                   ),
                 );
               }
@@ -174,7 +175,7 @@ class DownloadControl extends StatelessWidget {
                     child: DownloadButton(
                       onPressed: () => podcastBloc.downloadEpisode(episode),
                       title: episode.title!,
-                      icon: Icons.save_alt,
+                      icon: PhosphorIconsRegular.downloadSimple,
                       percent: 0,
                       label: L.of(context)!.download_episode_button_label,
                     ),
@@ -185,7 +186,7 @@ class DownloadControl extends StatelessWidget {
                     child: DownloadButton(
                       onPressed: () => podcastBloc.downloadEpisode(episode),
                       title: episode.title!,
-                      icon: Icons.check,
+                      icon: PhosphorIconsRegular.check,
                       percent: 0,
                       label: L.of(context)!.download_episode_button_label,
                     ),
@@ -198,7 +199,7 @@ class DownloadControl extends StatelessWidget {
               return DownloadButton(
                 onPressed: () => podcastBloc.downloadEpisode(episode),
                 title: episode.title!,
-                icon: Icons.check,
+                icon: PhosphorIconsRegular.check,
                 percent: 0,
                 label: L.of(context)!.download_episode_button_label,
               );
@@ -206,7 +207,7 @@ class DownloadControl extends StatelessWidget {
               return DownloadButton(
                 onPressed: () => _showCancelDialog(context),
                 title: episode.title!,
-                icon: Icons.timer_outlined,
+                icon: PhosphorIconsRegular.timer,
                 percent: 0,
                 label: L.of(context)!.download_episode_button_label,
               );
@@ -214,7 +215,7 @@ class DownloadControl extends StatelessWidget {
               return DownloadButton(
                 onPressed: () => _showCancelDialog(context),
                 title: episode.title!,
-                icon: Icons.timer_outlined,
+                icon: PhosphorIconsRegular.timer,
                 percent: episode.downloadPercentage!,
                 label: L.of(context)!.download_episode_button_label,
               );
@@ -223,7 +224,7 @@ class DownloadControl extends StatelessWidget {
             return DownloadButton(
               onPressed: () => podcastBloc.downloadEpisode(episode),
               title: episode.title!,
-              icon: Icons.save_alt,
+              icon: PhosphorIconsRegular.downloadSimple,
               percent: 0,
               label: L.of(context)!.download_episode_button_label,
             );

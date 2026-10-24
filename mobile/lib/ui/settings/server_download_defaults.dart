@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class ServerDownloadDefaults extends StatefulWidget {
   const ServerDownloadDefaults({super.key});
@@ -63,7 +64,7 @@ class _ServerDownloadDefaultsState extends State<ServerDownloadDefaults> {
       children: [
         MergeSemantics(
           child: ListTile(
-            leading: const Icon(Icons.done_all),
+            leading: const Icon(PhosphorIconsRegular.checks),
             title: const Text('Delete server downloads when finished'),
             subtitle: const Text(
                 "Remove an episode's server download about an hour after you "
@@ -81,7 +82,7 @@ class _ServerDownloadDefaultsState extends State<ServerDownloadDefaults> {
         ),
         MergeSemantics(
           child: ListTile(
-            leading: const Icon(Icons.auto_delete_outlined),
+            leading: const Icon(PhosphorIconsRegular.clockCountdown),
             title: const Text('Delete server downloads after'),
             subtitle: const Text('Remove server downloads older than this.'),
             trailing: DropdownButton<int>(

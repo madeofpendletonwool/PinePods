@@ -12,6 +12,7 @@ import 'package:pinepods_mobile/ui/widgets/speed_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Builds a transport control bar for rewind, play and fast-forward.
 /// See [NowPlaying].
@@ -48,7 +49,7 @@ class _PlayerTransportControlsState extends State<PlayerTransportControls> {
                   tooltip: L.of(context)!.rewind_button_label,
                   padding: const EdgeInsets.all(0.0),
                   icon: const Icon(
-                    Icons.replay_10,
+                    PhosphorIconsRegular.clockCounterClockwise,
                     size: 48.0,
                   ),
                 ),
@@ -60,7 +61,7 @@ class _PlayerTransportControlsState extends State<PlayerTransportControls> {
                   tooltip: L.of(context)!.fast_forward_button_label,
                   padding: const EdgeInsets.all(0.0),
                   icon: const Icon(
-                    Icons.forward_30,
+                    PhosphorIconsRegular.clockClockwise,
                     size: 48.0,
                   ),
                 ),

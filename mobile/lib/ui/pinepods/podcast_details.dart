@@ -23,12 +23,12 @@ import 'package:pinepods_mobile/ui/pinepods/people/people_widgets.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
-import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 // Sort direction for episodes within a podcast
 enum EpisodeSortDirection {
@@ -1529,7 +1529,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                             return Container(
                               color: Colors.grey[300],
                               child: const Icon(
-                                Icons.music_note,
+                                PhosphorIconsRegular.musicNote,
                                 size: 80,
                                 color: Colors.grey,
                               ),
@@ -1539,7 +1539,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                       : Container(
                           color: Colors.grey[300],
                           child: const Icon(
-                            Icons.music_note,
+                            PhosphorIconsRegular.musicNote,
                             size: 80,
                             color: Colors.grey,
                           ),
@@ -1574,7 +1574,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                           ),
                         )
                       : Icon(
-                          _isFavorite ? Icons.star : Icons.star_border,
+                          _isFavorite ? PhosphorIconsFill.star : PhosphorIconsRegular.star,
                           color: _isFavorite ? Colors.amber : _headerIconColor(context),
                         ),
                   tooltip: _isFavorite
@@ -1582,7 +1582,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                       : 'Add to favorites',
                 ),
               PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert, color: _headerIconColor(context)),
+                icon: Icon(PhosphorIconsRegular.dotsThreeVertical, color: _headerIconColor(context)),
                 tooltip: 'Podcast options',
                 onSelected: (value) {
                   switch (value) {
@@ -1614,7 +1614,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                       value: 'server_downloads',
                       child: ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.dns_outlined),
+                        leading: Icon(PhosphorIconsRegular.hardDrives),
                         title: Text('Server downloads'),
                       ),
                     ),
@@ -1628,7 +1628,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         value: 'ai',
                         child: ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.auto_awesome),
+                          leading: Icon(PhosphorIconsRegular.sparkle),
                           title: Text('AI features'),
                         ),
                       ),
@@ -1639,7 +1639,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     enabled: !_isFollowButtonLoading,
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(_isFollowing ? Icons.remove_circle_outline : Icons.add_circle_outline),
+                      leading: Icon(_isFollowing ? PhosphorIconsRegular.minusCircle : PhosphorIconsRegular.plusCircle),
                       title: Text(_isFollowing ? 'Unfollow' : 'Follow'),
                     ),
                   ),
@@ -1691,7 +1691,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   Row(
                     children: [
                       Icon(
-                        Icons.mic,
+                        PhosphorIconsRegular.microphone,
                         size: 16,
                         color: Colors.grey[600],
                       ),
@@ -1786,7 +1786,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   child: Column(
                     children: [
                       Icon(
-                        Icons.error_outline,
+                        PhosphorIconsRegular.warningCircle,
                         size: 64,
                         color: Colors.red[300],
                       ),
@@ -1814,7 +1814,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   child: Column(
                     children: [
                       Icon(
-                        Icons.info_outline,
+                        PhosphorIconsRegular.info,
                         size: 64,
                         color: Colors.blue[300],
                       ),
@@ -1835,7 +1835,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                       const SizedBox(height: 16),
                       ElevatedButton.icon(
                         onPressed: _isFollowing ? _loadPodcastFeed : _toggleFollow,
-                        icon: Icon(_isFollowing ? Icons.refresh : Icons.add),
+                        icon: Icon(_isFollowing ? PhosphorIconsRegular.arrowClockwise : PhosphorIconsRegular.plus),
                         label: Text(_isFollowing ? 'Retry' : 'Follow'),
                       ),
                     ],
@@ -1871,8 +1871,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         final isAudioActive = audioState != AudioState.none &&
             audioState != AudioState.stopped;
 
+        // The shell's mini player takes over once audio is active.
         if (isAudioActive) {
-          return const MiniPlayer();
+          return const SizedBox.shrink();
         } else if (_pendingEpisode != null) {
           return _PendingMiniPlayer(episode: _pendingEpisode!);
         }
@@ -1897,10 +1898,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: 'Search episodes...',
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
                       suffixIcon: _searchQuery.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.clear),
+                              icon: const Icon(PhosphorIconsRegular.x),
                               onPressed: () {
                                 _searchController.clear();
                               },
@@ -1927,7 +1928,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<EpisodeSortDirection>(
                       value: _sortDirection,
-                      icon: const Icon(Icons.sort),
+                      icon: const Icon(PhosphorIconsRegular.sortAscending),
                       items: const [
                         DropdownMenuItem(
                           value: EpisodeSortDirection.newestFirst,
@@ -1979,7 +1980,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   // Clear all filters chip
                   _buildFilterChip(
                     label: 'Clear All',
-                    icon: Icons.clear_all,
+                    icon: PhosphorIconsRegular.broom,
                     isActive: false,
                     onTap: () {
                       setState(() {
@@ -2020,7 +2021,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   // In Progress filter chip
                   _buildFilterChip(
                     label: 'In Progress',
-                    icon: Icons.play_circle_outline,
+                    icon: PhosphorIconsRegular.playCircle,
                     isActive: _showInProgress,
                     onTap: () {
                       setState(() {
@@ -2055,11 +2056,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   IconData _getCompletedFilterIcon() {
     switch (_completedFilter) {
       case CompletedFilter.showAll:
-        return Icons.circle_outlined;
+        return PhosphorIconsRegular.circle;
       case CompletedFilter.showOnly:
-        return Icons.check_circle;
+        return PhosphorIconsFill.checkCircle;
       case CompletedFilter.hide:
-        return Icons.cancel;
+        return PhosphorIconsFill.xCircle;
     }
   }
 
@@ -2127,7 +2128,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.search_off,
+                PhosphorIconsRegular.magnifyingGlassMinus,
                 size: 64,
                 color: Theme.of(context).primaryColor,
               ),
@@ -2205,7 +2206,7 @@ class _FollowButton extends StatelessWidget {
             height: 16,
             child: CircularProgressIndicator(strokeWidth: 2, color: following ? accent : onAccent),
           )
-        : Icon(following ? Icons.check_rounded : Icons.add_rounded, size: 18);
+        : Icon(following ? PhosphorIconsBold.check : PhosphorIconsRegular.plus, size: 18);
 
     if (following) {
       return OutlinedButton.icon(
@@ -2332,14 +2333,14 @@ class _PendingMiniPlayerState extends State<_PendingMiniPlayer>
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) => Container(
                               color: theme.colorScheme.surfaceVariant,
-                              child: Icon(Icons.music_note,
+                              child: Icon(PhosphorIconsRegular.musicNote,
                                   size: 20,
                                   color: theme.colorScheme.onSurfaceVariant),
                             ),
                           )
                         : Container(
                             color: theme.colorScheme.surfaceVariant,
-                            child: Icon(Icons.music_note,
+                            child: Icon(PhosphorIconsRegular.musicNote,
                                 size: 20,
                                 color: theme.colorScheme.onSurfaceVariant),
                           ),
@@ -2425,8 +2426,8 @@ class _AdDownloadNotice extends StatelessWidget {
             children: [
               Icon(
                   serverAutoDownload
-                      ? Icons.check_circle_outline
-                      : Icons.warning_amber,
+                      ? PhosphorIconsRegular.checkCircle
+                      : PhosphorIconsRegular.warning,
                   size: 18,
                   color: color),
               const SizedBox(width: 8),
@@ -2455,7 +2456,7 @@ class _AdDownloadNotice extends StatelessWidget {
               if (!serverAutoDownload)
                 OutlinedButton.icon(
                   onPressed: onEnable,
-                  icon: const Icon(Icons.cloud_download_outlined, size: 18),
+                  icon: const Icon(PhosphorIconsRegular.cloudArrowDown, size: 18),
                   label: const Text('Turn on server auto-download'),
                 ),
               TextButton(

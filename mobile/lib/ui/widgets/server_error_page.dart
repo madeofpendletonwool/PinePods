@@ -1,5 +1,6 @@
 // lib/ui/widgets/server_error_page.dart
 import 'package:flutter/material.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class ServerErrorPage extends StatelessWidget {
   final String? errorMessage;
@@ -44,7 +45,7 @@ class ServerErrorPage extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Icon(
-                      Icons.podcasts,
+                      PhosphorIconsRegular.microphoneStage,
                       size: 64,
                       color: Theme.of(context).primaryColor,
                     ),
@@ -63,7 +64,7 @@ class ServerErrorPage extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: Icon(
-              Icons.cloud_off_rounded,
+              PhosphorIconsRegular.cloudSlash,
               size: 48,
               color: Theme.of(context).colorScheme.error,
             ),
@@ -109,7 +110,7 @@ class ServerErrorPage extends StatelessWidget {
                   Row(
                     children: [
                       Icon(
-                        Icons.info_outline,
+                        PhosphorIconsRegular.info,
                         size: 16,
                         color: Theme.of(context).colorScheme.error,
                       ),
@@ -153,7 +154,7 @@ class ServerErrorPage extends StatelessWidget {
                 Row(
                   children: [
                     Icon(
-                      Icons.lightbulb_outline,
+                      PhosphorIconsRegular.lightbulb,
                       size: 16,
                       color: Theme.of(context).colorScheme.primary,
                     ),
@@ -184,7 +185,7 @@ class ServerErrorPage extends StatelessWidget {
               width: double.infinity,
               child: FilledButton.icon(
                 onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
+                icon: const Icon(PhosphorIconsRegular.arrowClockwise),
                 label: const Text('Retry'),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),

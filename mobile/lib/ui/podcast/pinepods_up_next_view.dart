@@ -7,6 +7,7 @@ import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/ui/widgets/draggable_queue_episode_card.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// PinePods version of the Up Next queue that shows the server queue.
 ///
@@ -364,7 +365,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: 20),
                     child: const Icon(
-                      Icons.delete,
+                      PhosphorIconsRegular.trash,
                       color: Colors.white,
                     ),
                   ),

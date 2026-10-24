@@ -36,6 +36,7 @@ import 'package:pinepods_mobile/services/auto_download/mirror_download_service.d
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PinepodsHome extends StatefulWidget {
   const PinepodsHome({Key? key}) : super(key: key);
@@ -196,6 +197,13 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         _pinepodsService.getPlaylists(settings.pinepodsUserId!),
       ]);
 
+      // TEMP-SCREENSHOT-HOOK
+      final _tmp = (futures[0] as HomeOverview).inProgressEpisodes;
+      if (_tmp.isNotEmpty && const String.fromEnvironment('SHOT_EP').isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => Navigator.push(context, MaterialPageRoute(
+            builder: (context) => PinepodsEpisodeDetails(initialEpisode: _tmp[int.parse(const String.fromEnvironment('SHOT_EP'))].toPinepodsEpisode()))));
+      }
+      // END-TEMP-SCREENSHOT-HOOK
       setState(() {
         _homeData = futures[0] as HomeOverview;
         _playlistData = futures[1] as PlaylistResponse;
@@ -681,7 +689,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             ),
             child: Row(
               children: [
-                Icon(Icons.cloud_off, color: Colors.orange[800]),
+                Icon(PhosphorIconsRegular.cloudSlash, color: Colors.orange[800]),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -737,7 +745,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                   ...preview.map(
                     (e) => ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.download_done),
+                      leading: const Icon(PhosphorIconsRegular.checkCircle),
                       title: Text(
                         e.title ?? 'Untitled episode',
                         maxLines: 1,
@@ -750,7 +758,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                      trailing: const Icon(Icons.play_arrow),
+                      trailing: const Icon(PhosphorIconsFill.play),
                       onTap: () => _playLocalDownload(e),
                     ),
                   ),
@@ -761,7 +769,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: _goToDownloads,
-            icon: const Icon(Icons.download),
+            icon: const Icon(PhosphorIconsRegular.downloadSimple),
             label: const Text('Go to Downloads'),
           ),
           const SizedBox(height: 8),
@@ -770,7 +778,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               ConnectivityService.instance.refresh();
               _loadHomeContent();
             },
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(PhosphorIconsRegular.arrowClockwise),
             label: const Text('Retry connection'),
           ),
         ],
@@ -965,7 +973,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               child: _StatCard(
                 title: 'Saved',
                 count: _homeData!.savedCount,
-                icon: Icons.bookmark,
+                icon: PhosphorIconsFill.bookmarkSimple,
                 color: Colors.orange,
               ),
             ),
@@ -974,7 +982,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               child: _StatCard(
                 title: 'Downloaded',
                 count: _homeData!.downloadedCount,
-                icon: Icons.download,
+                icon: PhosphorIconsRegular.downloadSimple,
                 color: Colors.green,
               ),
             ),
@@ -983,7 +991,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               child: _StatCard(
                 title: 'Queue',
                 count: _homeData!.queueCount,
-                icon: Icons.queue_music,
+                icon: PhosphorIconsRegular.queue,
                 color: Colors.blue,
               ),
             ),
@@ -1113,7 +1121,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               child: _WeeklyStatCard(
                 title: 'Listened',
                 value: stats.formattedListened,
-                icon: Icons.headphones,
+                icon: PhosphorIconsRegular.headphones,
                 color: Colors.purple,
               ),
             ),
@@ -1122,7 +1130,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               child: _WeeklyStatCard(
                 title: 'Completed',
                 value: stats.episodesCompleted.toString(),
-                icon: Icons.check_circle,
+                icon: PhosphorIconsFill.checkCircle,
                 color: Colors.green,
               ),
             ),
@@ -1206,7 +1214,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         child: Column(
           children: [
             Icon(
-              Icons.podcasts_outlined,
+              PhosphorIconsRegular.microphoneStage,
               size: 64,
               color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
             ),
@@ -1424,7 +1432,7 @@ class _PodcastCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
-                      Icons.podcasts,
+                      PhosphorIconsRegular.microphoneStage,
                       size: 48,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -1564,15 +1572,15 @@ class _PlaylistCard extends StatelessWidget {
   IconData _getIconFromName(String iconName) {
     switch (iconName) {
       case 'ph-music-notes':
-        return Icons.music_note;
+        return PhosphorIconsRegular.musicNote;
       case 'ph-star':
-        return Icons.star;
+        return PhosphorIconsFill.star;
       case 'ph-clock':
-        return Icons.access_time;
+        return PhosphorIconsRegular.clock;
       case 'ph-heart':
-        return Icons.favorite;
+        return PhosphorIconsFill.heart;
       default:
-        return Icons.playlist_play;
+        return PhosphorIconsRegular.playlist;
     }
   }
 }

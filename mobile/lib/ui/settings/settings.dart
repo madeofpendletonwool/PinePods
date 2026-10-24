@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dialogs/flutter_dialogs.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This is the settings page and allows the user to select various
 /// options for the app.
@@ -79,7 +80,7 @@ class _SettingsState extends State<Settings> {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          const Icon(Icons.palette, size: 20),
+                          const Icon(PhosphorIconsRegular.palette, size: 20),
                           const SizedBox(width: 12),
                           Expanded(
                             child: DropdownButton<String>(
@@ -127,6 +128,41 @@ class _SettingsState extends State<Settings> {
                   ),
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Play button style', style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<String>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: 'ring', label: Text('Ring'), icon: Icon(PhosphorIconsRegular.circleNotch)),
+                          ButtonSegment(value: 'outline', label: Text('Outline'), icon: Icon(PhosphorIconsRegular.playCircle)),
+                          ButtonSegment(value: 'bare', label: Text('Bare'), icon: Icon(PhosphorIconsFill.play)),
+                          ButtonSegment(value: 'tinted', label: Text('Tinted'), icon: Icon(PhosphorIconsFill.playCircle)),
+                        ],
+                        selected: {snapshot.data!.playButtonStyle},
+                        onSelectionChanged: (s) => settingsBloc.setPlayButtonStyle(s.first),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              MergeSemantics(
+                child: ListTile(
+                  leading: const Icon(PhosphorIconsRegular.eyedropper),
+                  title: const Text('Artwork colours'),
+                  subtitle: const Text('Tint episode cards with a colour from each podcast\'s artwork'),
+                  trailing: Switch.adaptive(
+                    value: snapshot.data!.artworkAccentColors,
+                    onChanged: (value) => settingsBloc.setArtworkAccentColors(value),
+                  ),
+                ),
+              ),
               sdcard
                   ? MergeSemantics(
                       child: ListTile(
@@ -156,7 +192,7 @@ class _SettingsState extends State<Settings> {
               ListTile(
                 title: const Text('Reorganize Bottom Bar'),
                 subtitle: const Text('Customize the order of bottom navigation items'),
-                leading: const Icon(Icons.reorder),
+                leading: const Icon(PhosphorIconsRegular.list),
                 onTap: () {
                   Navigator.push(
                     context,
@@ -179,7 +215,7 @@ class _SettingsState extends State<Settings> {
               ),
               MergeSemantics(
                 child: ListTile(
-                  leading: const Icon(Icons.fast_forward),
+                  leading: const Icon(PhosphorIconsFill.fastForward),
                   title: const Text('Fast-forward interval'),
                   trailing: _buildIntervalDropdown(
                     context: context,
@@ -191,7 +227,7 @@ class _SettingsState extends State<Settings> {
               ),
               MergeSemantics(
                 child: ListTile(
-                  leading: const Icon(Icons.fast_rewind),
+                  leading: const Icon(PhosphorIconsFill.rewind),
                   title: const Text('Rewind interval'),
                   trailing: _buildIntervalDropdown(
                     context: context,
@@ -206,7 +242,7 @@ class _SettingsState extends State<Settings> {
               const Divider(),
               MergeSemantics(
                 child: ListTile(
-                  leading: const Icon(Icons.wifi),
+                  leading: const Icon(PhosphorIconsRegular.wifiHigh),
                   title: const Text('Auto-download on WiFi only'),
                   subtitle: const Text(
                       'Only run automatic downloads (auto-download, queue and mirror) while on WiFi'),
@@ -218,7 +254,7 @@ class _SettingsState extends State<Settings> {
               ),
               MergeSemantics(
                 child: ListTile(
-                  leading: const Icon(Icons.cloud_download),
+                  leading: const Icon(PhosphorIconsFill.cloudArrowDown),
                   title: const Text('Prefer server download source'),
                   subtitle: const Text(
                       'Download from the server\'s copy when available, else the original feed'),
@@ -230,7 +266,7 @@ class _SettingsState extends State<Settings> {
               ),
               MergeSemantics(
                 child: ListTile(
-                  leading: const Icon(Icons.playlist_add_check),
+                  leading: const Icon(PhosphorIconsRegular.listChecks),
                   title: const Text('Auto-download queued episodes'),
                   subtitle: const Text('Keep the next N queued episodes downloaded'),
                   trailing: _buildCountDropdown(
@@ -243,7 +279,7 @@ class _SettingsState extends State<Settings> {
               ),
               MergeSemantics(
                 child: ListTile(
-                  leading: const Icon(Icons.sync),
+                  leading: const Icon(PhosphorIconsRegular.arrowsClockwise),
                   title: const Text('Mirror server downloads'),
                   subtitle: const Text(
                       'Keep this device in sync with the episodes downloaded on the server'),
@@ -261,7 +297,7 @@ class _SettingsState extends State<Settings> {
               ListTile(
                 title: const Text('App Logs'),
                 subtitle: const Text('View debug logs and device information'),
-                leading: const Icon(Icons.bug_report),
+                leading: const Icon(PhosphorIconsRegular.bug),
                 onTap: () {
                   Navigator.push(
                     context,
@@ -357,7 +393,7 @@ class _SettingsState extends State<Settings> {
       navigationBar: CupertinoNavigationBar(
         padding: const EdgeInsetsDirectional.all(0.0),
         leading: CupertinoButton(
-            child: const Icon(Icons.arrow_back_ios),
+            child: const Icon(PhosphorIconsRegular.caretLeft),
             onPressed: () {
               Navigator.pop(context);
             }),
@@ -447,7 +483,7 @@ class _WebAppInfoWidget extends StatelessWidget {
                   Row(
                     children: [
                       Icon(
-                        Icons.web,
+                        PhosphorIconsRegular.globe,
                         color: Theme.of(context).primaryColor,
                         size: 20,
                       ),

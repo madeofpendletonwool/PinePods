@@ -12,6 +12,7 @@ import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PlaylistEpisodesPage extends StatefulWidget {
   final PlaylistData playlist;
@@ -130,40 +131,40 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
   }
 
   IconData _getPlaylistIcon(String? iconName) {
-    if (iconName == null) return Icons.playlist_play;
+    if (iconName == null) return PhosphorIconsRegular.playlist;
     
     // Map common icon names to Material icons
     switch (iconName) {
       case 'ph-playlist':
-        return Icons.playlist_play;
+        return PhosphorIconsRegular.playlist;
       case 'ph-music-notes':
-        return Icons.music_note;
+        return PhosphorIconsRegular.musicNote;
       case 'ph-play-circle':
-        return Icons.play_circle;
+        return PhosphorIconsFill.playCircle;
       case 'ph-headphones':
-        return Icons.headphones;
+        return PhosphorIconsRegular.headphones;
       case 'ph-star':
-        return Icons.star;
+        return PhosphorIconsFill.star;
       case 'ph-heart':
-        return Icons.favorite;
+        return PhosphorIconsFill.heart;
       case 'ph-bookmark':
-        return Icons.bookmark;
+        return PhosphorIconsFill.bookmarkSimple;
       case 'ph-clock':
-        return Icons.access_time;
+        return PhosphorIconsRegular.clock;
       case 'ph-calendar':
-        return Icons.calendar_today;
+        return PhosphorIconsRegular.calendarBlank;
       case 'ph-timer':
-        return Icons.timer;
+        return PhosphorIconsRegular.timer;
       case 'ph-shuffle':
-        return Icons.shuffle;
+        return PhosphorIconsRegular.shuffle;
       case 'ph-repeat':
-        return Icons.repeat;
+        return PhosphorIconsRegular.repeat;
       case 'ph-microphone':
-        return Icons.mic;
+        return PhosphorIconsRegular.microphone;
       case 'ph-queue':
-        return Icons.queue_music;
+        return PhosphorIconsRegular.queue;
       default:
-        return Icons.playlist_play;
+        return PhosphorIconsRegular.playlist;
     }
   }
 
@@ -469,7 +470,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
         actions: [
           if (_playlistResponse != null && _playlistResponse!.episodes.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.playlist_play),
+              icon: const Icon(PhosphorIconsRegular.playlist),
               tooltip: 'Play from top',
               onPressed: _playFromTop,
             ),
@@ -501,7 +502,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.error_outline,
+                PhosphorIconsRegular.warningCircle,
                 size: 75,
                 color: Theme.of(context).colorScheme.error,
               ),
@@ -604,7 +605,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Icons.playlist_remove,
+                    PhosphorIconsRegular.listDashes,
                     size: 75,
                     color: Theme.of(context).primaryColor.withOpacity(0.5),
                   ),

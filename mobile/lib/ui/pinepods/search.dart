@@ -12,6 +12,7 @@ import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PinepodsSearch extends StatefulWidget {
   final String? searchTerm;
@@ -264,7 +265,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                   children: [
                     const SizedBox(height: 50),
                     Icon(
-                      Icons.search,
+                      PhosphorIconsRegular.magnifyingGlass,
                       size: 64,
                       color: Theme.of(context).primaryColor.withOpacity(0.5),
                     ),
@@ -293,7 +294,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                 child: ListTile(
                   dense: true,
                   leading: Icon(
-                    Icons.history,
+                    PhosphorIconsRegular.clockCounterClockwise,
                     color: Theme.of(context).hintColor,
                     size: 20,
                   ),
@@ -305,7 +306,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                   ),
                   trailing: IconButton(
                     icon: Icon(
-                      Icons.close,
+                      PhosphorIconsRegular.x,
                       size: 18,
                       color: Theme.of(context).hintColor,
                     ),
@@ -372,7 +373,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Icon(
-                                  Icons.music_note,
+                                  PhosphorIconsRegular.musicNote,
                                   color: Colors.grey,
                                   size: 32,
                                 ),
@@ -387,7 +388,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Icon(
-                              Icons.music_note,
+                              PhosphorIconsRegular.musicNote,
                               color: Colors.grey,
                               size: 32,
                             ),
@@ -434,7 +435,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                         Row(
                           children: [
                             Icon(
-                              Icons.mic,
+                              PhosphorIconsRegular.microphone,
                               size: 16,
                               color: Colors.grey[600],
                             ),
@@ -476,7 +477,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                   IconButton(
                     onPressed: () => _togglePodcast(podcast),
                     icon: Icon(
-                      isAdded ? Icons.remove_circle : Icons.add_circle,
+                      isAdded ? PhosphorIconsFill.minusCircle : PhosphorIconsFill.plusCircle,
                       color: isAdded ? Colors.red : Colors.green,
                     ),
                     tooltip: isAdded ? 'Remove podcast' : 'Add podcast',
@@ -499,8 +500,8 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
             leading: IconButton(
               tooltip: 'Back',
               icon: Platform.isAndroid
-                  ? Icon(Icons.arrow_back, color: Theme.of(context).appBarTheme.foregroundColor)
-                  : const Icon(Icons.arrow_back_ios),
+                  ? Icon(PhosphorIconsRegular.arrowLeft, color: Theme.of(context).appBarTheme.foregroundColor)
+                  : const Icon(PhosphorIconsRegular.caretLeft),
               onPressed: () => Navigator.pop(context),
             ),
             title: TextField(
@@ -531,7 +532,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
             actions: <Widget>[
               IconButton(
                 tooltip: 'Clear search',
-                icon: const Icon(Icons.clear),
+                icon: const Icon(PhosphorIconsRegular.x),
                 onPressed: () {
                   _searchController.clear();
                   setState(() {
@@ -613,7 +614,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      Icons.search_off,
+                      PhosphorIconsRegular.magnifyingGlassMinus,
                       size: 64,
                       color: Colors.grey[400],
                     ),
@@ -640,7 +641,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      Icons.search,
+                      PhosphorIconsRegular.magnifyingGlass,
                       size: 64,
                       color: Colors.grey[400],
                     ),

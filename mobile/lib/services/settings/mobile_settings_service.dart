@@ -328,6 +328,24 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  String get playButtonStyle => _sharedPreferences.getString('playButtonStyle') ?? 'ring';
+
+  @override
+  set playButtonStyle(String value) {
+    _sharedPreferences.setString('playButtonStyle', value);
+    settingsNotifier.sink.add('playButtonStyle');
+  }
+
+  @override
+  bool get artworkAccentColors => _sharedPreferences.getBool('artworkAccentColors') ?? true;
+
+  @override
+  set artworkAccentColors(bool value) {
+    _sharedPreferences.setBool('artworkAccentColors', value);
+    settingsNotifier.sink.add('artworkAccentColors');
+  }
+
+  @override
   AppSettings? settings;
 
   @override

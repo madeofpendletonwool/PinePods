@@ -20,6 +20,7 @@ import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PinepodsFeed extends StatefulWidget {
   // Constructor with optional key parameter
@@ -864,7 +865,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.inbox_outlined,
+                PhosphorIconsRegular.tray,
                 size: 64,
                 color: Colors.grey,
               ),
@@ -920,7 +921,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
                     children: [
                       IconButton(
                         icon: Icon(
-                          _favoritesOnly ? Icons.star : Icons.star_border,
+                          _favoritesOnly ? PhosphorIconsFill.star : PhosphorIconsRegular.star,
                           color: _favoritesOnly
                               ? Colors.amber
                               : Theme.of(context).iconTheme.color,
@@ -931,7 +932,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
                         onPressed: _toggleFavoritesFilter,
                       ),
                       IconButton(
-                        icon: const Icon(Icons.refresh),
+                        icon: const Icon(PhosphorIconsRegular.arrowClockwise),
                         onPressed: _refresh,
                       ),
                     ],
@@ -1024,7 +1025,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: const Icon(
-                              Icons.music_note,
+                              PhosphorIconsRegular.musicNote,
                               color: Colors.grey,
                               size: 24,
                             ),
@@ -1057,7 +1058,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Icon(
-                          Icons.music_note,
+                          PhosphorIconsRegular.musicNote,
                           color: Colors.grey,
                           size: 24,
                         ),
@@ -1130,7 +1131,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
               // Action button (just play)
               IconButton(
                 icon: Icon(
-                  episode.completed ? Icons.replay : Icons.play_arrow,
+                  episode.completed ? PhosphorIconsRegular.arrowCounterClockwise : PhosphorIconsFill.play,
                   color: Theme.of(context).primaryColor,
                 ),
                 onPressed: () => _playEpisode(episode),
@@ -1151,19 +1152,19 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
                     children: [
                       if (episode.saved)
                         Icon(
-                          Icons.bookmark,
+                          PhosphorIconsFill.bookmarkSimple,
                           color: Colors.orange[600],
                           size: 14,
                         ),
                       if (episode.downloaded)
                         Icon(
-                          Icons.download_done,
+                          PhosphorIconsRegular.checkCircle,
                           color: Colors.blue[600],
                           size: 14,
                         ),
                       if (episode.queued)
                         Icon(
-                          Icons.queue_music,
+                          PhosphorIconsRegular.queue,
                           color: Colors.purple[600],
                           size: 14,
                         ),

@@ -12,6 +12,7 @@ import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/paginated_episode_list.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 enum _StatusFilter { all, unplayed, inProgress, saved, downloaded }
 
@@ -585,13 +586,13 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
                   color: Theme.of(context).hintColor,
                 ),
                 prefixIcon: Icon(
-                  Icons.search,
+                  PhosphorIconsRegular.magnifyingGlass,
                   color: Theme.of(context).primaryColor,
                 ),
                 suffixIcon: showClear
                     ? IconButton(
                         icon: Icon(
-                          Icons.clear,
+                          PhosphorIconsRegular.x,
                           color: Theme.of(context).primaryColor,
                         ),
                         onPressed: () {
@@ -622,9 +623,9 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
         children: _selectedCategories.map((cat) => Padding(
           padding: const EdgeInsets.only(right: 8),
           child: Chip(
-            avatar: const Icon(Icons.label_outline, size: 14),
+            avatar: const Icon(PhosphorIconsRegular.tag, size: 14),
             label: Text(cat),
-            deleteIcon: const Icon(Icons.close, size: 14),
+            deleteIcon: const Icon(PhosphorIconsRegular.x, size: 14),
             onDeleted: () => _toggleCategory(cat),
             backgroundColor: Theme.of(context).colorScheme.primaryContainer,
             labelStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
@@ -637,10 +638,10 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   Widget _buildStatusFilterChips() {
     final chips = <(_StatusFilter, String, IconData?)>[
       (_StatusFilter.all, 'All', null),
-      (_StatusFilter.unplayed, 'Unplayed', Icons.circle_outlined),
-      (_StatusFilter.inProgress, 'In Progress', Icons.hourglass_empty),
-      (_StatusFilter.saved, 'Saved', Icons.star_border),
-      (_StatusFilter.downloaded, 'Downloaded', Icons.download_outlined),
+      (_StatusFilter.unplayed, 'Unplayed', PhosphorIconsRegular.circle),
+      (_StatusFilter.inProgress, 'In Progress', PhosphorIconsRegular.hourglass),
+      (_StatusFilter.saved, 'Saved', PhosphorIconsRegular.star),
+      (_StatusFilter.downloaded, 'Downloaded', PhosphorIconsRegular.downloadSimple),
     ];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -679,7 +680,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
                 width: 90,
                 height: 90,
                 color: Theme.of(context).colorScheme.surfaceVariant,
-                child: const Icon(Icons.podcasts),
+                child: const Icon(PhosphorIconsRegular.microphoneStage),
               ),
             ),
           ),
@@ -761,7 +762,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.search_off,
+            PhosphorIconsRegular.magnifyingGlassMinus,
             size: 64,
             color: Theme.of(context).hintColor,
           ),
@@ -789,7 +790,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.error_outline,
+            PhosphorIconsRegular.warningCircle,
             size: 64,
             color: Theme.of(context).colorScheme.error,
           ),
@@ -860,7 +861,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
                   ? const CircularProgressIndicator()
                   : OutlinedButton.icon(
                       onPressed: _loadMoreResults,
-                      icon: const Icon(Icons.expand_more),
+                      icon: const Icon(PhosphorIconsRegular.caretDown),
                       label: Text('Load more (${_searchTotal - _searchOffset} remaining)'),
                     ),
             ),
@@ -906,7 +907,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
             child: ListTile(
               dense: true,
               leading: Icon(
-                Icons.history,
+                PhosphorIconsRegular.clockCounterClockwise,
                 color: Theme.of(context).hintColor,
                 size: 20,
               ),
@@ -918,7 +919,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
               ),
               trailing: IconButton(
                 icon: Icon(
-                  Icons.close,
+                  PhosphorIconsRegular.x,
                   size: 18,
                   color: Theme.of(context).hintColor,
                 ),

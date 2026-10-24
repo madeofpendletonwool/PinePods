@@ -12,12 +12,12 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/ui/pinepods/people/people_widgets.dart';
-import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 const int _pageSize = 50;
 
@@ -174,7 +174,6 @@ class _PersonPageState extends State<PersonPage> {
                       ),
                     ),
             ),
-            const MiniPlayer(),
           ],
         ),
       ),
@@ -260,7 +259,7 @@ class _PersonPageState extends State<PersonPage> {
                     : (roles.isEmpty ? count : '$roles · $count');
                 final fallback = Container(
                   color: theme.colorScheme.surfaceContainerHighest,
-                  child: Icon(Icons.podcasts, color: theme.colorScheme.onSurfaceVariant),
+                  child: Icon(PhosphorIconsRegular.microphoneStage, color: theme.colorScheme.onSurfaceVariant),
                 );
                 return InkWell(
                   borderRadius: BorderRadius.circular(8),

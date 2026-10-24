@@ -18,6 +18,7 @@ import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Sort direction options for saved episodes
 enum SavedSortDirection {
@@ -818,7 +819,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.bookmark_outline,
+                PhosphorIconsRegular.bookmarkSimple,
                 size: 64,
                 color: Colors.grey,
               ),
@@ -868,10 +869,10 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: 'Search episodes...',
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
                       suffixIcon: _searchQuery.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.clear),
+                              icon: const Icon(PhosphorIconsRegular.x),
                               onPressed: () {
                                 _searchController.clear();
                               },
@@ -900,7 +901,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<SavedSortDirection>(
                       value: _sortDirection,
-                      icon: const Icon(Icons.sort),
+                      icon: const Icon(PhosphorIconsRegular.sortAscending),
                       items: const [
                         DropdownMenuItem(
                           value: SavedSortDirection.newestFirst,
@@ -946,7 +947,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
                   // Clear all chip
                   _buildFilterChip(
                     label: 'Clear All',
-                    icon: Icons.clear_all,
+                    icon: PhosphorIconsRegular.broom,
                     isActive: false,
                     onTap: _clearAllFilters,
                   ),
@@ -954,7 +955,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
                   // Completed chip
                   _buildFilterChip(
                     label: 'Completed',
-                    icon: Icons.check_circle_outline,
+                    icon: PhosphorIconsRegular.checkCircle,
                     isActive: _activeFilter == EpisodeFilter.completed,
                     onTap: () {
                       _setFilter(_activeFilter == EpisodeFilter.completed
@@ -966,7 +967,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
                   // In Progress chip
                   _buildFilterChip(
                     label: 'In Progress',
-                    icon: Icons.hourglass_bottom,
+                    icon: PhosphorIconsRegular.hourglassLow,
                     isActive: _activeFilter == EpisodeFilter.inProgress,
                     onTap: () {
                       _setFilter(_activeFilter == EpisodeFilter.inProgress
@@ -1038,7 +1039,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.filter_list_off,
+                PhosphorIconsRegular.funnelSimpleX,
                 size: 64,
                 color: Theme.of(context).primaryColor,
               ),
@@ -1057,7 +1058,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
               const SizedBox(height: 16),
               TextButton.icon(
                 onPressed: _clearAllFilters,
-                icon: const Icon(Icons.clear_all),
+                icon: const Icon(PhosphorIconsRegular.broom),
                 label: const Text('Clear Filters'),
               ),
             ],
@@ -1089,7 +1090,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
                     children: [
                       IconButton(
                         icon: Icon(
-                          _favoritesOnly ? Icons.star : Icons.star_border,
+                          _favoritesOnly ? PhosphorIconsFill.star : PhosphorIconsRegular.star,
                           color: _favoritesOnly
                               ? Colors.amber
                               : Theme.of(context).iconTheme.color,
@@ -1100,7 +1101,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
                         onPressed: _toggleFavoritesFilter,
                       ),
                       IconButton(
-                        icon: const Icon(Icons.refresh),
+                        icon: const Icon(PhosphorIconsRegular.arrowClockwise),
                         onPressed: _refresh,
                       ),
                     ],

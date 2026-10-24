@@ -10,6 +10,7 @@ import 'package:pinepods_mobile/ui/settings/settings_section_label.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PinepodsLoginWidget extends StatefulWidget {
   const PinepodsLoginWidget({Key? key}) : super(key: key);
@@ -257,7 +258,7 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
                       labelText: 'MFA Code',
                       hintText: 'Enter 6-digit code',
                       suffixIcon: IconButton(
-                        icon: const Icon(Icons.close),
+                        icon: const Icon(PhosphorIconsRegular.x),
                         onPressed: _resetMfa,
                         tooltip: 'Cancel MFA',
                       ),

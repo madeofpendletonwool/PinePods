@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/entities/people.dart';
 import 'package:pinepods_mobile/ui/pinepods/people/people_widgets.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Show the sheet. Resolves to everyone credited afterwards, or null if the
 /// user closed it without adding anyone.
@@ -220,7 +221,7 @@ class _AddPeopleSheetState extends State<_AddPeopleSheet> {
                 children: [
                   for (final p in _pending)
                     InputChip(
-                      avatar: Icon(p.existing ? Icons.person : Icons.person_add_alt_1, size: 18),
+                      avatar: Icon(p.existing ? PhosphorIconsRegular.user : PhosphorIconsRegular.userPlus, size: 18),
                       label: Text(p.name),
                       onDeleted: _submitting ? null : () => setState(() => _pending.remove(p)),
                     ),
@@ -237,7 +238,7 @@ class _AddPeopleSheetState extends State<_AddPeopleSheet> {
               textInputAction: TextInputAction.done,
               decoration: InputDecoration(
                 hintText: _pending.isEmpty ? 'Name, or several: Alice, Bob and Carol' : 'Add another',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
                 border: const OutlineInputBorder(),
               ),
               onChanged: _onChanged,

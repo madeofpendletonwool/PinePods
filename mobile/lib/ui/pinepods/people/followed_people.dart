@@ -15,6 +15,7 @@ import 'package:pinepods_mobile/ui/pinepods/people/people_widgets.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Episodes fetched per person, and the most shown in the combined list.
 const int _perPerson = 20;
@@ -207,10 +208,10 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
         onChanged: _onSearchChanged,
         decoration: InputDecoration(
           hintText: 'Find hosts and guests',
-          prefixIcon: const Icon(Icons.person_search),
+          prefixIcon: const Icon(PhosphorIconsRegular.userFocus),
           suffixIcon: _searchController.text.isEmpty
               ? null
-              : IconButton(icon: const Icon(Icons.clear), tooltip: 'Clear', onPressed: _clearSearch),
+              : IconButton(icon: const Icon(PhosphorIconsRegular.x), tooltip: 'Clear', onPressed: _clearSearch),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           filled: true,
           fillColor: Theme.of(context).cardColor,
@@ -254,7 +255,7 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
             leading: PersonAvatar(url: hit.img, size: 44),
             title: Text(hit.name),
             subtitle: hit.knownFor != null ? Text(hit.knownFor!, maxLines: 1, overflow: TextOverflow.ellipsis) : null,
-            trailing: hit.followed ? Icon(Icons.check_circle, color: theme.colorScheme.primary) : null,
+            trailing: hit.followed ? Icon(PhosphorIconsFill.checkCircle, color: theme.colorScheme.primary) : null,
             onTap: () => _openHit(hit),
           );
         },
@@ -292,7 +293,7 @@ class _PinepodsPeopleState extends State<PinepodsPeople> {
             padding: const EdgeInsets.all(32),
             child: Column(
               children: [
-                Icon(Icons.people_outline, size: 64, color: theme.colorScheme.onSurfaceVariant),
+                Icon(PhosphorIconsRegular.users, size: 64, color: theme.colorScheme.onSurfaceVariant),
                 const SizedBox(height: 16),
                 Text('Not following anyone yet', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),

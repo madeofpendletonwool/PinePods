@@ -8,6 +8,7 @@ import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/state/bloc_state.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class SyncSpinner extends StatefulWidget {
   const SyncSpinner({super.key});
@@ -31,7 +32,7 @@ class _SyncSpinnerState extends State<SyncSpinner> with SingleTickerProviderStat
     )..repeat();
 
     _child = const Icon(
-      Icons.refresh,
+      PhosphorIconsRegular.arrowClockwise,
       size: 16.0,
     );
 

@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/services/security/certificate_manager.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Reusable UI for importing / removing custom TLS certificates:
 ///
@@ -136,7 +137,7 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _certTile(
-              icon: Icons.verified_user_outlined,
+              icon: PhosphorIconsRegular.shieldCheck,
               title: 'Server CA certificate',
               subtitle: state.serverCaName ??
                   'For private or self-signed server certificates',
@@ -149,7 +150,7 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
             ),
             const SizedBox(height: 8),
             _certTile(
-              icon: Icons.badge_outlined,
+              icon: PhosphorIconsRegular.identificationBadge,
               title: 'Client certificate (mTLS)',
               subtitle: state.clientCertName ??
                   'A .p12 / .pfx certificate to present to the server',
@@ -191,7 +192,7 @@ class _CertificateImportSectionState extends State<CertificateImportSection> {
                 ),
                 if (configured)
                   IconButton(
-                    icon: const Icon(Icons.delete_outline),
+                    icon: const Icon(PhosphorIconsRegular.trash),
                     tooltip: 'Remove',
                     onPressed: onRemove,
                   ),

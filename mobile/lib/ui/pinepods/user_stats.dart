@@ -9,6 +9,7 @@ import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/core/environment.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PinepodsUserStats extends StatefulWidget {
   const PinepodsUserStats({super.key});
@@ -192,7 +193,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
     return _buildStatCard(
       'Sync Status',
       stats.syncStatusDescription,
-      icon: isNotSyncing ? Icons.sync_disabled : Icons.sync,
+      icon: isNotSyncing ? PhosphorIconsRegular.prohibit : PhosphorIconsRegular.arrowsClockwise,
       iconColor: isNotSyncing ? Colors.grey : null,
       details: stats.syncUrls(_pinepodsService.server),
     );
@@ -293,7 +294,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () => _launchUrl('https://pinepods.online'),
-                    icon: const Icon(Icons.description),
+                    icon: const Icon(PhosphorIconsRegular.fileText),
                     label: const Text('PinePods Documentation'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -308,7 +309,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () => _launchUrl('https://github.com/madeofpendletonwool/pinepods'),
-                    icon: const Icon(Icons.code),
+                    icon: const Icon(PhosphorIconsRegular.code),
                     label: const Text('PinePods GitHub Repo'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -323,7 +324,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () => _launchUrl('https://www.buymeacoffee.com/collinscoffee'),
-                    icon: const Icon(Icons.coffee),
+                    icon: const Icon(PhosphorIconsRegular.coffee),
                     label: const Text('Buy me a Coffee'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -340,7 +341,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                     onPressed: () {
                       showLicensePage(context: context);
                     },
-                    icon: const Icon(Icons.article_outlined),
+                    icon: const Icon(PhosphorIconsRegular.article),
                     label: const Text('Open Source Licenses'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -375,7 +376,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.error_outline,
+                          PhosphorIconsRegular.warningCircle,
                           size: 64,
                           color: Colors.red[300],
                         ),
@@ -416,32 +417,32 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                           _buildStatCard(
                             'User Created',
                             _userStats?.formattedUserCreated ?? '',
-                            icon: Icons.calendar_today,
+                            icon: PhosphorIconsRegular.calendarBlank,
                           ),
                           _buildStatCard(
                             'Podcasts Played',
                             _userStats?.podcastsPlayed.toString() ?? '',
-                            icon: Icons.play_circle,
+                            icon: PhosphorIconsFill.playCircle,
                           ),
                           _buildStatCard(
                             'Time Listened',
                             _userStats?.formattedTimeListened ?? '',
-                            icon: Icons.access_time,
+                            icon: PhosphorIconsRegular.clock,
                           ),
                           _buildStatCard(
                             'Podcasts Added',
                             _userStats?.podcastsAdded.toString() ?? '',
-                            icon: Icons.library_add,
+                            icon: PhosphorIconsRegular.plusSquare,
                           ),
                           _buildStatCard(
                             'Episodes Saved',
                             _userStats?.episodesSaved.toString() ?? '',
-                            icon: Icons.bookmark,
+                            icon: PhosphorIconsFill.bookmarkSimple,
                           ),
                           _buildStatCard(
                             'Episodes Downloaded',
                             _userStats?.episodesDownloaded.toString() ?? '',
-                            icon: Icons.download,
+                            icon: PhosphorIconsRegular.downloadSimple,
                           ),
                           // Add sync status as a stat card to maintain consistent layout
                           _buildSyncStatCard(),

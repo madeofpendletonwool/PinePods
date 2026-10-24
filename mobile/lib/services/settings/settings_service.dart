@@ -94,6 +94,14 @@ abstract class SettingsService {
   bool get mirrorServerDownloads;
   set mirrorServerDownloads(bool value);
 
+  /// Episode card play button style: ring, outline, bare or tinted.
+  String get playButtonStyle;
+  set playButtonStyle(String value);
+
+  /// Tint episode cards with a colour pulled from the podcast artwork.
+  bool get artworkAccentColors;
+  set artworkAccentColors(bool value);
+
   Stream<String> get settingsListener;
 
   String? get pinepodsServer;

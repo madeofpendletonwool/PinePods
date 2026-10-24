@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'search.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class SearchBar extends StatefulWidget {
   const SearchBar({super.key});
@@ -67,7 +68,7 @@ class _SearchBarState extends State<SearchBar> {
           color: _searchFocusNode.hasFocus ? Theme.of(context).iconTheme.color : null,
           splashColor: _searchFocusNode.hasFocus ? Theme.of(context).splashColor : Colors.transparent,
           highlightColor: _searchFocusNode.hasFocus ? Theme.of(context).highlightColor : Colors.transparent,
-          icon: Icon(_searchController.text.isEmpty && !_searchFocusNode.hasFocus ? Icons.search : Icons.clear),
+          icon: Icon(_searchController.text.isEmpty && !_searchFocusNode.hasFocus ? PhosphorIconsRegular.magnifyingGlass : PhosphorIconsRegular.x),
           onPressed: () {
             _searchController.clear();
             FocusScope.of(context).requestFocus(FocusNode());

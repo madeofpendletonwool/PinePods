@@ -10,6 +10,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This class is responsible for rendering the context menu on the podcast details
 /// page.
@@ -62,7 +63,7 @@ class _MaterialPodcastMenu extends StatelessWidget {
               togglePlayed(value: event, bloc: bloc);
             },
             icon: const Icon(
-              Icons.more_vert,
+              PhosphorIconsRegular.dotsThreeVertical,
             ),
             itemBuilder: (BuildContext context) {
               return <PopupMenuEntry<String>>[
@@ -136,7 +137,7 @@ class _CupertinoContextMenu extends StatelessWidget {
         builder: (context, snapshot) {
           return IconButton(
             tooltip: L.of(context)!.podcast_options_overflow_menu_semantic_label,
-            icon: const Icon(CupertinoIcons.ellipsis),
+            icon: const Icon(PhosphorIconsRegular.dotsThree),
             onPressed: () => showCupertinoModalPopup<void>(
               context: context,
               builder: (BuildContext context) {

@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This is the full-screen player Widget which is invoked by touching the mini player.
 ///
@@ -360,7 +361,7 @@ class NowPlayingEpisodeDetails extends StatelessWidget {
                           child: IconButton(
                               padding: EdgeInsets.zero,
                               icon: const Icon(
-                                Icons.link,
+                                PhosphorIconsRegular.link,
                               ),
                               color: Theme.of(context).primaryIconTheme.color,
                               onPressed: () {
@@ -479,7 +480,7 @@ class NowPlayingTabs extends StatelessWidget {
               leading: IconButton(
                 tooltip: L.of(context)!.minimise_player_window_button_label,
                 icon: Icon(
-                  Icons.keyboard_arrow_down,
+                  PhosphorIconsRegular.caretDown,
                   color: Theme.of(context).primaryIconTheme.color,
                 ),
                 onPressed: () => {

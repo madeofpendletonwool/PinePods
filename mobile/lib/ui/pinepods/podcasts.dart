@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Sort direction options for podcasts
 enum PodcastSortDirection {
@@ -268,10 +269,10 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: 'Search podcasts...',
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
                       suffixIcon: _searchQuery.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.clear),
+                              icon: const Icon(PhosphorIconsRegular.x),
                               onPressed: () {
                                 _searchController.clear();
                               },
@@ -300,7 +301,7 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<PodcastSortDirection>(
                       value: _sortDirection,
-                      icon: const Icon(Icons.sort),
+                      icon: const Icon(PhosphorIconsRegular.sortAscending),
                       items: const [
                         DropdownMenuItem(
                           value: PodcastSortDirection.titleAZ,
@@ -366,7 +367,7 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
-                        Icons.dashboard,
+                        PhosphorIconsRegular.squaresFour,
                         size: 20,
                       ),
                     ),
@@ -383,7 +384,7 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
                   // Clear all chip
                   _buildFilterChip(
                     label: 'Clear All',
-                    icon: Icons.clear_all,
+                    icon: PhosphorIconsRegular.broom,
                     isActive: false,
                     onTap: _clearAllFilters,
                   ),
@@ -393,7 +394,7 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
                     padding: const EdgeInsets.only(right: 8),
                     child: _buildFilterChip(
                       label: category,
-                      icon: Icons.category,
+                      icon: PhosphorIconsRegular.shapes,
                       isActive: _selectedCategory == category,
                       onTap: () {
                         _setCategory(_selectedCategory == category ? null : category);
@@ -467,7 +468,7 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               Icon(
-                Icons.filter_list_off,
+                PhosphorIconsRegular.funnelSimpleX,
                 size: 75,
                 color: Theme.of(context).primaryColor,
               ),
@@ -486,7 +487,7 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
               const SizedBox(height: 16),
               TextButton.icon(
                 onPressed: _clearAllFilters,
-                icon: const Icon(Icons.clear_all),
+                icon: const Icon(PhosphorIconsRegular.broom),
                 label: const Text('Clear Filters'),
               ),
             ],
@@ -567,7 +568,7 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               Icon(
-                Icons.podcasts,
+                PhosphorIconsRegular.microphoneStage,
                 size: 75,
                 color: Theme.of(context).primaryColor,
               ),

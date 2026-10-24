@@ -91,6 +91,12 @@ class AppSettings {
   /// Keep local downloads mirrored to the server's downloaded episodes.
   final bool mirrorServerDownloads;
 
+  /// Episode card play button style: ring, outline, bare or tinted.
+  final String playButtonStyle;
+
+  /// Tint episode cards with a colour pulled from the podcast artwork.
+  final bool artworkAccentColors;
+
   AppSettings({
     required this.theme,
     required this.markDeletedEpisodesAsPlayed,
@@ -118,6 +124,8 @@ class AppSettings {
     this.preferServerDownloadSource = true,
     this.autoDownloadQueueCount = 0,
     this.mirrorServerDownloads = false,
+    this.playButtonStyle = 'ring',
+    this.artworkAccentColors = true,
   });
 
   AppSettings.sensibleDefaults()
@@ -146,7 +154,9 @@ class AppSettings {
         autoDownloadWifiOnly = true,
         preferServerDownloadSource = true,
         autoDownloadQueueCount = 0,
-        mirrorServerDownloads = false;
+        mirrorServerDownloads = false,
+        playButtonStyle = 'ring',
+        artworkAccentColors = true;
 
   AppSettings copyWith({
     String? theme,
@@ -175,6 +185,8 @@ class AppSettings {
     bool? preferServerDownloadSource,
     int? autoDownloadQueueCount,
     bool? mirrorServerDownloads,
+    String? playButtonStyle,
+    bool? artworkAccentColors,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -203,5 +215,7 @@ class AppSettings {
         preferServerDownloadSource: preferServerDownloadSource ?? this.preferServerDownloadSource,
         autoDownloadQueueCount: autoDownloadQueueCount ?? this.autoDownloadQueueCount,
         mirrorServerDownloads: mirrorServerDownloads ?? this.mirrorServerDownloads,
+        playButtonStyle: playButtonStyle ?? this.playButtonStyle,
+        artworkAccentColors: artworkAccentColors ?? this.artworkAccentColors,
       );
 }

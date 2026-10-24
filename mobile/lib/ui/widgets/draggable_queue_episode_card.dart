@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// A queue row: the standard episode card with a reorder handle in front.
 class DraggableQueueEpisodeCard extends StatelessWidget {
@@ -36,7 +37,7 @@ class DraggableQueueEpisodeCard extends StatelessWidget {
           child: SizedBox(
             width: 24,
             height: 56,
-            child: Icon(Icons.drag_indicator, color: Theme.of(context).hintColor, size: 20),
+            child: Icon(PhosphorIconsRegular.dotsSixVertical, color: Theme.of(context).hintColor, size: 20),
           ),
         ),
       ),

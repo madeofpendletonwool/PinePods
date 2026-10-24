@@ -9,6 +9,7 @@ import 'package:pinepods_mobile/state/bloc_state.dart';
 import 'package:pinepods_mobile/ui/widgets/slider_handle.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This widget allows the user to filter the episodes.
 class EpisodeSortSelectorWidget extends StatefulWidget {
@@ -44,7 +45,7 @@ class _EpisodeSortSelectorWidgetState extends State<EpisodeSortSelectorWidget> {
                 child: Center(
                   child: IconButton(
                     icon: Icon(
-                      Icons.sort,
+                      PhosphorIconsRegular.sortAscending,
                       semanticLabel: L.of(context)!.episode_sort_semantic_label,
                     ),
                     visualDensity: VisualDensity.compact,
@@ -208,7 +209,7 @@ class EpisodeSortSelectorEntry extends StatelessWidget {
             ),
             if (sort == selectedSort)
               const Icon(
-                Icons.check,
+                PhosphorIconsRegular.check,
                 size: 18.0,
               ),
           ],

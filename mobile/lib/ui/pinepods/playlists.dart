@@ -8,6 +8,7 @@ import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlist_episodes.dart';
 import 'package:pinepods_mobile/ui/pinepods/create_playlist.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PinepodsPlaylists extends StatefulWidget {
   const PinepodsPlaylists({Key? key}) : super(key: key);
@@ -213,40 +214,40 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
   }
 
   IconData _getPlaylistIcon(String? iconName) {
-    if (iconName == null) return Icons.playlist_play;
+    if (iconName == null) return PhosphorIconsRegular.playlist;
     
     // Map common icon names to Material icons
     switch (iconName) {
       case 'ph-playlist':
-        return Icons.playlist_play;
+        return PhosphorIconsRegular.playlist;
       case 'ph-music-notes':
-        return Icons.music_note;
+        return PhosphorIconsRegular.musicNote;
       case 'ph-play-circle':
-        return Icons.play_circle;
+        return PhosphorIconsFill.playCircle;
       case 'ph-headphones':
-        return Icons.headphones;
+        return PhosphorIconsRegular.headphones;
       case 'ph-star':
-        return Icons.star;
+        return PhosphorIconsFill.star;
       case 'ph-heart':
-        return Icons.favorite;
+        return PhosphorIconsFill.heart;
       case 'ph-bookmark':
-        return Icons.bookmark;
+        return PhosphorIconsFill.bookmarkSimple;
       case 'ph-clock':
-        return Icons.access_time;
+        return PhosphorIconsRegular.clock;
       case 'ph-calendar':
-        return Icons.calendar_today;
+        return PhosphorIconsRegular.calendarBlank;
       case 'ph-timer':
-        return Icons.timer;
+        return PhosphorIconsRegular.timer;
       case 'ph-shuffle':
-        return Icons.shuffle;
+        return PhosphorIconsRegular.shuffle;
       case 'ph-repeat':
-        return Icons.repeat;
+        return PhosphorIconsRegular.repeat;
       case 'ph-microphone':
-        return Icons.mic;
+        return PhosphorIconsRegular.microphone;
       case 'ph-queue':
-        return Icons.queue_music;
+        return PhosphorIconsRegular.queue;
       default:
-        return Icons.playlist_play;
+        return PhosphorIconsRegular.playlist;
     }
   }
 
@@ -288,7 +289,7 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               Icon(
-                Icons.playlist_play,
+                PhosphorIconsRegular.playlist,
                 size: 75,
                 color: Theme.of(context).primaryColor,
               ),
@@ -307,7 +308,7 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
               const SizedBox(height: 16),
               ElevatedButton.icon(
                 onPressed: _createPlaylist,
-                icon: const Icon(Icons.add),
+                icon: const Icon(PhosphorIconsRegular.plus),
                 label: const Text('Create Playlist'),
               ),
             ],
@@ -338,23 +339,23 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
                     children: [
                       if (_isSelectionMode) ...[
                         IconButton(
-                          icon: const Icon(Icons.close),
+                          icon: const Icon(PhosphorIconsRegular.x),
                           onPressed: _toggleSelectionMode,
                           tooltip: 'Cancel',
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete),
+                          icon: const Icon(PhosphorIconsRegular.trash),
                           onPressed: _selectedPlaylists.isNotEmpty ? _deleteSelectedPlaylists : null,
                           tooltip: 'Delete selected (${_selectedPlaylists.length})',
                         ),
                       ] else ...[
                         IconButton(
-                          icon: const Icon(Icons.select_all),
+                          icon: const Icon(PhosphorIconsRegular.selectionAll),
                           onPressed: _toggleSelectionMode,
                           tooltip: 'Select multiple',
                         ),
                         IconButton(
-                          icon: const Icon(Icons.add),
+                          icon: const Icon(PhosphorIconsRegular.plus),
                           onPressed: _createPlaylist,
                           tooltip: 'Create playlist',
                         ),
@@ -379,7 +380,7 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
                   child: Row(
                     children: [
                       Icon(
-                        Icons.info_outline,
+                        PhosphorIconsRegular.info,
                         color: Theme.of(context).primaryColor,
                       ),
                       const SizedBox(width: 8),
@@ -480,14 +481,14 @@ class _PlaylistRow extends StatelessWidget {
     } else {
       trailing = PopupMenuButton<String>(
         tooltip: 'Playlist options',
-        icon: Icon(Icons.more_vert, color: theme.hintColor),
+        icon: Icon(PhosphorIconsRegular.dotsThreeVertical, color: theme.hintColor),
         onSelected: (_) => onDelete(),
         itemBuilder: (context) => [
           PopupMenuItem<String>(
             value: 'delete',
             child: ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.delete_outline, color: theme.colorScheme.error),
+              leading: Icon(PhosphorIconsRegular.trash, color: theme.colorScheme.error),
               title: Text('Delete', style: TextStyle(color: theme.colorScheme.error)),
             ),
           ),

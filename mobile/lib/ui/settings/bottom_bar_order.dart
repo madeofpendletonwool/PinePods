@@ -7,6 +7,8 @@ import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/widgets/pinepods_bottom_nav.dart';
 
 /// A widget that allows users to reorder the bottom navigation bar items
 class BottomBarOrderWidget extends StatefulWidget {
@@ -64,7 +66,7 @@ class _BottomBarOrderWidgetState extends State<BottomBarOrderWidget> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
-              'Drag and drop to reorder the bottom navigation items. The first items will be easier to access.',
+              'Drag to reorder. The first $bottomBarPinnedCount appear in the bottom bar; the rest are under More (everything shows when the screen is wide enough).',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).textTheme.bodySmall?.color,
               ),
@@ -81,14 +83,18 @@ class _BottomBarOrderWidgetState extends State<BottomBarOrderWidget> {
                   _currentOrder.insert(newIndex, item);
                 });
               },
-              children: _currentOrder.map((item) {
-                return ListTile(
-                  key: Key(item),
-                  leading: Icon(_getIconForItem(item)),
-                  title: Text(item),
-                  trailing: const Icon(Icons.drag_handle),
-                );
-              }).toList(),
+              children: [
+                for (var i = 0; i < _currentOrder.length; i++)
+                  ListTile(
+                    key: Key(_currentOrder[i]),
+                    leading: Icon(bottomNavIcon(_currentOrder[i])),
+                    title: Text(_currentOrder[i]),
+                    subtitle: Text(
+                      i < bottomBarPinnedCount ? 'In bottom bar' : 'Under More',
+                    ),
+                    trailing: const Icon(PhosphorIconsRegular.dotsSix),
+                  ),
+              ],
             ),
           ),
           Padding(
@@ -111,20 +117,5 @@ class _BottomBarOrderWidgetState extends State<BottomBarOrderWidget> {
         ],
       ),
     );
-  }
-
-  IconData _getIconForItem(String item) {
-    switch (item) {
-      case 'Home': return Icons.home;
-      case 'Feed': return Icons.rss_feed;
-      case 'Saved': return Icons.bookmark;
-      case 'Podcasts': return Icons.podcasts;
-      case 'People': return Icons.people;
-      case 'Downloads': return Icons.download;
-      case 'History': return Icons.history;
-      case 'Playlists': return Icons.playlist_play;
-      case 'Search': return Icons.search;
-      default: return Icons.home;
-    }
   }
 }

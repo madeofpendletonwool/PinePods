@@ -22,6 +22,7 @@ import 'package:provider/provider.dart';
 import 'package:logging/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Sort direction options for downloads
 enum DownloadSortDirection {
@@ -665,16 +666,16 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                       width: 40,
                       height: 40,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.cloud_download, color: Colors.blue),
+                      errorBuilder: (_, __, ___) => const Icon(PhosphorIconsFill.cloudArrowDown, color: Colors.blue),
                     ),
                   )
-                : const Icon(Icons.cloud_download, color: Colors.blue),
+                : const Icon(PhosphorIconsFill.cloudArrowDown, color: Colors.blue),
             title: Text(
               summary.podcastName,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             subtitle: Text('$total episode${total != 1 ? 's' : ''}'),
-            trailing: Icon(isExpanded ? Icons.expand_less : Icons.expand_more),
+            trailing: Icon(isExpanded ? PhosphorIconsRegular.caretUp : PhosphorIconsRegular.caretDown),
             onTap: () => _togglePodcastExpansion(podcastKey, podcastId: summary.podcastId),
           ),
           if (isExpanded) ...[
@@ -695,7 +696,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: TextButton.icon(
                     onPressed: () => _loadEpisodesForPodcast(summary.podcastId),
-                    icon: const Icon(Icons.expand_more),
+                    icon: const Icon(PhosphorIconsRegular.caretDown),
                     label: Text('Load More (${total - offset} remaining)'),
                   ),
                 ),
@@ -900,7 +901,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                    Icon(PhosphorIconsRegular.warningCircle, size: 64, color: Colors.red[300]),
                     const SizedBox(height: 16),
                     Text(
                       _errorMessage!.userFriendlyMessage,
@@ -934,7 +935,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.filter_list_off, size: 64, color: Theme.of(context).primaryColor),
+                        Icon(PhosphorIconsRegular.funnelSimpleX, size: 64, color: Theme.of(context).primaryColor),
                         const SizedBox(height: 16),
                         Text('No downloads found', style: Theme.of(context).textTheme.headlineSmall),
                         const SizedBox(height: 8),
@@ -942,7 +943,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                         const SizedBox(height: 16),
                         TextButton.icon(
                           onPressed: _clearAllFilters,
-                          icon: const Icon(Icons.clear_all),
+                          icon: const Icon(PhosphorIconsRegular.broom),
                           label: const Text('Clear Filters'),
                         ),
                       ],
@@ -958,7 +959,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.download_outlined, size: 64, color: Colors.grey[400]),
+                    Icon(PhosphorIconsRegular.downloadSimple, size: 64, color: Colors.grey[400]),
                     const SizedBox(height: 16),
                     Text('No downloads found', style: Theme.of(context).textTheme.headlineSmall),
                     const SizedBox(height: 8),
@@ -996,7 +997,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ActionQueue()),
               ),
-              icon: Icon(count > 0 ? Icons.sync_problem : Icons.sync, size: 16),
+              icon: Icon(count > 0 ? PhosphorIconsRegular.warning : PhosphorIconsRegular.arrowsClockwise, size: 16),
               label: Text(count > 0 ? 'Action Queue ($count)' : 'Action Queue'),
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1026,7 +1027,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const DownloadActivity()),
                   ),
-                  icon: const Icon(Icons.history, size: 16),
+                  icon: const Icon(PhosphorIconsRegular.clockCounterClockwise, size: 16),
                   label: const Text('Download Activity'),
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1043,9 +1044,9 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: 'Search downloads...',
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: const Icon(PhosphorIconsRegular.magnifyingGlass),
                       suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(icon: const Icon(Icons.clear), onPressed: () => _searchController.clear())
+                          ? IconButton(icon: const Icon(PhosphorIconsRegular.x), onPressed: () => _searchController.clear())
                           : null,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       filled: true,
@@ -1065,7 +1066,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<DownloadSortDirection>(
                       value: _sortDirection,
-                      icon: const Icon(Icons.sort),
+                      icon: const Icon(PhosphorIconsRegular.sortAscending),
                       items: const [
                         DropdownMenuItem(value: DownloadSortDirection.newestFirst, child: Text('Newest')),
                         DropdownMenuItem(value: DownloadSortDirection.oldestFirst, child: Text('Oldest')),
@@ -1085,18 +1086,18 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _buildFilterChip(label: 'Clear All', icon: Icons.clear_all, isActive: false, onTap: _clearAllFilters),
+                  _buildFilterChip(label: 'Clear All', icon: PhosphorIconsRegular.broom, isActive: false, onTap: _clearAllFilters),
                   const SizedBox(width: 8),
                   _buildFilterChip(
                     label: 'Server',
-                    icon: Icons.cloud_download,
+                    icon: PhosphorIconsFill.cloudArrowDown,
                     isActive: _typeFilter == DownloadTypeFilter.serverOnly,
                     onTap: () => _setTypeFilter(_typeFilter == DownloadTypeFilter.serverOnly ? DownloadTypeFilter.all : DownloadTypeFilter.serverOnly),
                   ),
                   const SizedBox(width: 8),
                   _buildFilterChip(
                     label: 'Local',
-                    icon: Icons.smartphone,
+                    icon: PhosphorIconsRegular.deviceMobile,
                     isActive: _typeFilter == DownloadTypeFilter.localOnly,
                     onTap: () => _setTypeFilter(_typeFilter == DownloadTypeFilter.localOnly ? DownloadTypeFilter.all : DownloadTypeFilter.localOnly),
                   ),
@@ -1144,7 +1145,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(
               children: [
-                Icon(Icons.smartphone, color: Colors.green[600]),
+                Icon(PhosphorIconsRegular.deviceMobile, color: Colors.green[600]),
                 const SizedBox(width: 8),
                 Text(
                   'Local Downloads',
@@ -1161,7 +1162,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
             child: Row(
               children: [
-                Icon(Icons.cloud_download, color: Colors.blue[600]),
+                Icon(PhosphorIconsFill.cloudArrowDown, color: Colors.blue[600]),
                 const SizedBox(width: 8),
                 Text(
                   'Server Downloads',
@@ -1251,7 +1252,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
             ),
             child: Row(
               children: [
-                Icon(Icons.cloud_off, color: Colors.orange[800], size: 24),
+                Icon(PhosphorIconsRegular.cloudSlash, color: Colors.orange[800], size: 24),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -1269,7 +1270,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                     setState(() { _errorMessage = null; });
                     _loadDownloads();
                   },
-                  icon: Icon(Icons.refresh, size: 16, color: Colors.orange[800]),
+                  icon: Icon(PhosphorIconsRegular.arrowClockwise, size: 16, color: Colors.orange[800]),
                   label: Text('Retry', style: TextStyle(color: Colors.orange[800], fontSize: 12, fontWeight: FontWeight.w500)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange[50],
@@ -1291,7 +1292,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.cloud_off, size: 64, color: Colors.grey[400]),
+                  Icon(PhosphorIconsRegular.cloudSlash, size: 64, color: Colors.grey[400]),
                   const SizedBox(height: 16),
                   Text('No local downloads', style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: 8),
@@ -1307,7 +1308,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Row(
                   children: [
-                    Icon(Icons.smartphone, color: Colors.green[600]),
+                    Icon(PhosphorIconsRegular.deviceMobile, color: Colors.green[600]),
                     const SizedBox(width: 8),
                     Text('Local Downloads', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.green[600])),
                   ],
