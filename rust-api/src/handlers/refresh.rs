@@ -350,7 +350,16 @@ async fn refresh_feed_group(
             mark_refreshed(state, &ids, next).await;
         }
         Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified, content_hash, max_age }) => {
-            let artwork = rep.artwork_url.clone().unwrap_or_default();
+            // The podcast's details first, so episodes without artwork of their own fall back
+            // to the feed's current artwork.
+            let meta = crate::services::feed_metadata::parse(&body);
+            if let Some(meta) = &meta {
+                state.db_pool.store_feed_metadata(rep.feed_id, &ids, meta).await;
+            }
+            let artwork = meta
+                .and_then(|m| m.artwork)
+                .or_else(|| rep.artwork_url.clone())
+                .unwrap_or_default();
             let parsed = match state.db_pool.parse_feed_body(&body, rep.podcast_id, &artwork).await {
                 Ok(parsed) => parsed,
                 Err(e) => {
@@ -366,8 +375,7 @@ async fn refresh_feed_group(
             } else {
                 group.iter().filter_map(|i| i.feed_cutoff).max()
             };
-            let art = rep.artwork_url.as_deref().unwrap_or("");
-            let all_applied = match state.db_pool.apply_parsed_episodes(rep.podcast_id, &parsed, art, cutoff, true).await {
+            let all_applied = match state.db_pool.apply_parsed_episodes(rep.podcast_id, &parsed, &artwork, cutoff, true).await {
                 Ok(new_eps) => {
                     if !new_eps.is_empty() {
                         info!("Feed {}: {} new episodes", rep.feed_url, new_eps.len());
@@ -1161,23 +1169,7 @@ async fn refresh_rss_feed(
 
     // Same path as the scheduled refresh: conditional GET + body hash, the podcast's
     // FeedCutoffDays, auto-download/queue/transcribe, failure and Retry-After tracking.
-    let item = PodcastRefreshItem {
-        podcast_id: podcast.id,
-        feed_id: podcast.feed_id,
-        feed_url: podcast.feed_url.clone(),
-        artwork_url: podcast.artwork_url.clone(),
-        auto_download: podcast.auto_download,
-        auto_queue: podcast.auto_queue,
-        username: podcast.username.clone(),
-        password: podcast.password.clone(),
-        is_youtube: false,
-        user_id,
-        feed_cutoff: podcast.feed_cutoff_days,
-        etag: podcast.etag.clone(),
-        last_modified: podcast.last_modified.clone(),
-        content_hash: podcast.content_hash.clone(),
-        refresh_interval: podcast.refresh_interval,
-    };
+    let item = rss_refresh_item(podcast, user_id);
     let Some(_lock) = FeedLock::try_acquire(FeedLock::key(&item.feed_url, item.username.as_deref(), item.password.as_deref())) else {
         debug!("Skipping manual refresh of podcast {}: it's being refreshed right now", podcast.id);
         return Ok(Vec::new());
@@ -1193,6 +1185,61 @@ async fn refresh_rss_feed(
     }
 
     Ok(new_episodes)
+}
+
+/// Read one of the user's podcasts' feed in full now, even if it looks unchanged, so its details
+/// and episodes match the feed. `reset_edits` first hands the details the user edited back to the
+/// feed. `Ok(false)` when the user has no such podcast.
+pub async fn refresh_podcast_details(state: &AppState, user_id: i32, podcast_id: i32, reset_edits: bool) -> AppResult<bool> {
+    let podcasts = state.db_pool.get_user_podcasts_for_refresh(user_id).await?;
+    let Some(podcast) = podcasts.iter().find(|p| p.id == podcast_id) else { return Ok(false) };
+    if reset_edits {
+        state.db_pool.clear_metadata_edits(podcast_id, user_id).await?;
+    }
+    if podcast.is_youtube {
+        refresh_youtube_channel(state, podcast, user_id).await?;
+        return Ok(true);
+    }
+    if podcast.feed_url.starts_with("local://") {
+        return Ok(true);
+    }
+    if podcast.throttled {
+        return Err(AppError::external_error("The feed's host asked us to wait before reading it again"));
+    }
+    let item = rss_refresh_item(podcast, user_id);
+    let Some(_lock) = FeedLock::try_acquire(FeedLock::key(&item.feed_url, item.username.as_deref(), item.password.as_deref())) else {
+        // Being read right now; any reset edits come back from the feed on its next full read.
+        return Ok(true);
+    };
+    let mut group = feed_group(state, podcast.feed_id, item).await?;
+    // No validators: fetch and apply the whole feed.
+    for i in group.iter_mut() {
+        i.etag = None;
+        i.last_modified = None;
+        i.content_hash = None;
+    }
+    refresh_feed_group(state, &group).await?;
+    Ok(true)
+}
+
+fn rss_refresh_item(podcast: &PodcastForRefresh, user_id: i32) -> PodcastRefreshItem {
+    PodcastRefreshItem {
+        podcast_id: podcast.id,
+        feed_id: podcast.feed_id,
+        feed_url: podcast.feed_url.clone(),
+        artwork_url: podcast.artwork_url.clone(),
+        auto_download: podcast.auto_download,
+        auto_queue: podcast.auto_queue,
+        username: podcast.username.clone(),
+        password: podcast.password.clone(),
+        is_youtube: false,
+        user_id,
+        feed_cutoff: podcast.feed_cutoff_days,
+        etag: podcast.etag.clone(),
+        last_modified: podcast.last_modified.clone(),
+        content_hash: podcast.content_hash.clone(),
+        refresh_interval: podcast.refresh_interval,
+    }
 }
 
 async fn refresh_youtube_channel(

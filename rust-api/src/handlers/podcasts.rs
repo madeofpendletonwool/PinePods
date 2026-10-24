@@ -3728,6 +3728,42 @@ pub async fn fetch_podcast_feed(
     Ok(Json(serde_json::json!({ "episodes": episodes })))
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct RefreshPodcastDetailsRequest {
+    pub podcast_id: i32,
+    /// Also hand the details the user edited (name, artwork, ...) back to the feed.
+    #[serde(default)]
+    pub reset_edits: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/refresh_podcast_details",
+    tag = "podcasts",
+    summary = "Refresh a podcast's details from its feed",
+    description = "Reads the podcast's feed in full now, even if it looks unchanged, and updates its name, artwork, author, description, website and episodes. Details the user edited are kept unless `reset_edits` is set.",
+    request_body = RefreshPodcastDetailsRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = UpdatePodcastInfoResponse),
+        (status = 401, description = "Invalid or missing API key"),
+        (status = 404, description = "No such podcast"),
+    ),
+)]
+pub async fn refresh_podcast_details(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<RefreshPodcastDetailsRequest>,
+) -> Result<Json<UpdatePodcastInfoResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if !crate::handlers::refresh::refresh_podcast_details(&state, user_id, request.podcast_id, request.reset_edits).await? {
+        return Err(AppError::not_found("Podcast not found"));
+    }
+    Ok(Json(UpdatePodcastInfoResponse { success: true, message: "Podcast details refreshed".to_string() }))
+}
+
 // Handler for updating podcast basic info (URL, username, password)
 #[utoipa::path(
     put,
@@ -3774,6 +3810,19 @@ pub async fn update_podcast_info(
             message: "No fields provided to update".to_string(),
         }));
     }
+
+    // Details changed by hand stay as the user set them when the feed changes.
+    let edits: Vec<(&str, &str)> = [
+        ("podcastname", &request.podcast_name),
+        ("description", &request.description),
+        ("author", &request.author),
+        ("artworkurl", &request.artwork_url),
+        ("websiteurl", &request.website_url),
+    ]
+    .into_iter()
+    .filter_map(|(col, v)| v.as_deref().map(|v| (col, v)))
+    .collect();
+    state.db_pool.mark_metadata_edited(request.podcast_id, request.user_id, &edits).await?;
 
     // Update the podcast info
     let success = state.db_pool.update_podcast_info(

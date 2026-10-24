@@ -650,6 +650,7 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     ProblemNotified BOOLEAN NOT NULL DEFAULT FALSE,
                     NextRefreshAt TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '5 minutes'),
                     RefreshIntervalMinutes INT,
+                    EditedMetadata VARCHAR(255),
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                 )
             """)
@@ -731,6 +732,7 @@ def migration_005_podcast_episode_tables(conn, db_type: str):
                     ProblemNotified TINYINT(1) NOT NULL DEFAULT 0,
                     NextRefreshAt DATETIME NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE),
                     RefreshIntervalMinutes INT,
+                    EditedMetadata VARCHAR(255),
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                 )
             """)
@@ -7803,6 +7805,35 @@ def _link_podcasts_to_feeds(cursor, db_type: str) -> int:
             )
         linked += len(ids)
     return linked
+
+
+@register_migration("085", "podcast_edited_metadata", "Podcasts.EditedMetadata: details the user edited, which refreshes keep; every feed is read in full once", requires=["005", "080"])
+def migration_085_podcast_edited_metadata(conn, db_type: str) -> None:
+    """Refreshes now keep a podcast's name, artwork, author, description and website in step with
+    its feed. Podcasts.EditedMetadata lists (comma-separated, by lowercase column name) the ones
+    the user edited by hand, which refreshes leave alone.
+
+    The stored validators and body hashes are cleared so the next refresh reads every feed in full
+    once, bringing podcasts whose feed changed before this release up to date too.
+    """
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    podcasts = '"Podcasts"' if pg else "Podcasts"
+    feeds = '"Feeds"' if pg else "Feeds"
+    try:
+        if not _column_exists(cursor, db_type, "Podcasts", "EditedMetadata"):
+            cursor.execute(f"ALTER TABLE {podcasts} ADD COLUMN EditedMetadata VARCHAR(255)")
+        not_youtube = "COALESCE(IsYouTubeChannel, FALSE) = FALSE"
+        for table in (podcasts, feeds):
+            cursor.execute(
+                f"UPDATE {table} SET FeedETag = NULL, FeedLastModified = NULL, FeedContentHash = NULL WHERE {not_youtube}"
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
 
 
 @register_migration("118", "gpodder_actions_follow_merged_episodes", "Episode actions point at the shared episode their merged copy became; the copies are deleted", requires=["082", "111"])

@@ -7969,6 +7969,49 @@
         ]
       }
     },
+    "/api/data/refresh_podcast_details": {
+      "post": {
+        "tags": [
+          "podcasts"
+        ],
+        "summary": "Refresh a podcast's details from its feed",
+        "description": "Reads the podcast's feed in full now, even if it looks unchanged, and updates its name, artwork, author, description, website and episodes. Details the user edited are kept unless `reset_edits` is set.",
+        "operationId": "refresh_podcast_details",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshPodcastDetailsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatePodcastInfoResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "No such podcast"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/refresh_pods": {
       "get": {
         "tags": [
@@ -17170,6 +17213,22 @@
           "podcast_id": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "RefreshPodcastDetailsRequest": {
+        "type": "object",
+        "required": [
+          "podcast_id"
+        ],
+        "properties": {
+          "podcast_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reset_edits": {
+            "type": "boolean",
+            "description": "Also hand the details the user edited (name, artwork, ...) back to the feed."
           }
         }
       },

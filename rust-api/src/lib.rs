@@ -205,6 +205,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::podcasts::get_default_volume))
         .routes(routes!(handlers::podcasts::add_podcast))
         .routes(routes!(handlers::podcasts::update_podcast_info))
+        .routes(routes!(handlers::podcasts::refresh_podcast_details))
         .routes(routes!(handlers::podcasts::merge_podcasts))
         .routes(routes!(handlers::podcasts::unmerge_podcast))
         .routes(routes!(handlers::podcasts::get_merged_podcasts))

@@ -256,6 +256,45 @@ pub async fn call_update_podcast_info(
     }
 }
 
+#[derive(Serialize)]
+#[allow(dead_code)]
+struct RefreshPodcastDetailsRequest {
+    podcast_id: i32,
+    reset_edits: bool,
+}
+
+/// Read the podcast's feed again now and take its current details; `reset_edits` also hands the
+/// details the user edited back to the feed.
+#[allow(dead_code)]
+pub async fn call_refresh_podcast_details(
+    server_name: &str,
+    api_key: &str,
+    podcast_id: i32,
+    reset_edits: bool,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/refresh_podcast_details", server_name);
+    let body = serde_json::to_string(&RefreshPodcastDetailsRequest { podcast_id, reset_edits })?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(body)?
+        .send()
+        .await?;
+    cache::invalidate_prefix(&format!("{}/api/data/get_podcast_details", server_name));
+    cache::invalidate_prefix(&format!("{}/api/data/return_pods", server_name));
+    if response.ok() {
+        Ok(())
+    } else {
+        let message = response
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|v| v["message"].as_str().map(str::to_string))
+            .unwrap_or_else(|| response.status_text());
+        Err(Error::msg(message))
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RemovePodcastValues {
     pub podcast_id: i32,

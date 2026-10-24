@@ -32,7 +32,8 @@ use crate::requests::pod_req::{
     call_get_rss_key, call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
     call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_favorite,
     call_toggle_podcast_notifications,
-    call_unmerge_podcast, call_update_feed_cutoff_days, call_update_podcast_info,
+    call_refresh_podcast_details, call_unmerge_podcast, call_update_feed_cutoff_days,
+    call_update_podcast_info,
     call_get_podcast_auto_delete_days, call_set_podcast_auto_delete_days,
     call_clear_podcast_auto_delete_days,
     AddCategoryRequest, AutoDownloadRequest, BulkEpisodeActionRequest, ClearPlaybackSpeedRequest,
@@ -906,6 +907,9 @@ pub fn episode_layout() -> Html {
     let auto_play_next_status = use_state(|| false);
     let auto_queue_status = use_state(|| false);
     let podcast_id = use_state(|| 0);
+    // Bumped after the podcast's details are read from its feed again, to reload its episodes.
+    let details_reload = use_state(|| 0u32);
+    let refreshing_details = use_state(|| false);
     let start_skip = use_state(|| 0);
     let end_skip = use_state(|| 0);
     // Silence-trim (#727) per-podcast settings
@@ -1677,6 +1681,64 @@ pub fn episode_layout() -> Html {
         let page_state = page_state.clone();
         Callback::from(move |_: MouseEvent| {
             page_state.set(PageState::EditPodcast);
+        })
+    };
+
+    // Read the podcast's feed again and show its current details; `true` also drops the user's
+    // own edits to them.
+    let refresh_from_feed = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        let podcast_id = podcast_id.clone();
+        let page_state = page_state.clone();
+        let details_reload = details_reload.clone();
+        let refreshing_details = refreshing_details.clone();
+        let i18n_done = i18n.t("episodes_layout.details_refreshed").to_string();
+        let i18n_failed = i18n.t("episodes_layout.details_refresh_failed").to_string();
+        Callback::from(move |reset_edits: bool| {
+            let (Some(Some(api_key)), Some(server_name), Some(user_id)) =
+                (api_key.clone(), server_name.clone(), user_id)
+            else {
+                return;
+            };
+            let pid = *podcast_id;
+            if pid == 0 || *refreshing_details {
+                return;
+            }
+            refreshing_details.set(true);
+            let page_state = page_state.clone();
+            let details_reload = details_reload.clone();
+            let refreshing_details = refreshing_details.clone();
+            let i18n_done = i18n_done.clone();
+            let i18n_failed = i18n_failed.clone();
+            spawn_local(async move {
+                match call_refresh_podcast_details(&server_name, &api_key, pid, reset_edits).await {
+                    Ok(()) => {
+                        if let Ok(d) = call_get_podcast_details(&server_name, &api_key, user_id, pid).await {
+                            Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
+                                if let Some(info) = state.clicked_podcast_info.as_mut() {
+                                    info.podcastname = d.podcastname;
+                                    info.artworkurl = d.artworkurl;
+                                    info.author = d.author;
+                                    info.description = d.description;
+                                    info.websiteurl = d.websiteurl;
+                                    info.episodecount = d.episodecount;
+                                }
+                            });
+                        }
+                        details_reload.set(*details_reload + 1);
+                        page_state.set(PageState::Hidden);
+                        Dispatch::<NotificationState>::global()
+                            .reduce_mut(|state| state.info_message = Some(i18n_done));
+                    }
+                    Err(e) => {
+                        Dispatch::<NotificationState>::global()
+                            .reduce_mut(|state| state.error_message = Some(format!("{i18n_failed}: {e}")));
+                    }
+                }
+                refreshing_details.set(false);
+            });
         })
     };
 
@@ -3308,14 +3370,25 @@ pub fn episode_layout() -> Html {
                                 </div>
                             </div>
 
-                            // Edit podcast info button
-                            <div class="mt-4">
+                            // Edit podcast info / read its details from the feed again
+                            <div class="mt-4 flex flex-wrap gap-2">
                                 <button
                                     type="button"
                                     class="download-button font-bold py-2 px-4 rounded"
                                     onclick={toggle_edit_podcast}
                                 >
                                     {&i18n.t("episodes_layout.modify_podcast_info")}
+                                </button>
+                                <button
+                                    type="button"
+                                    class="download-button font-bold py-2 px-4 rounded"
+                                    disabled={*refreshing_details}
+                                    onclick={{
+                                        let refresh_from_feed = refresh_from_feed.clone();
+                                        Callback::from(move |_: MouseEvent| refresh_from_feed.emit(false))
+                                    }}
+                                >
+                                    {&i18n.t("episodes_layout.refresh_from_feed")}
                                 </button>
                             </div>
                         </form>
@@ -3793,7 +3866,7 @@ pub fn episode_layout() -> Html {
                                     }
                                 </div>
 
-                                <div class="flex justify-between space-x-4">
+                                <div class="flex flex-wrap justify-between gap-2">
                                     <button
                                         type="button"
                                         class="save-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
@@ -3955,6 +4028,18 @@ pub fn episode_layout() -> Html {
                                         }}
                                     >
                                         {&i18n.t("episodes_layout.save_changes")}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="download-button font-bold py-2 px-4 rounded"
+                                        title={i18n.t("episodes_layout.reset_to_feed_hint").to_string()}
+                                        disabled={*refreshing_details}
+                                        onclick={{
+                                            let refresh_from_feed = refresh_from_feed.clone();
+                                            Callback::from(move |_: MouseEvent| refresh_from_feed.emit(true))
+                                        }}
+                                    >
+                                        {&i18n.t("episodes_layout.reset_to_feed")}
                                     </button>
                                     <button
                                         type="button"
@@ -4267,6 +4352,7 @@ pub fn episode_layout() -> Html {
         let show_in_progress_dep = *show_in_progress;
         let search_dep = (*debounced_search_term).clone();
         let prefs_loaded_dep = *prefs_loaded_for_podcast;
+        let reload_dep = *details_reload;
         let synced_episode_count_eff = synced_episode_count.clone();
 
         use_effect_with(
@@ -4280,8 +4366,9 @@ pub fn episode_layout() -> Html {
                 show_in_progress_dep,
                 search_dep,
                 prefs_loaded_dep,
+                reload_dep,
             ),
-            move |(api_key, user_id, server_name, pid, sort, completed, show_ip, search, prefs_loaded)| {
+            move |(api_key, user_id, server_name, pid, sort, completed, show_ip, search, prefs_loaded, _reload)| {
                 if *pid <= 0 || Some(*pid) != *prefs_loaded {
                     return Box::new(|| ()) as Box<dyn FnOnce()>;
                 }

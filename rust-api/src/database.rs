@@ -7257,6 +7257,13 @@ impl DatabasePool {
         // Parse the RSS feed, then apply via the shared dedup/insert path (GUID→URL→title dedup,
         // no-op UPDATE skipping, batched insert). This is the initial import of the back
         // catalogue, so no new-episode notifications.
+        // The podcast's details as the feed gives them (not as a search result described it).
+        let meta = crate::services::feed_metadata::parse(content);
+        if let Some(meta) = &meta {
+            self.store_feed_metadata(None, &[podcast_id], meta).await;
+        }
+        let artwork = meta.and_then(|m| m.artwork).unwrap_or_else(|| artwork_url.to_string());
+        let artwork_url = artwork.as_str();
         let episodes = self.parse_rss_feed(content, podcast_id, artwork_url).await?;
         let new = self.apply_parsed_episodes(podcast_id, &episodes, artwork_url, None, false).await?;
         // A feed someone else already follows has its episodes already: count them, and match
@@ -8509,6 +8516,7 @@ impl DatabasePool {
         
         // Extract raw iTunes durations before feed_rs processes them
         let raw_durations = Self::extract_raw_itunes_durations(content);
+        let item_images = crate::services::feed_metadata::item_images(content);
         
         // Use a custom id_generator that returns empty for guid-less entries. feed-rs's default
         // synthesizes an id (link+title hash, or a RANDOM uuid when there's no link) which would
@@ -8633,8 +8641,14 @@ impl DatabasePool {
                 }
             }
             
-            // Debug what we're passing to duration parsing
-            
+            if let Some(image) = item_images.find(
+                episode.guid.as_deref(),
+                episode_data.get("enclosure_url").map(String::as_str),
+                entry.title.as_ref().map(|t| t.content.as_str()),
+            ) {
+                episode_data.insert("episode_artwork_href".to_string(), image.to_string());
+            }
+
             // Apply all the Python-style parsing logic with ALL fallbacks
             self.apply_python_style_parsing(&mut episode, &episode_data, artwork_url, estimate_missing_durations);
             
@@ -8726,9 +8740,16 @@ impl DatabasePool {
     
     // Comprehensive artwork URL parsing - prioritizes episode-specific artwork
     fn parse_artwork_comprehensive(&self, data: &HashMap<String, String>, default_artwork: &str) -> String {
+        // The episode's <itunes:image> is an image by definition; CDN image URLs often have no
+        // extension, so it skips the URL guess the other candidates need.
+        if let Some(href) = data.get("episode_artwork_href").map(|h| h.trim()) {
+            let lower = href.to_ascii_lowercase();
+            if lower.starts_with("http://") || lower.starts_with("https://") {
+                return self.validate_and_clean_url(href);
+            }
+        }
         // Priority order: episode-specific artwork first, then fallbacks
         let artwork_candidates = [
-            data.get("episode_artwork_href"),    // <itunes:image href=""/> or <image href=""/> in episode
             data.get("media_image_url"),         // <media:content type="image/jpeg" url=""/>
             data.get("media_thumbnail_url"),     // <media:thumbnail url=""/>
             data.get("itunes:image"),           // Text content of <itunes:image>
@@ -15108,18 +15129,16 @@ impl DatabasePool {
         
         podcast_values.insert("feedurl".to_string(), feed_url.to_string());
         podcast_values.insert("userid".to_string(), user_id.to_string());
-        podcast_values.insert("podcastname".to_string(), feed.title.as_ref().map(|t| t.content.clone()).unwrap_or_default());
-        podcast_values.insert("description".to_string(), feed.description.as_ref().map(|d| d.content.clone()).unwrap_or_default());
-        podcast_values.insert("author".to_string(), feed.authors.first().and_then(|a| a.name.clone()).unwrap_or_default());
-        podcast_values.insert("websiteurl".to_string(), feed.links.first().map(|l| l.href.clone()).unwrap_or_default());
+        // The same reading of the feed's details as the refresh, so the first refresh doesn't
+        // "change" them.
+        let meta = crate::services::feed_metadata::parse(content).unwrap_or_default();
+        podcast_values.insert("podcastname".to_string(), meta.name.unwrap_or_default());
+        podcast_values.insert("description".to_string(), meta.description.unwrap_or_default());
+        podcast_values.insert("author".to_string(), meta.author.unwrap_or_default());
+        podcast_values.insert("websiteurl".to_string(), meta.website.unwrap_or_default());
         podcast_values.insert("explicit".to_string(), "False".to_string()); // Default to False
         podcast_values.insert("episodecount".to_string(), feed.entries.len().to_string());
-        
-        // Extract artwork URL - check feed image and iTunes image
-        let artwork_url = feed.logo.as_ref().map(|l| l.uri.clone())
-            .or_else(|| feed.icon.as_ref().map(|i| i.uri.clone()))
-            .unwrap_or_default();
-        podcast_values.insert("artworkurl".to_string(), artwork_url);
+        podcast_values.insert("artworkurl".to_string(), meta.artwork.unwrap_or_default());
         
         // Extract categories - convert to dict format like Python.
         // Skip empty/whitespace category terms so feeds with blank category
