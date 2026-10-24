@@ -19,7 +19,6 @@ void main() {
       final repository = MockRepository();
       final settings = MockSettings();
       final episode = buildEpisode(guid: 'pinepods_101', position: 120000);
-      when(() => repository.loadQueue()).thenAnswer((_) async => []);
       when(
         () => repository.saveEpisode(episode),
       ).thenAnswer((_) async => episode);
@@ -69,7 +68,6 @@ void main() {
     final repository = MockRepository();
     final settings = MockSettings();
     final episode = buildEpisode(guid: 'pinepods_101', position: 120000);
-    when(() => repository.loadQueue()).thenAnswer((_) async => []);
     when(() => repository.saveEpisode(episode)).thenAnswer((_) async => episode);
     when(() => settings.settingsListener).thenAnswer((_) => const Stream.empty());
     when(() => settings.playbackSpeed).thenReturn(1.0);

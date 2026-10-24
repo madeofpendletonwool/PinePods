@@ -10,14 +10,10 @@ import 'package:pinepods_mobile/api/podcast/podcast_api.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
 import 'package:pinepods_mobile/bloc/podcast/episode_bloc.dart';
 import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
-import 'package:pinepods_mobile/bloc/podcast/queue_bloc.dart';
-import 'package:pinepods_mobile/bloc/search/search_bloc.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/bloc/ui/pager_bloc.dart';
 import 'package:pinepods_mobile/core/environment.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
-import 'package:pinepods_mobile/entities/feed.dart';
-import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/l10n/app_localizations.dart';
 import 'package:pinepods_mobile/navigation/navigation_route_observer.dart';
@@ -41,18 +37,13 @@ import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:pinepods_mobile/services/auth_notifier.dart';
 import 'package:pinepods_mobile/services/carplay/carplay_service.dart';
 import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
-import 'package:pinepods_mobile/ui/library/downloads.dart';
-import 'package:pinepods_mobile/ui/library/library.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
-import 'package:pinepods_mobile/ui/podcast/podcast_details.dart';
 import 'package:pinepods_mobile/ui/tab_navigator.dart';
-import 'package:pinepods_mobile/ui/search/search.dart';
 import 'package:pinepods_mobile/ui/pinepods/people/followed_people.dart';
 import 'package:pinepods_mobile/ui/pinepods/search.dart';
 import 'package:pinepods_mobile/ui/settings/settings.dart';
 import 'package:pinepods_mobile/ui/themes.dart';
 import 'package:pinepods_mobile/ui/widgets/action_text.dart';
-import 'package:pinepods_mobile/ui/widgets/layout_selector.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_bottom_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/search_slide_route.dart';
 import 'package:pinepods_mobile/ui/pinepods/home.dart';
@@ -65,6 +56,7 @@ import 'package:pinepods_mobile/ui/auth/auth_wrapper.dart';
 import 'package:pinepods_mobile/ui/pinepods/user_stats.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcasts.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_search.dart';
+import 'package:pinepods_mobile/ui/pinepods/downloads.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
@@ -232,10 +224,6 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider<SearchBloc>(
-          create: (_) => SearchBloc(podcastService: widget.podcastService!),
-          dispose: (_, value) => value.dispose(),
-        ),
         Provider<EpisodeBloc>(
           create: (_) =>
               EpisodeBloc(podcastService: widget.podcastService!, audioPlayerService: widget.audioPlayerService),
@@ -259,11 +247,6 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
         // outlive this subtree; disposing it here would leave a remounted tree
         // holding a closed bloc.
         Provider<SettingsBloc?>.value(value: widget.settingsBloc),
-        Provider<QueueBloc>(
-          create: (_) =>
-              QueueBloc(audioPlayerService: widget.audioPlayerService, podcastService: widget.podcastService!),
-          dispose: (_, value) => value.dispose(),
-        ),
         Provider<AudioPlayerService>(create: (_) => widget.audioPlayerService),
         Provider<PodcastService>(create: (_) => widget.podcastService!),
         // App-wide offline/reachability state (#935). Singleton so the audio
@@ -410,35 +393,18 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
       return;
     }
 
-    // Handle podcast subscription links
+    // Handle podcast subscription links: open the feed's podcast page.
     if ((uri.scheme == 'pinepods-subscribe' || uri.scheme == 'https') &&
         (uri.query.startsWith('uri=') || uri.query.startsWith('url='))) {
-      var path = uri.query.substring(4);
-      var loadPodcastBloc = Provider.of<PodcastBloc>(context, listen: false);
-      var routeName = NavigationRouteObserver().top!.settings.name;
-
-      /// If we are currently on the podcast details page, we can simply request (via
-      /// the BLoC) that we load this new URL. If not, we pop the stack until we are
-      /// back at root and then load the podcast details page.
-      if (routeName != null && routeName == 'podcastdetails') {
-        loadPodcastBloc.load(Feed(podcast: Podcast.fromUrl(url: path), backgroundFresh: false, silently: false));
-      } else {
-        /// Pop back to route.
-        Navigator.of(context).popUntil((route) {
-          var currentRouteName = NavigationRouteObserver().top!.settings.name;
-
-          return currentRouteName == null || currentRouteName == '' || currentRouteName == '/';
-        });
-
-        /// Once we have reached the root route, push podcast details.
-        await Navigator.push(
-          context,
-          MaterialPageRoute<void>(
-            fullscreenDialog: true,
-            settings: const RouteSettings(name: 'podcastdetails'),
-            builder: (context) => PodcastDetails(Podcast.fromUrl(url: path), loadPodcastBloc),
-          ),
-        );
+      try {
+        await _openFeed(uri.query.substring(4));
+      } catch (e) {
+        log.warning('Could not open subscription link: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to load podcast: $e'), backgroundColor: Colors.red),
+          );
+        }
       }
     }
   }
@@ -833,7 +799,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
       case 'People':
         return const PinepodsPeople();
       case 'Downloads':
-        return const Downloads();
+        return const PinepodsDownloads();
       case 'History':
         return const PinepodsHistory();
       case 'Playlists':
@@ -847,8 +813,6 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
 
   void _menuSelect(String choice) async {
     var textFieldController = TextEditingController();
-    var podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
-    final theme = Theme.of(context);
     var url = '';
 
     switch (choice) {
@@ -904,7 +868,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
                   );
 
                   try {
-                    await _handleRssUrl(url);
+                    await _openFeed(url, beforeOpen: () => Navigator.of(context).pop());
                   } catch (e) {
                     if (mounted) {
                       Navigator.of(context).pop(); // Close loading dialog
@@ -922,7 +886,10 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
     }
   }
 
-  Future<void> _handleRssUrl(String url) async {
+  /// Load the feed at [url] and open its podcast page, following or not.
+  /// [beforeOpen] runs just before the page is pushed (e.g. to close a
+  /// loading dialog).
+  Future<void> _openFeed(String url, {VoidCallback? beforeOpen}) async {
     try {
       // Get services
       final podcastApi = MobilePodcastApi();
@@ -965,11 +932,10 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
       }
 
       if (mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
+        beforeOpen?.call();
 
-        // Navigate to podcast details page
-        Navigator.push(
-          context,
+        // Open it in the tab navigator, like any other podcast page.
+        tabNavigatorKey.currentState?.push(
           MaterialPageRoute<void>(
             settings: const RouteSettings(name: 'pinepodspodcastdetails'),
             builder: (context) => PinepodsPodcastDetails(
@@ -1060,7 +1026,7 @@ class TitleWidget extends StatelessWidget {
                     style: TextStyle(
                       color: const Color(0xFF539e8a),
                       fontWeight: FontWeight.bold,
-                      fontFamily: 'MontserratRegular',
+                      fontFamily: kAppFont,
                       fontSize: 18,
                     ),
                   ),
@@ -1069,7 +1035,7 @@ class TitleWidget extends StatelessWidget {
                     style: TextStyle(
                       color: Theme.of(context).brightness == Brightness.light ? Colors.black : Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontFamily: 'MontserratRegular',
+                      fontFamily: kAppFont,
                       fontSize: 18,
                     ),
                   ),

@@ -2,18 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/core/download_cleanup.dart';
 import 'package:pinepods_mobile/core/utils.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
-import 'package:pinepods_mobile/ui/settings/episode_refresh.dart';
-import 'package:pinepods_mobile/ui/settings/search_provider.dart';
 import 'package:pinepods_mobile/ui/settings/server_download_defaults.dart';
 import 'package:pinepods_mobile/ui/settings/settings_section_label.dart';
 import 'package:pinepods_mobile/ui/settings/bottom_bar_order.dart';
-import 'package:pinepods_mobile/ui/widgets/action_text.dart';
 import 'package:pinepods_mobile/ui/widgets/certificate_import_section.dart';
 import 'package:pinepods_mobile/ui/settings/pinepods_login.dart';
 import 'package:pinepods_mobile/ui/debug/debug_logs_page.dart';
@@ -51,7 +47,6 @@ class _SettingsState extends State<Settings> {
 
   Widget _buildList(BuildContext context) {
     var settingsBloc = Provider.of<SettingsBloc>(context);
-    var podcastBloc = Provider.of<PodcastBloc>(context);
 
     return StreamBuilder<AppSettings>(
         stream: settingsBloc.settings,
@@ -238,7 +233,6 @@ class _SettingsState extends State<Settings> {
                   ),
                 ),
               ),
-              const SearchProviderWidget(),
               SettingsDividerLabel(label: 'Download Management'),
               const Divider(),
               MergeSemantics(

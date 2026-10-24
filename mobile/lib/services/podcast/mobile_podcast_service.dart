@@ -14,15 +14,12 @@ import 'package:pinepods_mobile/entities/funding.dart';
 import 'package:pinepods_mobile/entities/person.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/entities/transcript.dart';
-import 'package:pinepods_mobile/l10n/app_localizations.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/state/episode_state.dart';
 import 'package:collection/collection.dart' show IterableExtension;
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:logging/logging.dart';
-import 'package:path/path.dart';
 import 'package:podcast_search/podcast_search.dart' as podcast_search;
 
 class MobilePodcastService extends PodcastService {
@@ -30,109 +27,12 @@ class MobilePodcastService extends PodcastService {
   final descriptionRegExp2 = RegExp(r'(<p><br></p>|<p></br></p>)');
   final log = Logger('MobilePodcastService');
   final _cache = _PodcastCache(maxItems: 10, expiration: const Duration(minutes: 30));
-  var _categories = <String>[];
-  var _intlCategories = <String?>[];
-  var _intlCategoriesSorted = <String>[];
 
   MobilePodcastService({
     required super.api,
     required super.repository,
     required super.settingsService,
-  }) {
-    _init();
-  }
-
-  Future<void> _init() async {
-    // Resolve the best-matching supported locale from the system preference list,
-    // falling back to English. gen-l10n's [lookupAppLocalizations] gives us a
-    // context-free way to read localized strings for genre/category lists.
-    final supported = AppLocalizations.supportedLocales;
-    final candidates = <Locale>[
-      Locale(Platform.localeName.split(RegExp('[_-]')).first),
-      ...PlatformDispatcher.instance.locales,
-    ];
-
-    var resolvedLocale = const Locale('en');
-    for (final candidate in candidates) {
-      final match = supported.firstWhere(
-        (s) => s.languageCode == candidate.languageCode,
-        orElse: () => const Locale('und'),
-      );
-      if (match.languageCode != 'und') {
-        resolvedLocale = match;
-        break;
-      }
-    }
-
-    _setupGenres(resolvedLocale);
-
-    /// Listen for user changes in search provider. If changed, reload the genre list
-    settingsService.settingsListener.where((event) => event == 'search').listen((event) {
-      _setupGenres(resolvedLocale);
-    });
-  }
-
-  void _setupGenres(Locale locale) {
-    final l10n = lookupAppLocalizations(locale);
-    var categoryList = '';
-
-    /// Fetch the correct categories for the current local and selected provider.
-    if (settingsService.searchProvider == 'itunes') {
-      _categories = PodcastService.itunesGenres;
-      categoryList = l10n.discovery_categories_itunes;
-    } else {
-      _categories = PodcastService.podcastIndexGenres;
-      categoryList = l10n.discovery_categories_pindex;
-    }
-
-    _intlCategories = categoryList.split(',');
-    _intlCategoriesSorted = categoryList.split(',');
-    _intlCategoriesSorted.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-  }
-
-  @override
-  Future<podcast_search.SearchResult> search({
-    required String term,
-    String? country,
-    String? attribute,
-    int? limit,
-    String? language,
-    int version = 0,
-    bool explicit = false,
-  }) {
-    return api.search(
-      term,
-      country: country,
-      attribute: attribute,
-      limit: limit,
-      language: language,
-      explicit: explicit,
-      searchProvider: settingsService.searchProvider,
-    );
-  }
-
-  @override
-  Future<podcast_search.SearchResult> charts({
-    int size = 20,
-    String? genre,
-    String? countryCode = '',
-    String? languageCode = '',
-  }) {
-    var providerGenre = _decodeGenre(genre);
-
-    return api.charts(
-      size: size,
-      searchProvider: settingsService.searchProvider,
-      genre: providerGenre,
-      countryCode: countryCode,
-      languageCode: languageCode,
-    );
-  }
-
-  @override
-  List<String> genres() {
-    return _intlCategoriesSorted;
-  }
+  });
 
   /// Loads the specified [Podcast]. If the Podcast instance has an ID we'll fetch
   /// it from storage. If not, we'll check the cache to see if we have seen it
@@ -388,13 +288,8 @@ class MobilePodcastService extends PodcastService {
 
       return pc;
     } else {
-      return await loadPodcastById(id: podcast.id ?? 0);
+      return await repository.findPodcastById(podcast.id!);
     }
-  }
-
-  @override
-  Future<Podcast?> loadPodcastById({required int id}) {
-    return repository.findPodcastById(id);
   }
 
   @override
@@ -552,54 +447,6 @@ class MobilePodcastService extends PodcastService {
   }
 
   @override
-  Future<List<Podcast>> subscriptions() {
-    return repository.subscriptions();
-  }
-
-  @override
-  Future<void> unsubscribe(Podcast podcast) async {
-    if (await hasStoragePermission()) {
-      final filename = join(await getStorageDirectory(), safeFile(podcast.title));
-
-      final d = Directory.fromUri(Uri.file(filename));
-
-      if (await d.exists()) {
-        await d.delete(recursive: true);
-      }
-    }
-
-    return repository.deletePodcast(podcast);
-  }
-
-  @override
-  Future<Podcast?> subscribe(Podcast? podcast) async {
-    // We may already have episodes download for this podcast before the user
-    // hit subscribe.
-    if (podcast != null && podcast.guid != null) {
-      var savedEpisodes = await repository.findEpisodesByPodcastGuid(podcast.guid!);
-
-      if (podcast.episodes.isNotEmpty) {
-        for (var episode in podcast.episodes) {
-          var savedEpisode = savedEpisodes.firstWhereOrNull((ep) => ep!.guid == episode.guid);
-
-          if (savedEpisode != null) {
-            episode.pguid = podcast.guid;
-          }
-        }
-      }
-
-      return repository.savePodcast(podcast);
-    }
-
-    return Future.value(null);
-  }
-
-  @override
-  Future<Podcast?> save(Podcast podcast, {bool withEpisodes = true}) async {
-    return repository.savePodcast(podcast, withEpisodes: withEpisodes);
-  }
-
-  @override
   Future<Episode> saveEpisode(Episode episode) async {
     return repository.saveEpisode(episode);
   }
@@ -614,15 +461,7 @@ class MobilePodcastService extends PodcastService {
     return repository.saveTranscript(transcript);
   }
 
-  @override
-  Future<void> saveQueue(List<Episode> episodes) async {
-    await repository.saveQueue(episodes);
-  }
 
-  @override
-  Future<List<Episode>> loadQueue() async {
-    return await repository.loadQueue();
-  }
 
   /// Remove HTML padding from the content. The padding may look fine within
   /// the context of a browser, but can look out of place on a mobile screen.
@@ -687,21 +526,6 @@ class MobilePodcastService extends PodcastService {
 
   /// The service providers expect the genre to be passed in English. This function takes
   /// the selected genre and returns the English version.
-  String _decodeGenre(String? genre) {
-    var index = _intlCategories.indexOf(genre);
-    var decodedGenre = '';
-
-    if (index >= 0) {
-      decodedGenre = _categories[index];
-
-      if (decodedGenre == '<All>') {
-        decodedGenre = '';
-      }
-    }
-
-    return decodedGenre;
-  }
-
   List<Episode> _sortAndFilterEpisodes(Podcast podcast) {
     var filteredEpisodes = <Episode>[];
 
@@ -734,9 +558,6 @@ class MobilePodcastService extends PodcastService {
 
     return filteredEpisodes;
   }
-
-  @override
-  Stream<Podcast?>? get podcastListener => repository.podcastListener;
 
   @override
   Stream<EpisodeState>? get episodeListener => repository.episodeListener;

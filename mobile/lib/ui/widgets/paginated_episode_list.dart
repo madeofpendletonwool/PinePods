@@ -1,9 +1,7 @@
 // lib/ui/widgets/paginated_episode_list.dart
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
-import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
-import 'package:pinepods_mobile/ui/widgets/episode_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/shimmer_episode_tile.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
@@ -70,14 +68,8 @@ class _PaginatedEpisodeListState extends State<PaginatedEpisodeList> {
           ? () => widget.onPlayPressed!(episode)
           : null,
       );
-    } else if (!widget.isServerEpisodes && episode is Episode) {
-      return EpisodeTile(
-        episode: episode,
-        download: false,
-        play: true,
-      );
     }
-    
+
     return const SizedBox.shrink(); // Fallback
   }
 

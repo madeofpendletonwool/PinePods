@@ -24,59 +24,6 @@ class MobilePodcastApi extends PodcastApi {
   List<int> _certificateAuthorityBytes = [];
 
   @override
-  Future<podcast_search.SearchResult> search(
-    String term, {
-    String? country,
-    String? attribute,
-    int? limit,
-    String? language,
-    int version = 0,
-    bool explicit = false,
-    String? searchProvider,
-  }) async {
-    var searchParams = {
-      'term': term,
-      'searchProvider': searchProvider,
-    };
-
-    return compute(_search, searchParams);
-  }
-
-  @override
-  Future<podcast_search.SearchResult> charts({
-    int? size = 20,
-    String? genre,
-    String? searchProvider,
-    String? countryCode = '',
-    String? languageCode = '',
-  }) async {
-    var searchParams = {
-      'size': size.toString(),
-      'genre': genre,
-      'searchProvider': searchProvider,
-      'countryCode': countryCode,
-      'languageCode': languageCode,
-    };
-
-    return compute(_charts, searchParams);
-  }
-
-  @override
-  List<String> genres(String searchProvider) {
-    var provider = searchProvider == 'itunes'
-        ? const podcast_search.ITunesProvider()
-        : podcast_search.PodcastIndexProvider(
-            key: podcastIndexKey,
-            secret: podcastIndexSecret,
-          );
-
-    return podcast_search.Search(
-      userAgent: Environment.userAgent(),
-      searchProvider: provider,
-    ).genres();
-  }
-
-  @override
   Future<podcast_search.Podcast> loadFeed(String url) async {
     return _loadFeed(url);
   }
@@ -189,42 +136,6 @@ class MobilePodcastApi extends PodcastApi {
       debugPrint('Error parsing HTML transcript: $e');
       return podcast_search.Transcript();
     }
-  }
-
-  static Future<podcast_search.SearchResult> _search(Map<String, String?> searchParams) {
-    var term = searchParams['term']!;
-    var provider = searchParams['searchProvider'] == 'itunes'
-        ? const podcast_search.ITunesProvider()
-        : podcast_search.PodcastIndexProvider(
-            key: podcastIndexKey,
-            secret: podcastIndexSecret,
-          );
-
-    return podcast_search.Search(
-      userAgent: Environment.userAgent(),
-      searchProvider: provider,
-    ).search(term).timeout(const Duration(seconds: 30));
-  }
-
-  static Future<podcast_search.SearchResult> _charts(Map<String, String?> searchParams) {
-    var provider = searchParams['searchProvider'] == 'itunes'
-        ? const podcast_search.ITunesProvider()
-        : podcast_search.PodcastIndexProvider(
-            key: podcastIndexKey,
-            secret: podcastIndexSecret,
-          );
-
-    var countryCode = searchParams['countryCode'];
-    var languageCode = searchParams['languageCode'] ?? '';
-    var country = podcast_search.Country.none;
-
-    if (countryCode != null && countryCode.isNotEmpty) {
-      country = podcast_search.Country.values.where((element) => element.code == countryCode).first;
-    }
-
-    return podcast_search.Search(userAgent: Environment.userAgent(), searchProvider: provider)
-        .charts(genre: searchParams['genre']!, country: country, language: languageCode, limit: 50)
-        .timeout(const Duration(seconds: 30));
   }
 
   Future<podcast_search.Podcast> _loadFeed(String url) {

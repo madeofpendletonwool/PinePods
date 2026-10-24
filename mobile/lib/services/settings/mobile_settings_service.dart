@@ -4,7 +4,6 @@
 
 import 'dart:math';
 
-import 'package:pinepods_mobile/core/environment.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
 import 'package:rxdart/rxdart.dart';
@@ -158,22 +157,6 @@ class MobileSettingsService extends SettingsService {
     // any setting that uses the old 0.25.
     var mod = pow(10.0, 1).toDouble();
     return ((speed * mod).round().toDouble() / mod);
-  }
-
-  @override
-  set searchProvider(String provider) {
-    _sharedPreferences.setString('search', provider);
-    settingsNotifier.sink.add('search');
-  }
-
-  @override
-  String get searchProvider {
-    // If we do not have PodcastIndex key, fallback to iTunes
-    if (podcastIndexKey.isEmpty) {
-      return 'itunes';
-    } else {
-      return _sharedPreferences.getString('search') ?? 'itunes';
-    }
   }
 
   @override

@@ -549,8 +549,11 @@ class CarPlayService {
     FlutterCarplay.push(template: template, animated: true);
 
     try {
-      final queue = await repository.loadQueue();
-      final items = queue.take(50).map((ep) => _createEpisodeItem(ep)).toList();
+      final userId = settingsService.pinepodsUserId;
+      final queue = pinepodsService != null && userId != null
+          ? await pinepodsService!.getQueuedEpisodes(userId)
+          : const <PinepodsEpisode>[];
+      final items = queue.take(50).map((ep) => _createEpisodeItem(_convertPinepodsEpisode(ep))).toList();
 
       await _flutterCarplay.updateListTemplateSections(
         elementId: template.uniqueId,

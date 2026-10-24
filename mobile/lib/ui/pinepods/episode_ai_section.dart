@@ -5,7 +5,6 @@
 // tap-to-seek lines (ad ranges highlighted), a per-ad Confirm/Deny review
 // list, and a Detect-ads button. The whole block hides unless the server
 // reports the AI sidecar as available.
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';

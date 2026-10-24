@@ -3,11 +3,10 @@ import 'package:pinepods_mobile/entities/app_settings.dart';
 
 void main() {
   group('sensibleDefaults', () {
-    test('produces a usable dark-theme, iTunes-search, no-account default state', () {
+    test('produces a usable dark-theme, no-account default state', () {
       final settings = AppSettings.sensibleDefaults();
 
       expect(settings.theme, 'Dark');
-      expect(settings.searchProvider, 'itunes');
       expect(settings.playbackSpeed, 1.0);
       expect(settings.autoUpdateEpisodePeriod, -1);
       expect(settings.showFunding, isTrue);
@@ -26,7 +25,6 @@ void main() {
       expect(updated.theme, 'Light');
       expect(updated.pinepodsUserId, 42);
       // Untouched fields carry over from the original.
-      expect(updated.searchProvider, base.searchProvider);
       expect(updated.playbackSpeed, base.playbackSpeed);
       expect(updated.bottomBarOrder, base.bottomBarOrder);
     });
