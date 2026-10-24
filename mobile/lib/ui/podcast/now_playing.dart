@@ -465,10 +465,16 @@ class _ScrubBarState extends State<_ScrubBar> {
                 .toList()
             : const <double>[];
 
+        final skips = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+        Duration clamp(Duration d) => d < Duration.zero ? Duration.zero : (d > length ? length : d);
+
         return Semantics(
           slider: true,
           label: L.of(context)!.now_playing_episode_position,
           value: _formatTime(shown),
+          // Flutter requires these alongside onIncrease / onDecrease.
+          increasedValue: _formatTime(clamp(shown + Duration(seconds: skips.fastForwardInterval))),
+          decreasedValue: _formatTime(clamp(shown - Duration(seconds: skips.rewindInterval))),
           onIncrease: canSeek ? () => audioBloc.transitionState(TransitionState.fastforward) : null,
           onDecrease: canSeek ? () => audioBloc.transitionState(TransitionState.rewind) : null,
           child: Column(
