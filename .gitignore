@@ -87,6 +87,9 @@ clients/mac-app/pinepods.spec
 # Web Removals
 web/target/*
 web/.idea/*
+
+# Rust build artifacts
+rust-api/target/*
 keystore.properties
 key.properties
 **/key.properties
