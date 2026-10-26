@@ -7738,7 +7738,8 @@ impl DatabasePool {
                 let rows = sqlx::query(
                     r#"SELECT p.podcastname, uns.platform, uns.ntfytopic, uns.ntfyserverurl,
                            uns.ntfyusername, uns.ntfypassword, uns.ntfyaccesstoken,
-                           uns.gotifyurl, uns.gotifytoken
+                           uns.gotifyurl, uns.gotifytoken,
+                           uns.httpurl, uns.httptoken, uns.httpmethod
                     FROM "Podcasts" p
                     JOIN "UserNotificationSettings" uns ON p.userid = uns.userid
                     WHERE p.podcastid = $1 AND p.notificationsenabled = true AND uns.enabled = true"#
@@ -7757,6 +7758,9 @@ impl DatabasePool {
                         ntfy_access_token: row.try_get("ntfyaccesstoken").ok(),
                         gotify_url: row.try_get("gotifyurl").ok(),
                         gotify_token: row.try_get("gotifytoken").ok(),
+                        http_url: row.try_get("httpurl").ok(),
+                        http_token: row.try_get("httptoken").ok(),
+                        http_method: row.try_get("httpmethod").ok(),
                     });
                 }
             }
@@ -7764,7 +7768,8 @@ impl DatabasePool {
                 let rows = sqlx::query(
                     "SELECT p.PodcastName, uns.Platform, uns.NtfyTopic, uns.NtfyServerUrl,
                             uns.NtfyUsername, uns.NtfyPassword, uns.NtfyAccessToken,
-                            uns.GotifyUrl, uns.GotifyToken
+                            uns.GotifyUrl, uns.GotifyToken,
+                            uns.HttpUrl, uns.HttpToken, uns.HttpMethod
                      FROM Podcasts p
                      JOIN UserNotificationSettings uns ON p.UserID = uns.UserID
                      WHERE p.PodcastID = ? AND p.NotificationsEnabled = true AND uns.Enabled = true"
@@ -7783,6 +7788,9 @@ impl DatabasePool {
                         ntfy_access_token: row.try_get("NtfyAccessToken").ok(),
                         gotify_url: row.try_get("GotifyUrl").ok(),
                         gotify_token: row.try_get("GotifyToken").ok(),
+                        http_url: row.try_get("HttpUrl").ok(),
+                        http_token: row.try_get("HttpToken").ok(),
+                        http_method: row.try_get("HttpMethod").ok(),
                     });
                 }
             }
@@ -7819,6 +7827,19 @@ impl DatabasePool {
                             .unwrap_or(false)
                     }
                     _ => false,
+                },
+                "http" => match t.http_url.as_deref().filter(|url| !url.is_empty()) {
+                    Some(url) => Self::send_http_notification(
+                        client,
+                        url,
+                        t.http_token.as_deref().unwrap_or(""),
+                        t.http_method.as_deref().unwrap_or("POST"),
+                        &t.podcast_name,
+                        episode_title,
+                    )
+                    .await
+                    .unwrap_or(false),
+                    None => false,
                 },
                 other => {
                     tracing::warn!("Unknown notification platform: {}", other);
@@ -7911,6 +7932,75 @@ impl DatabasePool {
             }
             Err(e) => {
                 tracing::warn!("Failed to send Gotify notification: {}", e);
+                Ok(false)
+            }
+        }
+    }
+
+    /// POST or GET a new-episode notice to a user-configured webhook. The JSON body matches the
+    /// test notification: `text` is what Mattermost and Telegram display, and `title`/`message`
+    /// cover generic consumers. The webhook URL often embeds a secret, so it is not logged.
+    async fn send_http_notification(
+        client: &reqwest::Client,
+        http_url: &str,
+        http_token: &str,
+        http_method: &str,
+        podcast_name: &str,
+        episode_title: &str,
+    ) -> AppResult<bool> {
+        if http_url.is_empty() {
+            return Ok(false);
+        }
+        let message = format!("New episode available for {}: {}", podcast_name, episode_title);
+        let request = match http_method.to_uppercase().as_str() {
+            "GET" => {
+                let url_with_params = if http_url.contains('?') {
+                    format!("{}&message={}", http_url, urlencoding::encode(&message))
+                } else {
+                    format!("{}?message={}", http_url, urlencoding::encode(&message))
+                };
+                client.get(url_with_params)
+            }
+            _ => {
+                let payload = if http_url.contains("api.telegram.org") {
+                    // Token format matches the test sender: `bot_token:chat_id`, with the bot
+                    // token already in the URL path.
+                    let chat_id = http_token.split(':').nth(1).unwrap_or("YOUR_CHAT_ID");
+                    serde_json::json!({
+                        "chat_id": chat_id,
+                        "text": message,
+                    })
+                } else {
+                    serde_json::json!({
+                        "title": "New Podcast Episode",
+                        "message": message,
+                        "text": message,
+                    })
+                };
+                client
+                    .post(http_url)
+                    .header("Content-Type", "application/json")
+                    .json(&payload)
+            }
+        };
+        let request = if !http_token.is_empty() && !http_url.contains("api.telegram.org") {
+            request.header("Authorization", format!("Bearer {}", http_token))
+        } else {
+            request
+        };
+
+        match request.timeout(std::time::Duration::from_secs(2)).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    tracing::debug!("Sent HTTP notification");
+                    Ok(true)
+                } else {
+                    tracing::warn!("HTTP notification failed with status: {}", response.status());
+                    Ok(false)
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to send HTTP notification: {}", e);
                 Ok(false)
             }
         }
@@ -14083,6 +14173,9 @@ struct NotificationTarget {
     ntfy_access_token: Option<String>,
     gotify_url: Option<String>,
     gotify_token: Option<String>,
+    http_url: Option<String>,
+    http_token: Option<String>,
+    http_method: Option<String>,
 }
 
 /// What a feed group last stored, sent back on the next fetch (see `fetch_feed_conditional`).

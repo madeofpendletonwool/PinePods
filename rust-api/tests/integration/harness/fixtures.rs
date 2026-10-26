@@ -65,6 +65,7 @@ pub struct RecordedRequest {
     pub path: String,
     pub query: Option<String>,
     pub headers: HashMap<String, String>,
+    pub body: Bytes,
 }
 
 #[derive(Default)]
@@ -150,8 +151,14 @@ impl FixtureServer {
 
 // No keep-alive: the server's HTTP clients are process-wide statics, so a pooled connection could
 // be reused by another test after the test whose runtime drives it has ended.
-async fn serve(state: State<Arc<Mutex<Inner>>>, method: Method, uri: Uri, headers: HeaderMap) -> Response {
-    let mut resp = respond(state, method, uri, headers).await;
+async fn serve(
+    state: State<Arc<Mutex<Inner>>>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let mut resp = respond(state, method, uri, headers, body).await;
     resp.headers_mut().insert("connection", HeaderValue::from_static("close"));
     resp
 }
@@ -161,6 +168,7 @@ async fn respond(
     method: Method,
     uri: Uri,
     headers: HeaderMap,
+    body: Bytes,
 ) -> Response {
     let path = uri.path().to_string();
     let fixture = {
@@ -173,6 +181,7 @@ async fn respond(
                 .iter()
                 .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or_default().to_string()))
                 .collect(),
+            body,
         });
         inner.routes.get(&path).cloned()
     };

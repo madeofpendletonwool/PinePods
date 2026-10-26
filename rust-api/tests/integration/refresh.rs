@@ -360,3 +360,97 @@ async fn the_dedupe_migration_merges_duplicate_episodes_and_their_state() {
     };
     assert!(rejected, "a duplicate GUID insert must fail after 065");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_episode_posts_an_http_notification() {
+    let app = TestApp::new().await;
+    let user = app.user("listener").await;
+    let mut feed = Feed::with_episodes("Notify Show", 1);
+    let url = app.feed("notify.xml", &feed);
+    let pod = app.subscribe(&user, &url, 1).await;
+
+    let hook = app.fixtures().serve("hook", Fixture::new("application/json", "{}"));
+    let save = |enabled: bool, method: &str, token: &str| {
+        let app = &app;
+        let user = &user;
+        let hook = hook.clone();
+        let method = method.to_string();
+        let token = token.to_string();
+        async move {
+            app.put("/api/data/user/notification_settings")
+                .key(user)
+                .json(&json!({
+                    "user_id": user.id,
+                    "platform": "http",
+                    "enabled": enabled,
+                    "http_url": hook,
+                    "http_token": token,
+                    "http_method": method,
+                }))
+                .send()
+                .await
+                .assert_ok();
+        }
+    };
+    save(true, "POST", "hook-secret").await;
+
+    // The channel is on, but this podcast is not: a new episode must not call the webhook.
+    feed = feed.episode(Episode::new(2));
+    app.feed("notify.xml", &feed);
+    app.refresh().await;
+    assert!(app.fixtures().hits("hook").is_empty(), "podcast notifications are off");
+
+    app.put("/api/data/podcast/toggle_notifications")
+        .key(&user)
+        .json(&json!({ "user_id": user.id, "podcast_id": pod, "enabled": true }))
+        .send()
+        .await
+        .assert_ok();
+
+    feed = feed.episode(Episode::new(3));
+    app.feed("notify.xml", &feed);
+    app.refresh().await;
+
+    let hits = app.fixtures().hits("hook");
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    let hit = &hits[0];
+    assert_eq!(hit.method, "POST");
+    assert_eq!(hit.headers.get("authorization").map(String::as_str), Some("Bearer hook-secret"));
+    assert_eq!(
+        hit.headers.get("content-type").map(String::as_str),
+        Some("application/json"),
+        "{:?}",
+        hit.headers
+    );
+    let body: Value = serde_json::from_slice(&hit.body).unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&hit.body)));
+    let text = "New episode available for Notify Show: Episode 3";
+    assert_eq!(
+        body,
+        json!({ "title": "New Podcast Episode", "message": text, "text": text }),
+        "Mattermost reads `text`"
+    );
+
+    // The same feed again is not a new episode.
+    app.refresh().await;
+    assert_eq!(app.fixtures().hits("hook").len(), 1);
+
+    // GET puts the same notice in the query string and sends no bearer token when none is set.
+    save(true, "GET", "").await;
+    feed = feed.episode(Episode::new(4));
+    app.feed("notify.xml", &feed);
+    app.refresh().await;
+    let hits = app.fixtures().hits("hook");
+    assert_eq!(hits.len(), 2, "{hits:?}");
+    let get = &hits[1];
+    assert_eq!(get.method, "GET");
+    assert!(get.headers.get("authorization").is_none(), "{:?}", get.headers);
+    let message = "New episode available for Notify Show: Episode 4";
+    let expected_query = format!("message={}", urlencoding::encode(&message));
+    assert_eq!(get.query.as_deref(), Some(expected_query.as_str()));
+
+    save(false, "GET", "").await;
+    feed = feed.episode(Episode::new(5));
+    app.feed("notify.xml", &feed);
+    app.refresh().await;
+    assert_eq!(app.fixtures().hits("hook").len(), 2, "a disabled HTTP channel does not send");
+}
