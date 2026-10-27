@@ -2960,6 +2960,45 @@ pub async fn test_notification(
     }
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct OidcDiscoveryRequest {
+    /// Issuer URL or full .well-known/openid-configuration URL
+    pub url: String,
+}
+
+// Fetch a provider's OpenID discovery document so the settings form can fill in its endpoints
+#[utoipa::path(
+    post,
+    path = "/oidc_discovery",
+    tag = "settings",
+    summary = "Discover oidc provider endpoints",
+    request_body = OidcDiscoveryRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::services::oidc::OidcDiscovery),
+        (status = 400, description = "Discovery document could not be fetched or parsed"),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn discover_oidc_provider(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<OidcDiscoveryRequest>,
+) -> Result<Json<crate::services::oidc::OidcDiscovery>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if !state.db_pool.user_admin_check(user_id).await? {
+        return Err(AppError::forbidden("Admin access required to discover OIDC providers"));
+    }
+
+    crate::services::oidc::discover(&request.url)
+        .await
+        .map(Json)
+        .map_err(|e| AppError::bad_request(&e))
+}
+
 // Add OIDC provider - matches Python add_oidc_provider function exactly  
 #[utoipa::path(
     post,

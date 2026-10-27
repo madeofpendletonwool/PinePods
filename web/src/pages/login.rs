@@ -1972,18 +1972,26 @@ pub fn login() -> Html {
 
                                                                     wasm_bindgen_futures::spawn_local(async move {
                                                                         let origin = window.location().origin().unwrap();
+                                                                        let redirect_uri = format!("{}/api/auth/callback", origin);
                                                                         match call_store_oidc_state(
                                                                             server_name_clone,
                                                                             state_clone.clone(),
                                                                             client_id_clone.clone(),
                                                                             Some(origin.clone()),
                                                                             Some(code_verifier.clone()),
+                                                                            Some(redirect_uri.clone()),
                                                                         ).await {
                                                                             Ok(_) => {
-                                                                                let redirect_uri = format!("{}/api/auth/callback", origin);
+                                                                                let separator = if auth_url_clone.contains('?') { '&' } else { '?' };
                                                                                 let auth_url = format!(
-                                                                                    "{}?client_id={}&redirect_uri={}&scope={}&response_type=code&state={}&code_challenge={}&code_challenge_method=S256",
-                                                                                    auth_url_clone, client_id_clone, redirect_uri, scope_clone, state_clone, code_challenge
+                                                                                    "{}{}client_id={}&redirect_uri={}&scope={}&response_type=code&state={}&code_challenge={}&code_challenge_method=S256",
+                                                                                    auth_url_clone,
+                                                                                    separator,
+                                                                                    urlencoding::encode(&client_id_clone),
+                                                                                    urlencoding::encode(&redirect_uri),
+                                                                                    urlencoding::encode(&scope_clone),
+                                                                                    state_clone,
+                                                                                    code_challenge
                                                                                 );
                                                                                 window.location().set_href(&auth_url).unwrap();
                                                                             },

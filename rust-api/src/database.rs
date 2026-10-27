@@ -16032,14 +16032,30 @@ impl DatabasePool {
 
         info!("Initializing OIDC provider '{}' from environment variables", provider_name);
 
-        // Create the provider with all the configuration
+        // Explicit endpoint variables win; discovery fills whichever are unset.
+        let (mut authorization_url, mut token_url, mut user_info_url) = (
+            oidc_config.authorization_url.clone(),
+            oidc_config.token_url.clone(),
+            oidc_config.user_info_url.clone(),
+        );
+        if authorization_url.is_none() || token_url.is_none() || user_info_url.is_none() {
+            let discovery_url = oidc_config.discovery_url.as_deref().unwrap_or_default();
+            let discovered = crate::services::oidc::discover(discovery_url)
+                .await
+                .map_err(|e| AppError::internal(&format!("OIDC discovery failed: {}", e)))?;
+            authorization_url.get_or_insert(discovered.authorization_endpoint);
+            token_url.get_or_insert(discovered.token_endpoint);
+            user_info_url.get_or_insert(discovered.userinfo_endpoint);
+        }
+
+        // Role claims default to empty (no role check), matching providers added in the UI.
         let provider_id = self.add_oidc_provider(
             provider_name,
             client_id,
             oidc_config.client_secret.as_ref().unwrap(),
-            oidc_config.authorization_url.as_ref().unwrap(),
-            oidc_config.token_url.as_ref().unwrap(),
-            oidc_config.user_info_url.as_ref().unwrap(),
+            authorization_url.as_deref().unwrap_or_default(),
+            token_url.as_deref().unwrap_or_default(),
+            user_info_url.as_deref().unwrap_or_default(),
             oidc_config.button_text.as_ref().unwrap(),
             oidc_config.scope.as_deref().unwrap_or("openid email profile"),
             oidc_config.button_color.as_deref().unwrap_or("#000000"),
@@ -16048,9 +16064,9 @@ impl DatabasePool {
             oidc_config.name_claim.as_deref().unwrap_or("name"),
             oidc_config.email_claim.as_deref().unwrap_or("email"),
             oidc_config.username_claim.as_deref().unwrap_or("preferred_username"),
-            oidc_config.roles_claim.as_deref().unwrap_or("roles"),
-            oidc_config.user_role.as_deref().unwrap_or("user"),
-            oidc_config.admin_role.as_deref().unwrap_or("admin"),
+            oidc_config.roles_claim.as_deref().unwrap_or(""),
+            oidc_config.user_role.as_deref().unwrap_or(""),
+            oidc_config.admin_role.as_deref().unwrap_or(""),
             true, // initialized_from_env = true
         ).await?;
 
