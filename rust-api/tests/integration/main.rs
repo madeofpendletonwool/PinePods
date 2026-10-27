@@ -16,6 +16,7 @@ mod gpodder;
 mod gpodder_server;
 mod library;
 mod moved_feeds;
+mod oidc;
 mod opml;
 mod people;
 mod playback;

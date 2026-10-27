@@ -1906,6 +1906,33 @@ pub struct OIDCProvider {
     pub initialized_from_env: bool,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+pub struct OIDCDiscovery {
+    pub authorization_endpoint: String,
+    pub token_endpoint: String,
+    pub userinfo_endpoint: String,
+}
+
+pub async fn call_discover_oidc_provider(
+    server_name: String,
+    api_key: String,
+    discovery_url: String,
+) -> Result<OIDCDiscovery, Error> {
+    let url = format!("{}/api/data/oidc_discovery", server_name);
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .json(&serde_json::json!({ "url": discovery_url }))?
+        .send()
+        .await?;
+
+    if response.ok() {
+        Ok(response.json().await?)
+    } else {
+        let body: serde_json::Value = response.json().await.unwrap_or_default();
+        Err(Error::msg(body["message"].as_str().unwrap_or("Discovery request failed").to_string()))
+    }
+}
+
 pub async fn call_add_oidc_provider(
     server_name: String,
     api_key: String,

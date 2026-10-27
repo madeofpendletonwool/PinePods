@@ -6303,6 +6303,48 @@
         ]
       }
     },
+    "/api/data/oidc_discovery": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Discover oidc provider endpoints",
+        "operationId": "discover_oidc_provider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OidcDiscoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OidcDiscovery"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Discovery document could not be fetched or parsed"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/people/contribute": {
       "post": {
         "tags": [
@@ -16042,6 +16084,56 @@
           }
         }
       },
+      "OidcDiscovery": {
+        "type": "object",
+        "description": "The parts of an OpenID Provider configuration document that PinePods uses.",
+        "required": [
+          "authorization_endpoint",
+          "token_endpoint",
+          "userinfo_endpoint"
+        ],
+        "properties": {
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "authorization_endpoint": {
+            "type": "string"
+          },
+          "token_endpoint": {
+            "type": "string"
+          },
+          "userinfo_endpoint": {
+            "type": "string"
+          },
+          "scopes_supported": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "claims_supported": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "OidcDiscoveryRequest": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Issuer URL or full .well-known/openid-configuration URL"
+          }
+        }
+      },
       "OidcProviderRequest": {
         "type": "object",
         "required": [
@@ -18327,6 +18419,12 @@
             ]
           },
           "code_verifier": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "redirect_uri": {
             "type": [
               "string",
               "null"

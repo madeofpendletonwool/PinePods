@@ -30,6 +30,7 @@ pub const ADMIN_ONLY: &[&str] = &[
     "POST /api/data/send_email",
     "GET /api/data/list_oidc_providers",
     "POST /api/data/add_oidc_provider",
+    "POST /api/data/oidc_discovery",
     "PUT /api/data/update_oidc_provider/{provider_id}",
     "POST /api/data/remove_oidc_provider",
     "GET /api/data/ai_settings",

@@ -76,6 +76,8 @@ pub struct OIDCConfig {
     pub authorization_url: Option<String>,
     pub token_url: Option<String>,
     pub user_info_url: Option<String>,
+    // Issuer or .well-known URL; fills in whichever endpoint URLs above are unset.
+    pub discovery_url: Option<String>,
     pub button_text: Option<String>,
     pub scope: Option<String>,
     pub button_color: Option<String>,
@@ -90,13 +92,17 @@ pub struct OIDCConfig {
 }
 
 impl OIDCConfig {
+    /// Endpoint URLs are either all given explicitly or resolved from discovery at startup.
+    fn endpoints_available(&self) -> bool {
+        self.discovery_url.is_some()
+            || (self.authorization_url.is_some() && self.token_url.is_some() && self.user_info_url.is_some())
+    }
+
     pub fn is_configured(&self) -> bool {
         self.provider_name.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
         self.client_id.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
         self.client_secret.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
-        self.authorization_url.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
-        self.token_url.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
-        self.user_info_url.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
+        self.endpoints_available() &&
         self.button_text.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
         self.scope.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
         self.button_color.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
@@ -104,18 +110,22 @@ impl OIDCConfig {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        let required_fields = [
+        let mut required_fields = vec![
             (&self.provider_name, "OIDC_PROVIDER_NAME"),
             (&self.client_id, "OIDC_CLIENT_ID"),
             (&self.client_secret, "OIDC_CLIENT_SECRET"),
-            (&self.authorization_url, "OIDC_AUTHORIZATION_URL"),
-            (&self.token_url, "OIDC_TOKEN_URL"),
-            (&self.user_info_url, "OIDC_USER_INFO_URL"),
             (&self.button_text, "OIDC_BUTTON_TEXT"),
             (&self.scope, "OIDC_SCOPE"),
             (&self.button_color, "OIDC_BUTTON_COLOR"),
             (&self.button_text_color, "OIDC_BUTTON_TEXT_COLOR"),
         ];
+        if self.discovery_url.is_none() {
+            required_fields.extend([
+                (&self.authorization_url, "OIDC_AUTHORIZATION_URL"),
+                (&self.token_url, "OIDC_TOKEN_URL"),
+                (&self.user_info_url, "OIDC_USER_INFO_URL"),
+            ]);
+        }
 
         let missing_fields: Vec<&str> = required_fields
             .iter()
@@ -123,11 +133,12 @@ impl OIDCConfig {
             .collect();
 
         // Check if any OIDC fields are set
-        let any_oidc_set = required_fields.iter().any(|(field, _)| field.is_some());
+        let any_oidc_set = self.discovery_url.is_some()
+            || required_fields.iter().any(|(field, _)| field.is_some());
 
         if any_oidc_set && !missing_fields.is_empty() {
             return Err(format!(
-                "Incomplete OIDC configuration. When setting up OIDC, all required environment variables must be provided. Missing: {}",
+                "Incomplete OIDC configuration. When setting up OIDC, all required environment variables must be provided (the endpoint URLs can be replaced by OIDC_DISCOVERY_URL). Missing: {}",
                 missing_fields.join(", ")
             ));
         }
@@ -288,52 +299,43 @@ impl Config {
             from_email: env::var("FROM_EMAIL").ok(),
         };
 
-        // Check if essential OIDC fields are present and non-empty before setting any defaults
-        let oidc_essentials_present = env::var("OIDC_PROVIDER_NAME").map_or(false, |s| !s.trim().is_empty()) &&
-            env::var("OIDC_CLIENT_ID").map_or(false, |s| !s.trim().is_empty()) &&
-            env::var("OIDC_CLIENT_SECRET").map_or(false, |s| !s.trim().is_empty()) &&
-            env::var("OIDC_AUTHORIZATION_URL").map_or(false, |s| !s.trim().is_empty()) &&
-            env::var("OIDC_TOKEN_URL").map_or(false, |s| !s.trim().is_empty()) &&
-            env::var("OIDC_USER_INFO_URL").map_or(false, |s| !s.trim().is_empty());
+        // startup.sh exports every OIDC variable, so an unset one arrives as "" and must count as unset.
+        let oidc_env = |name: &str| env::var(name).ok().filter(|s| !s.trim().is_empty());
+
+        // Check if essential OIDC fields are present before setting any defaults
+        let oidc_essentials_present = oidc_env("OIDC_PROVIDER_NAME").is_some() &&
+            oidc_env("OIDC_CLIENT_ID").is_some() &&
+            oidc_env("OIDC_CLIENT_SECRET").is_some() &&
+            (oidc_env("OIDC_DISCOVERY_URL").is_some() || (
+                oidc_env("OIDC_AUTHORIZATION_URL").is_some() &&
+                oidc_env("OIDC_TOKEN_URL").is_some() &&
+                oidc_env("OIDC_USER_INFO_URL").is_some()
+            ));
+        let oidc_env_or = |name: &str, default: &str| {
+            oidc_env(name).or_else(|| oidc_essentials_present.then(|| default.to_string()))
+        };
 
         let oidc = OIDCConfig {
-            disable_standard_login: env::var("OIDC_DISABLE_STANDARD_LOGIN")
-                .unwrap_or_else(|_| "false".to_string())
-                .parse()
-                .unwrap_or(false),
-            provider_name: env::var("OIDC_PROVIDER_NAME").ok(),
-            client_id: env::var("OIDC_CLIENT_ID").ok(),
-            client_secret: env::var("OIDC_CLIENT_SECRET").ok(),
-            authorization_url: env::var("OIDC_AUTHORIZATION_URL").ok(),
-            token_url: env::var("OIDC_TOKEN_URL").ok(),
-            user_info_url: env::var("OIDC_USER_INFO_URL").ok(),
-            button_text: if oidc_essentials_present {
-                env::var("OIDC_BUTTON_TEXT").ok().or_else(|| Some("Login with OIDC".to_string()))
-            } else {
-                env::var("OIDC_BUTTON_TEXT").ok()
-            },
-            scope: if oidc_essentials_present {
-                env::var("OIDC_SCOPE").ok().or_else(|| Some("openid email profile".to_string()))
-            } else {
-                env::var("OIDC_SCOPE").ok()
-            },
-            button_color: if oidc_essentials_present {
-                env::var("OIDC_BUTTON_COLOR").ok().or_else(|| Some("#000000".to_string()))
-            } else {
-                env::var("OIDC_BUTTON_COLOR").ok()
-            },
-            button_text_color: if oidc_essentials_present {
-                env::var("OIDC_BUTTON_TEXT_COLOR").ok().or_else(|| Some("#FFFFFF".to_string()))
-            } else {
-                env::var("OIDC_BUTTON_TEXT_COLOR").ok()
-            },
-            icon_svg: env::var("OIDC_ICON_SVG").ok(),
-            name_claim: env::var("OIDC_NAME_CLAIM").ok(),
-            email_claim: env::var("OIDC_EMAIL_CLAIM").ok(),
-            username_claim: env::var("OIDC_USERNAME_CLAIM").ok(),
-            roles_claim: env::var("OIDC_ROLES_CLAIM").ok(),
-            user_role: env::var("OIDC_USER_ROLE").ok(),
-            admin_role: env::var("OIDC_ADMIN_ROLE").ok(),
+            disable_standard_login: oidc_env("OIDC_DISABLE_STANDARD_LOGIN")
+                .map_or(false, |v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes")),
+            provider_name: oidc_env("OIDC_PROVIDER_NAME"),
+            client_id: oidc_env("OIDC_CLIENT_ID"),
+            client_secret: oidc_env("OIDC_CLIENT_SECRET"),
+            authorization_url: oidc_env("OIDC_AUTHORIZATION_URL"),
+            token_url: oidc_env("OIDC_TOKEN_URL"),
+            user_info_url: oidc_env("OIDC_USER_INFO_URL"),
+            discovery_url: oidc_env("OIDC_DISCOVERY_URL"),
+            button_text: oidc_env_or("OIDC_BUTTON_TEXT", "Login with OIDC"),
+            scope: oidc_env_or("OIDC_SCOPE", "openid email profile"),
+            button_color: oidc_env_or("OIDC_BUTTON_COLOR", "#000000"),
+            button_text_color: oidc_env_or("OIDC_BUTTON_TEXT_COLOR", "#FFFFFF"),
+            icon_svg: oidc_env("OIDC_ICON_SVG"),
+            name_claim: oidc_env("OIDC_NAME_CLAIM"),
+            email_claim: oidc_env("OIDC_EMAIL_CLAIM"),
+            username_claim: oidc_env("OIDC_USERNAME_CLAIM"),
+            roles_claim: oidc_env("OIDC_ROLES_CLAIM"),
+            user_role: oidc_env("OIDC_USER_ROLE"),
+            admin_role: oidc_env("OIDC_ADMIN_ROLE"),
         };
 
         let api = ApiConfig {

@@ -9,6 +9,7 @@ pub mod feed_health;
 pub mod feed_metadata;
 pub mod feeds;
 pub mod http;
+pub mod oidc;
 pub mod people;
 pub mod podcasting2;
 pub mod podping;

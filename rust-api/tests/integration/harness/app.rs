@@ -113,6 +113,7 @@ impl TestApp {
                 authorization_url: None,
                 token_url: None,
                 user_info_url: None,
+                discovery_url: None,
                 button_text: None,
                 scope: None,
                 button_color: None,

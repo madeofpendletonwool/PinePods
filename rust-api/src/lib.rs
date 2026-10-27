@@ -381,6 +381,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::settings::get_global_podcast_cover_preference))
         .routes(routes!(handlers::settings::test_notification))
         .routes(routes!(handlers::settings::add_oidc_provider))
+        .routes(routes!(handlers::settings::discover_oidc_provider))
         .routes(routes!(handlers::settings::update_oidc_provider))
         .routes(routes!(handlers::settings::list_oidc_providers))
         .routes(routes!(handlers::settings::remove_oidc_provider))
