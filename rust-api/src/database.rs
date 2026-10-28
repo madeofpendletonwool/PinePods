@@ -12027,6 +12027,10 @@ impl DatabasePool {
         };
         let order_dir = if sort_order == "asc" { "ASC" } else { "DESC" };
         let has_search = !search.is_empty();
+        // Each branch keeps only the rows that can reach the requested page, sorted the same way
+        // as the outer query. The completed/in-progress filter runs on the combined rows, so a
+        // filtered page needs every row.
+        let filter_is_all = !matches!(filter, "completed" | "in_progress" | "incomplete");
         match self {
             DatabasePool::Postgres(pool) => {
                 let lim: i64 = limit.unwrap_or(i64::MAX);
@@ -12034,7 +12038,7 @@ impl DatabasePool {
                 // Per-branch cap: each branch must keep at least (offset + limit) rows so the
                 // outer ORDER BY can correctly interleave them. saturating_add avoids overflow
                 // when limit is i64::MAX (the "give me everything" caller path).
-                let per_branch_limit: i64 = lim.saturating_add(off);
+                let per_branch_limit: i64 = if filter_is_all { lim.saturating_add(off) } else { i64::MAX };
 
                 // Resolve the full set of podcast IDs (primary + merged) up front so the main
                 // query is just `podcastid = ANY($2)` instead of the per-row JSON unpacking the
@@ -12121,7 +12125,7 @@ impl DatabasePool {
                             "Episodes".episodeid = "DownloadedEpisodes".episodeid
                             AND "DownloadedEpisodes".userid = $1
                         WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){ep_search_clause}
-                        ORDER BY "Episodes".episodepubdate DESC
+                        ORDER BY {pg_order_col} {order_dir} NULLS LAST
                         LIMIT {pb_lim_pos})
 
                         UNION ALL
@@ -12160,7 +12164,7 @@ impl DatabasePool {
                             "YouTubeVideos".videoid = "DownloadedVideos".videoid
                             AND "DownloadedVideos".userid = $1
                         WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){yt_search_clause}
-                        ORDER BY "YouTubeVideos".publishedat DESC
+                        ORDER BY {pg_order_col} {order_dir} NULLS LAST
                         LIMIT {pb_lim_pos})
                     ) combined{filter_clause}
                     ORDER BY {pg_order_col} {order_dir} NULLS LAST
@@ -12259,7 +12263,7 @@ impl DatabasePool {
             DatabasePool::MySQL(pool) => {
                 let lim: i64 = limit.unwrap_or(i64::MAX);
                 let off: i64 = offset.unwrap_or(0);
-                let per_branch_limit: i64 = lim.saturating_add(off);
+                let per_branch_limit: i64 = if filter_is_all { lim.saturating_add(off) } else { i64::MAX };
 
                 // Resolve podcast IDs (primary + merged) up front so the main query is just
                 // `PodcastID IN (?, ?, ...)` instead of MySQL's JSON-extract-with-numbers join.
@@ -12346,7 +12350,7 @@ impl DatabasePool {
                             Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                             AND DownloadedEpisodes.UserID = ?
                         WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){ep_search_clause}
-                        ORDER BY Episodes.EpisodePubDate DESC
+                        ORDER BY {my_order_col} {order_dir}
                         LIMIT ?)
 
                         UNION ALL
@@ -12385,7 +12389,7 @@ impl DatabasePool {
                             YouTubeVideos.VideoID = DownloadedVideos.VideoID
                             AND DownloadedVideos.UserID = ?
                         WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){yt_search_clause}
-                        ORDER BY YouTubeVideos.PublishedAt DESC
+                        ORDER BY {my_order_col} {order_dir}
                         LIMIT ?)
                     ) combined{mysql_filter}
                     ORDER BY {my_order_col} {order_dir}

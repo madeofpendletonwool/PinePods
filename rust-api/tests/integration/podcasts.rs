@@ -332,3 +332,45 @@ async fn empty_searches_are_refused_without_asking_the_search_service() {
         app.get(&format!("/api/data/proxy_search?query={query}&index=podcast_index")).key(&user).send().await.assert_status(400);
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn paged_episodes_sort_and_filter_the_whole_podcast() {
+    let app = TestApp::new().await;
+    let user = app.user("pager").await;
+    let url = app.feed("long.xml", &Feed::with_episodes("Long Show", 10));
+    let pod = app.subscribe(&user, &url, 10).await;
+
+    let page = |sort_by: &'static str, sort_order: &'static str, filter: &'static str, limit: i32| {
+        let (app, user) = (&app, &user);
+        async move {
+            let body = app
+                .get("/api/data/podcast_episodes")
+                .key(user)
+                .query("user_id", user.id)
+                .query("podcast_id", pod)
+                .query("limit", limit)
+                .query("sort_by", sort_by)
+                .query("sort_order", sort_order)
+                .query("filter", filter)
+                .send()
+                .await
+                .ok_json();
+            body["episodes"].as_array().unwrap().iter().map(|e| e["Episodeid"].as_i64().unwrap()).collect::<Vec<_>>()
+        }
+    };
+
+    for (sort_by, order) in [("date", "asc"), ("title", "asc"), ("title", "desc")] {
+        let all = page(sort_by, order, "all", 1000).await;
+        assert_eq!(all.len(), 10);
+        assert_eq!(page(sort_by, order, "all", 3).await, all[..3], "{sort_by} {order}");
+    }
+
+    let oldest = page("date", "asc", "all", 1).await[0];
+    app.post("/api/data/mark_episode_completed")
+        .key(&user)
+        .json(&json!({ "episode_id": oldest, "user_id": user.id, "is_youtube": false }))
+        .send()
+        .await
+        .assert_ok();
+    assert_eq!(page("date", "desc", "completed", 1).await, [oldest]);
+}
