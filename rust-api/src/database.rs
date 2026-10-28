@@ -4903,8 +4903,8 @@ impl DatabasePool {
                     let mut preview_episodes = Vec::new();
                     for preview_row in preview_rows {
                         preview_episodes.push(serde_json::json!({
-                            "title": preview_row.try_get::<String, _>("episodetitle")?,
-                            "artwork": preview_row.try_get::<String, _>("episodeartwork")?
+                            "title": preview_row.try_get::<Option<String>, _>("episodetitle")?.unwrap_or_default(),
+                            "artwork": preview_row.try_get::<Option<String>, _>("episodeartwork")?.unwrap_or_default()
                         }));
                     }
 
@@ -4994,8 +4994,8 @@ impl DatabasePool {
                     let mut preview_episodes = Vec::new();
                     for preview_row in preview_rows {
                         preview_episodes.push(serde_json::json!({
-                            "title": preview_row.try_get::<String, _>("EpisodeTitle")?,
-                            "artwork": preview_row.try_get::<String, _>("EpisodeArtwork")?
+                            "title": preview_row.try_get::<Option<String>, _>("EpisodeTitle")?.unwrap_or_default(),
+                            "artwork": preview_row.try_get::<Option<String>, _>("EpisodeArtwork")?.unwrap_or_default()
                         }));
                     }
 
