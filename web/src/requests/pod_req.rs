@@ -6263,6 +6263,17 @@ pub async fn call_set_auto_delete_on_complete_user(
     post_json_ok(&url, api_key, &body).await.map(|_| ())
 }
 
+pub async fn call_set_use_gravatar(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    enabled: bool,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/user/set_use_gravatar", server_name);
+    let body = serde_json::json!({ "user_id": user_id, "enabled": enabled });
+    post_json_ok(&url, api_key, &body).await.map(|_| ())
+}
+
 /// `enabled` None goes back to the user's default.
 pub async fn call_set_podcast_auto_delete_on_complete(
     server_name: &str,

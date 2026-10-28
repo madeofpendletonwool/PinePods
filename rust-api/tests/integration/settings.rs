@@ -233,3 +233,19 @@ async fn custom_themes_can_be_created_listed_and_deleted_by_their_owner() {
         .assert_ok();
     assert!(list(&user).await.is_empty());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn gravatar_is_off_until_the_user_turns_it_on() {
+    let app = TestApp::new().await;
+    let user = app.user("avatar").await;
+    let details = || async { app.get(&format!("/api/data/user_details_id/{}", user.id)).key(&user).send().await.ok_json() };
+    assert_eq!(details().await["UseGravatar"], false);
+
+    app.post("/api/data/user/set_use_gravatar")
+        .key(&user)
+        .json(&json!({ "user_id": user.id, "enabled": true }))
+        .send()
+        .await
+        .assert_ok();
+    assert_eq!(details().await["UseGravatar"], true);
+}

@@ -498,7 +498,7 @@ impl DatabasePool {
     pub async fn get_user_details_by_id(&self, user_id: i32) -> AppResult<crate::handlers::auth::UserDetails> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT userid, fullname, username, email FROM "Users" WHERE userid = $1"#)
+                let row = sqlx::query(r#"SELECT userid, fullname, username, email, usegravatar FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
@@ -511,10 +511,11 @@ impl DatabasePool {
                     Email: row.try_get("email").ok(),
                     Hashed_PW: None,
                     Salt: None,
+                    UseGravatar: row.try_get("usegravatar")?,
                 })
             }
             DatabasePool::MySQL(pool) => {
-                let row = sqlx::query("SELECT UserID, Fullname, Username, Email FROM Users WHERE UserID = ?")
+                let row = sqlx::query("SELECT UserID, Fullname, Username, Email, UseGravatar FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
@@ -526,6 +527,7 @@ impl DatabasePool {
                     Email: row.try_get("Email").ok(),
                     Hashed_PW: None,
                     Salt: None,
+                    UseGravatar: row.try_get::<bool, _>("UseGravatar")?,
                 })
             }
         }
@@ -17726,6 +17728,26 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 sqlx::query("UPDATE Users SET AutoDeleteOnComplete = ? WHERE UserID = ?")
+                    .bind(enabled)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn set_use_gravatar(&self, user_id: i32, enabled: bool) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Users" SET usegravatar = $1 WHERE userid = $2"#)
+                    .bind(enabled)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Users SET UseGravatar = ? WHERE UserID = ?")
                     .bind(enabled)
                     .bind(user_id)
                     .execute(pool)

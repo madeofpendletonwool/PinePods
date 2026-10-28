@@ -550,12 +550,14 @@ class UserDetails {
   final String? fullname;
   final String? username;
   final String? email;
+  final bool useGravatar;
 
   UserDetails({
     required this.userId,
     this.fullname,
     this.username,
     this.email,
+    this.useGravatar = false,
   });
 
   factory UserDetails.fromJson(Map<String, dynamic> json) {
@@ -564,6 +566,7 @@ class UserDetails {
       fullname: json['Fullname'],
       username: json['Username'],
       email: json['Email'],
+      useGravatar: json['UseGravatar'] == true,
     );
   }
 }

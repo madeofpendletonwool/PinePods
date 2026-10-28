@@ -7854,6 +7854,21 @@ def migration_085_podcast_edited_metadata(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("086", "user_use_gravatar", "Users.UseGravatar: show the user's Gravatar, off unless they turn it on", requires=["001"])
+def migration_086_user_use_gravatar(conn, db_type: str) -> None:
+    cursor = conn.cursor()
+    users = '"Users"' if db_type == "postgresql" else "Users"
+    try:
+        if not _column_exists(cursor, db_type, "Users", "UseGravatar"):
+            cursor.execute(f"ALTER TABLE {users} ADD COLUMN UseGravatar BOOLEAN NOT NULL DEFAULT FALSE")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("118", "gpodder_actions_follow_merged_episodes", "Episode actions point at the shared episode their merged copy became; the copies are deleted", requires=["082", "111"])
 def migration_118_gpodder_actions_follow_merged_episodes(conn, db_type: str) -> None:
     """GpodderSyncEpisodeActions.EpisodeID of actions on an episode copy merged by 082 now points

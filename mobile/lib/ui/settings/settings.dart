@@ -8,6 +8,7 @@ import 'package:pinepods_mobile/core/download_cleanup.dart';
 import 'package:pinepods_mobile/core/utils.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/settings/episode_refresh.dart';
 import 'package:pinepods_mobile/ui/settings/search_provider.dart';
 import 'package:pinepods_mobile/ui/settings/server_download_defaults.dart';
@@ -61,6 +62,18 @@ class _SettingsState extends State<Settings> {
             children: [
               SettingsDividerLabel(label: L.of(context)!.settings_personalisation_divider_label),
               const Divider(),
+              if (snapshot.data!.pinepodsUserId != null)
+                MergeSemantics(
+                  child: ListTile(
+                    leading: const Icon(PhosphorIconsRegular.userCircle),
+                    title: const Text('Show my Gravatar'),
+                    subtitle: const Text('Loads an image from gravatar.com using a hash of your email'),
+                    trailing: Switch.adaptive(
+                      value: snapshot.data!.pinepodsUseGravatar,
+                      onChanged: (value) => _setUseGravatar(settingsBloc, snapshot.data!, value),
+                    ),
+                  ),
+                ),
               MergeSemantics(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -354,6 +367,18 @@ class _SettingsState extends State<Settings> {
   /// Dropdown for selecting a skip interval (in seconds). Ensures the
   /// currently-stored value is always selectable even if it isn't one of the
   /// preset options.
+  Future<void> _setUseGravatar(SettingsBloc settingsBloc, AppSettings settings, bool value) async {
+    final previous = settings.pinepodsUseGravatar;
+    settingsBloc.setPinepodsUseGravatar(value);
+    final service = PinepodsService()..setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    if (!await service.setUseGravatar(settings.pinepodsUserId!, value)) {
+      settingsBloc.setPinepodsUseGravatar(previous);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not update the Gravatar setting')));
+      }
+    }
+  }
+
   Widget _buildIntervalDropdown({
     required BuildContext context,
     required int value,

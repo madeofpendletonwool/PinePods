@@ -74,6 +74,7 @@ pub fn app_drawer() -> Html {
         .as_ref()
         .map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let use_gravatar = post_state.user_details.as_ref().map_or(false, |ud| ud.UseGravatar);
     let server_name = post_state
         .auth_details
         .as_ref()
@@ -242,7 +243,7 @@ pub fn app_drawer() -> Html {
                 <div onclick={toggle_drawer.clone()} style="padding: 0 8px 4px;">
                     <Link<Route> to={Route::UserStats} classes="sb-item">
                         <img
-                            src={prefs_state.gravatar_url.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
+                            src={prefs_state.gravatar_url.clone().filter(|_| use_gravatar).unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
                             class="sb-avatar"
                             alt="User avatar"
                         />

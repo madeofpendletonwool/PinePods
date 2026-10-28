@@ -1019,6 +1019,9 @@ class PinepodsService {
     );
   }
 
+  Future<bool> setUseGravatar(int userId, bool enabled) async =>
+      await _postJson('user/set_use_gravatar', {'user_id': userId, 'enabled': enabled}) != null;
+
   Future<bool> setAutoDeleteOnCompleteDefault(int userId, bool enabled) async =>
       await _postJson('user/set_auto_delete_on_complete',
           {'user_id': userId, 'enabled': enabled}) !=

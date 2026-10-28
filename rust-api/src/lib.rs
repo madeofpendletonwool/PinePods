@@ -423,6 +423,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::settings::clear_podcast_auto_download_delete_days))
         .routes(routes!(handlers::settings::get_auto_delete_on_complete))
         .routes(routes!(handlers::settings::set_auto_delete_on_complete_user))
+        .routes(routes!(handlers::settings::set_use_gravatar))
         .routes(routes!(handlers::settings::set_podcast_auto_delete_on_complete))
         .routes(routes!(handlers::settings::set_podcast_cover_preference))
         .routes(routes!(handlers::settings::clear_podcast_cover_preference))

@@ -84,6 +84,9 @@ abstract class SettingsService {
   bool get preferServerDownloadSource;
   set preferServerDownloadSource(bool value);
 
+  bool get pinepodsUseGravatar;
+  set pinepodsUseGravatar(bool value);
+
   /// Number of leading queue episodes to keep downloaded locally. 0 disables the
   /// feature.
   int get autoDownloadQueueCount;

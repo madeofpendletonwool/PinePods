@@ -534,6 +534,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
       if (userDetails.email != null) {
         settingsBloc.setPinepodsEmail(userDetails.email!);
       }
+      settingsBloc.setPinepodsUseGravatar(userDetails.useGravatar);
 
       // Fetch theme from server
       await settingsBloc.fetchThemeFromServer();
@@ -1043,7 +1044,7 @@ class TitleWidget extends StatelessWidget {
       builder: (context, settingsBloc, child) {
         final settings = settingsBloc.currentSettings;
         final username = settings.pinepodsUsername;
-        final email = settings.pinepodsEmail;
+        final email = settings.pinepodsUseGravatar ? settings.pinepodsEmail : null;
 
         if (username == null || username.isEmpty) {
           // Fallback to PinePods logo if no user is logged in - make it clickable
