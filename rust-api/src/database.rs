@@ -11649,6 +11649,7 @@ impl DatabasePool {
     }
 
     // Get the next episode in a podcast (chronologically after the given episode)
+    // The episode after `episode_id` in its podcast, skipping ones the user already finished.
     pub async fn get_next_podcast_episode(&self, episode_id: i32, user_id: i32) -> AppResult<Option<crate::models::QueuedEpisode>> {
         match self {
             DatabasePool::Postgres(pool) => {
@@ -11684,6 +11685,7 @@ impl DatabasePool {
                     WHERE e.feedid = (SELECT feedid FROM "Episodes" WHERE episodeid = $1)
                       AND e.episodepubdate > (SELECT episodepubdate FROM "Episodes" WHERE episodeid = $1)
                       AND p.userid = $2
+                      AND COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) = FALSE
                     ORDER BY e.episodepubdate ASC
                     LIMIT 1"#
                 )
@@ -11753,6 +11755,7 @@ impl DatabasePool {
                     WHERE e.FeedID = (SELECT FeedID FROM Episodes WHERE EpisodeID = ?)
                       AND e.EpisodePubDate > (SELECT EpisodePubDate FROM Episodes WHERE EpisodeID = ?)
                       AND p.UserID = ?
+                      AND COALESCE((SELECT ues.Completed FROM UserEpisodeState ues WHERE ues.EpisodeID = e.EpisodeID AND ues.UserID = p.UserID), 0) = 0
                     ORDER BY e.EpisodePubDate ASC
                     LIMIT 1"
                 )

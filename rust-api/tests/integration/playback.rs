@@ -220,3 +220,29 @@ async fn bulk_deleting_downloads_removes_the_files() {
     let rows = format!(r#"SELECT COUNT(*) FROM "DownloadedEpisodes" WHERE EpisodeID = {ep}"#);
     assert_eq!(int(&app, &rows).await, Some(0));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn auto_play_next_skips_finished_episodes() {
+    let app = TestApp::new().await;
+    let user = app.user("binge").await;
+    let url = app.feed("binge.xml", &Feed::with_episodes("Binge Show", 4));
+    let pod = app.subscribe(&user, &url, 4).await;
+    let mut eps = app.episodes(&user, pod).await;
+    eps.sort_by_key(|e| e["Episodepubdate"].as_str().unwrap().to_string());
+    let ids: Vec<i64> = eps.iter().map(|e| e["Episodeid"].as_i64().unwrap()).collect();
+
+    app.post("/api/data/mark_episode_completed")
+        .key(&user)
+        .json(&json!({ "episode_id": ids[1], "user_id": user.id, "is_youtube": false }))
+        .send()
+        .await
+        .assert_ok();
+    let next = app
+        .post("/api/data/get_next_podcast_episode")
+        .key(&user)
+        .json(&json!({ "episode_id": ids[0], "user_id": user.id }))
+        .send()
+        .await
+        .ok_json();
+    assert_eq!(next["episodeid"], ids[2], "{next}");
+}
