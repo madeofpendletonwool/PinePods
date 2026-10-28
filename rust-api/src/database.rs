@@ -1317,19 +1317,30 @@ impl DatabasePool {
     /// with a concurrent write to the same rows (e.g. a queued import of that feed).
     async fn remove_podcast_cascade(&self, podcast_id: i32, user_id: i32, origin: crate::services::sync::SyncOrigin) -> AppResult<bool> {
         let mut attempt = 0;
-        loop {
+        let files = loop {
             match self.remove_podcast_cascade_once(podcast_id, user_id, origin).await {
                 Err(e) if attempt < 3 && is_write_conflict(&e) => {
                     attempt += 1;
                     debug!("Removing podcast {} hit a write conflict, retrying ({}/3)", podcast_id, attempt);
                     tokio::time::sleep(Duration::from_millis(20 * attempt as u64)).await;
                 }
-                other => return other,
+                other => break other?,
+            }
+        };
+        let Some(files) = files else { return Ok(false) };
+        // The download rows are gone with the podcast, so their files go too.
+        for path in files {
+            if tokio::fs::metadata(&path).await.is_ok() {
+                if let Err(e) = tokio::fs::remove_file(&path).await {
+                    warn!("Could not remove downloaded file {} of removed podcast {}: {}", path, podcast_id, e);
+                }
             }
         }
+        Ok(true)
     }
 
-    async fn remove_podcast_cascade_once(&self, podcast_id: i32, user_id: i32, origin: crate::services::sync::SyncOrigin) -> AppResult<bool> {
+    // Returns the user's downloaded files of the podcast, or None if it doesn't exist.
+    async fn remove_podcast_cascade_once(&self, podcast_id: i32, user_id: i32, origin: crate::services::sync::SyncOrigin) -> AppResult<Option<Vec<String>>> {
         use crate::services::sync::{events, shareable_feed};
         let log = events::should_log(self, user_id, origin).await;
         match self {
@@ -1343,7 +1354,7 @@ impl DatabasePool {
                 .bind(podcast_id)
                 .fetch_optional(&mut *tx)
                 .await?;
-                let Some(podcast) = podcast else { return Ok(false) };
+                let Some(podcast) = podcast else { return Ok(None) };
                 let feed_url: String = podcast.try_get::<Option<String>, _>("feedurl")?.unwrap_or_default();
                 let shareable = shareable_feed(
                     &feed_url,
@@ -1356,6 +1367,19 @@ impl DatabasePool {
                 // The feed's episodes are shared: only this user's rows for them go, and the
                 // episodes themselves only with the last subscription.
                 let episodes = feed_episodes_sql(feed_id, podcast_id, true);
+                // Local podcasts point at the user's own media, which stays.
+                let files: Vec<Option<String>> = if feed_url.starts_with("local://") {
+                    Vec::new()
+                } else {
+                    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                        r#"SELECT downloadedlocation FROM "DownloadedEpisodes" WHERE userid = $1 AND episodeid IN ({episodes})
+                           UNION ALL
+                           SELECT downloadedlocation FROM "DownloadedVideos" WHERE userid = $1 AND videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = {podcast_id})"#
+                    )))
+                    .bind(user_id)
+                    .fetch_all(&mut *tx)
+                    .await?
+                };
                 for sql in user_episode_rows_pg(&episodes) {
                     sqlx::query(sqlx::AssertSqlSafe(sql)).bind(user_id).execute(&mut *tx).await?;
                 }
@@ -1398,7 +1422,7 @@ impl DatabasePool {
                     events::subscription_pg(self, &mut tx, user_id, &feed_url, "remove").await;
                 }
                 tx.commit().await?;
-                Ok(true)
+                Ok(Some(files.into_iter().flatten().collect()))
             }
             DatabasePool::MySQL(pool) => {
                 let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
@@ -1408,7 +1432,7 @@ impl DatabasePool {
                 .bind(podcast_id)
                 .fetch_optional(&mut *tx)
                 .await?;
-                let Some(podcast) = podcast else { return Ok(false) };
+                let Some(podcast) = podcast else { return Ok(None) };
                 let feed_url: String = podcast.try_get::<Option<String>, _>("FeedURL")?.unwrap_or_default();
                 let shareable = shareable_feed(
                     &feed_url,
@@ -1419,6 +1443,19 @@ impl DatabasePool {
 
                 let feed_id: Option<i32> = podcast.try_get("FeedID")?;
                 let episodes = feed_episodes_sql(feed_id, podcast_id, false);
+                let files: Vec<Option<String>> = if feed_url.starts_with("local://") {
+                    Vec::new()
+                } else {
+                    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                        "SELECT DownloadedLocation FROM DownloadedEpisodes WHERE UserID = ? AND EpisodeID IN ({episodes})
+                         UNION ALL
+                         SELECT DownloadedLocation FROM DownloadedVideos WHERE UserID = ? AND VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = {podcast_id})"
+                    )))
+                    .bind(user_id)
+                    .bind(user_id)
+                    .fetch_all(&mut *tx)
+                    .await?
+                };
                 for sql in user_episode_rows_mysql(&episodes) {
                     sqlx::query(sqlx::AssertSqlSafe(sql)).bind(user_id).execute(&mut *tx).await?;
                 }
@@ -1461,7 +1498,7 @@ impl DatabasePool {
                     events::subscription_mysql(self, &mut tx, user_id, &feed_url, "remove").await;
                 }
                 tx.commit().await?;
-                Ok(true)
+                Ok(Some(files.into_iter().flatten().collect()))
             }
         }
     }

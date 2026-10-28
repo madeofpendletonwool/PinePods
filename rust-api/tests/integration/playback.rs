@@ -222,6 +222,33 @@ async fn bulk_deleting_downloads_removes_the_files() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn removing_a_podcast_removes_its_downloaded_files() {
+    let app = TestApp::new().await;
+    let (user, pod, ep) = setup(&app).await;
+    let file = std::env::temp_dir().join(format!("pinepods-unsubscribe-{ep}.mp3"));
+    std::fs::write(&file, b"audio").unwrap();
+    exec(
+        &app,
+        &format!(
+            r#"INSERT INTO "DownloadedEpisodes" (UserID, EpisodeID, DownloadedSize, DownloadedLocation) VALUES ({}, {ep}, 5, '{}')"#,
+            user.id,
+            file.display()
+        ),
+    )
+    .await;
+
+    let body = app
+        .post("/api/data/remove_podcast_id")
+        .key(&user)
+        .json(&json!({ "user_id": user.id, "podcast_id": pod }))
+        .send()
+        .await
+        .ok_json();
+    assert_eq!(body["success"], true, "{body}");
+    assert!(!file.exists(), "file left on disk");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn auto_play_next_skips_finished_episodes() {
     let app = TestApp::new().await;
     let user = app.user("binge").await;
