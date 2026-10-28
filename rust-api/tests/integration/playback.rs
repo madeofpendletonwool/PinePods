@@ -174,3 +174,20 @@ async fn every_user_has_stats_that_count_activity() {
         before["PodcastsPlayed"].as_i64().unwrap() + 1
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn downloads_over_2_gib_are_recorded_and_counted() {
+    let app = TestApp::new().await;
+    let (user, _pod, ep) = setup(&app).await;
+    let size: i64 = 3 * 1024 * 1024 * 1024;
+    exec(
+        &app,
+        &format!(
+            r#"INSERT INTO "DownloadedEpisodes" (UserID, EpisodeID, DownloadedSize, DownloadedLocation) VALUES ({}, {ep}, {size}, '/tmp/big.mp4')"#,
+            user.id
+        ),
+    )
+    .await;
+    let stats = app.get("/api/data/get_extended_stats").key(&user).query("user_id", user.id).send().await.ok_json();
+    assert_eq!(stats["total_downloaded_bytes"], size, "{stats}");
+}

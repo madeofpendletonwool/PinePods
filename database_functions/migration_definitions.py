@@ -921,7 +921,7 @@ def migration_007_queue_download_tables(conn, db_type: str):
                     UserID INT,
                     EpisodeID INT,
                     DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    DownloadedSize INT,
+                    DownloadedSize BIGINT,
                     DownloadedLocation VARCHAR(255),
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
                     FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
@@ -934,7 +934,7 @@ def migration_007_queue_download_tables(conn, db_type: str):
                     UserID INT,
                     VideoID INT,
                     DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    DownloadedSize INT,
+                    DownloadedSize BIGINT,
                     DownloadedLocation VARCHAR(255),
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
                     FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID)
@@ -985,7 +985,7 @@ def migration_007_queue_download_tables(conn, db_type: str):
                     UserID INT,
                     EpisodeID INT,
                     DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    DownloadedSize INT,
+                    DownloadedSize BIGINT,
                     DownloadedLocation VARCHAR(255),
                     FOREIGN KEY (UserID) REFERENCES Users(UserID),
                     FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
@@ -998,7 +998,7 @@ def migration_007_queue_download_tables(conn, db_type: str):
                     UserID INT,
                     VideoID INT,
                     DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    DownloadedSize INT,
+                    DownloadedSize BIGINT,
                     DownloadedLocation VARCHAR(255),
                     FOREIGN KEY (UserID) REFERENCES Users(UserID),
                     FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID)
@@ -7219,6 +7219,24 @@ def _refresh_interval_minutes(published, now) -> int:
     mid = len(gaps) // 2
     median = gaps[mid] if len(gaps) % 2 else (gaps[mid - 1] + gaps[mid]) / 2
     return int(min(max(median / 8 / 60, 15), 6 * 60))
+
+
+@register_migration("079", "downloaded_size_bigint", "DownloadedEpisodes/DownloadedVideos.DownloadedSize: BIGINT, so downloads over 2 GiB can be recorded", requires=["007"])
+def migration_079_downloaded_size_bigint(conn, db_type: str) -> None:
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    try:
+        for table in ("DownloadedEpisodes", "DownloadedVideos"):
+            if pg:
+                cursor.execute(f'ALTER TABLE "{table}" ALTER COLUMN DownloadedSize TYPE BIGINT')
+            else:
+                cursor.execute(f"ALTER TABLE {table} MODIFY DownloadedSize BIGINT")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
 
 
 @register_migration("080", "create_feeds", "Feeds: one row per feed address and credentials, holding the refresh state its subscriptions share", requires=["044", "063", "071", "075"])

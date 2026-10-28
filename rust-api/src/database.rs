@@ -2633,7 +2633,7 @@ impl DatabasePool {
                             "Episodes".is_video as is_video
                         FROM "EpisodeQueue"
                         INNER JOIN "Episodes" ON "EpisodeQueue".episodeid = "Episodes".episodeid
-                        INNER JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid
+                        INNER JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid AND "Podcasts".userid = "EpisodeQueue".userid
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "EpisodeQueue".episodeid = "UserEpisodeHistory".episodeid
@@ -2749,7 +2749,7 @@ impl DatabasePool {
                             Episodes.IsVideo as is_video
                         FROM EpisodeQueue
                         INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
-                        INNER JOIN Podcasts ON Episodes.FeedID = Podcasts.FeedID
+                        INNER JOIN Podcasts ON Episodes.FeedID = Podcasts.FeedID AND Podcasts.UserID = EpisodeQueue.UserID
                         LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             EpisodeQueue.EpisodeID = UserEpisodeHistory.EpisodeID
@@ -3685,7 +3685,7 @@ impl DatabasePool {
 
                 // Total data downloaded
                 let dl_row = sqlx::query(r#"
-                    SELECT COALESCE(SUM(downloadedsize), 0) AS total_bytes
+                    SELECT COALESCE(SUM(downloadedsize), 0)::BIGINT AS total_bytes
                     FROM "DownloadedEpisodes" WHERE userid = $1
                 "#).bind(user_id).fetch_one(pool).await?;
 
@@ -3838,7 +3838,7 @@ impl DatabasePool {
 
                 // Total downloaded
                 let dl_row = sqlx::query(
-                    "SELECT COALESCE(SUM(DownloadedSize), 0) AS total_bytes
+                    "SELECT CAST(COALESCE(SUM(DownloadedSize), 0) AS SIGNED) AS total_bytes
                      FROM DownloadedEpisodes WHERE UserID = ?"
                 ).bind(user_id).fetch_one(pool).await?;
 
@@ -4259,7 +4259,7 @@ impl DatabasePool {
                         CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
                     FROM "UserEpisodeHistory"
                     JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
-                    JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid
+                    JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid AND "Podcasts".userid = "UserEpisodeHistory".userid
                     LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                     LEFT JOIN "SavedEpisodes" ON
                         "Episodes".episodeid = "SavedEpisodes".episodeid
@@ -4316,7 +4316,7 @@ impl DatabasePool {
                         CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
                     FROM "EpisodeQueue"
                     INNER JOIN "Episodes" ON "EpisodeQueue".episodeid = "Episodes".episodeid
-                    INNER JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid
+                    INNER JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid AND "Podcasts".userid = "EpisodeQueue".userid
                     LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                     LEFT JOIN "UserEpisodeHistory" ON
                         "EpisodeQueue".episodeid = "UserEpisodeHistory".episodeid
@@ -4600,7 +4600,7 @@ impl DatabasePool {
                         CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
                     FROM UserEpisodeHistory
                     JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID
-                    JOIN Podcasts ON Episodes.FeedID = Podcasts.FeedID
+                    JOIN Podcasts ON Episodes.FeedID = Podcasts.FeedID AND Podcasts.UserID = UserEpisodeHistory.UserID
                     LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                     LEFT JOIN SavedEpisodes ON
                         Episodes.EpisodeID = SavedEpisodes.EpisodeID
@@ -4657,7 +4657,7 @@ impl DatabasePool {
                         CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
                     FROM EpisodeQueue
                     INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
-                    INNER JOIN Podcasts ON Episodes.FeedID = Podcasts.FeedID
+                    INNER JOIN Podcasts ON Episodes.FeedID = Podcasts.FeedID AND Podcasts.UserID = EpisodeQueue.UserID
                     LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                     LEFT JOIN UserEpisodeHistory ON
                         EpisodeQueue.EpisodeID = UserEpisodeHistory.EpisodeID
@@ -9355,7 +9355,7 @@ impl DatabasePool {
                             "Episodes".is_video as is_video
                         FROM "DownloadedEpisodes"
                         INNER JOIN "Episodes" ON "DownloadedEpisodes".episodeid = "Episodes".episodeid
-                        INNER JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid
+                        INNER JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid AND "Podcasts".userid = "DownloadedEpisodes".userid
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "DownloadedEpisodes".episodeid = "UserEpisodeHistory".episodeid
@@ -9480,7 +9480,7 @@ impl DatabasePool {
                             Episodes.IsVideo as is_video
                         FROM DownloadedEpisodes
                         INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID
-                        INNER JOIN Podcasts ON Episodes.FeedID = Podcasts.FeedID
+                        INNER JOIN Podcasts ON Episodes.FeedID = Podcasts.FeedID AND Podcasts.UserID = DownloadedEpisodes.UserID
                         LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             DownloadedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID
@@ -9794,7 +9794,7 @@ impl DatabasePool {
                             "Episodes".is_video as is_video
                         FROM "DownloadedEpisodes"
                         INNER JOIN "Episodes" ON "DownloadedEpisodes".episodeid = "Episodes".episodeid
-                        INNER JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid
+                        INNER JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid AND "Podcasts".userid = "DownloadedEpisodes".userid
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "DownloadedEpisodes".episodeid = "UserEpisodeHistory".episodeid
@@ -9955,7 +9955,7 @@ impl DatabasePool {
                             Episodes.IsVideo as is_video
                         FROM DownloadedEpisodes
                         INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID
-                        INNER JOIN Podcasts ON Episodes.FeedID = Podcasts.FeedID
+                        INNER JOIN Podcasts ON Episodes.FeedID = Podcasts.FeedID AND Podcasts.UserID = DownloadedEpisodes.UserID
                         LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             DownloadedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID
@@ -19898,7 +19898,7 @@ impl DatabasePool {
                             "PlaylistContents".dateadded
                         FROM "PlaylistContents"
                         JOIN "Episodes" ON "PlaylistContents".episodeid = "Episodes".episodeid
-                        JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid
+                        JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid AND "Podcasts".userid = $1
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "UserEpisodeHistory".userid = $1
@@ -20083,7 +20083,7 @@ impl DatabasePool {
                             pc.DateAdded as addeddate
                          FROM PlaylistContents pc
                          JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
-                         JOIN Podcasts p ON e.FeedID = p.FeedID
+                         JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ?
                          LEFT JOIN Users u ON p.UserID = u.UserID
                          LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
                          LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
@@ -20092,6 +20092,7 @@ impl DatabasePool {
                          WHERE pc.PlaylistID = ?
                          ORDER BY pc.DateAdded DESC"
                     )
+                        .bind(user_id)
                         .bind(user_id)
                         .bind(user_id)
                         .bind(user_id)
