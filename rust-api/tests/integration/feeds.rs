@@ -51,7 +51,7 @@ async fn rss_feeds_are_off_until_the_user_enables_them() {
     assert_eq!(status().await, true);
     let resp = feed(&app, s.user.id, &key).send().await;
     resp.assert_ok();
-    assert_eq!(resp.headers["content-type"], "application/rss+xml");
+    assert_eq!(resp.headers["content-type"], "application/rss+xml; charset=utf-8");
     let xml = resp.text();
     assert!(xml.starts_with("<?xml") && xml.contains("<rss"), "{xml}");
     for title in ["Alpha first owner", "Alpha second owner", "Beta first owner", "Beta second owner"] {
