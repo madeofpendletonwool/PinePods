@@ -191,3 +191,32 @@ async fn downloads_over_2_gib_are_recorded_and_counted() {
     let stats = app.get("/api/data/get_extended_stats").key(&user).query("user_id", user.id).send().await.ok_json();
     assert_eq!(stats["total_downloaded_bytes"], size, "{stats}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn bulk_deleting_downloads_removes_the_files() {
+    let app = TestApp::new().await;
+    let (user, _pod, ep) = setup(&app).await;
+    let file = std::env::temp_dir().join(format!("pinepods-bulk-delete-{ep}.mp3"));
+    std::fs::write(&file, b"audio").unwrap();
+    exec(
+        &app,
+        &format!(
+            r#"INSERT INTO "DownloadedEpisodes" (UserID, EpisodeID, DownloadedSize, DownloadedLocation) VALUES ({}, {ep}, 5, '{}')"#,
+            user.id,
+            file.display()
+        ),
+    )
+    .await;
+
+    let body = app
+        .post("/api/data/bulk_delete_downloaded_episodes")
+        .key(&user)
+        .json(&json!({ "episode_ids": [ep], "user_id": user.id }))
+        .send()
+        .await
+        .ok_json();
+    assert_eq!(body["processed_count"], 1, "{body}");
+    assert!(!file.exists(), "file left on disk");
+    let rows = format!(r#"SELECT COUNT(*) FROM "DownloadedEpisodes" WHERE EpisodeID = {ep}"#);
+    assert_eq!(int(&app, &rows).await, Some(0));
+}

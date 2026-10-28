@@ -10139,10 +10139,11 @@ impl DatabasePool {
     }
 
     // Delete downloaded episode
-    pub async fn delete_episode(&self, user_id: i32, episode_id: i32, is_youtube: bool) -> AppResult<()> {
+    // Returns whether a download row was removed.
+    pub async fn delete_episode(&self, user_id: i32, episode_id: i32, is_youtube: bool) -> AppResult<bool> {
         match self {
             DatabasePool::Postgres(pool) => {
-                if is_youtube {
+                let deleted = if is_youtube {
                     let result = sqlx::query(r#"DELETE FROM "DownloadedVideos" WHERE userid = $1 AND videoid = $2"#)
                         .bind(user_id)
                         .bind(episode_id)
@@ -10156,6 +10157,7 @@ impl DatabasePool {
                             .execute(pool)
                             .await?;
                     }
+                    result.rows_affected() > 0
                 } else {
                     let result = sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE userid = $1 AND episodeid = $2"#)
                         .bind(user_id)
@@ -10170,11 +10172,12 @@ impl DatabasePool {
                             .execute(pool)
                             .await?;
                     }
-                }
-                Ok(())
+                    result.rows_affected() > 0
+                };
+                Ok(deleted)
             }
             DatabasePool::MySQL(pool) => {
-                if is_youtube {
+                let deleted = if is_youtube {
                     let result = sqlx::query("DELETE FROM DownloadedVideos WHERE UserID = ? AND VideoID = ?")
                         .bind(user_id)
                         .bind(episode_id)
@@ -10188,6 +10191,7 @@ impl DatabasePool {
                             .execute(pool)
                             .await?;
                     }
+                    result.rows_affected() > 0
                 } else {
                     let result = sqlx::query("DELETE FROM DownloadedEpisodes WHERE UserID = ? AND EpisodeID = ?")
                         .bind(user_id)
@@ -10202,8 +10206,9 @@ impl DatabasePool {
                             .execute(pool)
                             .await?;
                     }
-                }
-                Ok(())
+                    result.rows_affected() > 0
+                };
+                Ok(deleted)
             }
         }
     }
@@ -22765,107 +22770,6 @@ impl DatabasePool {
                     }
                 }
 
-                tx.commit().await?;
-            }
-        }
-
-        Ok((processed, failed))
-    }
-
-    // Bulk delete downloaded episodes - efficient batch processing for mass deletion
-    pub async fn bulk_delete_downloaded_episodes(&self, episode_ids: Vec<i32>, user_id: i32, is_youtube: bool) -> AppResult<(i32, i32)> {
-        if episode_ids.is_empty() {
-            return Ok((0, 0));
-        }
-
-        let mut processed = 0;
-        let mut failed = 0;
-
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
-                
-                if is_youtube {
-                    // Delete YouTube videos from DownloadedEpisodes (they use the same table but different logic)
-                    for episode_id in episode_ids {
-                        match sqlx::query(
-                            r#"DELETE FROM "DownloadedEpisodes" WHERE episodeid = $1 AND userid = $2"#
-                        )
-                        .bind(episode_id)
-                        .bind(user_id)
-                        .execute(&mut *tx)
-                        .await {
-                            Ok(result) => {
-                                if result.rows_affected() > 0 {
-                                    processed += 1;
-                                } else {
-                                    failed += 1; // Episode wasn't downloaded by this user
-                                }
-                            },
-                            Err(_) => failed += 1,
-                        }
-                    }
-                } else {
-                    // Batch delete regular episodes using IN clause for efficiency
-                    let episode_ids_str: Vec<String> = episode_ids.iter().map(|id| id.to_string()).collect();
-                    let ids_clause = episode_ids_str.join(",");
-                    
-                    let query = format!(
-                        r#"DELETE FROM "DownloadedEpisodes" WHERE episodeid IN ({}) AND userid = $1"#,
-                        ids_clause
-                    );
-                    
-                    let result = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
-                        .bind(user_id)
-                        .execute(&mut *tx)
-                        .await?;
-                    processed = result.rows_affected() as i32;
-                    failed = episode_ids.len() as i32 - processed; // Assume failures are episodes not found
-                }
-                
-                tx.commit().await?;
-            }
-            DatabasePool::MySQL(pool) => {
-                let mut tx = pool.begin().await?;
-                
-                if is_youtube {
-                    // Delete YouTube videos from DownloadedEpisodes 
-                    for episode_id in episode_ids {
-                        match sqlx::query(
-                            "DELETE FROM DownloadedEpisodes WHERE EpisodeID = ? AND UserID = ?"
-                        )
-                        .bind(episode_id)
-                        .bind(user_id)
-                        .execute(&mut *tx)
-                        .await {
-                            Ok(result) => {
-                                if result.rows_affected() > 0 {
-                                    processed += 1;
-                                } else {
-                                    failed += 1; // Episode wasn't downloaded by this user
-                                }
-                            },
-                            Err(_) => failed += 1,
-                        }
-                    }
-                } else {
-                    // Batch delete regular episodes using IN clause for efficiency
-                    let episode_ids_str: Vec<String> = episode_ids.iter().map(|id| id.to_string()).collect();
-                    let ids_clause = episode_ids_str.join(",");
-                    
-                    let query = format!(
-                        "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN ({}) AND UserID = ?",
-                        ids_clause
-                    );
-                    
-                    let result = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
-                        .bind(user_id)
-                        .execute(&mut *tx)
-                        .await?;
-                    processed = result.rows_affected() as i32;
-                    failed = episode_ids.len() as i32 - processed; // Assume failures are episodes not found
-                }
-                
                 tx.commit().await?;
             }
         }

@@ -1351,27 +1351,37 @@ pub async fn delete_episode(
     require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube.unwrap_or(false)).await?;
 
     let is_youtube = request.is_youtube.unwrap_or(false);
+    delete_download(&state, request.user_id, request.episode_id, is_youtube).await?;
 
-    // Prevent deleting episodes from local podcasts — manage files on disk directly
-    if let Ok(Some(feed_url)) = state.db_pool.get_feed_url_for_episode(request.episode_id).await {
-        if feed_url.starts_with("local://") {
-            return Err(AppError::bad_request(
-                "Cannot delete local podcast episodes. Manage audio files directly on the server and use Refresh to sync.",
-            ));
+    let content_type = if is_youtube { "Video" } else { "Episode" };
+
+    Ok(Json(serde_json::json!({
+        "detail": format!("{} deleted successfully.", content_type)
+    })))
+}
+
+// Remove a user's download of an episode or video: the row, then the file. Returns whether a
+// download was removed. Local podcast files are managed on disk, so those are refused.
+pub(crate) async fn delete_download(state: &AppState, user_id: i32, episode_id: i32, is_youtube: bool) -> Result<bool, AppError> {
+    if !is_youtube {
+        if let Ok(Some(feed_url)) = state.db_pool.get_feed_url_for_episode(episode_id).await {
+            if feed_url.starts_with("local://") {
+                return Err(AppError::bad_request(
+                    "Cannot delete local podcast episodes. Manage audio files directly on the server and use Refresh to sync.",
+                ));
+            }
         }
     }
 
     // Capture the file path before removing the DB record
     let file_path = if is_youtube {
-        state.db_pool.get_video_download_location(request.user_id, request.episode_id).await.ok().flatten()
+        state.db_pool.get_video_download_location(user_id, episode_id).await.ok().flatten()
     } else {
-        state.db_pool.get_download_location(request.episode_id, request.user_id).await.ok().flatten()
+        state.db_pool.get_download_location(episode_id, user_id).await.ok().flatten()
     };
 
-    // Delete the DB record
-    state.db_pool.delete_episode(request.user_id, request.episode_id, is_youtube).await?;
+    let deleted = state.db_pool.delete_episode(user_id, episode_id, is_youtube).await?;
 
-    // Remove the file from disk if one was recorded
     if let Some(path) = file_path {
         if tokio::fs::metadata(&path).await.is_ok() {
             if let Err(e) = tokio::fs::remove_file(&path).await {
@@ -1380,11 +1390,7 @@ pub async fn delete_episode(
         }
     }
 
-    let content_type = if is_youtube { "Video" } else { "Episode" };
-
-    Ok(Json(serde_json::json!({
-        "detail": format!("{} deleted successfully.", content_type)
-    })))
+    Ok(deleted)
 }
 
 // Download all episodes of a podcast - matches Python download_all_podcast endpoint
