@@ -342,3 +342,19 @@ async fn a_zero_cutoff_keeps_every_listed_video() {
     app.refresh().await;
     assert_eq!(app.video_ids(pod).await.len(), 2, "nothing is removed as old");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_members_only_newest_video_does_not_block_subscribing() {
+    let app = TestApp::new().await;
+    let user = app.user("watcher").await;
+    let channel = app.youtube_channel("membersfirst").video(1, 2).video(2, 1);
+    app.publish_channel(&channel);
+    app.hide_video(&channel.video_id(2));
+
+    let pod = app.subscribe_channel(&user, &channel, 30).await;
+    let column = |c: &str| format!(r#"SELECT {c} FROM "Podcasts" WHERE PodcastID = {pod}"#);
+    assert_eq!(text(&app, &column("PodcastName")).await.as_deref(), Some("membersfirst Channel"));
+    assert_eq!(text(&app, &column("Description")).await.as_deref(), Some("About membersfirst Channel"));
+    assert_eq!(text(&app, &column("ArtworkURL")).await, Some(format!("https://yt3.example/{}/avatar", channel.id)));
+    assert_eq!(app.video_ids(pod).await, vec![channel.video_id(1)]);
+}
