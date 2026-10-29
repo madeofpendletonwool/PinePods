@@ -1958,6 +1958,11 @@ pub fn login() -> Html {
                                                                         .map(|b| format!("{:02x}", b))
                                                                         .collect::<String>();
 
+                                                                    // Remembered here so the callback only finishes a login this browser started.
+                                                                    if let Ok(Some(storage)) = window.session_storage() {
+                                                                        let _ = storage.set_item(crate::components::oauth_callback::OIDC_STATE_KEY, &state);
+                                                                    }
+
                                                                     // Generate PKCE (S256); always sent so PKCE-enforcing IdPs accept the flow
                                                                     let mut verifier_bytes = [0u8; 32];
                                                                     crypto.get_random_values_with_u8_array(&mut verifier_bytes).unwrap();

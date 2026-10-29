@@ -36,6 +36,7 @@ pub fn extract_api_key(headers: &HeaderMap) -> AppResult<String> {
         .or_else(|| headers.get("api-key"))
         .or_else(|| headers.get("X-API-Key"))
         .and_then(|header| header.to_str().ok())
+        .filter(|s| !s.trim().is_empty())
         .map(|s| s.to_string())
         .ok_or_else(|| AppError::unauthorized("Missing API key"))
 }

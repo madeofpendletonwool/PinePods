@@ -1136,6 +1136,39 @@ pub async fn store_oidc_state(
     Ok(Json(serde_json::json!({ "status": "success" })))
 }
 
+const MOBILE_OIDC_CALLBACK: &str = "pinepods://auth/callback";
+
+/// Hosts this server answers on: the callback request's own host, plus the configured public URLs.
+fn oidc_allowed_hosts(headers: &HeaderMap) -> Vec<String> {
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
+    let from_headers = [header("host"), header("x-forwarded-host").and_then(|h| h.split(',').next().map(|h| h.trim().to_string()))]
+        .into_iter()
+        .flatten()
+        .map(|h| format!("http://{h}"));
+    let from_env = ["SERVER_URL", crate::handlers::sync_settings::PUBLIC_URL_ENV]
+        .into_iter()
+        .filter_map(|name| std::env::var(name).ok());
+    from_headers
+        .chain(from_env)
+        .filter_map(|u| url::Url::parse(u.trim()).ok()?.host_str().map(str::to_ascii_lowercase))
+        .collect()
+}
+
+/// Where the OIDC callback may send the browser: the mobile app's deep link, or the origin of a
+/// web URL on one of `allowed_hosts`. `None` for anything else, so a login started with someone
+/// else's origin can't hand them the key.
+fn oidc_frontend_base(origin_url: &str, allowed_hosts: &[String]) -> Option<String> {
+    if origin_url == MOBILE_OIDC_CALLBACK || origin_url.strip_prefix(MOBILE_OIDC_CALLBACK).is_some_and(|rest| rest.starts_with('?')) {
+        return Some(origin_url.to_string());
+    }
+    let url = url::Url::parse(origin_url).ok()?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return None;
+    }
+    let host = url.host_str()?.to_ascii_lowercase();
+    allowed_hosts.contains(&host).then(|| url.origin().ascii_serialization())
+}
+
 // Helper function to create proper redirect URLs for both web and mobile
 fn create_oidc_redirect_url(frontend_base: &str, params: &str) -> String {
     let redirect_url = if frontend_base.starts_with("pinepods://") {
@@ -1286,28 +1319,13 @@ pub async fn oidc_callback(
         }
     };
 
-    // Use stored origin URL if available, otherwise fall back to constructed URL
-    let frontend_base = if let Some(ref origin_url) = stored_origin_url {
-        // Check if this is a mobile deep link callback
-        if origin_url.starts_with("pinepods://auth/callback") {
-            // For mobile deep links, use the full URL directly - don't try to parse as HTTP
-            origin_url.clone()
-        } else {
-            // Extract just the base part (scheme + host + port) from the stored origin URL for web
-            // Simple string parsing to avoid adding url dependency
-            if let Some(protocol_end) = origin_url.find("://") {
-                let after_protocol = &origin_url[protocol_end + 3..];
-                if let Some(path_start) = after_protocol.find('/') {
-                    origin_url[..protocol_end + 3 + path_start].to_string()
-                } else {
-                    origin_url.clone()
-                }
-            } else {
-                origin_url.clone()
-            }
-        }
-    } else {
-        default_frontend_base.clone()
+    // The browser is sent here with the new API key, so only to this server or the mobile app.
+    let frontend_base = match stored_origin_url.as_deref() {
+        Some(origin_url) => oidc_frontend_base(origin_url, &oidc_allowed_hosts(&headers)).unwrap_or_else(|| {
+            tracing::warn!("OIDC: ignoring origin_url {:?}, which is not this server", origin_url);
+            default_frontend_base.clone()
+        }),
+        None => default_frontend_base.clone(),
     };
 
     // The token request must repeat the authorize request's redirect_uri exactly (RFC 6749
@@ -1558,7 +1576,7 @@ pub async fn oidc_callback(
         }
 
         tracing::info!("OIDC: Login successful for existing user");
-        return Ok(create_oidc_response(&frontend_base, &format!("api_key={}", api_key)));
+        return Ok(create_oidc_response(&frontend_base, &format!("api_key={}&state={}", api_key, urlencoding::encode(&state_param))));
     } else {
         // Create new user - EXACT match to Python
         if username.is_none() {
@@ -1622,7 +1640,7 @@ pub async fn oidc_callback(
 
     // Success - handle both web and mobile redirects
     tracing::info!("OIDC: Login successful for new user");
-    Ok(create_oidc_response(&frontend_base, &format!("api_key={}", api_key)))
+    Ok(create_oidc_response(&frontend_base, &format!("api_key={}&state={}", api_key, urlencoding::encode(&state_param))))
 }
 
 // Update user timezone
@@ -1980,4 +1998,45 @@ fn construct_base_url_from_request(headers: &HeaderMap) -> Result<String, AppErr
     }
 
     Ok(base_url)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hosts(h: &[&str]) -> Vec<String> {
+        h.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn oidc_redirects_only_to_this_server_or_the_mobile_app() {
+        let allowed = hosts(&["pods.example.com"]);
+        assert_eq!(oidc_frontend_base("https://pods.example.com", &allowed).as_deref(), Some("https://pods.example.com"));
+        assert_eq!(oidc_frontend_base("https://Pods.Example.com:8443/login?x=1", &allowed).as_deref(), Some("https://pods.example.com:8443"));
+        assert_eq!(oidc_frontend_base("pinepods://auth/callback", &allowed).as_deref(), Some("pinepods://auth/callback"));
+        assert_eq!(oidc_frontend_base("pinepods://auth/callback?server=x", &allowed).as_deref(), Some("pinepods://auth/callback?server=x"));
+
+        for hostile in [
+            "https://attacker.example",
+            "https://pods.example.com.attacker.example",
+            "https://pods.example.com@attacker.example",
+            "//attacker.example",
+            "attacker.example",
+            "javascript:alert(1)",
+            "pinepods://auth/callbackevil",
+            "",
+        ] {
+            assert_eq!(oidc_frontend_base(hostile, &allowed), None, "{hostile}");
+        }
+    }
+
+    #[test]
+    fn oidc_allowed_hosts_come_from_the_request() {
+        let mut headers = HeaderMap::new();
+        headers.insert("host", "pinepods:8040".parse().unwrap());
+        headers.insert("x-forwarded-host", "Pods.Example.com, proxy.internal".parse().unwrap());
+        let allowed = oidc_allowed_hosts(&headers);
+        assert!(allowed.contains(&"pinepods".to_string()));
+        assert!(allowed.contains(&"pods.example.com".to_string()));
+        assert!(!allowed.contains(&"proxy.internal".to_string()));
+    }
 }

@@ -3350,8 +3350,8 @@ pub async fn stream_episode(
     // If not a valid RSS key, try regular API key validation
     if !is_valid {
         match validate_api_key(&state, api_key).await {
-            Ok(_) => {
-                info!("Valid API key");
+            Ok(false) => debug!("Not a valid API key either"),
+            Ok(true) => {
                 // Try to get user_id, but don't fail if it errors (might be cached RSS key)
                 match state.db_pool.get_user_id_from_api_key(api_key).await {
                     Ok(user_id) => {

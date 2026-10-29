@@ -13,8 +13,20 @@ use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 
-#[derive(PartialEq, Clone)]
+/// Session-storage key for the OIDC `state` of a login started in this browser.
+pub const OIDC_STATE_KEY: &str = "pinepods_oidc_state";
+
+/// Whether this callback finishes a login this browser started. A link carrying someone else's
+/// API key has no matching state, so it can't sign this browser into their account.
+fn login_started_here(params: &web_sys::UrlSearchParams) -> bool {
+    let Some(storage) = window().session_storage().ok().flatten() else { return false };
+    let expected = storage.get_item(OIDC_STATE_KEY).ok().flatten();
+    let _ = storage.remove_item(OIDC_STATE_KEY);
+    expected.is_some() && params.get("state") == expected
+}
+
 #[allow(dead_code)]
+#[derive(PartialEq, Clone)]
 enum PageState {
     Loading,
     Error(String),
@@ -240,12 +252,14 @@ pub fn oauth_callback() -> Html {
                 let search = window.location().search().unwrap_or_default();
                 let params = web_sys::UrlSearchParams::new_with_str(&search).unwrap();
 
+                if params.get("api_key").is_some() && !login_started_here(&params) {
+                    page_state.set(PageState::Error(i18n_invalid_api_key.clone()));
+                    return;
+                }
+
                 if let Some(api_key) = params.get("api_key") {
                     let location = window.location();
                     let server_name = location.origin().expect("should have origin");
-                    web_sys::console::log_1(
-                        &format!("Starting verification process with API key: {}", api_key).into(),
-                    );
 
                     // Standard login flow...
                     match call_verify_key(&server_name, &api_key).await {
