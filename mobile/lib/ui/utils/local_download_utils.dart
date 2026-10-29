@@ -59,6 +59,8 @@ class LocalDownloadUtils {
     );
   }
 
+  static final Set<String> _startedThisSession = {};
+
   /// Clear the local download status cache (call on refresh)
   static void clearCache() {
     _localDownloadStatusCache.clear();
@@ -267,6 +269,18 @@ class LocalDownloadUtils {
 
       final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
 
+      // Tapping download again while it's downloading, or once it's done, must not
+      // start a second copy (#960).
+      // In-progress only counts for downloads started this session, so a row left
+      // "downloading" by a killed app doesn't block a retry.
+      final existing = await podcastBloc.podcastService.repository.findEpisodesByGuidOrLegacy(localEpisode.guid);
+      final inProgress = _startedThisSession.contains(localEpisode.guid) &&
+          existing.any((ep) => ep.downloadState == DownloadState.queued || ep.downloadState == DownloadState.downloading);
+      if (inProgress || await _resolvePresenceAndHeal(podcastBloc.podcastService.repository, existing, logger)) {
+        logger.debug('LocalDownload', 'Already downloaded or downloading: ${localEpisode.guid}');
+        return true;
+      }
+
       // First save the episode to the repository so it can be tracked
       await podcastBloc.podcastService.saveEpisode(localEpisode);
       logger.debug('LocalDownload', 'Episode saved to repository');
@@ -276,6 +290,7 @@ class LocalDownloadUtils {
       logger.debug('LocalDownload', 'Download service result: $success');
       
       if (success) {
+        _startedThisSession.add(localEpisode.guid);
         updateLocalDownloadStatus(episode, true);
         await DownloadCleanupService.recordDownload(episode);
       }
