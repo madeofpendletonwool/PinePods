@@ -10,6 +10,7 @@ import 'package:pinepods_mobile/entities/user_stats.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/entities/people.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
+import 'package:pinepods_mobile/entities/youtube_channel.dart';
 
 /// Debug-only logger: in release builds this compiles out, so request URLs and
 /// other diagnostics never reach the device console in production.
@@ -2073,6 +2074,113 @@ class PinepodsService {
       _devLog('Error removing podcast: $e');
       rethrow;
     }
+  }
+
+  /// YouTube channels matching [query], through the server's search proxy.
+  Future<List<YouTubeChannelResult>> searchYouTubeChannels(String query) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Server and API key must be set');
+    }
+    final url = Uri.parse('$_server/api/data/proxy_search')
+        .replace(queryParameters: {'query': query, 'index': 'youtube'});
+    final response =
+        await _client.get(url, headers: _authHeaders).timeout(const Duration(seconds: 60));
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    final data = jsonDecode(response.body);
+    final results = data is Map ? data['results'] as List<dynamic>? ?? const [] : const [];
+    return results
+        .whereType<Map<String, dynamic>>()
+        .map(YouTubeChannelResult.fromJson)
+        .where((c) => c.channelId.isNotEmpty)
+        .toList();
+  }
+
+  /// Feed URL to podcast ID for everything the user follows.
+  Future<Map<String, int>> getFollowedFeedIds(int userId) async {
+    final podcasts = await getUserPodcasts(userId);
+    return {
+      for (final p in podcasts)
+        if (p.url.isNotEmpty && p.id != null) p.url: p.id!,
+    };
+  }
+
+  /// Subscribes to a channel and returns its podcast ID. The server adds its
+  /// videos in the background.
+  Future<int> subscribeToYouTubeChannel(String channelId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/youtube/subscribe')
+        .replace(queryParameters: {'channel_id': channelId, 'user_id': userId.toString()});
+    // The server reads the channel with yt-dlp before answering.
+    final response =
+        await _client.post(url, headers: _authHeaders).timeout(const Duration(seconds: 90));
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final podcastId = data['podcast_id'];
+    if (data['success'] != true || podcastId is! int) {
+      throw Exception(data['message'] ?? 'Subscribing failed');
+    }
+    return podcastId;
+  }
+
+  Future<bool> removeYouTubeChannel(String channelName, String channelUrl, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final response = await _post(
+      Uri.parse('$_server/api/data/remove_youtube_channel'),
+      headers: {..._authHeaders, 'Content-Type': 'application/json'},
+      body: jsonEncode({'user_id': userId, 'channel_name': channelName, 'channel_url': channelUrl}),
+    );
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return (jsonDecode(response.body) as Map<String, dynamic>)['success'] == true;
+  }
+
+  /// How many days of videos a channel keeps; 0 is no limit.
+  Future<int?> getFeedCutoffDays(int podcastId, int userId) async {
+    final url = Uri.parse('$_server/api/data/get_feed_cutoff_days').replace(
+      queryParameters: {'podcast_id': podcastId.toString(), 'user_id': userId.toString()},
+    );
+    final response = await _get(url, headers: _authHeaders);
+    if (response.statusCode != 200) return null;
+    return (jsonDecode(response.body) as Map<String, dynamic>)['feed_cutoff_days'] as int?;
+  }
+
+  Future<void> updateFeedCutoffDays(int podcastId, int userId, int days) async {
+    final response = await _post(
+      Uri.parse('$_server/api/data/update_feed_cutoff_days'),
+      headers: {..._authHeaders, 'Content-Type': 'application/json'},
+      body: jsonEncode({'podcast_id': podcastId, 'user_id': userId, 'feed_cutoff_days': days}),
+    );
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+  }
+
+  Future<YouTubeVideoFilter> getYouTubeVideoFilter(int podcastId, int userId) async {
+    final url = Uri.parse('$_server/api/data/youtube_video_filter').replace(
+      queryParameters: {'podcast_id': podcastId.toString(), 'user_id': userId.toString()},
+    );
+    final response = await _get(url, headers: _authHeaders);
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return YouTubeVideoFilter.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// Saves the filter and returns it as the server stored it.
+  Future<YouTubeVideoFilter> updateYouTubeVideoFilter(
+      int podcastId, int userId, YouTubeVideoFilter filter) async {
+    final response = await _post(
+      Uri.parse('$_server/api/data/update_youtube_video_filter'),
+      headers: {..._authHeaders, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'podcast_id': podcastId,
+        'user_id': userId,
+        'min_minutes': filter.minMinutes,
+        'max_minutes': filter.maxMinutes,
+        'title_contains': filter.titleContains,
+      }),
+    );
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return YouTubeVideoFilter.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   // Get podcast details dynamically (whether added or not)
