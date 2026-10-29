@@ -178,6 +178,17 @@ class LocalDownloadUtils {
     _localDownloadStatusCache[guid] = isDownloaded;
   }
 
+  /// Locally stored PinePods rows grouped by server episode id, so a list can
+  /// be matched against the store in one read instead of one per episode.
+  static Future<Map<int, List<Episode>>> localEpisodesById(Repository repository) async {
+    final byId = <int, List<Episode>>{};
+    for (final ep in await repository.findPinepodsEpisodes()) {
+      final id = episodeIdFromGuid(ep.guid);
+      if (id != 0) (byId[id] ??= []).add(ep);
+    }
+    return byId;
+  }
+
   /// Proactively load local download status for a list of episodes
   static Future<void> loadLocalDownloadStatuses(
     BuildContext context, 
@@ -190,24 +201,11 @@ class LocalDownloadUtils {
       final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
       final repository = podcastBloc.podcastService.repository;
 
-      // Get all downloaded episodes from repository
-      final allEpisodes = await repository.findAllEpisodes();
-      logger.debug('LocalDownload', 'Found ${allEpisodes.length} total episodes in repository');
+      final localById = await localEpisodesById(repository);
 
-      // Filter to PinePods episodes only and log them
-      final pinepodsEpisodes = allEpisodes.where((ep) => ep.guid.startsWith('pinepods_')).toList();
-      logger.debug('LocalDownload', 'Found ${pinepodsEpisodes.length} PinePods episodes in repository');
-
-      // Found pinepods episodes in repository
-
-      // Now check each episode against the repository
       for (final episode in episodes) {
         final guid = generateEpisodeGuid(episode);
-
-        // Look for episodes with either new format (pinepods_123) or old format (pinepods_123_timestamp)
-        final matchingEpisodes = allEpisodes.where((ep) =>
-          ep.guid == guid || ep.guid.startsWith('${guid}_')
-        ).toList();
+        final matchingEpisodes = localById[episode.episodeId] ?? const <Episode>[];
 
         _localDownloadStatusCache[guid] = await _resolvePresenceAndHeal(repository, matchingEpisodes, logger);
         // Episode status checked
@@ -301,10 +299,7 @@ class LocalDownloadUtils {
       final guid = generateEpisodeGuid(episode);
       
       // Get all episodes and find matches with both new and old GUID formats
-      final allEpisodes = await podcastBloc.podcastService.repository.findAllEpisodes();
-      final matchingEpisodes = allEpisodes.where((ep) => 
-        ep.guid == guid || ep.guid.startsWith('${guid}_')
-      ).toList();
+      final matchingEpisodes = await podcastBloc.podcastService.repository.findEpisodesByGuidOrLegacy(guid);
       
       logger.debug('LocalDownload', 'Found ${matchingEpisodes.length} episodes to delete for $guid');
       
@@ -341,10 +336,7 @@ class LocalDownloadUtils {
     try {
       final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
 
-      final allEpisodes = await podcastBloc.podcastService.repository.findAllEpisodes();
-      final matchingEpisodes = allEpisodes.where((ep) =>
-        ep.guid == guid || ep.guid.startsWith('${guid}_')
-      ).toList();
+      final matchingEpisodes = await podcastBloc.podcastService.repository.findEpisodesByGuidOrLegacy(guid);
 
       if (matchingEpisodes.isEmpty) {
         _localDownloadStatusCache[guid] = false;

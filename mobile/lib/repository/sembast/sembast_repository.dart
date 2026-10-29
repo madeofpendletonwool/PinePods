@@ -223,6 +223,19 @@ class SembastRepository extends Repository {
   }
 
   @override
+  Future<List<Episode>> findPinepodsEpisodes() async {
+    final finder = Finder(
+      filter: Filter.custom((record) {
+        final value = record['guid'];
+        return value is String && value.startsWith('pinepods_');
+      }),
+    );
+
+    final snapshots = await _episodeStore.find(await _db, finder: finder);
+    return snapshots.map((s) => Episode.fromMap(s.key, s.value)).toList();
+  }
+
+  @override
   Future<Episode?> findEpisodeById(int? id) async {
     final finder = Finder(filter: Filter.byKey(id));
     final RecordSnapshot<int, Map<String, Object?>> snapshot =

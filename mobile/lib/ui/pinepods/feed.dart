@@ -15,6 +15,7 @@ import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
+import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:pinepods_mobile/ui/utils/position_utils.dart';
 import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
@@ -216,32 +217,19 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     try {
       final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
       
-      // Get all downloaded episodes from repository
-      final allEpisodes = await podcastBloc.podcastService.repository.findAllEpisodes();
-      logger.debug('Feed', 'Found ${allEpisodes.length} total episodes in repository');
-      
-      // Filter to PinePods episodes only and log them
-      final pinepodsEpisodes = allEpisodes.where((ep) => ep.guid.startsWith('pinepods_')).toList();
-      logger.debug('Feed', 'Found ${pinepodsEpisodes.length} PinePods episodes in repository');
-      
-      // Found pinepods episodes in repository
-      
-      // Now check each feed episode against the repository
+      final localById = await LocalDownloadUtils.localEpisodesById(
+        podcastBloc.podcastService.repository,
+      );
+
       for (final episode in _episodes) {
         final guid = _generateEpisodeGuid(episode);
-        
-        // Look for episodes with either new format (pinepods_123) or old format (pinepods_123_timestamp)
-        final matchingEpisodes = allEpisodes.where((ep) => 
-          ep.guid == guid || ep.guid.startsWith('${guid}_')
-        ).toList();
-        
-        // Checking for matching episodes
-        
+        final matchingEpisodes = localById[episode.episodeId] ?? const <Episode>[];
+
         // Consider downloaded if ANY matching episode is downloaded
-        final isDownloaded = matchingEpisodes.any((ep) => 
+        final isDownloaded = matchingEpisodes.any((ep) =>
           ep.downloaded || ep.downloadState == DownloadState.downloaded
         );
-        
+
         _localDownloadStatus[guid] = isDownloaded;
         // Episode status checked
       }
@@ -704,10 +692,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       final guid = _generateEpisodeGuid(episode);
       
       // Get all episodes and find matches with both new and old GUID formats
-      final allEpisodes = await podcastBloc.podcastService.repository.findAllEpisodes();
-      final matchingEpisodes = allEpisodes.where((ep) => 
-        ep.guid == guid || ep.guid.startsWith('${guid}_')
-      ).toList();
+      final matchingEpisodes = await podcastBloc.podcastService.repository.findEpisodesByGuidOrLegacy(guid);
       
       logger.debug('Feed', 'Found ${matchingEpisodes.length} episodes to delete for $guid');
       
@@ -755,10 +740,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
       
       // Get all episodes and find matches with both new and old GUID formats
-      final allEpisodes = await podcastBloc.podcastService.repository.findAllEpisodes();
-      final matchingEpisodes = allEpisodes.where((ep) => 
-        ep.guid == guid || ep.guid.startsWith('${guid}_')
-      ).toList();
+      final matchingEpisodes = await podcastBloc.podcastService.repository.findEpisodesByGuidOrLegacy(guid);
       
       logger.debug('Feed', 'Repository lookup for $guid: found ${matchingEpisodes.length} matching episodes');
       

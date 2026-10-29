@@ -20,6 +20,8 @@ void _devLog(Object? message) {
   }
 }
 
+Object? _decodeJson(String body) => jsonDecode(body);
+
 class PinepodsService {
   String? _server;
   String? _apiKey;
@@ -1574,12 +1576,11 @@ class PinepodsService {
     try {
       final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
-      _devLog(
-        'Queued episodes response: ${response.statusCode} - ${response.body}',
-      );
+      _devLog('Queued episodes response: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        // Long queues are large payloads; decode off the UI thread.
+        final data = await compute(_decodeJson, response.body) as Map<String, dynamic>;
         final episodesList = data['data'] as List<dynamic>? ?? [];
 
         return episodesList.map((episodeData) {
