@@ -1939,6 +1939,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         <div class="artwork-container">
                             <FallbackImage
                                 src={audio_props.artwork_url.clone()}
+                                fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                                 alt={format!("Cover for audio")}
                                 class={Some(artwork_class.to_string())}
                             />
