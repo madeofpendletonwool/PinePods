@@ -5266,7 +5266,14 @@ pub fn episode_layout() -> Html {
                                 {
                                     if *is_selecting && !selected_episodes.is_empty() {
                                         let selected_count = selected_episodes.len();
-                                        let selected_ids: Vec<i32> = selected_episodes.iter().cloned().collect();
+                                        // In list order, so bulk-queued episodes keep the order they're shown in.
+                                        let mut selected_ids: Vec<i32> = filtered_episodes
+                                            .iter()
+                                            .map(|ep| ep.episodeid)
+                                            .filter(|id| selected_episodes.contains(id))
+                                            .collect();
+                                        let unlisted: Vec<i32> = selected_episodes.iter().filter(|id| !selected_ids.contains(id)).cloned().collect();
+                                        selected_ids.extend(unlisted);
                                         let user_id_value = user_id.unwrap_or(0);
 
                                         html! {

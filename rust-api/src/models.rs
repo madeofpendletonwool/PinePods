@@ -129,11 +129,14 @@ pub struct PodcastResponse {
     pub podcastindexid: Option<i64>,
     pub is_favorite: bool,
     pub is_video: bool,
+    pub oldest_episode_date: Option<String>,
+    pub newest_episode_date: Option<String>,
+    pub play_count: i64,
 }
 
 // Lean per-subscription inputs for the recommendation taste profile (#103). Deliberately
 // selects only columns that are guaranteed to exist on the Podcasts table, avoiding the
-// heavier return_pods_extra query (which references a non-existent p.isyoutube column).
+// heavier return_pods_extra query.
 #[derive(Debug, Clone)]
 pub struct RecommendationTasteInput {
     pub podcastname: String,

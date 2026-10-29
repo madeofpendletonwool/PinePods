@@ -332,3 +332,72 @@ async fn empty_searches_are_refused_without_asking_the_search_service() {
         app.get(&format!("/api/data/proxy_search?query={query}&index=podcast_index")).key(&user).send().await.assert_status(400);
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn paged_episodes_sort_and_filter_the_whole_podcast() {
+    let app = TestApp::new().await;
+    let user = app.user("pager").await;
+    let url = app.feed("long.xml", &Feed::with_episodes("Long Show", 10));
+    let pod = app.subscribe(&user, &url, 10).await;
+
+    let page = |sort_by: &'static str, sort_order: &'static str, filter: &'static str, limit: i32| {
+        let (app, user) = (&app, &user);
+        async move {
+            let body = app
+                .get("/api/data/podcast_episodes")
+                .key(user)
+                .query("user_id", user.id)
+                .query("podcast_id", pod)
+                .query("limit", limit)
+                .query("sort_by", sort_by)
+                .query("sort_order", sort_order)
+                .query("filter", filter)
+                .send()
+                .await
+                .ok_json();
+            body["episodes"].as_array().unwrap().iter().map(|e| e["Episodeid"].as_i64().unwrap()).collect::<Vec<_>>()
+        }
+    };
+
+    for (sort_by, order) in [("date", "asc"), ("title", "asc"), ("title", "desc")] {
+        let all = page(sort_by, order, "all", 1000).await;
+        assert_eq!(all.len(), 10);
+        assert_eq!(page(sort_by, order, "all", 3).await, all[..3], "{sort_by} {order}");
+    }
+
+    let oldest = page("date", "asc", "all", 1).await[0];
+    app.post("/api/data/mark_episode_completed")
+        .key(&user)
+        .json(&json!({ "episode_id": oldest, "user_id": user.id, "is_youtube": false }))
+        .send()
+        .await
+        .assert_ok();
+    assert_eq!(page("date", "desc", "completed", 1).await, [oldest]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn podcast_list_reports_each_podcasts_oldest_and_newest_episode_dates() {
+    let app = TestApp::new().await;
+    let user = app.user("dates").await;
+    let day = |d: i64| chrono::Utc::now() - chrono::Duration::days(d);
+    // The old show started recently but its last episode is old; the active show is the reverse.
+    let stale = Feed::new("Stale").episode(Episode::new(1).pub_date(day(30))).episode(Episode::new(2).pub_date(day(20)));
+    let active = Feed::new("Active").episode(Episode::new(1).pub_date(day(400))).episode(Episode::new(2).pub_date(day(1)));
+    app.subscribe(&user, &app.feed("stale.xml", &stale), 2).await;
+    app.subscribe(&user, &app.feed("active.xml", &active), 2).await;
+
+    let pods = app.podcasts(&user).await;
+    let dates = |name: &str| {
+        let p = pods.iter().find(|p| p["podcastname"] == name).unwrap();
+        (p["oldest_episode_date"].as_str().unwrap().to_string(), p["newest_episode_date"].as_str().unwrap().to_string())
+    };
+    let (stale_old, stale_new) = dates("Stale");
+    let (active_old, active_new) = dates("Active");
+    assert!(stale_old < stale_new && active_old < active_new);
+    assert!(active_new > stale_new, "active's latest episode is the newest");
+    assert!(active_old < stale_old);
+
+    let extra = app.get(&format!("/api/data/return_pods_extra/{}", user.id)).key(&user).send().await.ok_json();
+    let active = extra["pods"].as_array().unwrap().iter().find(|p| p["podcastname"] == "Active").unwrap();
+    assert_eq!(active["oldest_episode_date"].as_str(), Some(active_old.as_str()));
+}

@@ -251,9 +251,13 @@ pub async fn bulk_delete_downloaded_episodes(
 
     let is_youtube = request.is_youtube.unwrap_or(false);
     require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
-    let (processed_count, failed_count) = state.db_pool
-        .bulk_delete_downloaded_episodes(request.episode_ids, request.user_id, is_youtube)
-        .await?;
+    let (mut processed_count, mut failed_count) = (0, 0);
+    for episode_id in request.episode_ids {
+        match crate::handlers::podcasts::delete_download(&state, request.user_id, episode_id, is_youtube).await {
+            Ok(true) => processed_count += 1,
+            _ => failed_count += 1,
+        }
+    }
 
     let message = if failed_count > 0 {
         format!("Deleted {} downloaded episodes, {} failed or were not found", processed_count, failed_count)

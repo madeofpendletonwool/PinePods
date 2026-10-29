@@ -1583,7 +1583,9 @@
     "start_page_settings": "Start Page Settings",
     "start_page_updated_successfully": "Start page updated successfully!",
     "podcast_cover_display": "Podcast Cover Display",
-    "always_use_podcast_covers": "Always use podcast covers instead of episode covers"
+    "always_use_podcast_covers": "Always use podcast covers instead of episode covers",
+    "avatar": "Avatar",
+    "use_gravatar": "Show my Gravatar (loads an image from gravatar.com using a hash of your email)"
   },
   "time_formats": {
     "12_hour": "12 Hour",

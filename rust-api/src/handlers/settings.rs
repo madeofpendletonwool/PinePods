@@ -3497,6 +3497,42 @@ pub async fn set_auto_delete_on_complete_user(
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]
+pub struct SetUseGravatar {
+    pub user_id: i32,
+    pub enabled: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/user/set_use_gravatar",
+    tag = "settings",
+    summary = "Set whether the user's Gravatar is shown",
+    request_body = SetUseGravatar,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn set_use_gravatar(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetUseGravatar>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own settings."));
+    }
+
+    state.db_pool.set_use_gravatar(request.user_id, request.enabled).await?;
+    Ok(Json(serde_json::json!({ "detail": "Gravatar setting updated." })))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct SetAutoDeleteOnCompletePodcast {
     pub user_id: i32,
     pub podcast_id: i32,

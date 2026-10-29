@@ -714,6 +714,37 @@ impl AppState {
             false
         }
     }
+
+    /// Copy the desktop app's saved login into localStorage, where the startup auto-login
+    /// reads it. Runs before the app renders; does nothing outside Tauri.
+    pub async fn load_tauri_credentials() {
+        if !Self::is_tauri() {
+            return;
+        }
+        let Some(storage) = window().and_then(|w| w.local_storage().ok().flatten()) else { return };
+        for key in ["userState", "userAuthState", "serverState"] {
+            let args = serde_wasm_bindgen::to_value(&json!({ "key": key })).unwrap();
+            if let Ok(value) = tauri_invoke("get_credentials", args).await {
+                if let Some(value) = value.as_string() {
+                    let _ = storage.set_item(key, &value);
+                }
+            }
+        }
+    }
+
+    /// Delete the desktop app's saved login so the next launch starts signed out.
+    pub async fn clear_tauri_credentials() {
+        if Self::is_tauri() {
+            let _ = tauri_invoke("clear_all_credentials", JsValue::NULL).await;
+        }
+    }
+}
+
+#[wasm_bindgen::prelude::wasm_bindgen]
+extern "C" {
+    // Rejects when the command fails (e.g. no saved credential yet).
+    #[wasm_bindgen(catch, js_namespace = ["window", "__TAURI__", "core"], js_name = invoke)]
+    async fn tauri_invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
 }
 
 #[derive(Default, Clone, PartialEq, Store, Debug)]

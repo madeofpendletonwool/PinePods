@@ -10791,6 +10791,43 @@
         ]
       }
     },
+    "/api/data/user/set_use_gravatar": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Set whether the user's Gravatar is shown",
+        "operationId": "set_use_gravatar",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUseGravatar"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/api/data/user/set_username": {
       "put": {
         "tags": [
@@ -16801,7 +16838,8 @@
           "feedurl",
           "explicit",
           "is_favorite",
-          "is_video"
+          "is_video",
+          "play_count"
         ],
         "properties": {
           "podcastid": {
@@ -16872,6 +16910,22 @@
           },
           "is_video": {
             "type": "boolean"
+          },
+          "oldest_episode_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "newest_episode_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "play_count": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -18334,6 +18388,22 @@
           }
         }
       },
+      "SetUseGravatar": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "enabled"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
       "SetUsernameRequest": {
         "type": "object",
         "required": [
@@ -19497,7 +19567,8 @@
       "UserDetails": {
         "type": "object",
         "required": [
-          "UserID"
+          "UserID",
+          "UseGravatar"
         ],
         "properties": {
           "UserID": {
@@ -19535,6 +19606,10 @@
               "null"
             ],
             "description": "Always null; kept for response compatibility."
+          },
+          "UseGravatar": {
+            "type": "boolean",
+            "description": "Whether the clients show the user's Gravatar. Off by default."
           }
         }
       },

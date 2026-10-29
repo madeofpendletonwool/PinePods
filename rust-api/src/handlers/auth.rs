@@ -80,6 +80,8 @@ pub struct UserDetails {
     pub Hashed_PW: Option<String>,
     /// Always null; kept for response compatibility.
     pub Salt: Option<String>,
+    /// Whether the clients show the user's Gravatar. Off by default.
+    pub UseGravatar: bool,
 }
 
 #[derive(Serialize, utoipa::ToSchema)]

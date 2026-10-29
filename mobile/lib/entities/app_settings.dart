@@ -85,6 +85,9 @@ class AppSettings {
   /// exists, falling back to the original feed URL otherwise.
   final bool preferServerDownloadSource;
 
+  /// Whether to show the user's Gravatar. Mirrors the server setting; off by default.
+  final bool pinepodsUseGravatar;
+
   /// Number of leading queue episodes to keep downloaded locally (0 = disabled).
   final int autoDownloadQueueCount;
 
@@ -125,6 +128,7 @@ class AppSettings {
     required this.bottomBarOrder,
     this.autoDownloadWifiOnly = true,
     this.preferServerDownloadSource = true,
+    this.pinepodsUseGravatar = false,
     this.autoDownloadQueueCount = 0,
     this.mirrorServerDownloads = false,
     this.deleteDownloadsAfterDays = 0,
@@ -157,6 +161,7 @@ class AppSettings {
         bottomBarOrder = defaultBottomBarOrder,
         autoDownloadWifiOnly = true,
         preferServerDownloadSource = true,
+        pinepodsUseGravatar = false,
         autoDownloadQueueCount = 0,
         mirrorServerDownloads = false,
         deleteDownloadsAfterDays = 0,
@@ -188,6 +193,7 @@ class AppSettings {
     List<String>? bottomBarOrder,
     bool? autoDownloadWifiOnly,
     bool? preferServerDownloadSource,
+    bool? pinepodsUseGravatar,
     int? autoDownloadQueueCount,
     bool? mirrorServerDownloads,
     int? deleteDownloadsAfterDays,
@@ -219,6 +225,7 @@ class AppSettings {
         bottomBarOrder: bottomBarOrder ?? this.bottomBarOrder,
         autoDownloadWifiOnly: autoDownloadWifiOnly ?? this.autoDownloadWifiOnly,
         preferServerDownloadSource: preferServerDownloadSource ?? this.preferServerDownloadSource,
+        pinepodsUseGravatar: pinepodsUseGravatar ?? this.pinepodsUseGravatar,
         autoDownloadQueueCount: autoDownloadQueueCount ?? this.autoDownloadQueueCount,
         mirrorServerDownloads: mirrorServerDownloads ?? this.mirrorServerDownloads,
         deleteDownloadsAfterDays: deleteDownloadsAfterDays ?? this.deleteDownloadsAfterDays,

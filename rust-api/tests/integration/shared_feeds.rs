@@ -176,3 +176,44 @@ async fn upgrading_creates_feeds_with_the_merged_refresh_state() {
     assert_eq!(app.db().link_unlinked_feeds().await.unwrap(), 0);
     assert_eq!(feeds(&app).await, 2);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn other_subscribers_do_not_duplicate_a_users_lists() {
+    let app = TestApp::new().await;
+    let (alice, bob, carol) = (app.user("alice").await, app.user("bob").await, app.user("carol").await);
+    let url = app.feed("crowded.xml", &Feed::with_episodes("Crowded", 2));
+    let pod = app.subscribe(&alice, &url, 2).await;
+    app.subscribe(&bob, &url, 2).await;
+    app.subscribe(&carol, &url, 2).await;
+    let ep = app.episode_id(&alice, pod, "Episode 1").await;
+
+    app.post("/api/data/queue_pod")
+        .key(&alice)
+        .json(&json!({ "episode_id": ep, "user_id": alice.id, "is_youtube": false }))
+        .send()
+        .await
+        .assert_ok();
+    app.post("/api/data/record_listen_duration")
+        .key(&alice)
+        .json(&json!({ "episode_id": ep, "user_id": alice.id, "listen_duration": 120.0 }))
+        .send()
+        .await
+        .assert_ok();
+    exec(
+        &app,
+        &format!(
+            r#"INSERT INTO "DownloadedEpisodes" (UserID, EpisodeID, DownloadedSize, DownloadedLocation) VALUES ({}, {ep}, 1, '/tmp/x.mp3')"#,
+            alice.id
+        ),
+    )
+    .await;
+
+    let count = |v: &Value| v.as_array().unwrap().iter().filter(|e| e["episodeid"] == ep).count();
+    let queue = app.get("/api/data/get_queued_episodes").key(&alice).query("user_id", alice.id).send().await.ok_json();
+    assert_eq!(count(&queue["data"]), 1, "queue: {queue}");
+    let home = app.get("/api/data/home_overview").key(&alice).query("user_id", alice.id).send().await.ok_json();
+    assert_eq!(count(&home["in_progress_episodes"]), 1, "home in-progress: {home}");
+    assert_eq!(count(&home["queue_preview"]), 1, "home queue preview: {home}");
+    let downloads = app.get("/api/data/download_episode_list").key(&alice).query("user_id", alice.id).send().await.ok_json();
+    assert_eq!(count(&downloads["downloaded_episodes"]), 1, "downloads: {downloads}");
+}

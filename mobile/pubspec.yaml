@@ -35,6 +35,8 @@ dependencies:
   http: ^1.6.0
   intl: ^0.20.2
   logging: ^1.0.2
+  # Version is pinned by the Flutter SDK.
+  material_color_utilities: any
   meta: ^1.16.0
   mp3_info: ^0.2.3
   package_info_plus: ^10.2.0

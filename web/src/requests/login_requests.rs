@@ -120,6 +120,8 @@ pub struct GetUserDetails {
     pub Email: Option<String>,
     pub Hashed_PW: Option<String>,
     pub Salt: Option<String>,
+    #[serde(default)]
+    pub UseGravatar: bool,
 }
 
 pub async fn call_get_user_details(

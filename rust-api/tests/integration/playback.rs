@@ -174,3 +174,102 @@ async fn every_user_has_stats_that_count_activity() {
         before["PodcastsPlayed"].as_i64().unwrap() + 1
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn downloads_over_2_gib_are_recorded_and_counted() {
+    let app = TestApp::new().await;
+    let (user, _pod, ep) = setup(&app).await;
+    let size: i64 = 3 * 1024 * 1024 * 1024;
+    exec(
+        &app,
+        &format!(
+            r#"INSERT INTO "DownloadedEpisodes" (UserID, EpisodeID, DownloadedSize, DownloadedLocation) VALUES ({}, {ep}, {size}, '/tmp/big.mp4')"#,
+            user.id
+        ),
+    )
+    .await;
+    let stats = app.get("/api/data/get_extended_stats").key(&user).query("user_id", user.id).send().await.ok_json();
+    assert_eq!(stats["total_downloaded_bytes"], size, "{stats}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn bulk_deleting_downloads_removes_the_files() {
+    let app = TestApp::new().await;
+    let (user, _pod, ep) = setup(&app).await;
+    let file = std::env::temp_dir().join(format!("pinepods-bulk-delete-{ep}.mp3"));
+    std::fs::write(&file, b"audio").unwrap();
+    exec(
+        &app,
+        &format!(
+            r#"INSERT INTO "DownloadedEpisodes" (UserID, EpisodeID, DownloadedSize, DownloadedLocation) VALUES ({}, {ep}, 5, '{}')"#,
+            user.id,
+            file.display()
+        ),
+    )
+    .await;
+
+    let body = app
+        .post("/api/data/bulk_delete_downloaded_episodes")
+        .key(&user)
+        .json(&json!({ "episode_ids": [ep], "user_id": user.id }))
+        .send()
+        .await
+        .ok_json();
+    assert_eq!(body["processed_count"], 1, "{body}");
+    assert!(!file.exists(), "file left on disk");
+    let rows = format!(r#"SELECT COUNT(*) FROM "DownloadedEpisodes" WHERE EpisodeID = {ep}"#);
+    assert_eq!(int(&app, &rows).await, Some(0));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn removing_a_podcast_removes_its_downloaded_files() {
+    let app = TestApp::new().await;
+    let (user, pod, ep) = setup(&app).await;
+    let file = std::env::temp_dir().join(format!("pinepods-unsubscribe-{ep}.mp3"));
+    std::fs::write(&file, b"audio").unwrap();
+    exec(
+        &app,
+        &format!(
+            r#"INSERT INTO "DownloadedEpisodes" (UserID, EpisodeID, DownloadedSize, DownloadedLocation) VALUES ({}, {ep}, 5, '{}')"#,
+            user.id,
+            file.display()
+        ),
+    )
+    .await;
+
+    let body = app
+        .post("/api/data/remove_podcast_id")
+        .key(&user)
+        .json(&json!({ "user_id": user.id, "podcast_id": pod }))
+        .send()
+        .await
+        .ok_json();
+    assert_eq!(body["success"], true, "{body}");
+    assert!(!file.exists(), "file left on disk");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn auto_play_next_skips_finished_episodes() {
+    let app = TestApp::new().await;
+    let user = app.user("binge").await;
+    let url = app.feed("binge.xml", &Feed::with_episodes("Binge Show", 4));
+    let pod = app.subscribe(&user, &url, 4).await;
+    let mut eps = app.episodes(&user, pod).await;
+    eps.sort_by_key(|e| e["Episodepubdate"].as_str().unwrap().to_string());
+    let ids: Vec<i64> = eps.iter().map(|e| e["Episodeid"].as_i64().unwrap()).collect();
+
+    app.post("/api/data/mark_episode_completed")
+        .key(&user)
+        .json(&json!({ "episode_id": ids[1], "user_id": user.id, "is_youtube": false }))
+        .send()
+        .await
+        .assert_ok();
+    let next = app
+        .post("/api/data/get_next_podcast_episode")
+        .key(&user)
+        .json(&json!({ "episode_id": ids[0], "user_id": user.id }))
+        .send()
+        .await
+        .ok_json();
+    assert_eq!(next["episodeid"], ids[2], "{next}");
+}
