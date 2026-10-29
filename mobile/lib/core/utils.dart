@@ -9,7 +9,6 @@ import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 /// Returns the storage directory for the current platform.
 ///
@@ -40,17 +39,10 @@ Future<void> createDownloadDirectory(Episode episode) async {
   Directory(path).createSync(recursive: true);
 }
 
-Future<bool> hasStoragePermission() async {
-  SettingsService? settings = await MobileSettingsService.instance();
-
-  if (Platform.isIOS || !settings!.storeDownloadsSDCard) {
-    return Future.value(true);
-  } else {
-    final permissionStatus = await Permission.storage.request();
-
-    return Future.value(permissionStatus.isGranted);
-  }
-}
+/// Downloads only go to app-specific directories (including the SD card's
+/// `Android/data/<package>` folder), which need no storage permission. Requesting
+/// Permission.storage would always be denied on Android 13+ (#983).
+Future<bool> hasStoragePermission() async => true;
 
 Future<String> getStorageDirectory() async {
   SettingsService? settings = await MobileSettingsService.instance();

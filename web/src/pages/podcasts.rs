@@ -341,7 +341,33 @@ pub fn podcasts() -> Html {
         MostPlayed,
         LeastPlayed,
     }
-    let sort_direction = use_state(|| Some(SortDirection::AlphaAsc));
+    impl SortDirection {
+        const ALL: [(SortDirection, &'static str); 8] = [
+            (SortDirection::AlphaAsc, "alpha_asc"),
+            (SortDirection::AlphaDesc, "alpha_desc"),
+            (SortDirection::EpisodeCountHigh, "episodes_high"),
+            (SortDirection::EpisodeCountLow, "episodes_low"),
+            (SortDirection::OldestFirst, "oldest"),
+            (SortDirection::NewestFirst, "newest"),
+            (SortDirection::MostPlayed, "most_played"),
+            (SortDirection::LeastPlayed, "least_played"),
+        ];
+        fn from_value(value: &str) -> Option<Self> {
+            Self::ALL.iter().find(|(_, v)| *v == value).map(|(d, _)| d.clone())
+        }
+        fn value(&self) -> &'static str {
+            Self::ALL.iter().find(|(d, _)| d == self).map(|(_, v)| *v).unwrap_or("alpha_asc")
+        }
+    }
+    const SORT_STORAGE_KEY: &str = "podcasts_sort";
+    // The chosen sort survives leaving the page.
+    let sort_direction = use_state(|| {
+        let stored = web_sys::window()
+            .and_then(|w| w.local_storage().ok().flatten())
+            .and_then(|s| s.get_item(SORT_STORAGE_KEY).ok().flatten());
+        Some(stored.as_deref().and_then(SortDirection::from_value).unwrap_or(SortDirection::AlphaAsc))
+    });
+    let current_sort = (*sort_direction).as_ref().map_or("alpha_asc", |d| d.value());
 
     // Capture all i18n strings at function start to avoid borrow checker issues
     let i18n_delete_podcast = i18n.t("podcasts.delete_podcast").to_string();
@@ -998,12 +1024,15 @@ pub fn podcasts() -> Html {
                             .cmp(&a.podcastname.to_lowercase()),
                         SortDirection::EpisodeCountHigh => b.episodecount.cmp(&a.episodecount),
                         SortDirection::EpisodeCountLow => a.episodecount.cmp(&b.episodecount),
-                        SortDirection::OldestFirst => {
-                            a.oldest_episode_date.cmp(&b.oldest_episode_date)
-                        }
-                        SortDirection::NewestFirst => {
-                            b.oldest_episode_date.cmp(&a.oldest_episode_date)
-                        }
+                        // By each podcast's latest episode; podcasts with no episodes go last.
+                        SortDirection::OldestFirst => match (&a.newest_episode_date, &b.newest_episode_date) {
+                            (Some(x), Some(y)) => x.cmp(y),
+                            (x, y) => x.is_none().cmp(&y.is_none()),
+                        },
+                        SortDirection::NewestFirst => match (&a.newest_episode_date, &b.newest_episode_date) {
+                            (Some(x), Some(y)) => y.cmp(x),
+                            (x, y) => x.is_none().cmp(&y.is_none()),
+                        },
                         SortDirection::MostPlayed => b.play_count.cmp(&a.play_count),
                         SortDirection::LeastPlayed => a.play_count.cmp(&b.play_count),
                     });
@@ -1084,28 +1113,21 @@ pub fn podcasts() -> Html {
                                             Callback::from(move |e: Event| {
                                                 let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
                                                 let value = target.value();
-                                                match value.as_str() {
-                                                    "alpha_asc" => sort_direction.set(Some(SortDirection::AlphaAsc)),
-                                                    "alpha_desc" => sort_direction.set(Some(SortDirection::AlphaDesc)),
-                                                    "episodes_high" => sort_direction.set(Some(SortDirection::EpisodeCountHigh)),
-                                                    "episodes_low" => sort_direction.set(Some(SortDirection::EpisodeCountLow)),
-                                                    "oldest" => sort_direction.set(Some(SortDirection::OldestFirst)),
-                                                    "newest" => sort_direction.set(Some(SortDirection::NewestFirst)),
-                                                    "most_played" => sort_direction.set(Some(SortDirection::MostPlayed)),
-                                                    "least_played" => sort_direction.set(Some(SortDirection::LeastPlayed)),
-                                                    _ => sort_direction.set(None),
+                                                if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+                                                    let _ = storage.set_item(SORT_STORAGE_KEY, &value);
                                                 }
+                                                sort_direction.set(SortDirection::from_value(&value));
                                             })
                                         }
                                     >
-                                        <option value="alpha_asc" selected=true>{&i18n.t("podcasts.sort_a_to_z_up")}</option>
-                                        <option value="alpha_desc">{&i18n.t("podcasts.sort_z_to_a_down")}</option>
-                                        <option value="episodes_high">{&i18n.t("podcasts.sort_most_episodes")}</option>
-                                        <option value="episodes_low">{&i18n.t("podcasts.sort_least_episodes")}</option>
-                                        <option value="oldest">{&i18n.t("podcasts.sort_oldest_first")}</option>
-                                        <option value="newest">{&i18n.t("podcasts.sort_newest_first")}</option>
-                                        <option value="most_played">{&i18n.t("podcasts.sort_most_played")}</option>
-                                        <option value="least_played">{&i18n.t("podcasts.sort_least_played")}</option>
+                                        <option value="alpha_asc" selected={current_sort == "alpha_asc"}>{&i18n.t("podcasts.sort_a_to_z_up")}</option>
+                                        <option value="alpha_desc" selected={current_sort == "alpha_desc"}>{&i18n.t("podcasts.sort_z_to_a_down")}</option>
+                                        <option value="episodes_high" selected={current_sort == "episodes_high"}>{&i18n.t("podcasts.sort_most_episodes")}</option>
+                                        <option value="episodes_low" selected={current_sort == "episodes_low"}>{&i18n.t("podcasts.sort_least_episodes")}</option>
+                                        <option value="oldest" selected={current_sort == "oldest"}>{&i18n.t("podcasts.sort_oldest_first")}</option>
+                                        <option value="newest" selected={current_sort == "newest"}>{&i18n.t("podcasts.sort_newest_first")}</option>
+                                        <option value="most_played" selected={current_sort == "most_played"}>{&i18n.t("podcasts.sort_most_played")}</option>
+                                        <option value="least_played" selected={current_sort == "least_played"}>{&i18n.t("podcasts.sort_least_played")}</option>
                                     </select>
                                     <i class="ph ph-caret-down pfb-sort-arrow"></i>
                                 </div>

@@ -374,3 +374,30 @@ async fn paged_episodes_sort_and_filter_the_whole_podcast() {
         .assert_ok();
     assert_eq!(page("date", "desc", "completed", 1).await, [oldest]);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn podcast_list_reports_each_podcasts_oldest_and_newest_episode_dates() {
+    let app = TestApp::new().await;
+    let user = app.user("dates").await;
+    let day = |d: i64| chrono::Utc::now() - chrono::Duration::days(d);
+    // The old show started recently but its last episode is old; the active show is the reverse.
+    let stale = Feed::new("Stale").episode(Episode::new(1).pub_date(day(30))).episode(Episode::new(2).pub_date(day(20)));
+    let active = Feed::new("Active").episode(Episode::new(1).pub_date(day(400))).episode(Episode::new(2).pub_date(day(1)));
+    app.subscribe(&user, &app.feed("stale.xml", &stale), 2).await;
+    app.subscribe(&user, &app.feed("active.xml", &active), 2).await;
+
+    let pods = app.podcasts(&user).await;
+    let dates = |name: &str| {
+        let p = pods.iter().find(|p| p["podcastname"] == name).unwrap();
+        (p["oldest_episode_date"].as_str().unwrap().to_string(), p["newest_episode_date"].as_str().unwrap().to_string())
+    };
+    let (stale_old, stale_new) = dates("Stale");
+    let (active_old, active_new) = dates("Active");
+    assert!(stale_old < stale_new && active_old < active_new);
+    assert!(active_new > stale_new, "active's latest episode is the newest");
+    assert!(active_old < stale_old);
+
+    let extra = app.get(&format!("/api/data/return_pods_extra/{}", user.id)).key(&user).send().await.ok_json();
+    let active = extra["pods"].as_array().unwrap().iter().find(|p| p["podcastname"] == "Active").unwrap();
+    assert_eq!(active["oldest_episode_date"].as_str(), Some(active_old.as_str()));
+}

@@ -1659,7 +1659,15 @@ impl DatabasePool {
                         COALESCE(explicit, false) as explicit,
                         COALESCE(podcastindexid, 0) as podcastindexid,
                         COALESCE(isfavorite, false) as isfavorite,
-                        EXISTS(SELECT 1 FROM "Episodes" e WHERE e.feedid = "Podcasts".feedid AND e.is_video = true) as is_video
+                        EXISTS(SELECT 1 FROM "Episodes" e WHERE e.feedid = "Podcasts".feedid AND e.is_video = true) as is_video,
+                        TO_CHAR(COALESCE((SELECT MIN(e.episodepubdate) FROM "Episodes" e WHERE e.feedid = "Podcasts".feedid),
+                                         (SELECT MIN(v.publishedat) FROM "YouTubeVideos" v WHERE v.podcastid = "Podcasts".podcastid)),
+                                'YYYY-MM-DD"T"HH24:MI:SS') as oldest_episode_date,
+                        TO_CHAR(COALESCE((SELECT MAX(e.episodepubdate) FROM "Episodes" e WHERE e.feedid = "Podcasts".feedid),
+                                         (SELECT MAX(v.publishedat) FROM "YouTubeVideos" v WHERE v.podcastid = "Podcasts".podcastid)),
+                                'YYYY-MM-DD"T"HH24:MI:SS') as newest_episode_date,
+                        (SELECT COUNT(*) FROM "UserEpisodeHistory" h JOIN "Episodes" e ON e.episodeid = h.episodeid
+                         WHERE h.userid = $1 AND e.feedid = "Podcasts".feedid) as play_count
                     FROM "Podcasts"
                     WHERE userid = $1 AND COALESCE(displaypodcast, TRUE) = TRUE
                     ORDER BY podcastname"#
@@ -1687,6 +1695,9 @@ impl DatabasePool {
                         podcastindexid: row.try_get::<i32, _>("podcastindexid").ok().map(|i| i as i64),
                         is_favorite: row.try_get("isfavorite").unwrap_or(false),
                         is_video: row.try_get("is_video").unwrap_or(false),
+                        oldest_episode_date: row.try_get("oldest_episode_date")?,
+                        newest_episode_date: row.try_get("newest_episode_date")?,
+                        play_count: row.try_get("play_count")?,
                     });
                 }
                 Ok(podcasts)
@@ -1710,11 +1721,20 @@ impl DatabasePool {
                         COALESCE(Explicit, false) as explicit,
                         COALESCE(PodcastIndexID, 0) as podcastindexid,
                         COALESCE(IsFavorite, false) as isfavorite,
-                        EXISTS(SELECT 1 FROM Episodes e WHERE e.FeedID = Podcasts.FeedID AND e.IsVideo = 1) as is_video
+                        EXISTS(SELECT 1 FROM Episodes e WHERE e.FeedID = Podcasts.FeedID AND e.IsVideo = 1) as is_video,
+                        DATE_FORMAT(COALESCE((SELECT MIN(e.EpisodePubDate) FROM Episodes e WHERE e.FeedID = Podcasts.FeedID),
+                                             (SELECT MIN(v.PublishedAt) FROM YouTubeVideos v WHERE v.PodcastID = Podcasts.PodcastID)),
+                                    '%Y-%m-%dT%H:%i:%s') as oldest_episode_date,
+                        DATE_FORMAT(COALESCE((SELECT MAX(e.EpisodePubDate) FROM Episodes e WHERE e.FeedID = Podcasts.FeedID),
+                                             (SELECT MAX(v.PublishedAt) FROM YouTubeVideos v WHERE v.PodcastID = Podcasts.PodcastID)),
+                                    '%Y-%m-%dT%H:%i:%s') as newest_episode_date,
+                        (SELECT COUNT(*) FROM UserEpisodeHistory h JOIN Episodes e ON e.EpisodeID = h.EpisodeID
+                         WHERE h.UserID = ? AND e.FeedID = Podcasts.FeedID) as play_count
                     FROM Podcasts
                     WHERE UserID = ? AND COALESCE(DisplayPodcast, 1) = 1
                     ORDER BY PodcastName"
                 )
+                .bind(user_id)
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?;
@@ -1738,6 +1758,9 @@ impl DatabasePool {
                         podcastindexid: row.try_get::<i32, _>("podcastindexid").ok().map(|i| i as i64),
                         is_favorite: row.try_get("isfavorite").unwrap_or(false),
                         is_video: row.try_get("is_video").unwrap_or(false),
+                        oldest_episode_date: row.try_get("oldest_episode_date")?,
+                        newest_episode_date: row.try_get("newest_episode_date")?,
+                        play_count: row.try_get("play_count")?,
                     });
                 }
                 Ok(podcasts)
@@ -1767,9 +1790,9 @@ impl DatabasePool {
                         COALESCE(p.explicit, false) as explicit,
                         COALESCE(p.podcastindexid, 0) as podcastindexid,
                         COUNT(ueh.userepisodehistoryid) as play_count,
-                        COUNT(DISTINCT ueh.episodeid) as episodes_played,
-                        MIN(e.episodepubdate) as oldest_episode_date,
-                        COALESCE(p.isyoutube, false) as is_youtube,
+                        COUNT(DISTINCT ueh.episodeid)::INT as episodes_played,
+                        TO_CHAR(MIN(e.episodepubdate), 'YYYY-MM-DD"T"HH24:MI:SS') as oldest_episode_date,
+                        COALESCE(p.isyoutubechannel, false) as is_youtube,
                         COALESCE(BOOL_OR(e.is_video), false) as is_video,
                         COALESCE(p.isfavorite, false) as isfavorite
                     FROM "Podcasts" p
@@ -1778,7 +1801,7 @@ impl DatabasePool {
                     WHERE p.userid = $1 AND COALESCE(p.displaypodcast, TRUE) = TRUE
                     GROUP BY p.podcastid, p.podcastname, p.artworkurl, p.description,
                              p.episodecount, p.websiteurl, p.feedurl, p.author,
-                             p.categories, p.explicit, p.podcastindexid, p.isyoutube, p.isfavorite
+                             p.categories, p.explicit, p.podcastindexid, p.isyoutubechannel, p.isfavorite
                     ORDER BY p.podcastname"#
                 )
                 .bind(user_id)
@@ -1835,7 +1858,7 @@ impl DatabasePool {
                         COALESCE(p.PodcastIndexID, 0) as podcastindexid,
                         COUNT(ueh.UserEpisodeHistoryID) as play_count,
                         COUNT(DISTINCT ueh.EpisodeID) as episodes_played,
-                        MIN(e.EpisodePubDate) as oldest_episode_date,
+                        DATE_FORMAT(MIN(e.EpisodePubDate), '%Y-%m-%dT%H:%i:%s') as oldest_episode_date,
                         COALESCE(p.IsYouTubeChannel, false) as is_youtube,
                         COALESCE(MAX(e.IsVideo), 0) as is_video,
                         COALESCE(p.IsFavorite, false) as isfavorite

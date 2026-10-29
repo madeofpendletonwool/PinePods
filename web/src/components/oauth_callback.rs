@@ -31,7 +31,7 @@ fn calculate_gravatar_hash(email: &String) -> String {
 
 #[allow(dead_code)]
 pub fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
-    let hash = calculate_gravatar_hash(&email.clone().unwrap());
+    let hash = calculate_gravatar_hash(&email.clone().unwrap_or_default());
     format!("https://gravatar.com/avatar/{}?s={}", hash, size)
 }
 

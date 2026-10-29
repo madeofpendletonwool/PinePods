@@ -25,7 +25,7 @@ fn calculate_gravatar_hash(email: &String) -> String {
 }
 
 fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
-    let hash = calculate_gravatar_hash(&email.clone().unwrap());
+    let hash = calculate_gravatar_hash(&email.clone().unwrap_or_default());
     format!("https://gravatar.com/avatar/{}?s={}", hash, size)
 }
 
@@ -278,7 +278,7 @@ pub fn login() -> Html {
                                                                     let final_dispatch =
                                                                         effect_displatch
                                                                             .clone();
-                                                                    let gravatar_url = generate_gravatar_url(&Some(wasm_email.clone().unwrap()), 80);
+                                                                    let gravatar_url = generate_gravatar_url(&wasm_email, 80);
                                                                     // Auto login logic here
                                                                     final_dispatch.reduce_mut(move |state| {
                                                                         state.user_details = wasm_app_state.user_details;

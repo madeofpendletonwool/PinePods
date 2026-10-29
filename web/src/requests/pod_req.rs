@@ -533,6 +533,8 @@ pub struct PodcastExtra {
     #[serde(default)]
     pub oldest_episode_date: Option<String>,
     #[serde(default)]
+    pub newest_episode_date: Option<String>,
+    #[serde(default)]
     pub is_youtube: bool,
     #[serde(default)]
     pub is_video: bool,
@@ -559,6 +561,7 @@ impl From<Podcast> for PodcastExtra {
             play_count: 0,
             episodes_played: 0,
             oldest_episode_date: None,
+            newest_episode_date: None,
             is_youtube,
             is_video: podcast.is_video,
             is_favorite: podcast.is_favorite,

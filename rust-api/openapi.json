@@ -16838,7 +16838,8 @@
           "feedurl",
           "explicit",
           "is_favorite",
-          "is_video"
+          "is_video",
+          "play_count"
         ],
         "properties": {
           "podcastid": {
@@ -16909,6 +16910,22 @@
           },
           "is_video": {
             "type": "boolean"
+          },
+          "oldest_episode_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "newest_episode_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "play_count": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },

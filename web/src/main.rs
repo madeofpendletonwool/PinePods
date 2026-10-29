@@ -265,5 +265,8 @@ fn main_component() -> Html {
 }
 
 fn main() {
-    yew::Renderer::<Main>::new().render();
+    wasm_bindgen_futures::spawn_local(async {
+        crate::components::context::AppState::load_tauri_credentials().await;
+        yew::Renderer::<Main>::new().render();
+    });
 }
