@@ -307,6 +307,7 @@ pub fn queue_panel() -> Html {
                     <div class="queue-nowplaying">
                         <FallbackImage
                             src={art}
+                            fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                             alt="Now playing art"
                             class="queue-nowplaying-art"
                         />
@@ -467,6 +468,7 @@ pub fn queue_panel() -> Html {
                                     <div class="queue-item-art-wrap" onclick={on_art_click}>
                                         <FallbackImage
                                             src={ep_art}
+                                            fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                                             alt="Episode art"
                                             class="queue-item-art"
                                         />

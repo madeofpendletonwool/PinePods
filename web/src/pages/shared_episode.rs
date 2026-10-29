@@ -202,6 +202,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                         <div class="item-header-mobile-cover-container">
                                         <FallbackImage
                                             src={episode.episode.episodeartwork.clone()}
+                                            fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                                             alt="episode artwork"
                                             class="episode-artwork"
                                         />
@@ -245,6 +246,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                         <div class="ep-hero-cover ep-hero-cover-static">
                                             <FallbackImage
                                                 src={episode.episode.episodeartwork.clone()}
+                                                fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                                                 alt="episode artwork"
                                                 class="ep-hero-cover-img"
                                             />

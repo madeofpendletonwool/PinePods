@@ -32,7 +32,13 @@ pub struct FallbackImageProps {
     pub loading: String,
     #[prop_or("async".to_string())]
     pub decoding: String,
+    /// Shown when there's no artwork or it fails to load.
+    #[prop_or(DEFAULT_PODCAST_ART.to_string())]
+    pub fallback: String,
 }
+
+pub const DEFAULT_PODCAST_ART: &str = "/static/assets/default-podcast.png";
+pub const DEFAULT_EPISODE_ART: &str = "/static/assets/default-episode.png";
 
 #[function_component(FallbackImage)]
 pub fn fallback_image(props: &FallbackImageProps) -> Html {
@@ -43,12 +49,12 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     });
     let server_name = (*server_name_sel).clone();
 
-    const FALLBACK_IMAGE: &str = "/static/assets/favicon.png";
+    let fallback = props.fallback.clone();
 
     // Just use the original src without timestamps; treat empty src as immediate fallback
     let image_src = use_state(|| {
         if props.src.is_empty() {
-            FALLBACK_IMAGE.to_string()
+            fallback.clone()
         } else {
             props.src.clone()
         }
@@ -58,9 +64,10 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     {
         let image_src = image_src.clone();
         let props_src = props.src.clone();
+        let fallback = fallback.clone();
         use_effect_with(props_src, move |src| {
             if src.is_empty() {
-                image_src.set(FALLBACK_IMAGE.to_string());
+                image_src.set(fallback);
             } else {
                 image_src.set(src.clone());
             }
@@ -72,7 +79,7 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     let proxied_url = {
         let original_url = props.src.clone();
         if original_url.is_empty() {
-            FALLBACK_IMAGE.to_string()
+            fallback.clone()
         } else {
             format!(
                 "{}/api/proxy/image?url={}",
@@ -87,6 +94,7 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
         let has_error = has_error.clone();
         let image_src = image_src.clone();
         let proxied_url = proxied_url.clone();
+        let fallback = fallback.clone();
         Callback::from(move |_: Event| {
             if !*has_error {
                 // First error - switch to proxied URL
@@ -95,6 +103,9 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
                 web_sys::console::log_1(
                     &format!("Image load failed, switching to proxy: {}", proxied_url).into(),
                 );
+            } else if *image_src != fallback {
+                // The proxy couldn't load it either
+                image_src.set(fallback.clone());
             }
         })
     };
@@ -960,6 +971,7 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                 <div class="flex items-start space-x-4 p-6 border-b border-custom-border">
                     <FallbackImage
                         src={props.episode_artwork.clone()}
+                        fallback={DEFAULT_EPISODE_ART}
                         alt="Episode artwork"
                         class="w-32 h-32 rounded-lg object-cover flex-shrink-0"
                     />
