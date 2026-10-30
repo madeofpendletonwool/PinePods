@@ -1,4 +1,3 @@
-use std::net::SocketAddr;
 use tokio::signal;
 use tracing::{debug, error, info, warn};
 
@@ -8,6 +7,7 @@ use pinepods_api::{
     database::DatabasePool,
     error::AppResult,
     handlers,
+    listener::Listener,
     openapi_router,
     redis_client::RedisClient,
     redis_manager::{ImportProgressManager, NotificationManager},
@@ -135,22 +135,17 @@ async fn main() -> AppResult<()> {
         }
     });
 
-    // Determine the address to bind to
-    let addr = SocketAddr::from(([0, 0, 0, 0], config.server.port));
-    info!("🌐 PinePods Rust API listening on http://{}", addr);
-    info!("📊 Health check available at: http://{}/api/health", addr);
-    debug!("🔍 API check available at: http://{}/api/pinepods_check", addr);
-    info!("Server listening on {}", addr);
-
-    // Start the server
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let listener = Listener::acquire(&config.server.listen).await?;
+    let endpoint = listener.endpoint()?;
+    info!("🌐 PinePods Rust API listening on {endpoint}");
+    info!("📊 Health check available at: /api/health");
+    debug!("🔍 API check available at: /api/pinepods_check");
+    info!("Server listening on {endpoint}");
     debug!("✅ PinePods Rust API server started successfully!");
 
     // The startup refresh runs in the background once requests are accepted.
     tokio::spawn(BackgroundScheduler::run_startup_refresh(scheduler_state.clone()));
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    listener.serve(app, shutdown_signal()).await?;
 
     Ok(())
 }
