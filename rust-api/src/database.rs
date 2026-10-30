@@ -8016,7 +8016,7 @@ impl DatabasePool {
             let sep = if url.contains('?') { '&' } else { '?' };
             client.get(format!("{}{}message={}", url, sep, urlencoding::encode(&message)))
         } else if is_telegram {
-            let chat_id = token.and_then(|t| t.split(':').nth(1)).unwrap_or("");
+            let chat_id = token.and_then(telegram_chat_id).unwrap_or("");
             client.post(url).json(&serde_json::json!({ "chat_id": chat_id, "text": message }))
         } else {
             client.post(url).json(&serde_json::json!({
@@ -14263,6 +14263,28 @@ struct NotificationTarget {
     http_url: Option<String>,
     http_token: Option<String>,
     http_method: Option<String>,
+}
+
+/// The chat id from a Telegram notification token written as `<bot token>:<chat id>`. Bot tokens
+/// contain a colon themselves (`123456:ABC…`), so the chat id is what follows the last one.
+pub(crate) fn telegram_chat_id(token: &str) -> Option<&str> {
+    match token.rsplit_once(':') {
+        Some((bot, chat)) if bot.contains(':') && !chat.is_empty() => Some(chat),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod telegram_token_tests {
+    use super::telegram_chat_id;
+
+    #[test]
+    fn the_chat_id_follows_the_bot_tokens_own_colon() {
+        assert_eq!(telegram_chat_id("123456:ABC-def:987654"), Some("987654"));
+        assert_eq!(telegram_chat_id("123456:ABC-def:-100123"), Some("-100123"));
+        assert_eq!(telegram_chat_id("123456:ABC-def"), None, "a bare bot token has no chat id");
+        assert_eq!(telegram_chat_id("123456:ABC-def:"), None);
+    }
 }
 
 /// What a feed group last stored, sent back on the next fetch (see `fetch_feed_conditional`).
