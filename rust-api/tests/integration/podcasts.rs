@@ -401,3 +401,43 @@ async fn podcast_list_reports_each_podcasts_oldest_and_newest_episode_dates() {
     let active = extra["pods"].as_array().unwrap().iter().find(|p| p["podcastname"] == "Active").unwrap();
     assert_eq!(active["oldest_episode_date"].as_str(), Some(active_old.as_str()));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn paging_through_tied_episodes_shows_each_one_once() {
+    let app = TestApp::new().await;
+    let user = app.user("binger").await;
+    // A back catalogue published all at once: every episode has the same date and length.
+    let when = chrono::Utc::now() - chrono::Duration::days(30);
+    let mut feed = Feed::new("Bulk Upload");
+    for n in 1..=60 {
+        feed = feed.episode(Episode::new(n).title("Same Title").pub_date(when).duration(Some(1800)));
+    }
+    let url = app.feed("tied.xml", &feed);
+    let pod = app.subscribe(&user, &url, 60).await;
+
+    for sort_by in ["date", "duration", "title"] {
+        for order in ["asc", "desc"] {
+            let mut seen = Vec::new();
+            for offset in (0..60).step_by(7) {
+                let body = app
+                    .get("/api/data/podcast_episodes")
+                    .key(&user)
+                    .query("user_id", user.id)
+                    .query("podcast_id", pod)
+                    .query("limit", 7)
+                    .query("offset", offset)
+                    .query("sort_by", sort_by)
+                    .query("sort_order", order)
+                    .query("filter", "all")
+                    .send()
+                    .await
+                    .ok_json();
+                seen.extend(body["episodes"].as_array().unwrap().iter().map(|e| e["Episodeid"].as_i64().unwrap()));
+            }
+            let mut unique = seen.clone();
+            unique.sort();
+            unique.dedup();
+            assert_eq!((seen.len(), unique.len()), (60, 60), "{sort_by} {order}: pages repeated or skipped episodes");
+        }
+    }
+}
