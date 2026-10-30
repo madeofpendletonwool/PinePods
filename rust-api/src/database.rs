@@ -12257,7 +12257,7 @@ impl DatabasePool {
                             "Episodes".episodeid = "DownloadedEpisodes".episodeid
                             AND "DownloadedEpisodes".userid = $1
                         WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){ep_search_clause}
-                        ORDER BY {pg_order_col} {order_dir} NULLS LAST
+                        ORDER BY {pg_order_col} {order_dir} NULLS LAST, "Episodeid"
                         LIMIT {pb_lim_pos})
 
                         UNION ALL
@@ -12296,10 +12296,10 @@ impl DatabasePool {
                             "YouTubeVideos".videoid = "DownloadedVideos".videoid
                             AND "DownloadedVideos".userid = $1
                         WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = ANY($2){yt_search_clause}
-                        ORDER BY {pg_order_col} {order_dir} NULLS LAST
+                        ORDER BY {pg_order_col} {order_dir} NULLS LAST, "Episodeid"
                         LIMIT {pb_lim_pos})
                     ) combined{filter_clause}
-                    ORDER BY {pg_order_col} {order_dir} NULLS LAST
+                    ORDER BY {pg_order_col} {order_dir} NULLS LAST, is_youtube, "Episodeid"
                     LIMIT {outer_lim_pos} OFFSET {outer_off_pos}"#,
                     ep_search_clause = ep_search_clause,
                     yt_search_clause = yt_search_clause,
@@ -12482,7 +12482,7 @@ impl DatabasePool {
                             Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                             AND DownloadedEpisodes.UserID = ?
                         WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){ep_search_clause}
-                        ORDER BY {my_order_col} {order_dir}
+                        ORDER BY {my_order_col} {order_dir}, Episodeid
                         LIMIT ?)
 
                         UNION ALL
@@ -12521,10 +12521,10 @@ impl DatabasePool {
                             YouTubeVideos.VideoID = DownloadedVideos.VideoID
                             AND DownloadedVideos.UserID = ?
                         WHERE Podcasts.UserID = ? AND Podcasts.PodcastID IN ({ph}){yt_search_clause}
-                        ORDER BY {my_order_col} {order_dir}
+                        ORDER BY {my_order_col} {order_dir}, Episodeid
                         LIMIT ?)
                     ) combined{mysql_filter}
-                    ORDER BY {my_order_col} {order_dir}
+                    ORDER BY {my_order_col} {order_dir}, is_youtube, Episodeid
                     LIMIT ? OFFSET ?",
                     ph = id_placeholders,
                     ep_search_clause = ep_search_clause,
