@@ -118,6 +118,14 @@ pub async fn check_user_access(state: &AppState, api_key: &str, target_user_id: 
     Ok(requesting_user_id == target_user_id || requesting_user_id == 1)
 }
 
+/// 404 unless `podcast_id` is one of `user_id`'s podcasts, so someone else's podcast looks missing.
+pub async fn require_podcast_owner(state: &AppState, user_id: i32, podcast_id: i32) -> AppResult<()> {
+    match state.db_pool.podcast_owner(podcast_id).await? {
+        Some(owner) if owner == user_id => Ok(()),
+        _ => Err(AppError::not_found("Podcast not found")),
+    }
+}
+
 // Check if user has permission (either owns the resource, has web key access, or is admin)
 pub async fn check_user_or_admin_access(state: &AppState, api_key: &str, target_user_id: i32) -> AppResult<bool> {
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(api_key).await?;

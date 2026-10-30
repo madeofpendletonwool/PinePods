@@ -3513,6 +3513,10 @@ pub async fn get_podcast_details_dynamic(
 ) -> Result<Json<ClickedFeedURLResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
     require_valid_api_key(&state, &api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != query.user_id {
+        return Err(AppError::forbidden("You can only view your own podcast details!"));
+    }
 
     if query.added {
         // Get podcast from database if already added
@@ -4022,10 +4026,7 @@ pub async fn get_merged_podcasts(
     // Get user ID from API key
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
-    // Check if user owns the podcast
-    if !check_user_access(&state, &api_key, user_id).await? {
-        return Err(AppError::forbidden("You can only access your own podcasts"));
-    }
+    crate::handlers::require_podcast_owner(&state, user_id, podcast_id).await?;
 
     // Get merged podcast IDs
     let merged_ids = state.db_pool.get_merged_podcast_ids(podcast_id).await?;

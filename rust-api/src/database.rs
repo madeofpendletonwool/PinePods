@@ -2056,6 +2056,20 @@ impl DatabasePool {
     }
 
     // Get merged podcast IDs for a primary podcast
+    /// The user a podcast row belongs to, or `None` if there's no such podcast.
+    pub async fn podcast_owner(&self, podcast_id: i32) -> AppResult<Option<i32>> {
+        Ok(match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT userid FROM "Podcasts" WHERE podcastid = $1"#)
+                .bind(podcast_id)
+                .fetch_optional(pool)
+                .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT UserID FROM Podcasts WHERE PodcastID = ?")
+                .bind(podcast_id)
+                .fetch_optional(pool)
+                .await?,
+        })
+    }
+
     pub async fn get_merged_podcast_ids(&self, podcast_id: i32) -> AppResult<Vec<i32>> {
         match self {
             DatabasePool::Postgres(pool) => {
