@@ -1,5 +1,6 @@
 package com.gooseberrydevelopment.pinepods.audio
 
+import android.app.Notification
 import android.app.PendingIntent
 import android.content.Intent
 import android.media.audiofx.LoudnessEnhancer
@@ -11,6 +12,7 @@ import android.os.SystemClock
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -272,11 +274,10 @@ class PinepodsMediaService : MediaLibraryService() {
                 logPlayer("Is playing changed: $isPlaying")
                 sendPlaybackStateEvent()
 
-                // Media3 owns the foreground service and its notification; a
-                // second startForeground here swapped in another notification
-                // whenever playback resumed in the background.
+                // Start/stop position updates and foreground service
                 if (isPlaying) {
                     startPositionUpdates()
+                    startForeground(NOTIFICATION_ID, createNotification())
                 } else {
                     stopPositionUpdates()
                 }
@@ -825,9 +826,43 @@ class PinepodsMediaService : MediaLibraryService() {
         return if (duration != C.TIME_UNSET) duration else 0L
     }
 
+    private fun createNotification(): Notification {
+        val sessionActivity = packageManager?.getLaunchIntentForPackage(packageName)?.let {
+            PendingIntent.getActivity(
+                this,
+                0,
+                it,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+
+        val currentMetadata = player?.currentMediaItem?.mediaMetadata
+        val title = currentMetadata?.title?.toString() ?: "Pinepods"
+        val artist = currentMetadata?.artist?.toString() ?: "Loading..."
+
+        val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(artist)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentIntent(sessionActivity)
+            .setOngoing(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        // Use MediaStyle if we have a media session
+        mediaSession?.let { session ->
+            builder.setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setMediaSession(session.sessionCompatToken)
+            )
+        }
+
+        return builder.build()
+    }
+
     companion object {
         private const val TAG = "PinepodsMediaService"
         private const val NOTIFICATION_CHANNEL_ID = "pinepods_playback"
+        private const val NOTIFICATION_ID = 1
         private const val STREAM_CACHE_BYTES = 256L * 1024 * 1024
 
         // One SimpleCache per directory per process, so it outlives the service.
