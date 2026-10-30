@@ -751,6 +751,8 @@ pub struct TranscriptTabProps {
     pub server_name: String,
     pub api_key: String,
     pub ai_available: bool,
+    #[prop_or_default]
+    pub downloaded: bool,
 }
 
 /// Unified transcript view for the episode's Transcript tab (#726): shows the built-in transcript
@@ -828,7 +830,8 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
         });
     }
     let (episode_status, _) = use_store::<EpisodeStatusState>();
-    let on_server = episode_status.downloaded_episodes.is_server_download(episode_id);
+    // The store is only filled from the downloads page, so also trust the episode's own flag.
+    let on_server = props.downloaded || episode_status.downloaded_episodes.is_server_download(episode_id);
     let ad_ranges: Vec<(f64, f64)> = ad_segments.iter().map(|s| (s.start_time, s.end_time)).collect();
 
     let status = ai_transcript.as_ref().map(|t| t.status.clone());
@@ -2816,6 +2819,7 @@ pub fn epsiode() -> Html {
                                                         server_name={server_name.clone().unwrap_or_default()}
                                                         api_key={api_key.clone().unwrap_or_default().unwrap_or_default()}
                                                         ai_available={*ai_available}
+                                                        downloaded={*download_status}
                                                     />
                                                 },
                                                 EpisodeTab::People => html! {
