@@ -316,6 +316,21 @@ class PinepodsLibrarySessionCallback(
         return super.onPlayerCommandRequest(session, controller, playerCommand)
     }
 
+    // Media3 attributes external media keys to its notification controller (our
+    // own package), so log the key and real sender here.
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    override fun onMediaButtonEvent(
+        session: MediaSession,
+        controllerInfo: MediaSession.ControllerInfo,
+        intent: android.content.Intent
+    ): Boolean {
+        val key = intent.getParcelableExtra<android.view.KeyEvent>(android.content.Intent.EXTRA_KEY_EVENT)
+        AudioPlayerPlugin.logToFlutter("INFO", TAG,
+            "Media button ${key?.let { android.view.KeyEvent.keyCodeToString(it.keyCode) }} " +
+                "action=${key?.action} from ${controllerInfo.packageName}")
+        return super.onMediaButtonEvent(session, controllerInfo, intent)
+    }
+
     override fun onCustomCommand(
         session: MediaSession,
         controller: MediaSession.ControllerInfo,

@@ -657,10 +657,18 @@ class PinepodsMediaService : MediaLibraryService() {
     private fun createSeekOnlyPlayer(base: Player): Player {
         return object : ForwardingPlayer(base) {
             // Only controllers (system UI, Android Auto, bluetooth) stop through
-            // here; the app's own stop goes to the ExoPlayer directly.
+            // here; the app's own stop goes to the ExoPlayer directly. Some
+            // bluetooth/car devices send a STOP key in reaction to the brief
+            // buffer of an ad-skip seek, so ignore those, and otherwise pause
+            // rather than unload the episode.
             override fun stop() {
-                logPlayer("Stop requested by a media controller - ${describePlayer(base)}")
-                super.stop()
+                val sinceAdSkip = SystemClock.elapsedRealtime() - lastAdSkipAt
+                if (sinceAdSkip < 3000) {
+                    logPlayer("Ignoring controller stop ${sinceAdSkip}ms after ad skip - ${describePlayer(base)}")
+                    return
+                }
+                logPlayer("Stop requested by a media controller; pausing - ${describePlayer(base)}")
+                pause()
             }
 
             override fun getAvailableCommands(): Player.Commands {
