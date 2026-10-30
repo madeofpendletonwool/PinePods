@@ -313,40 +313,54 @@ fn video_thumbnail(entry: &serde_json::Value, video_id: &str) -> String {
         .unwrap_or_else(|| format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", video_id))
 }
 
-// Channel name and artwork for a new subscription, from yt-dlp's data on its newest video.
+// Channel name, description and avatar for a new subscription, from the channel page alone.
+// No video is extracted, so members-only or age-gated uploads can't break subscribing.
 pub async fn get_youtube_channel_info(channel_id: &str) -> Result<HashMap<String, String>, AppError> {
     debug!("Getting channel info for {} via local yt-dlp", channel_id);
-    let channel_url = format!("https://www.youtube.com/channel/{}/videos", channel_id);
+    let channel_url = format!("https://www.youtube.com/channel/{}", channel_id);
     let output = run_ytdlp(&[
         "--quiet",
         "--no-warnings",
-        "--skip-download",
-        "--dump-json",
-        "--playlist-end", "1",
+        "--flat-playlist",
+        "--playlist-items", "0",
+        "--dump-single-json",
         &channel_url,
     ]).await?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("does not exist") {
+            return Err(AppError::not_found("Channel not found"));
+        }
         error!("yt-dlp channel fetch failed for {}: {}", channel_id, stderr.trim());
         return Err(AppError::external_error(&format!("yt-dlp channel fetch failed: {}", stderr.trim())));
     }
-    let entries = json_lines(&output.stdout);
-    let first = entries.first().ok_or_else(|| AppError::not_found("Channel not found or has no videos"))?;
+    let channel: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| AppError::external_error(&format!("Unreadable yt-dlp channel data: {}", e)))?;
+    let channel_info = parse_channel_info(channel_id, &channel);
+    debug!("Extracted channel info for: {}", channel_info["name"]);
+    Ok(channel_info)
+}
 
-    let name = first.get("channel").and_then(|v| v.as_str())
-        .or_else(|| first.get("uploader").and_then(|v| v.as_str()))
-        .unwrap_or("");
-    let first_video_id = first.get("id").and_then(|v| v.as_str()).unwrap_or("");
-    let thumbnail = first.get("channel_thumbnail").and_then(|v| v.as_str()).map(str::to_string)
-        .unwrap_or_else(|| video_thumbnail(first, first_video_id));
+fn parse_channel_info(channel_id: &str, channel: &serde_json::Value) -> HashMap<String, String> {
+    let text = |key: &str| channel.get(key).and_then(|v| v.as_str()).filter(|s| !s.is_empty());
+    let name = text("channel").or_else(|| text("uploader")).or_else(|| text("title")).unwrap_or("");
+    let description = text("description").unwrap_or("");
+    // The channel page's thumbnails are banners and avatars; the uncropped avatar is the artwork.
+    let thumbnails = channel.get("thumbnails").and_then(|v| v.as_array());
+    fn url(t: &serde_json::Value) -> Option<&str> {
+        t.get("url").and_then(|v| v.as_str())
+    }
+    let avatar = thumbnails.and_then(|thumbs| {
+        thumbs.iter().find(|t| t.get("id").and_then(|v| v.as_str()) == Some("avatar_uncropped")).and_then(url)
+            .or_else(|| thumbs.last().and_then(url))
+    }).unwrap_or("");
 
     let mut channel_info = HashMap::new();
     channel_info.insert("channel_id".to_string(), channel_id.to_string());
     channel_info.insert("name".to_string(), name.to_string());
-    channel_info.insert("description".to_string(), String::new());
-    channel_info.insert("thumbnail_url".to_string(), thumbnail);
-    debug!("Extracted channel info for: {}", name);
-    Ok(channel_info)
+    channel_info.insert("description".to_string(), description.to_string());
+    channel_info.insert("thumbnail_url".to_string(), avatar.to_string());
+    channel_info
 }
 
 
@@ -953,6 +967,29 @@ mod tests {
         assert_eq!(channel_id_from_url("https://www.youtube.com/channel/UCabc"), "UCabc");
         assert_eq!(channel_id_from_url("https://www.youtube.com/channel/UCabc/videos?x=1"), "UCabc");
         assert_eq!(channel_id_from_url("UCabc"), "UCabc");
+    }
+
+    #[test]
+    fn channel_info_from_channel_page() {
+        let page = serde_json::json!({
+            "channel": "The Linux Experiment",
+            "title": "The Linux Experiment - Home",
+            "description": "Making Linux accessible",
+            "thumbnails": [
+                {"id": "banner_uncropped", "url": "https://example.com/banner"},
+                {"id": "avatar_uncropped", "url": "https://example.com/avatar"},
+                {"id": "9", "url": "https://example.com/other"}
+            ]
+        });
+        let info = parse_channel_info("UCabc", &page);
+        assert_eq!(info["channel_id"], "UCabc");
+        assert_eq!(info["name"], "The Linux Experiment");
+        assert_eq!(info["description"], "Making Linux accessible");
+        assert_eq!(info["thumbnail_url"], "https://example.com/avatar");
+
+        let bare = parse_channel_info("UCabc", &serde_json::json!({"uploader": "Someone", "thumbnails": [{"url": "https://example.com/t"}]}));
+        assert_eq!(info.len(), bare.len());
+        assert_eq!((bare["name"].as_str(), bare["description"].as_str(), bare["thumbnail_url"].as_str()), ("Someone", "", "https://example.com/t"));
     }
 
     #[test]
