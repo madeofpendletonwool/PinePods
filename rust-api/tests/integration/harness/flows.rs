@@ -64,8 +64,9 @@ impl TestApp {
         })
         .await;
         // Scheduling the next refresh is the import's last write; a test moving the schedule
-        // before it lands would be overwritten.
-        let scheduled = format!(r#"SELECT COUNT(*) FROM "Podcasts" WHERE PodcastID = {podcast_id} AND NextRefreshAt IS NOT NULL"#);
+        // before it lands would be overwritten. NextRefreshAt has a default, so wait on the
+        // interval, which only that write sets.
+        let scheduled = format!(r#"SELECT COUNT(*) FROM "Podcasts" WHERE PodcastID = {podcast_id} AND RefreshIntervalMinutes IS NOT NULL"#);
         eventually(&format!("next refresh scheduled for podcast {podcast_id}"), || async {
             (super::sql::int(self, &scheduled).await == Some(1)).then_some(())
         })
