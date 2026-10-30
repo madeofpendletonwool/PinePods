@@ -1,6 +1,6 @@
-fastapi==0.143.3
+fastapi==0.162.0
 uvicorn[standard]==0.54.0
-pydantic==2.14.1
+pydantic==2.14.2
 faster-whisper==1.2.1
 # faster-whisper 1.2.1 calls av.open(..., metadata_errors=...), which PyAV 19 removed
 # (TypeError on every transcription). Hold PyAV at 18.x until faster-whisper catches up.
@@ -10,4 +10,4 @@ requests==2.34.2
 # Local LLM (GGUF) backend for ad detection (#790). Built from source at image time.
 llama-cpp-python==0.3.36
 # Pull GGUF weights from Hugging Face for local ad-detection models.
-huggingface_hub==2.2.0
+huggingface_hub==2.4.0

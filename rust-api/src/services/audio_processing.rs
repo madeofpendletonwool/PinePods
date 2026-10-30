@@ -175,7 +175,7 @@ fn fingerprint_file(path: &str) -> Result<String, String> {
         hasher.update(&buf[..n]);
         remaining -= n as u64;
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex::encode(hasher.finalize()))
 }
 
 /// One user's server download of an episode.
