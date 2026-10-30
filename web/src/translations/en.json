@@ -543,7 +543,7 @@
     "rss_feed_instruction": "Use this RSS feed URL in your favorite podcast app to subscribe to this podcast:",
     "rss_feed_note": "NOTE: You must have RSS feeds enabled in your settings for the link below to work",
     "rss_feed_url": "RSS Feed URL",
-    "rss_feed_warning": "This URL includes your API key, so keep it private. This is going to change very shortly in a future release to a temporary key so that you can share these links.",
+    "rss_feed_warning": "This link only reads this podcast's feed, so you can share it. Anyone who has it can listen to this podcast through your server.",
     "save": "Save",
     "save_changes": "Save Changes",
     "save_episodes": "Save",
@@ -565,7 +565,7 @@
     "use_podcast_covers": "Use Podcast Covers",
     "username": "Username",
     "username_placeholder": "Enter username for premium feeds",
-    "verify_downloads": "Verify Downloads",
+    "download_all_title": "Download All Episodes",
     "visit_external_website": "Visit external podcast website",
     "website_url": "Website URL",
     "website_url_placeholder": "Enter website URL",
@@ -703,9 +703,9 @@
     "import_description": "You can Import an OPML of podcasts here. If you're migrating from a different podcast app this is probably the solution you want. Most podcast apps allow you to export a backup of your saved podcasts to an OPML file and this option can easily import them into Pinepods. Note that this process can take awhile and you don't have to stay on this page while it imports. If you think it might be stuck, it's probably not.",
     "import_options": "Import Options:",
     "import_progress": "Import Progress",
-    "import_tip": "💡 After importing, head over to the Match Podcast Index area to match podcasts with their index counterpart. This allows for host and guest integration throughout PinePods.",
+    "import_tip": "💡 After importing, you can link the new podcasts to their Podcast Index entries under Match Podcasts to Podcast Index. It gives host and guest lookups one more way to find them.",
     "import_verification_text": "The following podcasts were found. Please unselect any podcasts you don't want to add, and then click the button below. A large amount of podcasts will take a little while to parse all the feeds and add them. The loading animation will disappear once all complete. Be patient!",
-    "opml_import_completed": "OPML Import Completed! After importing head over the Match Podcast Index area to match podcasts with their index counterpart. This allows for host and guest integration throughout PinePods."
+    "opml_import_completed": "OPML Import Completed! You can link the new podcasts to their Podcast Index entries under Match Podcasts to Podcast Index, which gives host and guest lookups one more way to find them."
   },
   "login": {
     "account_created_successfully": "Account created successfully! You can now login.",
@@ -793,7 +793,7 @@
     "queue": "Queue",
     "saved": "Saved",
     "search": "Search",
-    "unmatched_podcasts_notification": "📻 You have {count} podcast(s) that aren't matched to Podcast Index. Visit the Match Podcast Index settings to enable host and guest information.",
+    "unmatched_podcasts_notification": "📻 You have {count} podcast(s) that aren't linked to Podcast Index. Linking them under Settings → Match Podcasts to Podcast Index gives host and guest lookups one more way to find them.",
     "collections": "Collections"
   },
   "nextcloud_options": {
@@ -1408,7 +1408,7 @@
     "rss_feed_description": "RSS feeds allow you to subscribe to your Pinepods queue using any RSS reader. This creates a personal RSS feed that includes all queued episodes.",
     "rss_feed_settings": "RSS Feed Settings:",
     "rss_feed_url": "Your RSS Feed URL:",
-    "url_includes_api_key": "The url uses a custom API key only valid for this shared link. Feel free to share RSS feeds with your friends!",
+    "url_includes_api_key": "These links share one RSS key. It can read every feed listed here but can't sign in to your account. Share them only with people you'd show your library to; to share one podcast, use the RSS button on its page.",
     "your_rss_feed_url": "Your RSS feed URL",
     "all_subscriptions": "All Subscriptions",
     "saved": "Saved Episodes",
@@ -1625,7 +1625,7 @@
     "pause": "Pause",
     "play": "Play",
     "play_here": "Play here",
-    "send_here": "Send here",
+    "send_here": "Send to {name}",
     "sent_to": "Sent to {name}",
     "play_on": "Play on",
     "playing_on": "Playing on {name}",

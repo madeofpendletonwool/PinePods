@@ -347,7 +347,6 @@
     "rss_feed_instruction": "",
     "rss_feed_note": "",
     "rss_feed_url": "",
-    "rss_feed_warning": "",
     "save": "",
     "save_changes": "",
     "save_episodes": "",
@@ -365,7 +364,6 @@
     "title_za": "",
     "username": "",
     "username_placeholder": "",
-    "verify_downloads": "",
     "visit_external_website": "",
     "website_url": "",
     "website_url_placeholder": "",
@@ -468,9 +466,7 @@
     "import_description": "",
     "import_options": "",
     "import_progress": "",
-    "import_tip": "",
-    "import_verification_text": "",
-    "opml_import_completed": ""
+    "import_verification_text": ""
   },
   "login": {
     "account_created_successfully": "",
@@ -544,8 +540,7 @@
     "podcasts": "",
     "queue": "",
     "saved": "",
-    "search": "",
-    "unmatched_podcasts_notification": ""
+    "search": ""
   },
   "nextcloud_options": {
     "gpodder_sync_description": ""

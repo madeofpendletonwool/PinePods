@@ -372,7 +372,7 @@ class _DeviceRow extends StatelessWidget {
   Widget _sendHereButton(BuildContext context, String label) {
     return TextButton.icon(
       icon: const Icon(PhosphorIconsRegular.screencast, size: 18),
-      label: const Text('Send here'),
+      label: Text('Send to $label'),
       onPressed: () {
         if (service.sendPlaybackTo(device.deviceId)) {
           final messenger = ScaffoldMessenger.maybeOf(context);

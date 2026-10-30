@@ -353,7 +353,6 @@
     "rss_feed_instruction": "Nutze diese RSS Feed URL in deiner Lieblingspodcastapp, um diesen Podcast zu abonnieren:",
     "rss_feed_note": "BEACHTE: Du musst RSS Feeds in den Einstellungen aktiviert haben, um den Link unterhalb zu nutzen",
     "rss_feed_url": "RSS-Feed URL",
-    "rss_feed_warning": "Diese URL enthält deinen API Schlüssel, also gehe privat damit um. In der Zukunft wird es temporäre Schlüssel verwenden, damit du den Link dann teilen kannst.",
     "save": "Speichern",
     "save_changes": "Änderungen speichern",
     "save_episodes": "Speichern",
@@ -371,7 +370,6 @@
     "title_za": "Titel Z-A",
     "username": "Benutzername",
     "username_placeholder": "Benutzername des Premium Feeds eingeben",
-    "verify_downloads": "Downloads überprüfen",
     "visit_external_website": "Externe Podcastwebsite besuchen",
     "website_url": "Website URL",
     "website_url_placeholder": "Website URL eingeben",
@@ -474,9 +472,7 @@
     "import_description": "Du kannst hier eine OPML-Datei mit Podcasts importieren. Wenn du von einer anderen Podcast-App wechselst, ist das wahrscheinlich die Lösung, die du brauchst. Die meisten Podcast-Apps erlauben es, ein Backup deiner gespeicherten Podcasts als OPML-Datei zu exportieren, und diese Option importiert sie problemlos in Pinepods. Beachte, dass der Vorgang eine Weile dauern kann und du während des Imports nicht auf dieser Seite bleiben musst. Wenn es so aussieht, als würde es hängen, ist das wahrscheinlich nicht der Fall.",
     "import_options": "Importoptionen:",
     "import_progress": "Importfortschritt",
-    "import_tip": "💡 Nach dem Import geh zum Bereich „Podcast Index zuordnen“, um Podcasts mit ihrem Index-Pendant abzugleichen. So können Hosts und Gäste in PinePods integriert werden.",
-    "import_verification_text": "Folgende Podcasts wurden gefunden. Wähle einfach ab, was du nicht brauchst, und klicke dann auf den Button unten. Das Parsen aller Feeds und das Hinzufügen vieler Podcasts kann eine Weile dauern, also hab Geduld. Die Ladeanimation verschwindet, sobald alles fertig ist!",
-    "opml_import_completed": "OPML-Import abgeschlossen! Nach dem Import gehe zum Bereich „Podcast Index zuordnen“, um Podcasts mit ihrem Index-Pendant abzugleichen. So können Hosts und Gäste in PinePods integriert werden."
+    "import_verification_text": "Folgende Podcasts wurden gefunden. Wähle einfach ab, was du nicht brauchst, und klicke dann auf den Button unten. Das Parsen aller Feeds und das Hinzufügen vieler Podcasts kann eine Weile dauern, also hab Geduld. Die Ladeanimation verschwindet, sobald alles fertig ist!"
   },
   "login": {
     "account_created_successfully": "Dein Account wurde erstellt! Du kannst dich nun einloggen.",
@@ -550,8 +546,7 @@
     "podcasts": "Podcasts",
     "queue": "Warteschlange",
     "saved": "Gespeichert",
-    "search": "Suchen",
-    "unmatched_podcasts_notification": "📻 Du hast {count} Podcasts, die noch nicht mit dem Podcast Index abgeglichen sind. Besuche die Einstellungen für den Podcast Index Abgleich, um Informationen zu Moderatoren und Gästen zu aktivieren."
+    "search": "Suchen"
   },
   "nextcloud_options": {
     "gpodder_sync_description": "GPodder-Synchronisierung ermöglicht die Verwaltung deiner Podcast-Abonnements über mehrere Geräte hinweg. Hier kannst du Geräte verwalten, die mit deinem GPodder-Konto registriert sind, und die Synchronisierung steuern."

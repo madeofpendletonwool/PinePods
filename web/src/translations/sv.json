@@ -347,7 +347,6 @@
     "rss_feed_instruction": "Använd det här RSS-flödets URL i en annan podcastapp för att prenumerera på den här podden:",
     "rss_feed_note": "OBS: Du måste ha RSS-flöden aktiverade i dina inställningar för att länken nedan ska fungera",
     "rss_feed_url": "RSS-flödets URL",
-    "rss_feed_warning": "Denna URL innehåller din API-nyckel, så håll den hemlig. Det här kommer att ändras i en framtida uppdatering så att du ska kunna dela de här länkarna med andra.",
     "save": "Spara",
     "save_changes": "Spara ändringar",
     "save_episodes": "Spara",
@@ -365,7 +364,6 @@
     "title_za": "Titel Ö-A",
     "username": "Användarnamn",
     "username_placeholder": "Fyll i användarnamn för premiumflöden",
-    "verify_downloads": "Verifiera nedladdningar",
     "visit_external_website": "Besök poddens externa hemsida",
     "website_url": "Hemsidans URL",
     "website_url_placeholder": "Fyll i hemsidans URL",
@@ -468,9 +466,7 @@
     "import_description": "Du kan importera en OPML-fil med poddar här. Om du migrerar från en annan poddapp är detta förmodligen den lösning du vill ha. De flesta poddappar låter dig exportera en säkerhetskopia av dina sparade poddar till en OPML-fil, och det här alternativet kan enkelt importera dem till Pinepods. Observera att den här processen kan ta en stund, och du behöver inte stanna kvar på den här sidan medan den importeras. Om du tror att den har fastnat, så är det förmodligen inte fallet.",
     "import_options": "Importalternativ:",
     "import_progress": "Importförlopp",
-    "import_tip": "💡 Efter importen, gå till området \"Matcha Podcast Index\" för att matcha poddar med deras indexmotsvarighet. Detta möjliggör integrering av värdar och gäster i hela Pinepods.",
-    "import_verification_text": "Följande poddar hittades. Vänligen avmarkera de poddar du inte vill lägga till, och klicka sedan på knappen nedanför. Är det många poddar så kommer det att ta en stund att gå igenom alla flöden och lägga till dem. Laddningsanimationen försvinner när allt är klart. Ha tålamod!",
-    "opml_import_completed": "OPML-import slutförd! Efter importen, gå till området \"Matcha Podcast Index\" för att matcha poddar med deras indexmotsvarighet. Detta möjliggör integrering av värdar och gäster i hela Pinepods."
+    "import_verification_text": "Följande poddar hittades. Vänligen avmarkera de poddar du inte vill lägga till, och klicka sedan på knappen nedanför. Är det många poddar så kommer det att ta en stund att gå igenom alla flöden och lägga till dem. Laddningsanimationen försvinner när allt är klart. Ha tålamod!"
   },
   "login": {
     "account_created_successfully": "Konto skapat! Du kan nu logga in.",
@@ -544,8 +540,7 @@
     "podcasts": "Poddar",
     "queue": "Kö",
     "saved": "Sparade",
-    "search": "Sök",
-    "unmatched_podcasts_notification": "📻 Du har {count} poddar som inte är matchade mot Podcast Index. Besök inställningarna för Matcha Podcast Index för att aktivera information om värdar och gäster."
+    "search": "Sök"
   },
   "nextcloud_options": {
     "gpodder_sync_description": "GPodder-synkronisering gör det möjligt för dig att hantera dina poddprenumerationer över flera enheter. Här kan du hantera enheter som är registrerade med ditt GPodder-konto och styra synkroniseringen."
