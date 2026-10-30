@@ -23,6 +23,7 @@ pub mod database;
 pub mod error;
 pub mod gpodder;
 pub mod handlers;
+pub mod listener;
 pub mod memory_store;
 pub mod models;
 pub mod openapi;
