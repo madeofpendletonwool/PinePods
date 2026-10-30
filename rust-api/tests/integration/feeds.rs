@@ -124,6 +124,31 @@ async fn podcast_scoped_rss_keys_only_cover_their_podcasts() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_podcast_page_rss_link_only_covers_that_podcast() {
+    let app = TestApp::new().await;
+    let s = setup(&app, "page").await;
+    let other = setup(&app, "elsewhere").await;
+    enable_rss(&app, &s.user).await;
+
+    let podcast_key = |podcast_id: i32| {
+        app.get("/api/data/get_rss_key").key(&s.user).query("user_id", s.user.id).query("podcast_id", podcast_id)
+    };
+    let key = podcast_key(s.alpha).send().await.ok_json()["rss_key"].as_str().expect("rss_key").to_string();
+    let again = podcast_key(s.alpha).send().await.ok_json()["rss_key"].as_str().expect("rss_key").to_string();
+    assert_eq!(key, again, "the same podcast reuses its key");
+    assert_ne!(key, rss_key(&app, &s.user).await, "not the user's universal key");
+
+    let xml = feed(&app, s.user.id, &key).query("podcast_id", s.alpha).send().await.text();
+    assert!(xml.contains("Alpha first page"), "{xml}");
+    let widened = feed(&app, s.user.id, &key).send().await.text();
+    assert!(!widened.contains("Beta first page"), "dropping podcast_id must not widen the key:\n{widened}");
+    assert!(!feed(&app, s.user.id, &key).query("podcast_id", s.beta).send().await.is_success());
+    feed(&app, s.user.id, &key).query("source", "saved").send().await.assert_status(403);
+
+    podcast_key(other.alpha).send().await.assert_status(404);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn rss_keys_only_stream_their_own_users_files() {
     let app = TestApp::new().await;
     let alice = setup(&app, "alice").await;

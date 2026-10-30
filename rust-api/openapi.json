@@ -5087,6 +5087,19 @@
               "type": "integer",
               "format": "int32"
             }
+          },
+          {
+            "name": "podcast_id",
+            "in": "query",
+            "description": "Return a key that only covers this podcast's feed.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32"
+            }
           }
         ],
         "responses": {

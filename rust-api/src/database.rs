@@ -7800,7 +7800,7 @@ impl DatabasePool {
                 let rows = sqlx::query(
                     r#"SELECT p.podcastname, uns.platform, uns.ntfytopic, uns.ntfyserverurl,
                            uns.ntfyusername, uns.ntfypassword, uns.ntfyaccesstoken,
-                           uns.gotifyurl, uns.gotifytoken
+                           uns.gotifyurl, uns.gotifytoken, uns.httpurl, uns.httptoken, uns.httpmethod
                     FROM "Podcasts" p
                     JOIN "UserNotificationSettings" uns ON p.userid = uns.userid
                     WHERE p.podcastid = $1 AND p.notificationsenabled = true AND uns.enabled = true"#
@@ -7819,6 +7819,9 @@ impl DatabasePool {
                         ntfy_access_token: row.try_get("ntfyaccesstoken").ok(),
                         gotify_url: row.try_get("gotifyurl").ok(),
                         gotify_token: row.try_get("gotifytoken").ok(),
+                        http_url: row.try_get("httpurl").ok(),
+                        http_token: row.try_get("httptoken").ok(),
+                        http_method: row.try_get("httpmethod").ok(),
                     });
                 }
             }
@@ -7826,7 +7829,7 @@ impl DatabasePool {
                 let rows = sqlx::query(
                     "SELECT p.PodcastName, uns.Platform, uns.NtfyTopic, uns.NtfyServerUrl,
                             uns.NtfyUsername, uns.NtfyPassword, uns.NtfyAccessToken,
-                            uns.GotifyUrl, uns.GotifyToken
+                            uns.GotifyUrl, uns.GotifyToken, uns.HttpUrl, uns.HttpToken, uns.HttpMethod
                      FROM Podcasts p
                      JOIN UserNotificationSettings uns ON p.UserID = uns.UserID
                      WHERE p.PodcastID = ? AND p.NotificationsEnabled = true AND uns.Enabled = true"
@@ -7845,6 +7848,9 @@ impl DatabasePool {
                         ntfy_access_token: row.try_get("NtfyAccessToken").ok(),
                         gotify_url: row.try_get("GotifyUrl").ok(),
                         gotify_token: row.try_get("GotifyToken").ok(),
+                        http_url: row.try_get("HttpUrl").ok(),
+                        http_token: row.try_get("HttpToken").ok(),
+                        http_method: row.try_get("HttpMethod").ok(),
                     });
                 }
             }
@@ -7880,6 +7886,19 @@ impl DatabasePool {
                             .await
                             .unwrap_or(false)
                     }
+                    _ => false,
+                },
+                "http" => match &t.http_url {
+                    Some(url) if !url.is_empty() => Self::send_http_notification(
+                        client,
+                        url,
+                        t.http_token.as_deref(),
+                        t.http_method.as_deref(),
+                        &t.podcast_name,
+                        episode_title,
+                    )
+                    .await
+                    .unwrap_or(false),
                     _ => false,
                 },
                 other => {
@@ -7973,6 +7992,56 @@ impl DatabasePool {
             }
             Err(e) => {
                 tracing::warn!("Failed to send Gotify notification: {}", e);
+                Ok(false)
+            }
+        }
+    }
+
+    /// Send a new-episode notification to a generic HTTP endpoint, in the same shape as the test
+    /// notification: GET adds `?message=`, POST sends JSON (Telegram's `chat_id`/`text` when the
+    /// URL is the Telegram Bot API). A token is sent as a Bearer header except for Telegram.
+    async fn send_http_notification(
+        client: &reqwest::Client,
+        url: &str,
+        token: Option<&str>,
+        method: Option<&str>,
+        podcast_name: &str,
+        episode_title: &str,
+    ) -> AppResult<bool> {
+        let message = format!("New episode available for {}: {}", podcast_name, episode_title);
+        let token = token.filter(|t| !t.is_empty());
+        let is_telegram = url.contains("api.telegram.org");
+
+        let mut request = if method.unwrap_or("POST").eq_ignore_ascii_case("GET") {
+            let sep = if url.contains('?') { '&' } else { '?' };
+            client.get(format!("{}{}message={}", url, sep, urlencoding::encode(&message)))
+        } else if is_telegram {
+            let chat_id = token.and_then(telegram_chat_id).unwrap_or("");
+            client.post(url).json(&serde_json::json!({ "chat_id": chat_id, "text": message }))
+        } else {
+            client.post(url).json(&serde_json::json!({
+                "title": "New Podcast Episode",
+                "message": message,
+                "text": message
+            }))
+        };
+        request = request.timeout(std::time::Duration::from_secs(2));
+        if let Some(token) = token.filter(|_| !is_telegram) {
+            request = request.header("Authorization", format!("Bearer {}", token));
+        }
+
+        match request.send().await {
+            Ok(response) if response.status().is_success() => {
+                // The URL may carry a secret; don't log it.
+                tracing::debug!("Sent HTTP notification");
+                Ok(true)
+            }
+            Ok(response) => {
+                tracing::warn!("HTTP notification failed with status: {}", response.status());
+                Ok(false)
+            }
+            Err(e) => {
+                tracing::warn!("Failed to send HTTP notification: {}", e);
                 Ok(false)
             }
         }
@@ -13952,6 +14021,40 @@ impl DatabasePool {
         Ok(rss_key)
     }
 
+    /// The user's RSS key covering only `podcast_id`, created on first use. Single-podcast feed
+    /// links use it, so sharing one podcast's feed doesn't expose the user's other feeds.
+    pub async fn get_or_create_podcast_rss_key(&self, user_id: i32, podcast_id: i32) -> AppResult<String> {
+        let existing: Option<String> = match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(
+                r#"SELECT k.rsskey FROM "RssKeys" k
+                   WHERE k.userid = $1
+                     AND EXISTS (SELECT 1 FROM "RssKeyMap" m WHERE m.rsskeyid = k.rsskeyid AND m.podcastid = $2)
+                     AND NOT EXISTS (SELECT 1 FROM "RssKeyMap" m WHERE m.rsskeyid = k.rsskeyid AND m.podcastid <> $2)
+                   ORDER BY k.rsskeyid LIMIT 1"#,
+            )
+            .bind(user_id)
+            .bind(podcast_id)
+            .fetch_optional(pool)
+            .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_scalar(
+                "SELECT k.RssKey FROM RssKeys k
+                 WHERE k.UserID = ?
+                   AND EXISTS (SELECT 1 FROM RssKeyMap m WHERE m.RssKeyID = k.RssKeyID AND m.PodcastID = ?)
+                   AND NOT EXISTS (SELECT 1 FROM RssKeyMap m WHERE m.RssKeyID = k.RssKeyID AND m.PodcastID <> ?)
+                 ORDER BY k.RssKeyID LIMIT 1",
+            )
+            .bind(user_id)
+            .bind(podcast_id)
+            .bind(podcast_id)
+            .fetch_optional(pool)
+            .await?,
+        };
+        match existing {
+            Some(key) => Ok(key),
+            None => self.create_rss_key(user_id, Some(vec![podcast_id])).await,
+        }
+    }
+
     // Count user API keys excluding a specific one - safety check for final API key
     pub async fn count_user_api_keys_excluding(&self, user_id: i32, exclude_api_id: i32) -> AppResult<i32> {
         match self {
@@ -14157,6 +14260,31 @@ struct NotificationTarget {
     ntfy_access_token: Option<String>,
     gotify_url: Option<String>,
     gotify_token: Option<String>,
+    http_url: Option<String>,
+    http_token: Option<String>,
+    http_method: Option<String>,
+}
+
+/// The chat id from a Telegram notification token written as `<bot token>:<chat id>`. Bot tokens
+/// contain a colon themselves (`123456:ABC…`), so the chat id is what follows the last one.
+pub(crate) fn telegram_chat_id(token: &str) -> Option<&str> {
+    match token.rsplit_once(':') {
+        Some((bot, chat)) if bot.contains(':') && !chat.is_empty() => Some(chat),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod telegram_token_tests {
+    use super::telegram_chat_id;
+
+    #[test]
+    fn the_chat_id_follows_the_bot_tokens_own_colon() {
+        assert_eq!(telegram_chat_id("123456:ABC-def:987654"), Some("987654"));
+        assert_eq!(telegram_chat_id("123456:ABC-def:-100123"), Some("-100123"));
+        assert_eq!(telegram_chat_id("123456:ABC-def"), None, "a bare bot token has no chat id");
+        assert_eq!(telegram_chat_id("123456:ABC-def:"), None);
+    }
 }
 
 /// What a feed group last stored, sent back on the next fetch (see `fetch_feed_conditional`).

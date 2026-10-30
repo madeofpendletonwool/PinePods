@@ -181,6 +181,47 @@ async fn notification_settings_round_trip_per_platform() {
     assert_eq!(gotify["gotify_url"], "https://gotify.example.invalid");
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn http_notifications_announce_new_episodes() {
+    let app = TestApp::new().await;
+    let user = app.user("hooked").await;
+    let feed = Feed::with_episodes("Hooked Show", 1);
+    let url = app.feed("hooked.xml", &feed);
+    let pod = app.subscribe(&user, &url, 1).await;
+
+    let hook = app.fixtures().serve("hook", Fixture::new("application/json", "{}"));
+    app.put("/api/data/user/notification_settings")
+        .key(&user)
+        .json(&json!({
+            "user_id": user.id,
+            "platform": "http",
+            "enabled": true,
+            "http_url": hook,
+            "http_token": "hook-token",
+            "http_method": "POST",
+        }))
+        .send()
+        .await
+        .assert_ok();
+    app.put("/api/data/podcast/toggle_notifications")
+        .key(&user)
+        .json(&json!({ "user_id": user.id, "podcast_id": pod, "enabled": true }))
+        .send()
+        .await
+        .assert_ok();
+
+    app.feed("hooked.xml", &feed.episode(Episode::new(2).title("Fresh hooked episode")));
+    app.refresh().await;
+
+    let hits = app.fixtures().hits("hook");
+    assert_eq!(hits.len(), 1, "one notification per new episode: {hits:?}");
+    assert_eq!(hits[0].method, "POST");
+    assert_eq!(hits[0].headers.get("authorization").map(String::as_str), Some("Bearer hook-token"));
+    let body: Value = serde_json::from_slice(&hits[0].body).expect("json body");
+    let message = body["message"].as_str().unwrap_or_default();
+    assert!(message.contains("Hooked Show") && message.contains("Fresh hooked episode"), "{body}");
+}
+
 fn theme_body(user_id: i32, name: &str) -> Value {
     let mut body = json!({ "user_id": user_id, "name": name });
     for field in [

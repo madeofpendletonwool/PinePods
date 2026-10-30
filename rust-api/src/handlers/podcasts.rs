@@ -3419,7 +3419,7 @@ pub async fn stream_episode(
     path = "/get_rss_key",
     tag = "podcasts",
     summary = "Get rss key",
-    params(UserIdQuery),
+    params(RssKeyQuery),
     security(("api_key" = [])),
     responses(
         (status = 200, description = "Success", body = serde_json::Value),
@@ -3429,7 +3429,7 @@ pub async fn stream_episode(
 pub async fn get_rss_key(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
-    Query(query): Query<UserIdQuery>,
+    Query(query): Query<RssKeyQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     require_valid_api_key(&state, &api_key).await?;
@@ -3442,8 +3442,16 @@ pub async fn get_rss_key(
         return Err(AppError::forbidden("You can only get your own RSS key"));
     }
 
-    // Get or create RSS key for the user
-    let rss_key = state.db_pool.get_or_create_user_rss_key(query.user_id).await?;
+    // With a podcast_id, a key that only reads that podcast's feed; otherwise the user's key.
+    let rss_key = match query.podcast_id {
+        Some(podcast_id) => {
+            if !state.db_pool.verify_podcast_belongs_to_user(podcast_id, query.user_id).await? {
+                return Err(AppError::not_found("Podcast not found"));
+            }
+            state.db_pool.get_or_create_podcast_rss_key(query.user_id, podcast_id).await?
+        }
+        None => state.db_pool.get_or_create_user_rss_key(query.user_id).await?,
+    };
 
     Ok(Json(serde_json::json!({
         "rss_key": rss_key
@@ -3451,8 +3459,10 @@ pub async fn get_rss_key(
 }
 
 #[derive(Deserialize, utoipa::IntoParams)]
-pub struct UserIdQuery {
+pub struct RssKeyQuery {
     pub user_id: i32,
+    /// Return a key that only covers this podcast's feed.
+    pub podcast_id: Option<i32>,
 }
 
 // Query struct for get_podcast_details_dynamic

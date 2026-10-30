@@ -186,13 +186,8 @@ impl NotificationManager {
                 // For POST requests, send JSON payload
                 let payload = if http_url.contains("api.telegram.org") {
                     // Special handling for Telegram Bot API
-                    let chat_id = if let Some(chat_id_str) = http_token.split(':').nth(1) {
-                        // Extract chat_id from token if it contains chat_id (format: bot_token:chat_id)
-                        chat_id_str
-                    } else {
-                        // Default chat_id - user needs to configure this properly
-                        "YOUR_CHAT_ID"
-                    };
+                    // Token format: <bot token>:<chat id>
+                    let chat_id = crate::database::telegram_chat_id(http_token).unwrap_or("YOUR_CHAT_ID");
                     
                     serde_json::json!({
                         "chat_id": chat_id,
