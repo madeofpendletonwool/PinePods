@@ -7,6 +7,7 @@ import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class DownloadActivity extends StatefulWidget {
   const DownloadActivity({super.key});
@@ -196,7 +197,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
         title: const Text('Download Activity'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(PhosphorIconsRegular.arrowClockwise),
             onPressed: _loadActivity,
             tooltip: 'Refresh',
           ),
@@ -216,7 +217,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+            Icon(PhosphorIconsRegular.warningCircle, size: 64, color: Colors.red[300]),
             const SizedBox(height: 16),
             Text(_errorMessage!, textAlign: TextAlign.center),
             const SizedBox(height: 16),
@@ -231,7 +232,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.download_outlined, size: 64, color: Colors.grey[400]),
+            Icon(PhosphorIconsRegular.downloadSimple, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text('No recent download activity', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
@@ -262,9 +263,9 @@ class _DownloadActivityState extends State<DownloadActivity> {
     final isActive = task.isActive;
 
     final statusIcon = isCompleted
-        ? Icon(Icons.check_circle, color: Colors.green[600], size: 22)
+        ? Icon(PhosphorIconsFill.checkCircle, color: Colors.green[600], size: 22)
         : isFailed
-            ? Icon(Icons.cancel, color: Colors.red[600], size: 22)
+            ? Icon(PhosphorIconsFill.xCircle, color: Colors.red[600], size: 22)
             : SizedBox(
                 width: 22,
                 height: 22,
@@ -341,7 +342,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
                     height: 30,
                     child: OutlinedButton.icon(
                       onPressed: task.episodeId != null ? () => _retryDownload(task) : null,
-                      icon: const Icon(Icons.replay, size: 14),
+                      icon: const Icon(PhosphorIconsRegular.arrowCounterClockwise, size: 14),
                       label: const Text('Retry', style: TextStyle(fontSize: 12)),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -371,7 +372,7 @@ class _DownloadActivityState extends State<DownloadActivity> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(isLocal ? Icons.smartphone : Icons.cloud, size: 11, color: color),
+          Icon(isLocal ? PhosphorIconsRegular.deviceMobile : PhosphorIconsRegular.cloud, size: 11, color: color),
           const SizedBox(width: 3),
           Text(
             isLocal ? 'Local' : 'Server',

@@ -4,6 +4,7 @@ use crate::components::context::{NotificationState, PageLoadState};
 use crate::requests::cache;
 use crate::components::notification_center::TaskProgress;
 use crate::requests::episode::Episode;
+use crate::requests::people_req::CreditedPerson;
 use futures::StreamExt;
 use gloo::net::websocket::WebSocketError;
 use gloo::net::websocket::{futures::WebSocket, Message};
@@ -255,6 +256,45 @@ pub async fn call_update_podcast_info(
     }
 }
 
+#[derive(Serialize)]
+#[allow(dead_code)]
+struct RefreshPodcastDetailsRequest {
+    podcast_id: i32,
+    reset_edits: bool,
+}
+
+/// Read the podcast's feed again now and take its current details; `reset_edits` also hands the
+/// details the user edited back to the feed.
+#[allow(dead_code)]
+pub async fn call_refresh_podcast_details(
+    server_name: &str,
+    api_key: &str,
+    podcast_id: i32,
+    reset_edits: bool,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/refresh_podcast_details", server_name);
+    let body = serde_json::to_string(&RefreshPodcastDetailsRequest { podcast_id, reset_edits })?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(body)?
+        .send()
+        .await?;
+    cache::invalidate_prefix(&format!("{}/api/data/get_podcast_details", server_name));
+    cache::invalidate_prefix(&format!("{}/api/data/return_pods", server_name));
+    if response.ok() {
+        Ok(())
+    } else {
+        let message = response
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|v| v["message"].as_str().map(str::to_string))
+            .unwrap_or_else(|| response.status_text());
+        Err(Error::msg(message))
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RemovePodcastValues {
     pub podcast_id: i32,
@@ -493,6 +533,8 @@ pub struct PodcastExtra {
     #[serde(default)]
     pub oldest_episode_date: Option<String>,
     #[serde(default)]
+    pub newest_episode_date: Option<String>,
+    #[serde(default)]
     pub is_youtube: bool,
     #[serde(default)]
     pub is_video: bool,
@@ -519,6 +561,7 @@ impl From<Podcast> for PodcastExtra {
             play_count: 0,
             episodes_played: 0,
             oldest_episode_date: None,
+            newest_episode_date: None,
             is_youtube,
             is_video: podcast.is_video,
             is_favorite: podcast.is_favorite,
@@ -1740,22 +1783,11 @@ pub struct Transcript {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub struct Person {
-    pub name: String,
-    pub role: Option<String>,
-    pub group: Option<String>,
-    pub img: Option<String>,
-    pub href: Option<String>,
-    pub id: Option<i32>,
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
 pub struct Podcasting2Data {
     pub chapters: Vec<Chapter>,
     pub transcripts: Vec<Transcript>,
-    pub people: Vec<Person>,
+    #[serde(default)]
+    pub people: Vec<CreditedPerson>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1837,7 +1869,10 @@ pub struct Value {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub struct Podcasting2PodData {
-    pub people: Vec<Person>,
+    #[serde(default)]
+    pub people: Vec<CreditedPerson>,
+    #[serde(default)]
+    pub guests: Vec<CreditedPerson>,
     pub podroll: Vec<PodrollItem>,
     pub funding: Vec<Funding>,
     pub value: Vec<Value>,
@@ -3414,9 +3449,50 @@ pub struct SkipSegment {
     pub status: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
-struct SkipSegmentsResponse {
-    segments: Vec<SkipSegment>,
+/// The copy of the audio ad times were detected on.
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct AnalyzedAudio {
+    #[serde(default)]
+    pub duration: Option<f64>,
+    /// `download` or `stream`.
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
+/// How the user's playback copy relates to the copy ads were detected on.
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct AdAudio {
+    #[serde(default)]
+    pub analyzed: Option<AnalyzedAudio>,
+    /// `match` (the user's server download is that copy), `mismatch`, `none` (no server
+    /// download) or `unknown`.
+    #[serde(default)]
+    pub download: String,
+}
+
+impl AdAudio {
+    /// Whether ad times can be trusted on what is playing: the user's server download when it is
+    /// the analyzed copy, otherwise a copy whose length matches the analyzed one (dynamically
+    /// inserted ads usually change the length). `duration` is the player's, NaN/0 while unknown.
+    pub fn fits(&self, duration: f64, playing_server_copy: bool) -> bool {
+        if self.download == "match" && playing_server_copy {
+            return true;
+        }
+        match self.analyzed.as_ref().and_then(|a| a.duration) {
+            Some(expected) if expected > 0.0 => {
+                duration.is_finite() && duration > 0.0
+                    && (duration - expected).abs() <= (expected * 0.003).max(2.0)
+            }
+            _ => true,
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct SkipSegmentsInfo {
+    pub segments: Vec<SkipSegment>,
+    #[serde(default)]
+    pub ad_audio: Option<AdAudio>,
 }
 
 pub async fn call_get_episode_skip_segments(
@@ -3424,7 +3500,7 @@ pub async fn call_get_episode_skip_segments(
     api_key: &Option<String>,
     user_id: i32,
     episode_id: i32,
-) -> Result<Vec<SkipSegment>, Error> {
+) -> Result<SkipSegmentsInfo, Error> {
     let url = format!(
         "{}/api/data/episode_skip_segments?episode_id={}&user_id={}",
         server_name, episode_id, user_id
@@ -3439,8 +3515,7 @@ pub async fn call_get_episode_skip_segments(
         .await?;
 
     if response.ok() {
-        let data: SkipSegmentsResponse = response.json().await?;
-        Ok(data.segments)
+        Ok(response.json().await?)
     } else {
         let error_text = response
             .text()
@@ -3677,6 +3752,8 @@ pub struct AiStatus {
     pub transcription_ready: bool,
     #[serde(default)]
     pub ad_removal_ready: bool,
+    #[serde(default)]
+    pub downloads_enabled: bool,
 }
 
 pub async fn call_get_ai_status_full(
@@ -3700,20 +3777,24 @@ pub struct DetectAdsRequest {
     pub episode_id: i32,
     pub user_id: i32,
     pub force: bool,
+    pub download_first: bool,
 }
 
+/// Start ad detection. With `download_first`, an episode that isn't on the server is downloaded
+/// there first and ads are detected on that copy.
 pub async fn call_detect_ads(
     server_name: &str,
     api_key: &Option<String>,
     episode_id: i32,
     user_id: i32,
     force: bool,
+    download_first: bool,
 ) -> Result<(), Error> {
     let url = format!("{}/api/data/detect_ads", server_name);
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-    let body = serde_json::to_string(&DetectAdsRequest { episode_id, user_id, force })?;
+    let body = serde_json::to_string(&DetectAdsRequest { episode_id, user_id, force, download_first })?;
     let response = Request::post(&url)
         .header("Content-Type", "application/json")
         .header("Api-Key", api_key_ref)
@@ -5599,8 +5680,12 @@ pub async fn call_get_rss_key(
     server_name: &str,
     api_key: &Option<String>,
     user_id: i32,
+    podcast_id: Option<i32>,
 ) -> Result<String, anyhow::Error> {
-    let url = format!("{}/api/data/get_rss_key?user_id={}", server_name, user_id);
+    let mut url = format!("{}/api/data/get_rss_key?user_id={}", server_name, user_id);
+    if let Some(podcast_id) = podcast_id {
+        url.push_str(&format!("&podcast_id={}", podcast_id));
+    }
 
     let api_key_ref = api_key
         .as_deref()
@@ -6069,4 +6154,142 @@ pub async fn call_set_collection_add_ui(
     } else {
         Err(anyhow::anyhow!("Server returned error: {}", response.status()))
     }
+}
+
+/// Which new videos a YouTube channel subscription adds. `None` means no limit.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct YouTubeVideoFilter {
+    pub min_minutes: Option<i32>,
+    pub max_minutes: Option<i32>,
+    pub title_contains: Option<String>,
+}
+
+pub async fn call_get_youtube_video_filter(
+    server_name: &str,
+    api_key: &str,
+    podcast_id: i32,
+    user_id: i32,
+) -> Result<YouTubeVideoFilter, Error> {
+    let url = format!(
+        "{}/api/data/youtube_video_filter?podcast_id={}&user_id={}",
+        server_name, podcast_id, user_id
+    );
+    let response = Request::get(&url).header("Api-Key", api_key).send().await?;
+    if !response.ok() {
+        let text = response.text().await.unwrap_or_default();
+        return Err(anyhow::Error::msg(crate::components::gen_funcs::format_error_message(&text)));
+    }
+    Ok(response.json().await?)
+}
+
+/// Saves the filter and returns it as the server stored it (blank fields cleared).
+pub async fn call_update_youtube_video_filter(
+    server_name: &str,
+    api_key: &str,
+    podcast_id: i32,
+    user_id: i32,
+    filter: &YouTubeVideoFilter,
+) -> Result<YouTubeVideoFilter, Error> {
+    let url = format!("{}/api/data/update_youtube_video_filter", server_name);
+    let body = serde_json::json!({
+        "podcast_id": podcast_id,
+        "user_id": user_id,
+        "min_minutes": filter.min_minutes,
+        "max_minutes": filter.max_minutes,
+        "title_contains": filter.title_contains,
+    });
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())?
+        .send()
+        .await?;
+    if !response.ok() {
+        let text = response.text().await.unwrap_or_default();
+        return Err(anyhow::Error::msg(crate::components::gen_funcs::format_error_message(&text)));
+    }
+    Ok(response.json().await?)
+}
+
+// ---- Delete server downloads when an episode is finished ----
+
+#[derive(Deserialize, Debug)]
+struct AutoDeleteOnCompleteResponse {
+    enabled: bool,
+    #[serde(default)]
+    customized: bool,
+}
+
+async fn post_json_ok<T: Serialize>(
+    url: &str,
+    api_key: &Option<String>,
+    body: &T,
+) -> Result<gloo_net::http::Response, Error> {
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let response = Request::post(url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(body)?)?
+        .send()
+        .await?;
+    if response.ok() {
+        Ok(response)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(error_text))
+    }
+}
+
+/// The user's default (`podcast_id` None), or a podcast's effective value; returns
+/// `(enabled, customized)`.
+pub async fn call_get_auto_delete_on_complete(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: Option<i32>,
+) -> Result<(bool, bool), Error> {
+    let url = format!("{}/api/data/get_auto_delete_on_complete", server_name);
+    let body = serde_json::json!({ "user_id": user_id, "podcast_id": podcast_id });
+    let data: AutoDeleteOnCompleteResponse = post_json_ok(&url, api_key, &body).await?.json().await?;
+    Ok((data.enabled, data.customized))
+}
+
+pub async fn call_set_auto_delete_on_complete_user(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    enabled: bool,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/user/set_auto_delete_on_complete", server_name);
+    let body = serde_json::json!({ "user_id": user_id, "enabled": enabled });
+    post_json_ok(&url, api_key, &body).await.map(|_| ())
+}
+
+pub async fn call_set_use_gravatar(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    enabled: bool,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/user/set_use_gravatar", server_name);
+    let body = serde_json::json!({ "user_id": user_id, "enabled": enabled });
+    post_json_ok(&url, api_key, &body).await.map(|_| ())
+}
+
+/// `enabled` None goes back to the user's default.
+pub async fn call_set_podcast_auto_delete_on_complete(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+    enabled: Option<bool>,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/podcast/set_auto_delete_on_complete", server_name);
+    let body = serde_json::json!({ "user_id": user_id, "podcast_id": podcast_id, "enabled": enabled });
+    post_json_ok(&url, api_key, &body).await.map(|_| ())
 }

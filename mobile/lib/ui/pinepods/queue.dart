@@ -13,6 +13,8 @@ import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:pinepods_mobile/ui/utils/position_utils.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 
 class PinepodsQueue extends StatefulWidget {
   const PinepodsQueue({Key? key}) : super(key: key);
@@ -28,10 +30,6 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
   final PinepodsService _pinepodsService = PinepodsService();
   // Use global audio service instead of creating local instance
   int? _contextMenuEpisodeIndex;
-  
-  // Auto-scroll related variables
-  bool _isDragging = false;
-  bool _isAutoScrolling = false;
 
   @override
   void initState() {
@@ -561,70 +559,8 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     );
   }
 
-  void _startAutoScroll(bool scrollUp) async {
-    if (_isAutoScrolling) return;
-    _isAutoScrolling = true;
-
-    while (_isDragging && _isAutoScrolling) {
-      // Find the nearest ScrollView controller
-      final ScrollController? scrollController = Scrollable.maybeOf(context)?.widget.controller;
-      
-      if (scrollController != null && scrollController.hasClients) {
-        final currentOffset = scrollController.offset;
-        final maxScrollExtent = scrollController.position.maxScrollExtent;
-        
-        if (scrollUp && currentOffset > 0) {
-          // Scroll up
-          final newOffset = (currentOffset - 8.0).clamp(0.0, maxScrollExtent);
-          scrollController.jumpTo(newOffset);
-        } else if (!scrollUp && currentOffset < maxScrollExtent) {
-          // Scroll down
-          final newOffset = (currentOffset + 8.0).clamp(0.0, maxScrollExtent);
-          scrollController.jumpTo(newOffset);
-        } else {
-          break; // Reached the edge
-        }
-      }
-
-      await Future.delayed(const Duration(milliseconds: 16));
-    }
-
-    _isAutoScrolling = false;
-  }
-
-  void _stopAutoScroll() {
-    _isAutoScrolling = false;
-  }
-
-  void _checkAutoScroll(double globalY) {
-    if (!_isDragging) return;
-
-    final MediaQueryData mediaQuery = MediaQuery.of(context);
-    final double screenHeight = mediaQuery.size.height;
-    final double topPadding = mediaQuery.padding.top;
-    final double bottomPadding = mediaQuery.padding.bottom;
-    
-    const double autoScrollThreshold = 80.0;
-    
-    if (globalY < topPadding + autoScrollThreshold) {
-      // Near top, scroll up
-      if (!_isAutoScrolling) {
-        _startAutoScroll(true);
-      }
-    } else if (globalY > screenHeight - bottomPadding - autoScrollThreshold) {
-      // Near bottom, scroll down
-      if (!_isAutoScrolling) {
-        _startAutoScroll(false);
-      }
-    } else {
-      // In the middle, stop auto-scrolling
-      _stopAutoScroll();
-    }
-  }
-
   @override
   void dispose() {
-    _stopAutoScroll();
     // Don't dispose global audio service - it should persist across pages
     super.dispose();
   }
@@ -633,47 +569,20 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const SliverFillRemaining(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading queue...'),
-            ],
-          ),
-        ),
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_errorMessage.isNotEmpty) {
       return SliverFillRemaining(
+        hasScrollBody: false,
         child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  color: Theme.of(context).colorScheme.error,
-                  size: 48,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _errorMessage,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _refresh,
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
+          child: SoftEmptyState(
+            icon: PhosphorIconsRegular.warningCircle,
+            title: 'Couldn\'t load the queue',
+            body: _errorMessage,
+            action: FilledButton.tonal(onPressed: _refresh, child: const Text('Retry')),
           ),
         ),
       );
@@ -681,32 +590,12 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
 
     if (_episodes.isEmpty) {
       return const SliverFillRemaining(
+        hasScrollBody: false,
         child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.queue_music_outlined,
-                size: 64,
-                color: Colors.grey,
-              ),
-              SizedBox(height: 16),
-              Text(
-                'No queued episodes',
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.grey,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Episodes you queue will appear here',
-                style: TextStyle(
-                  color: Colors.grey,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+          child: SoftEmptyState(
+            icon: PhosphorIconsRegular.queue,
+            title: 'Your queue is empty',
+            body: 'Episodes you queue will appear here',
           ),
         ),
       );
@@ -718,93 +607,53 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
   Widget _buildEpisodesList() {
     return SliverMainAxisGroup(
       slivers: [
-        // Header
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Queue',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Row(
-                  children: [
-                    Text(
-                      'Drag to reorder',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
+          child: SoftSectionHeader(
+            title: 'Queue',
+            count: _episodes.length,
+            trailing: [
+              IconButton(
+                tooltip: 'Refresh',
+                icon: const Icon(PhosphorIconsRegular.arrowClockwise),
+                onPressed: _refresh,
+              ),
+            ],
+          ),
+        ),
+        // Lazily built; auto-scrolls when a dragged card nears an edge.
+        SliverReorderableList(
+          onReorder: _reorderEpisodes,
+          itemCount: _episodes.length,
+          proxyDecorator: (child, index, animation) => Material(
+            type: MaterialType.transparency,
+            child: child,
+          ),
+          itemBuilder: (context, index) {
+            final episode = _episodes[index];
+            return Padding(
+              key: ValueKey(episode.episodeId),
+              padding: const EdgeInsets.only(bottom: 4),
+              child: DraggableQueueEpisodeCard(
+                episode: episode,
+                index: index,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PinepodsEpisodeDetails(
+                        initialEpisode: episode,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      onPressed: _refresh,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+                  );
+                },
+                onLongPress: () => _showContextMenu(index),
+                onPlayPressed: () => _playEpisode(episode),
+              ),
+            );
+          },
         ),
-        // Auto-scrolling reorderable episodes list wrapped with pointer detection
-        SliverToBoxAdapter(
-          child: Listener(
-            onPointerMove: (details) {
-              if (_isDragging) {
-                _checkAutoScroll(details.position.dy);
-              }
-            },
-            child: ReorderableListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              buildDefaultDragHandles: false,
-              onReorderStart: (index) {
-                setState(() {
-                  _isDragging = true;
-                });
-              },
-              onReorderEnd: (index) {
-                setState(() {
-                  _isDragging = false;
-                });
-                _stopAutoScroll();
-              },
-              onReorder: _reorderEpisodes,
-              itemCount: _episodes.length,
-              itemBuilder: (context, index) {
-                final episode = _episodes[index];
-                return Container(
-                  key: ValueKey(episode.episodeId),
-                  margin: const EdgeInsets.only(bottom: 4),
-                  child: DraggableQueueEpisodeCard(
-                    episode: episode,
-                    index: index,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => PinepodsEpisodeDetails(
-                            initialEpisode: episode,
-                          ),
-                        ),
-                      );
-                    },
-                    onLongPress: () => _showContextMenu(index),
-                    onPlayPressed: () => _playEpisode(episode),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 12)),
       ],
     );
   }
 }
-

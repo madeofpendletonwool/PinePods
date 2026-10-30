@@ -18,6 +18,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 
 /// Sort direction options for podcasts
 enum PodcastSortDirection {
@@ -232,8 +234,9 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
 
       // Extract unique categories
       final allCategories = <String>{};
+      // Older servers can return blank categories; never show an empty chip.
       for (final cats in categories.values) {
-        allCategories.addAll(cats);
+        allCategories.addAll(cats.map((c) => c.trim()).where((c) => c.isNotEmpty));
       }
 
       setState(() {
@@ -251,205 +254,56 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
     }
   }
 
-  Widget _buildSearchAndFilterBar() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Search, Sort, and Layout row
-            Row(
-              children: [
-                // Search field
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search podcasts...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _searchController.clear();
-                              },
-                            )
-                          : null,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      filled: true,
-                      fillColor: Theme.of(context).cardColor,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Sort dropdown
-                Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Theme.of(context).dividerColor,
-                    ),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<PodcastSortDirection>(
-                      value: _sortDirection,
-                      icon: const Icon(Icons.sort),
-                      items: const [
-                        DropdownMenuItem(
-                          value: PodcastSortDirection.titleAZ,
-                          child: Text('A-Z'),
-                        ),
-                        DropdownMenuItem(
-                          value: PodcastSortDirection.titleZA,
-                          child: Text('Z-A'),
-                        ),
-                        DropdownMenuItem(
-                          value: PodcastSortDirection.mostEpisodes,
-                          child: Text('Most Eps'),
-                        ),
-                        DropdownMenuItem(
-                          value: PodcastSortDirection.leastEpisodes,
-                          child: Text('Least Eps'),
-                        ),
-                        DropdownMenuItem(
-                          value: PodcastSortDirection.newestSubscribed,
-                          child: Text('Newest'),
-                        ),
-                        DropdownMenuItem(
-                          value: PodcastSortDirection.oldestSubscribed,
-                          child: Text('Oldest'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          _setSortDirection(value);
-                        }
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Layout selector button
-                Material(
-                  color: Theme.of(context).cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () async {
-                      await showModalBottomSheet<void>(
-                        context: context,
-                        backgroundColor: Theme.of(context).secondaryHeaderColor,
-                        barrierLabel: L.of(context)!.scrim_layout_selector,
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(16.0),
-                            topRight: Radius.circular(16.0),
-                          ),
-                        ),
-                        builder: (context) => const LayoutSelectorWidget(),
-                      );
-                    },
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Theme.of(context).dividerColor,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.dashboard,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // Filter chips
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  // Clear all chip
-                  _buildFilterChip(
-                    label: 'Clear All',
-                    icon: Icons.clear_all,
-                    isActive: false,
-                    onTap: _clearAllFilters,
-                  ),
-                  const SizedBox(width: 8),
-                  // Category chips
-                  ..._availableCategories.map((category) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: _buildFilterChip(
-                      label: category,
-                      icon: Icons.category,
-                      isActive: _selectedCategory == category,
-                      onTap: () {
-                        _setCategory(_selectedCategory == category ? null : category);
-                      },
-                    ),
-                  )),
-                ],
+  List<Widget> _buildHeaderSlivers() {
+    return [
+      SliverToBoxAdapter(
+        child: SoftSectionHeader(
+          title: 'Podcasts',
+          count: _filteredPodcasts?.length,
+          trailing: [
+            IconButton(
+              tooltip: 'Layout',
+              icon: const Icon(PhosphorIconsRegular.squaresFour),
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                barrierLabel: L.of(context)!.scrim_layout_selector,
+                builder: (context) => const LayoutSelectorWidget(),
               ),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildFilterChip({
-    required String label,
-    required IconData icon,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    return Material(
-      color: isActive ? theme.primaryColor : theme.cardColor,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isActive ? theme.primaryColor : theme.dividerColor,
+      ListToolbar.sliver(
+        context,
+        ListToolbar<PodcastSortDirection>(
+          searchController: _searchController,
+          searchHint: 'Search podcasts',
+          filters: [
+            ToolbarFilter(
+              label: 'All',
+              selected: _selectedCategory == null,
+              onTap: () => _setCategory(null),
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isActive ? Colors.white : theme.iconTheme.color,
+            for (final category in _availableCategories)
+              ToolbarFilter(
+                label: category,
+                selected: _selectedCategory == category,
+                onTap: () => _setCategory(_selectedCategory == category ? null : category),
               ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isActive ? Colors.white : theme.textTheme.bodyMedium?.color,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
+          ],
+          sortOptions: const {
+            PodcastSortDirection.titleAZ: 'Title A–Z',
+            PodcastSortDirection.titleZA: 'Title Z–A',
+            PodcastSortDirection.mostEpisodes: 'Most episodes',
+            PodcastSortDirection.leastEpisodes: 'Fewest episodes',
+            PodcastSortDirection.newestSubscribed: 'Recently followed',
+            PodcastSortDirection.oldestSubscribed: 'First followed',
+          },
+          sortValue: _sortDirection,
+          onSort: _setSortDirection,
         ),
       ),
-    );
+    ];
   }
 
   Widget _buildPodcastList(AppSettings settings) {
@@ -457,39 +311,12 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
     final hasActiveFilters = _searchQuery.isNotEmpty || _selectedCategory != null;
 
     if (podcasts.isEmpty && hasActiveFilters) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              Icon(
-                Icons.filter_list_off,
-                size: 75,
-                color: Theme.of(context).primaryColor,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No podcasts found',
-                style: Theme.of(context).textTheme.titleLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _getNoResultsMessage(),
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              TextButton.icon(
-                onPressed: _clearAllFilters,
-                icon: const Icon(Icons.clear_all),
-                label: const Text('Clear Filters'),
-              ),
-            ],
-          ),
+      return SliverToBoxAdapter(
+        child: SoftEmptyState(
+          icon: PhosphorIconsRegular.funnelSimpleX,
+          title: 'No podcasts found',
+          body: _getNoResultsMessage(),
+          action: TextButton(onPressed: _clearAllFilters, child: const Text('Clear filters')),
         ),
       );
     }
@@ -566,7 +393,7 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
               Icon(
-                Icons.podcasts,
+                PhosphorIconsRegular.microphoneStage,
                 size: 75,
                 color: Theme.of(context).primaryColor,
               ),
@@ -594,7 +421,7 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
         if (settingsSnapshot.hasData) {
           return MultiSliver(
             children: [
-              _buildSearchAndFilterBar(),
+              ..._buildHeaderSlivers(),
               _buildPodcastList(settingsSnapshot.data!),
             ],
           );

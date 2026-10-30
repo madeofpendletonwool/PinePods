@@ -4,7 +4,7 @@ use axum::http::{StatusCode, header};
 use sqlx::Row;
 use crate::{
     error::{AppError, AppResult},
-    handlers::{extract_api_key, validate_api_key},
+    handlers::{extract_api_key, require_episode_owner, require_episodes_owner, require_valid_api_key},
     models::{BulkEpisodeActionRequest, BulkEpisodeActionResponse},
     AppState,
 };
@@ -30,7 +30,7 @@ pub async fn bulk_mark_episodes_completed(
     Json(request): Json<BulkEpisodeActionRequest>,
 ) -> AppResult<Json<BulkEpisodeActionResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let calling_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if calling_user_id != request.user_id {
@@ -38,6 +38,7 @@ pub async fn bulk_mark_episodes_completed(
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
+    require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
     let (processed_count, failed_count) = state.db_pool
         .bulk_mark_episodes_completed(request.episode_ids, request.user_id, is_youtube)
         .await?;
@@ -74,7 +75,7 @@ pub async fn bulk_save_episodes(
     Json(request): Json<BulkEpisodeActionRequest>,
 ) -> AppResult<Json<BulkEpisodeActionResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let calling_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if calling_user_id != request.user_id {
@@ -82,6 +83,7 @@ pub async fn bulk_save_episodes(
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
+    require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
     let (processed_count, failed_count) = state.db_pool
         .bulk_save_episodes(request.episode_ids, request.user_id, is_youtube)
         .await?;
@@ -118,7 +120,7 @@ pub async fn bulk_queue_episodes(
     Json(request): Json<BulkEpisodeActionRequest>,
 ) -> AppResult<Json<BulkEpisodeActionResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let calling_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if calling_user_id != request.user_id {
@@ -126,6 +128,7 @@ pub async fn bulk_queue_episodes(
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
+    require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
     // Bulk "add to queue" lands the batch at the top (in order), consistent with
     // single-add "play next" semantics.
     let (processed_count, failed_count) = state.db_pool
@@ -169,7 +172,7 @@ pub async fn bulk_download_episodes(
     Json(request): Json<BulkEpisodeActionRequest>,
 ) -> AppResult<Json<BulkEpisodeActionResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let calling_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if calling_user_id != request.user_id {
@@ -183,6 +186,7 @@ pub async fn bulk_download_episodes(
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
+    require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
     let mut processed_count = 0;
     let mut failed_count = 0;
 
@@ -238,7 +242,7 @@ pub async fn bulk_delete_downloaded_episodes(
     Json(request): Json<BulkEpisodeActionRequest>,
 ) -> AppResult<Json<BulkEpisodeActionResponse>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let calling_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if calling_user_id != request.user_id {
@@ -246,9 +250,14 @@ pub async fn bulk_delete_downloaded_episodes(
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
-    let (processed_count, failed_count) = state.db_pool
-        .bulk_delete_downloaded_episodes(request.episode_ids, request.user_id, is_youtube)
-        .await?;
+    require_episodes_owner(&state, request.user_id, &request.episode_ids, is_youtube).await?;
+    let (mut processed_count, mut failed_count) = (0, 0);
+    for episode_id in request.episode_ids {
+        match crate::handlers::podcasts::delete_download(&state, request.user_id, episode_id, is_youtube).await {
+            Ok(true) => processed_count += 1,
+            _ => failed_count += 1,
+        }
+    }
 
     let message = if failed_count > 0 {
         format!("Deleted {} downloaded episodes, {} failed or were not found", processed_count, failed_count)
@@ -282,10 +291,11 @@ pub async fn share_episode(
     headers: HeaderMap,
 ) -> AppResult<Json<serde_json::Value>> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     // Get the user ID from the API key
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    require_episode_owner(&state, user_id, episode_id, false).await?;
     
     // Generate unique share code and expiration date
     let share_code = uuid::Uuid::new_v4().to_string();
@@ -364,9 +374,11 @@ pub async fn download_episode_file(
         return Err(AppError::unauthorized("API key is required"));
     };
     
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    // The download uses the owning podcast's stored feed credentials: owner only.
+    require_episode_owner(&state, user_id, episode_id, false).await?;
     
     // Get episode metadata
     let episode_info = match &state.db_pool {
@@ -377,10 +389,11 @@ pub async fn download_episode_file(
                        e."episodedescription", p."username", p."password",
                        p."feedurl", e."episodeguid", e."episodeduration"
                 FROM "Episodes" e
-                JOIN "Podcasts" p ON e."podcastid" = p."podcastid"
+                JOIN "Podcasts" p ON e."feedid" = p."feedid" AND p."userid" = $2
                 WHERE e."episodeid" = $1
             "#)
             .bind(episode_id)
+            .bind(user_id)
             .fetch_one(pool)
             .await?;
 
@@ -407,9 +420,10 @@ pub async fn download_episode_file(
                        e.EpisodeDescription, p.Username, p.Password,
                        p.FeedURL, e.EpisodeGUID, e.EpisodeDuration
                 FROM Episodes e
-                JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                JOIN Podcasts p ON e.FeedID = p.FeedID AND p.UserID = ?
                 WHERE e.EpisodeID = ?
             ")
+            .bind(user_id)
             .bind(episode_id)
             .fetch_one(pool)
             .await?;

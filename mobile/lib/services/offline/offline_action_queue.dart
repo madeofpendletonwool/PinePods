@@ -106,6 +106,29 @@ class OfflineActionQueue {
   Future<void> enqueueSimple(PendingActionType type, int episodeId, int userId, bool isYoutube) =>
       enqueue(PendingAction(type: type, episodeId: episodeId, userId: userId, isYoutube: isYoutube));
 
+  /// The most recent position (seconds) recorded for an episode that has not
+  /// reached the server yet, or null when nothing is pending. Resume uses this
+  /// so progress made while offline isn't lost to the server's stale value.
+  Future<double?> pendingPosition(int episodeId, bool isYoutube) async {
+    try {
+      final actions = await repository.getPendingActions();
+      double? latest;
+      // Oldest first, so the last match is the newest.
+      for (final a in actions) {
+        if (a.type == PendingActionType.recordPosition &&
+            a.episodeId == episodeId &&
+            a.isYoutube == isYoutube &&
+            a.position != null) {
+          latest = a.position;
+        }
+      }
+      return latest;
+    } catch (e) {
+      log.warning('Failed to read pending position: $e');
+      return null;
+    }
+  }
+
   /// Attempt to send all pending actions to the server in order. Stops at the
   /// first failure (likely offline) so the remaining items are retried later.
   Future<void> flush() async {

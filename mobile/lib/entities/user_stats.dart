@@ -7,6 +7,11 @@ class UserStats {
   final int episodesDownloaded;
   final String gpodderUrl;
   final String podSyncType;
+  // Sent by newer servers only (null on older ones).
+  final bool? syncServerEnabled;
+  final String? syncServerUrl;
+  final String? syncTargetKind;
+  final String? syncTargetUrl;
 
   UserStats({
     required this.userCreated,
@@ -17,6 +22,10 @@ class UserStats {
     required this.episodesDownloaded,
     required this.gpodderUrl,
     required this.podSyncType,
+    this.syncServerEnabled,
+    this.syncServerUrl,
+    this.syncTargetKind,
+    this.syncTargetUrl,
   });
 
   factory UserStats.fromJson(Map<String, dynamic> json) {
@@ -29,6 +38,10 @@ class UserStats {
       episodesDownloaded: json['EpisodesDownloaded'] ?? 0,
       gpodderUrl: json['GpodderUrl'] ?? '',
       podSyncType: json['Pod_Sync_Type'] ?? '',
+      syncServerEnabled: json['SyncServerEnabled'] as bool?,
+      syncServerUrl: json['SyncServerUrl'] as String?,
+      syncTargetKind: json['SyncTargetKind'] as String?,
+      syncTargetUrl: json['SyncTargetUrl'] as String?,
     );
   }
 
@@ -42,6 +55,10 @@ class UserStats {
       'EpisodesDownloaded': episodesDownloaded,
       'GpodderUrl': gpodderUrl,
       'Pod_Sync_Type': podSyncType,
+      if (syncServerEnabled != null) 'SyncServerEnabled': syncServerEnabled,
+      if (syncServerUrl != null) 'SyncServerUrl': syncServerUrl,
+      if (syncTargetKind != null) 'SyncTargetKind': syncTargetKind,
+      if (syncTargetUrl != null) 'SyncTargetUrl': syncTargetUrl,
     };
   }
 
@@ -71,8 +88,36 @@ class UserStats {
     }
   }
 
+  /// Whether any sync is set up.
+  bool get isSyncing {
+    if (syncServerEnabled != null) {
+      return syncServerEnabled! || syncTargetKind != null;
+    }
+    return podSyncType.toLowerCase() != 'none' && podSyncType.isNotEmpty;
+  }
+
+  /// URLs to show under the sync status. The PinePods server's URL is [serverUrl] (the address
+  /// this app uses) unless the server has a public URL configured.
+  List<String> syncUrls(String? serverUrl) {
+    if (syncServerEnabled == null) {
+      return gpodderUrl.isEmpty || gpodderUrl == 'http://localhost:8042' ? [] : [gpodderUrl];
+    }
+    return [
+      if (syncServerEnabled!) syncServerUrl ?? serverUrl ?? '',
+      ?syncTargetUrl,
+    ].where((u) => u.isNotEmpty).toList();
+  }
+
   // Get sync status description
   String get syncStatusDescription {
+    if (syncServerEnabled != null) {
+      final parts = [
+        if (syncServerEnabled!) 'Internal gpodder',
+        if (syncTargetKind == 'nextcloud') 'Nextcloud',
+        if (syncTargetKind == 'gpodder') 'External gpodder',
+      ];
+      return parts.isEmpty ? 'Not Syncing' : parts.join(' + ');
+    }
     switch (podSyncType.toLowerCase()) {
       case 'none':
         return 'Not Syncing';

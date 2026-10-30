@@ -9,7 +9,6 @@ import 'package:pinepods_mobile/core/extensions.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/sleep.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
-import 'package:pinepods_mobile/state/transcript_state_event.dart';
 import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -52,9 +51,6 @@ class AudioBloc extends Bloc {
   /// Listen for toggling of volume boost silence requests.
   final PublishSubject<bool> _volumeBoost = PublishSubject<bool>();
 
-  /// Listen for transcript filtering events.
-  final PublishSubject<TranscriptEvent> _transcriptEvent = PublishSubject<TranscriptEvent>();
-
   final BehaviorSubject<Sleep> _sleepEvent = BehaviorSubject<Sleep>();
 
   AudioBloc({
@@ -78,8 +74,6 @@ class AudioBloc extends Bloc {
     /// Listen to volume boost silence requests
     _handleVolumeBoostTransitions();
 
-    /// Listen to transcript filtering events
-    _handleTranscriptEvents();
 
     /// Listen to sleep timer events;
     _handleSleepTimer();
@@ -92,7 +86,7 @@ class AudioBloc extends Bloc {
   /// on to a queue and execute them sequentially. Each state maps to a call
   /// to the Audio Service plugin.
   void _handlePlayingStateTransitions() {
-    _transitionPlayingState.asyncMap((event) => Future.value(event)).listen((state) async {
+    _transitionPlayingState.asyncMap((state) async {
       switch (state) {
         case TransitionState.play:
           await audioPlayerService.play();
@@ -110,7 +104,7 @@ class AudioBloc extends Bloc {
           await audioPlayerService.stop();
           break;
       }
-    });
+    }).listen((_) {}, onError: (Object e) => log.warning('Transition failed: $e'));
   }
 
   /// Setup a listener for episode requests and then connect to the
@@ -150,16 +144,6 @@ class AudioBloc extends Bloc {
     });
   }
 
-  void _handleTranscriptEvents() {
-    _transcriptEvent.listen((TranscriptEvent event) {
-      if (event is TranscriptFilterEvent) {
-        audioPlayerService.searchTranscript(event.search);
-      } else if (event is TranscriptClearEvent) {
-        audioPlayerService.clearTranscript();
-      }
-    });
-  }
-
   void _handleSleepTimer() {
     _sleepEvent.listen((Sleep sleep) {
       audioPlayerService.sleep(sleep);
@@ -194,7 +178,7 @@ class AudioBloc extends Bloc {
   void Function(double) get transitionPosition => _transitionPosition.sink.add;
 
   /// Get the current playing state
-  Stream<AudioState>? get playingState => audioPlayerService.playingState;
+  ValueStream<AudioState>? get playingState => audioPlayerService.playingState;
 
   /// Listen for any playback errors
   Stream<int>? get playbackError => audioPlayerService.playbackError;
@@ -202,13 +186,13 @@ class AudioBloc extends Bloc {
   /// Get the current playing episode
   ValueStream<Episode?>? get nowPlaying => audioPlayerService.episodeEvent;
 
-  /// Get the current transcript (if there is one).
-  Stream<TranscriptState>? get nowPlayingTranscript => audioPlayerService.transcriptEvent;
-
   /// Get position and percentage played of playing episode
   ValueStream<PositionState>? get playPosition => audioPlayerService.playPosition;
 
   Stream<Sleep>? get sleepStream => audioPlayerService.sleepStream;
+
+  /// Speed the current episode plays at (the user default or a per-podcast override).
+  ValueStream<double>? get currentSpeed => audioPlayerService.playbackSpeed;
 
   /// Change playback speed
   void Function(double) get playbackSpeed => _playbackSpeedSubject.sink.add;
@@ -218,9 +202,6 @@ class AudioBloc extends Bloc {
 
   /// Toggle volume boost silence
   void Function(bool) get volumeBoost => _volumeBoost.sink.add;
-
-  /// Handle filtering & searching of the current transcript.
-  void Function(TranscriptEvent) get filterTranscript => _transcriptEvent.sink.add;
 
   void Function(Sleep) get sleep => _sleepEvent.sink.add;
 

@@ -258,12 +258,29 @@ pub async fn call_get_podcast_info(
                 )))
             }
         }
+    } else if response.status() == 503 {
+        // The server couldn't reach the search service; its message says which and why.
+        let detail = response.text().await.unwrap_or_default();
+        web_sys::console::log_1(&JsValue::from_str(&format!("Search service unavailable: {}", detail)));
+        Err(anyhow::Error::new(SearchUnavailable))
     } else {
         let error_msg = format!("Failed to fetch podcast info: {}", response.status_text());
         web_sys::console::log_1(&JsValue::from_str(&error_msg));
         Err(anyhow::Error::msg(error_msg))
     }
 }
+
+/// The server answered that the search service can't be reached.
+#[derive(Debug)]
+pub struct SearchUnavailable;
+
+impl std::fmt::Display for SearchUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the search service isn't reachable")
+    }
+}
+
+impl std::error::Error for SearchUnavailable {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[allow(non_snake_case)]
@@ -333,60 +350,6 @@ pub async fn call_get_person_info(
     } else {
         Err(anyhow::Error::msg(format!(
             "Failed to fetch person info: {}",
-            response.status_text()
-        )))
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct PodPeoplePodcast {
-    pub podcastid: i32,
-    pub podcastname: String,
-    pub feedurl: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PodPeopleResponse {
-    pub success: bool,
-    pub podcasts: Vec<PodPeoplePodcast>,
-}
-
-// New function to call podpeople API
-#[allow(dead_code)]
-pub async fn call_get_podpeople_podcasts(
-    hostname: &String,
-    api_url: &Option<String>,
-    api_key: &str,
-) -> Result<PodPeopleResponse, anyhow::Error> {
-    let url = if let Some(base_url) = api_url {
-        format!(
-            "{}/api/data/podpeople/host_podcasts?hostname={}",
-            base_url, hostname
-        )
-    } else {
-        return Err(anyhow::Error::msg("API URL is not provided"));
-    };
-
-    let response = Request::get(&url)
-        .header("Content-Type", "application/json")
-        .header("Api-Key", api_key)
-        .send()
-        .await
-        .map_err(|err| anyhow::Error::new(err))?;
-
-    if response.ok() {
-        let response_text = response
-            .text()
-            .await
-            .map_err(|err| anyhow::Error::new(err))?;
-
-        web_sys::console::log_1(&JsValue::from_str(&response_text));
-
-        let podpeople_results: PodPeopleResponse = serde_json::from_str(&response_text)?;
-        Ok(podpeople_results)
-    } else {
-        Err(anyhow::Error::msg(format!(
-            "Failed to fetch podpeople podcasts: {}",
             response.status_text()
         )))
     }

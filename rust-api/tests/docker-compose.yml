@@ -1,0 +1,48 @@
+# Throwaway databases for the rust-api integration suite (tests/integration).
+# Started by scripts/integration-tests.sh; ports are deliberately off the defaults so they
+# never collide with a real PinePods (or anything else) running on the dev machine.
+# Data lives on tmpfs: every `up` starts clean, and nothing here is worth keeping.
+name: pinepods-api-tests
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: pinepods
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: postgres
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off", "-c", "max_connections=500"]
+    ports:
+      - "127.0.0.1:55433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pinepods"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mariadb:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: testpass
+    command: ["--max-connections=500", "--innodb-flush-log-at-trx-commit=0", "--skip-log-bin"]
+    ports:
+      - "127.0.0.1:33307:3306"
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "127.0.0.1:56380:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

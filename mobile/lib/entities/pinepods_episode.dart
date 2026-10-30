@@ -67,6 +67,31 @@ class PinepodsEpisode {
     );
   }
 
+  /// A copy that resumes from [listenDuration] seconds (e.g. a cross-device
+  /// handoff carrying the source's live position instead of the stored one).
+  PinepodsEpisode withListenDuration(int? listenDuration) {
+    return PinepodsEpisode(
+      podcastName: podcastName,
+      episodeTitle: episodeTitle,
+      episodePubDate: episodePubDate,
+      episodeDescription: episodeDescription,
+      episodeArtwork: episodeArtwork,
+      episodeUrl: episodeUrl,
+      episodeDuration: episodeDuration,
+      listenDuration: listenDuration,
+      episodeId: episodeId,
+      completed: completed,
+      saved: saved,
+      queued: queued,
+      downloaded: downloaded,
+      isYoutube: isYoutube,
+      podcastId: podcastId,
+      listenDate: listenDate,
+      saveDate: saveDate,
+      localImagePath: localImagePath,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'podcastname': podcastName,

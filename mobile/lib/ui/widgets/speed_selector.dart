@@ -10,6 +10,7 @@ import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/ui/widgets/slider_handle.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This widget allows the user to change the playback speed and toggle audio effects.
 ///
@@ -104,8 +105,10 @@ class _SpeedSliderState extends State<SpeedSlider> {
   @override
   void initState() {
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final audioBloc = Provider.of<AudioBloc>(context, listen: false);
 
-    speed = settingsBloc.currentSettings.playbackSpeed;
+    // The speed actually playing, which can be a per-podcast override.
+    speed = audioBloc.currentSpeed?.valueOrNull ?? settingsBloc.currentSettings.playbackSpeed;
     trimSilence = settingsBloc.currentSettings.trimSilence;
     volumeBoost = settingsBloc.currentSettings.volumeBoost;
 
@@ -147,7 +150,7 @@ class _SpeedSliderState extends State<SpeedSlider> {
               child: IconButton(
                 tooltip: L.of(context)!.semantics_decrease_playback_speed,
                 iconSize: 28.0,
-                icon: const Icon(Icons.remove_circle_outline),
+                icon: const Icon(PhosphorIconsRegular.minusCircle),
                 onPressed: (speed <= 0.5)
                     ? null
                     : () {
@@ -182,7 +185,7 @@ class _SpeedSliderState extends State<SpeedSlider> {
               child: IconButton(
                 tooltip: L.of(context)!.semantics_increase_playback_speed,
                 iconSize: 28.0,
-                icon: const Icon(Icons.add_circle_outline),
+                icon: const Icon(PhosphorIconsRegular.plusCircle),
                 onPressed: (speed > 1.9)
                     ? null
                     : () {

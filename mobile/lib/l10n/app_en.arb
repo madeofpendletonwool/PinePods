@@ -188,9 +188,9 @@
   "@cancel_option_label": {
     "description": "Cancel option label"
   },
-  "settings_theme_switch_label": "Dark theme",
+  "settings_theme_switch_label": "Theme",
   "@settings_theme_switch_label": {
-    "description": "Dark theme"
+    "description": "Label for the theme picker"
   },
   "playback_speed_label": "Playback speed",
   "@playback_speed_label": {

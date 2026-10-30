@@ -14,12 +14,16 @@ class Person {
   final String? image;
   final String? link;
 
+  /// PinePods person id, when the server knows this person; lets the player open their page.
+  final int? personId;
+
   Person({
     required this.name,
     this.role = '',
     this.group = '',
     String? image = '',
     String? link = '',
+    this.personId,
   })  : image = image?.forceHttps,
         link = link?.forceHttps;
 
@@ -30,6 +34,7 @@ class Person {
       'group': group,
       'image': image,
       'link': link,
+      if (personId != null) 'personId': personId,
     };
   }
 
@@ -40,6 +45,7 @@ class Person {
       group: chapter['group'] as String? ?? '',
       image: chapter['image'] as String? ?? '',
       link: chapter['link'] as String? ?? '',
+      personId: chapter['personId'] as int?,
     );
   }
 
@@ -52,10 +58,12 @@ class Person {
           role == other.role &&
           group == other.group &&
           image == other.image &&
-          link == other.link;
+          link == other.link &&
+          personId == other.personId;
 
   @override
-  int get hashCode => name.hashCode ^ role.hashCode ^ group.hashCode ^ image.hashCode ^ link.hashCode;
+  int get hashCode =>
+      name.hashCode ^ role.hashCode ^ group.hashCode ^ image.hashCode ^ link.hashCode ^ personId.hashCode;
 
   @override
   String toString() {

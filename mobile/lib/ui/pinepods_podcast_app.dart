@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:pinepods_mobile/ui/podcast/remote_devices_button.dart';
 import 'package:pinepods_mobile/api/podcast/mobile_podcast_api.dart';
 import 'package:pinepods_mobile/api/podcast/podcast_api.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
@@ -44,12 +45,15 @@ import 'package:pinepods_mobile/ui/library/downloads.dart';
 import 'package:pinepods_mobile/ui/library/library.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/podcast/podcast_details.dart';
+import 'package:pinepods_mobile/ui/tab_navigator.dart';
 import 'package:pinepods_mobile/ui/search/search.dart';
+import 'package:pinepods_mobile/ui/pinepods/people/followed_people.dart';
 import 'package:pinepods_mobile/ui/pinepods/search.dart';
 import 'package:pinepods_mobile/ui/settings/settings.dart';
 import 'package:pinepods_mobile/ui/themes.dart';
 import 'package:pinepods_mobile/ui/widgets/action_text.dart';
 import 'package:pinepods_mobile/ui/widgets/layout_selector.dart';
+import 'package:pinepods_mobile/ui/widgets/pinepods_bottom_nav.dart';
 import 'package:pinepods_mobile/ui/widgets/search_slide_route.dart';
 import 'package:pinepods_mobile/ui/pinepods/home.dart';
 import 'package:pinepods_mobile/ui/pinepods/feed.dart';
@@ -77,7 +81,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/services/auto_download/download_cleanup_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 var theme = Themes.lightTheme().themeData;
 
@@ -99,11 +105,8 @@ class PinepodsPodcastApp extends StatefulWidget {
   late NowPlayingService nowPlayingService;
   CarPlayService? carPlayService;
 
-  PinepodsPodcastApp({
-    super.key,
-    required this.mobileSettingsService,
-    required this.certificateAuthorityBytes,
-  }) : repository = SembastRepository() {
+  PinepodsPodcastApp({super.key, required this.mobileSettingsService, required this.certificateAuthorityBytes})
+    : repository = SembastRepository() {
     podcastApi = MobilePodcastApi();
 
     podcastService = MobilePodcastService(
@@ -122,26 +125,17 @@ class PinepodsPodcastApp extends StatefulWidget {
 
     // Use the native audio player on all platforms (ExoPlayer on Android,
     // AVPlayer on iOS).
-    audioPlayerService = NativeAudioPlayerService(
-      repository: repository,
-      settingsService: mobileSettingsService,
-    );
+    audioPlayerService = NativeAudioPlayerService(repository: repository, settingsService: mobileSettingsService);
 
     settingsBloc = SettingsBloc(mobileSettingsService);
 
     // Create and connect PinepodsAudioService for listen duration tracking
     pinepodsService = PinepodsService();
-    pinepodsAudioService = PinepodsAudioService(
-      audioPlayerService!,
-      pinepodsService,
-      settingsBloc!,
-    );
+    pinepodsAudioService = PinepodsAudioService(audioPlayerService!, pinepodsService, settingsBloc!);
 
     // Connect the services for listen duration recording
     if (audioPlayerService is NativeAudioPlayerService) {
-      (audioPlayerService as NativeAudioPlayerService).setPinepodsAudioService(
-        pinepodsAudioService,
-      );
+      (audioPlayerService as NativeAudioPlayerService).setPinepodsAudioService(pinepodsAudioService);
     }
 
     // Offline outbox: durably queues episode interactions and syncs them when
@@ -227,16 +221,8 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
     final server = settings.pinepodsServer;
     final apiKey = settings.pinepodsApiKey;
     final userId = settings.pinepodsUserId;
-    if (server != null &&
-        server.isNotEmpty &&
-        apiKey != null &&
-        apiKey.isNotEmpty &&
-        userId != null) {
-      widget.nowPlayingService.connect(
-        server: server,
-        apiKey: apiKey,
-        userId: userId,
-      );
+    if (server != null && server.isNotEmpty && apiKey != null && apiKey.isNotEmpty && userId != null) {
+      widget.nowPlayingService.connect(server: server, apiKey: apiKey, userId: userId);
     } else {
       widget.nowPlayingService.disconnect();
     }
@@ -251,10 +237,8 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
           dispose: (_, value) => value.dispose(),
         ),
         Provider<EpisodeBloc>(
-          create: (_) => EpisodeBloc(
-            podcastService: widget.podcastService!,
-            audioPlayerService: widget.audioPlayerService,
-          ),
+          create: (_) =>
+              EpisodeBloc(podcastService: widget.podcastService!, audioPlayerService: widget.audioPlayerService),
           dispose: (_, value) => value.dispose(),
         ),
         Provider<PodcastBloc>(
@@ -266,33 +250,25 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
           ),
           dispose: (_, value) => value.dispose(),
         ),
-        Provider<PagerBloc>(
-          create: (_) => PagerBloc(),
-          dispose: (_, value) => value.dispose(),
-        ),
+        Provider<PagerBloc>(create: (_) => PagerBloc(), dispose: (_, value) => value.dispose()),
         Provider<AudioBloc>(
-          create: (_) =>
-              AudioBloc(audioPlayerService: widget.audioPlayerService),
+          create: (_) => AudioBloc(audioPlayerService: widget.audioPlayerService),
           dispose: (_, value) => value.dispose(),
         ),
-        Provider<SettingsBloc?>(
-          create: (_) => widget.settingsBloc,
-          dispose: (_, value) => value!.dispose(),
-        ),
+        // Owned by the app widget (created once in its constructor), so it must
+        // outlive this subtree; disposing it here would leave a remounted tree
+        // holding a closed bloc.
+        Provider<SettingsBloc?>.value(value: widget.settingsBloc),
         Provider<QueueBloc>(
-          create: (_) => QueueBloc(
-            audioPlayerService: widget.audioPlayerService,
-            podcastService: widget.podcastService!,
-          ),
+          create: (_) =>
+              QueueBloc(audioPlayerService: widget.audioPlayerService, podcastService: widget.podcastService!),
           dispose: (_, value) => value.dispose(),
         ),
         Provider<AudioPlayerService>(create: (_) => widget.audioPlayerService),
         Provider<PodcastService>(create: (_) => widget.podcastService!),
         // App-wide offline/reachability state (#935). Singleton so the audio
         // service and other non-widget code can consult it too.
-        ChangeNotifierProvider<ConnectivityService>.value(
-          value: ConnectivityService.instance,
-        ),
+        ChangeNotifierProvider<ConnectivityService>.value(value: ConnectivityService.instance),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -305,17 +281,11 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        supportedLocales: const [
-          Locale('en', ''),
-          Locale('de', ''),
-          Locale('it', ''),
-        ],
+        supportedLocales: const [Locale('en', ''), Locale('de', ''), Locale('it', '')],
         theme: theme,
         // Uncomment builder below to enable accessibility checker tool.
         // builder: (context, child) => AccessibilityTools(child: child),
-        home: const AuthWrapper(
-          child: PinepodsHomePage(title: 'PinePods Podcast Player'),
-        ),
+        home: const AuthWrapper(child: PinepodsHomePage(title: 'PinePods Podcast Player')),
       ),
     );
   }
@@ -331,9 +301,13 @@ class PinepodsHomePage extends StatefulWidget {
   State<PinepodsHomePage> createState() => _PinepodsHomePageState();
 }
 
-class _PinepodsHomePageState extends State<PinepodsHomePage>
-    with WidgetsBindingObserver {
+class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBindingObserver {
   StreamSubscription<Uri>? deepLinkSubscription;
+
+  GlobalKey<NavigatorState> get _tabNavigatorKey => tabNavigatorKey;
+  final HeroController _heroController = MaterialApp.createMaterialHeroController();
+  final _TabDepthObserver _tabDepth = _TabDepthObserver();
+  StreamSubscription<int>? _pageSub;
 
   final log = Logger('_PinepodsHomePageState');
   bool handledInitialLink = false;
@@ -361,9 +335,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
 
   void _initConnectivityAndOfflineLanding() {
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-    ConnectivityService.instance
-        .init(() => settingsBloc.currentSettings.pinepodsServer)
-        .then((_) {
+    ConnectivityService.instance.init(() => settingsBloc.currentSettings.pinepodsServer).then((_) {
       if (!mounted) return;
       if (ConnectivityService.instance.isOffline) {
         _openDownloadsTab();
@@ -375,9 +347,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
   /// enabled. No-op when Downloads has been removed from [bottomBarOrder].
   void _openDownloadsTab() {
     final pager = Provider.of<PagerBloc>(context, listen: false);
-    final order = Provider.of<SettingsBloc>(context, listen: false)
-        .currentSettings
-        .bottomBarOrder;
+    final order = Provider.of<SettingsBloc>(context, listen: false).currentSettings.bottomBarOrder;
     final idx = order.indexOf('Downloads');
     if (idx >= 0) {
       pager.changePage(idx);
@@ -405,13 +375,16 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
 
     // Subscribe to all events (further links while app is running)
     print('Deep Link: Setting up stream listener...');
-    deepLinkSubscription = appLinks.uriLinkStream.listen((uri) {
-      print('Deep Link: App received link while running: $uri');
-      _handleLinkEvent(uri);
-    }, onError: (err) {
-      print('Deep Link: Stream error: $err');
-    });
-    
+    deepLinkSubscription = appLinks.uriLinkStream.listen(
+      (uri) {
+        print('Deep Link: App received link while running: $uri');
+        _handleLinkEvent(uri);
+      },
+      onError: (err) {
+        print('Deep Link: Stream error: $err');
+      },
+    );
+
     print('Deep Link: Link listener setup complete');
   }
 
@@ -422,21 +395,21 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
     print('Deep Link: Scheme: ${uri.scheme}, Host: ${uri.host}, Path: ${uri.path}');
     print('Deep Link: Query: ${uri.query}');
     print('Deep Link: QueryParameters: ${uri.queryParameters}');
-    
+
     // Handle OIDC authentication callback - be more flexible with path matching
     if (uri.scheme == 'pinepods' && uri.host == 'auth') {
       print('Deep Link: OIDC callback detected (flexible match)');
       await _handleOidcCallback(uri);
       return;
     }
-    
+
     // Handle OIDC authentication callback - strict match
     if (uri.scheme == 'pinepods' && uri.host == 'auth' && uri.path == '/callback') {
       print('Deep Link: OIDC callback detected (strict match)');
       await _handleOidcCallback(uri);
       return;
     }
-    
+
     // Handle podcast subscription links
     if ((uri.scheme == 'pinepods-subscribe' || uri.scheme == 'https') &&
         (uri.query.startsWith('uri=') || uri.query.startsWith('url='))) {
@@ -448,21 +421,13 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
       /// the BLoC) that we load this new URL. If not, we pop the stack until we are
       /// back at root and then load the podcast details page.
       if (routeName != null && routeName == 'podcastdetails') {
-        loadPodcastBloc.load(
-          Feed(
-            podcast: Podcast.fromUrl(url: path),
-            backgroundFresh: false,
-            silently: false,
-          ),
-        );
+        loadPodcastBloc.load(Feed(podcast: Podcast.fromUrl(url: path), backgroundFresh: false, silently: false));
       } else {
         /// Pop back to route.
         Navigator.of(context).popUntil((route) {
           var currentRouteName = NavigationRouteObserver().top!.settings.name;
 
-          return currentRouteName == null ||
-              currentRouteName == '' ||
-              currentRouteName == '/';
+          return currentRouteName == null || currentRouteName == '' || currentRouteName == '/';
         });
 
         /// Once we have reached the root route, push podcast details.
@@ -471,8 +436,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
           MaterialPageRoute<void>(
             fullscreenDialog: true,
             settings: const RouteSettings(name: 'podcastdetails'),
-            builder: (context) =>
-                PodcastDetails(Podcast.fromUrl(url: path), loadPodcastBloc),
+            builder: (context) => PodcastDetails(Podcast.fromUrl(url: path), loadPodcastBloc),
           ),
         );
       }
@@ -483,18 +447,15 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
   Future<void> _handleOidcCallback(Uri uri) async {
     try {
       print('OIDC Callback: Received callback URL: $uri');
-      
+
       // Parse the callback result
       final callbackResult = OidcService.parseCallback(uri.toString());
-      
+
       if (!callbackResult.isSuccess) {
         print('OIDC Callback: Authentication failed: ${callbackResult.error}');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('OIDC authentication failed: ${callbackResult.error}'),
-              backgroundColor: Colors.red,
-            ),
+            SnackBar(content: Text('OIDC authentication failed: ${callbackResult.error}'), backgroundColor: Colors.red),
           );
         }
         return;
@@ -515,16 +476,12 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
           );
         }
       }
-      
     } catch (e) {
       print('OIDC Callback: Error processing callback: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error processing OIDC callback: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error processing OIDC callback: $e'), backgroundColor: Colors.red));
       }
     }
   }
@@ -533,19 +490,19 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
   Future<void> _completeOidcLogin(String apiKey) async {
     try {
       print('OIDC Callback: Completing login with API key');
-      
+
       // We need to get the server URL - we can get it from the current settings
       // since the user would have entered it during the initial OIDC flow
       final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
       final settings = settingsBloc.currentSettings;
-      
+
       // Check if we have a server URL from a previous attempt
       String? serverUrl = settings.pinepodsServer;
-      
+
       if (serverUrl == null || serverUrl.isEmpty) {
         throw Exception('No server URL available for OIDC completion');
       }
-      
+
       // Verify the API key works and get user details
       // Verify API key
       final isValidKey = await PinepodsLoginService.verifyApiKey(serverUrl, apiKey);
@@ -559,7 +516,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
         throw Exception('Failed to get user ID');
       }
 
-      // Get user details  
+      // Get user details
       final userDetails = await PinepodsLoginService.getUserDetails(serverUrl, apiKey, userId);
       if (userDetails == null) {
         throw Exception('Failed to get user details');
@@ -569,28 +526,26 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
       settingsBloc.setPinepodsServer(serverUrl);
       settingsBloc.setPinepodsApiKey(apiKey);
       settingsBloc.setPinepodsUserId(userId);
-      
+
       // Set additional user details if available
       if (userDetails.username != null) {
         settingsBloc.setPinepodsUsername(userDetails.username!);
       }
       if (userDetails.email != null) {
-        settingsBloc.setPinepodsEmail(userDetails.email!);  
+        settingsBloc.setPinepodsEmail(userDetails.email!);
       }
+      settingsBloc.setPinepodsUseGravatar(userDetails.useGravatar);
 
       // Fetch theme from server
       await settingsBloc.fetchThemeFromServer();
 
       print('OIDC Callback: Login completed successfully');
-      
+
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('OIDC authentication successful!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('OIDC authentication successful!'), backgroundColor: Colors.green));
+
         // Log current settings state for debugging
         final currentSettings = settingsBloc.currentSettings;
         print('OIDC Callback: Current settings after update:');
@@ -598,20 +553,16 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
         print('  API Key: ${currentSettings.pinepodsApiKey != null ? '[SET]' : '[NOT SET]'}');
         print('  User ID: ${currentSettings.pinepodsUserId}');
         print('  Username: ${currentSettings.pinepodsUsername}');
-        
+
         // Notify login success globally
         AuthNotifier.notifyLoginSuccess();
       }
-      
     } catch (e) {
       print('OIDC Callback: Error completing login: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to complete OIDC login: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to complete OIDC login: $e'), backgroundColor: Colors.red));
       }
     }
   }
@@ -622,6 +573,8 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
     audioBloc.transitionLifecycleState(LifecycleState.pause);
 
     deepLinkSubscription?.cancel();
+    _pageSub?.cancel();
+    _tabDepth.atRoot.dispose();
 
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -636,7 +589,18 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
       case AppLifecycleState.resumed:
         print('Deep Link: App resumed - checking for pending deep links...');
         audioBloc.transitionLifecycleState(LifecycleState.resume);
-        
+
+        // A suspended app can miss the connectivity event that normally drains
+        // the outbox, so retry whenever we come back to the foreground.
+        GlobalServices.offlineActionQueue?.flush();
+
+        final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+        DownloadCleanupService.run(
+          context: context,
+          pinepodsService: GlobalServices.pinepodsService,
+          userId: settings.pinepodsUserId,
+        );
+
         // Check for any pending deep links when app resumes
         try {
           final appLinks = AppLinks();
@@ -659,6 +623,15 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Switching tabs drops whatever was pushed on top of the old one.
+    _pageSub ??= Provider.of<PagerBloc>(context, listen: false).currentPage.listen((_) {
+      _tabNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final pager = Provider.of<PagerBloc>(context);
     final searchBloc = Provider.of<EpisodeBloc>(context);
@@ -668,388 +641,172 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
       value: Theme.of(context).appBarTheme.systemOverlayStyle!,
       child: Scaffold(
         backgroundColor: backgroundColour,
-        body: Column(
-          children: <Widget>[
-            Expanded(
-              child: CustomScrollView(
-                slivers: <Widget>[
-                  SliverVisibility(
-                    visible: widget.topBarVisible,
-                    sliver: SliverAppBar(
-                      title: ExcludeSemantics(child: TitleWidget()),
-                      backgroundColor: backgroundColour,
-                      floating: false,
-                      pinned: true,
-                      snap: false,
-                      actions: <Widget>[
-                        IconButton(
-                          tooltip: 'Queue',
-                          icon: const Icon(Icons.queue_music),
-                          onPressed: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute<void>(
-                                fullscreenDialog: false,
-                                settings: const RouteSettings(name: 'queue'),
-                                builder: (context) => Scaffold(
-                                  appBar: AppBar(title: const Text('Queue')),
-                                  body: const Column(
-                                    children: [
-                                      Expanded(
-                                        child: CustomScrollView(
-                                          slivers: [PinepodsQueue()],
-                                        ),
-                                      ),
-                                      MiniPlayer(),
-                                    ],
+        // Tab content and everything pushed from it live in a nested navigator
+        // so the mini player and nav bar below stay mounted across pushes.
+        body: NavigatorPopHandler<Object?>(
+          onPopWithResult: (_) => _tabNavigatorKey.currentState?.maybePop(),
+          child: HeroControllerScope(
+            controller: _heroController,
+            child: Navigator(
+              key: _tabNavigatorKey,
+              observers: [_tabDepth],
+              onGenerateRoute: (settings) => MaterialPageRoute<void>(
+                settings: settings,
+                builder: (context) => CustomScrollView(
+                  slivers: <Widget>[
+                    SliverVisibility(
+                      visible: widget.topBarVisible,
+                      sliver: SliverAppBar(
+                        title: ExcludeSemantics(child: TitleWidget()),
+                        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                        floating: false,
+                        pinned: true,
+                        snap: false,
+                        actions: <Widget>[
+                          // Only takes space once another device is online.
+                          const RemoteDevicesButton(hideWhenEmpty: true),
+                          IconButton(
+                            tooltip: 'Queue',
+                            icon: const Icon(PhosphorIconsRegular.queue),
+                            onPressed: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute<void>(
+                                  fullscreenDialog: false,
+                                  settings: const RouteSettings(name: 'queue'),
+                                  builder: (context) => Scaffold(
+                                    appBar: AppBar(title: const Text('Queue')),
+                                    body: const CustomScrollView(slivers: [PinepodsQueue()]),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-                        IconButton(
-                          tooltip: L.of(context)!.search_for_podcasts_hint,
-                          icon: const Icon(Icons.search),
-                          onPressed: () async {
-                            await Navigator.push(
-                              context,
-                              defaultTargetPlatform == TargetPlatform.iOS
-                                  ? MaterialPageRoute<void>(
-                                      fullscreenDialog: false,
-                                      settings: const RouteSettings(
-                                        name: 'pinepods_search',
+                              );
+                            },
+                          ),
+                          IconButton(
+                            tooltip: L.of(context)!.search_for_podcasts_hint,
+                            icon: const Icon(PhosphorIconsRegular.magnifyingGlass),
+                            onPressed: () async {
+                              await Navigator.push(
+                                context,
+                                defaultTargetPlatform == TargetPlatform.iOS
+                                    ? MaterialPageRoute<void>(
+                                        fullscreenDialog: false,
+                                        settings: const RouteSettings(name: 'pinepods_search'),
+                                        builder: (context) => const PinepodsSearch(),
+                                      )
+                                    : SlideRightRoute(
+                                        widget: const PinepodsSearch(),
+                                        settings: const RouteSettings(name: 'pinepods_search'),
                                       ),
-                                      builder: (context) =>
-                                          const PinepodsSearch(),
-                                    )
-                                  : SlideRightRoute(
-                                      widget: const PinepodsSearch(),
-                                      settings: const RouteSettings(
-                                        name: 'pinepods_search',
-                                      ),
+                              );
+                            },
+                          ),
+                          PopupMenuButton<String>(
+                            onSelected: _menuSelect,
+                            icon: const Icon(PhosphorIconsRegular.dotsThreeVertical),
+                            itemBuilder: (BuildContext context) {
+                              return <PopupMenuEntry<String>>[
+                                if (feedbackUrl.isNotEmpty)
+                                  PopupMenuItem<String>(
+                                    textStyle: Theme.of(context).textTheme.titleMedium,
+                                    value: 'feedback',
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        const Padding(
+                                          padding: EdgeInsets.only(right: 8.0),
+                                          child: Icon(PhosphorIconsRegular.chatCircleText, size: 18.0),
+                                        ),
+                                        Text(L.of(context)!.feedback_menu_item_label),
+                                      ],
                                     ),
-                            );
-                          },
-                        ),
-                        PopupMenuButton<String>(
-                          onSelected: _menuSelect,
-                          icon: const Icon(Icons.more_vert),
-                          itemBuilder: (BuildContext context) {
-                            return <PopupMenuEntry<String>>[
-                              if (feedbackUrl.isNotEmpty)
+                                  ),
                                 PopupMenuItem<String>(
-                                  textStyle: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
-                                  value: 'feedback',
+                                  textStyle: Theme.of(context).textTheme.titleMedium,
+                                  value: 'rss',
                                   child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.center,
                                     children: [
                                       const Padding(
                                         padding: EdgeInsets.only(right: 8.0),
-                                        child: Icon(
-                                          Icons.feedback_outlined,
-                                          size: 18.0,
-                                        ),
+                                        child: Icon(PhosphorIconsRegular.rss, size: 18.0),
                                       ),
-                                      Text(
-                                        L.of(context)!.feedback_menu_item_label,
-                                      ),
+                                      Text(L.of(context)!.add_rss_feed_option),
                                     ],
                                   ),
                                 ),
-                              PopupMenuItem<String>(
-                                textStyle: Theme.of(
-                                  context,
-                                ).textTheme.titleMedium,
-                                value: 'rss',
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    const Padding(
-                                      padding: EdgeInsets.only(right: 8.0),
-                                      child: Icon(Icons.rss_feed, size: 18.0),
-                                    ),
-                                    Text(L.of(context)!.add_rss_feed_option),
-                                  ],
+                                PopupMenuItem<String>(
+                                  textStyle: Theme.of(context).textTheme.titleMedium,
+                                  value: 'settings',
+                                  child: Row(
+                                    children: [
+                                      const Padding(
+                                        padding: EdgeInsets.only(right: 8.0),
+                                        child: Icon(PhosphorIconsFill.gear, size: 18.0),
+                                      ),
+                                      Text(L.of(context)!.settings_label),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              PopupMenuItem<String>(
-                                textStyle: Theme.of(
-                                  context,
-                                ).textTheme.titleMedium,
-                                value: 'settings',
-                                child: Row(
-                                  children: [
-                                    const Padding(
-                                      padding: EdgeInsets.only(right: 8.0),
-                                      child: Icon(Icons.settings, size: 18.0),
-                                    ),
-                                    Text(L.of(context)!.settings_label),
-                                  ],
-                                ),
-                              ),
-                            ];
-                          },
-                        ),
-                      ],
+                              ];
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  StreamBuilder<int>(
-                    stream: pager.currentPage,
-                    builder:
-                        (BuildContext context, AsyncSnapshot<int> snapshot) {
-                          return _fragment(snapshot.data, searchBloc);
-                        },
-                  ),
-                ],
+                    StreamBuilder<int>(
+                      stream: pager.currentPage,
+                      builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
+                        return _fragment(snapshot.data, searchBloc);
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
-            const MiniPlayer(),
-          ],
+          ),
         ),
-        bottomNavigationBar: StreamBuilder<int>(
-          stream: pager.currentPage,
-          initialData: 0,
-          builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
-            int index = snapshot.data ?? 0;
-
-            return StreamBuilder<AppSettings>(
-              stream: Provider.of<SettingsBloc>(context).settings,
-              builder:
-                  (
-                    BuildContext context,
-                    AsyncSnapshot<AppSettings> settingsSnapshot,
-                  ) {
-                    final bottomBarOrder =
-                        settingsSnapshot.data?.bottomBarOrder ??
-                        [
-                          'Home',
-                          'Feed',
-                          'Saved',
-                          'Podcasts',
-                          'Downloads',
-                          'History',
-                          'Playlists',
-                          'Search',
-                        ];
-
-                    // Create a map of all available nav items
-                    final Map<String, BottomNavItem> allNavItems = {
-                      'Home': BottomNavItem(
-                        icon: Icons.home,
-                        label: 'Home',
-                        isSelected: false,
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const MiniPlayer(),
+            // Slides away under the mini player on pushed pages.
+            ValueListenableBuilder<bool>(
+              valueListenable: _tabDepth.atRoot,
+              builder: (context, atRoot, child) {
+                final bottomInset = MediaQuery.paddingOf(context).bottom;
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(end: atRoot ? 1.0 : 0.0),
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
+                  child: child,
+                  builder: (context, t, child) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ClipRect(
+                        child: Align(alignment: Alignment.topCenter, heightFactor: t, child: child),
                       ),
-                      'Feed': BottomNavItem(
-                        icon: Icons.rss_feed,
-                        label: 'Feed',
-                        isSelected: false,
-                      ),
-                      'Saved': BottomNavItem(
-                        icon: Icons.bookmark,
-                        label: 'Saved',
-                        isSelected: false,
-                      ),
-                      'Podcasts': BottomNavItem(
-                        icon: Icons.podcasts,
-                        label: 'Podcasts',
-                        isSelected: false,
-                      ),
-                      'Downloads': BottomNavItem(
-                        icon: Icons.download,
-                        label: 'Downloads',
-                        isSelected: false,
-                      ),
-                      'History': BottomNavItem(
-                        icon: Icons.history,
-                        label: 'History',
-                        isSelected: false,
-                      ),
-                      'Playlists': BottomNavItem(
-                        icon: Icons.playlist_play,
-                        label: 'Playlists',
-                        isSelected: false,
-                      ),
-                      'Search': BottomNavItem(
-                        icon: Icons.search,
-                        label: 'Search',
-                        isSelected: false,
-                      ),
-                    };
-
-                    // Create the ordered nav items based on settings
-                    final List<BottomNavItem> navItems = bottomBarOrder.map((
-                      label,
-                    ) {
-                      final baseItem = allNavItems[label]!;
-                      final itemIndex = bottomBarOrder.indexOf(label);
-                      return BottomNavItem(
-                        icon: index == itemIndex
-                            ? _getSelectedIcon(label)
-                            : _getUnselectedIcon(label),
-                        label: label,
-                        isSelected: index == itemIndex,
-                      );
-                    }).toList();
-
-                    // Calculate if all icons fit in the current screen width
-                    final screenWidth = MediaQuery.of(context).size.width;
-                    final iconWidth = 80.0;
-                    final totalIconsWidth = navItems.length * iconWidth;
-                    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-                    final shouldCenterInPortrait = !isLandscape && totalIconsWidth <= screenWidth;
-
-                    return Container(
-                      height: 70 + MediaQuery.of(context).padding.bottom,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).bottomAppBarTheme.color,
-                        border: Border(
-                          top: BorderSide(
-                            color: Theme.of(context).dividerColor,
-                            width: 0.5,
-                          ),
-                        ),
-                      ),
-                      child: (isLandscape || shouldCenterInPortrait)
-                          ? Padding(
-                              padding: EdgeInsets.only(
-                                bottom: MediaQuery.of(context).padding.bottom,
-                              ),
-                              child: Center(
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: navItems.asMap().entries.map((entry) {
-                                    int itemIndex = entry.key;
-                                    BottomNavItem item = entry.value;
-
-                                    return GestureDetector(
-                                      onTap: () => pager.changePage(itemIndex),
-                                      child: Container(
-                                        width: 80,
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 8,
-                                        ),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              item.icon,
-                                              color: item.isSelected
-                                                  ? Theme.of(
-                                                      context,
-                                                    ).iconTheme.color
-                                                  : HSLColor.fromColor(
-                                                          Theme.of(context)
-                                                              .bottomAppBarTheme
-                                                              .color!,
-                                                        )
-                                                        .withLightness(0.8)
-                                                        .toColor(),
-                                              size: 24,
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              item.label,
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: item.isSelected
-                                                    ? Theme.of(
-                                                        context,
-                                                      ).iconTheme.color
-                                                    : HSLColor.fromColor(
-                                                            Theme.of(context)
-                                                                .bottomAppBarTheme
-                                                                .color!,
-                                                          )
-                                                          .withLightness(0.8)
-                                                          .toColor(),
-                                                fontWeight: item.isSelected
-                                                    ? FontWeight.w600
-                                                    : FontWeight.normal,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
-                              ),
-                            )
-                          : Padding(
-                              padding: EdgeInsets.only(
-                                bottom: MediaQuery.of(context).padding.bottom,
-                              ),
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: navItems.asMap().entries.map((entry) {
-                                    int itemIndex = entry.key;
-                                    BottomNavItem item = entry.value;
-
-                                    return GestureDetector(
-                                      onTap: () => pager.changePage(itemIndex),
-                                      child: Container(
-                                        width: 80,
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 8,
-                                        ),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              item.icon,
-                                              color: item.isSelected
-                                                  ? Theme.of(
-                                                      context,
-                                                    ).iconTheme.color
-                                                  : HSLColor.fromColor(
-                                                          Theme.of(context)
-                                                              .bottomAppBarTheme
-                                                              .color!,
-                                                        )
-                                                        .withLightness(0.8)
-                                                        .toColor(),
-                                              size: 24,
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              item.label,
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: item.isSelected
-                                                    ? Theme.of(
-                                                        context,
-                                                      ).iconTheme.color
-                                                    : HSLColor.fromColor(
-                                                            Theme.of(context)
-                                                                .bottomAppBarTheme
-                                                                .color!,
-                                                          )
-                                                          .withLightness(0.8)
-                                                          .toColor(),
-                                                fontWeight: item.isSelected
-                                                    ? FontWeight.w600
-                                                    : FontWeight.normal,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
-                              ),
-                            ),
-                    );
-                  },
-            );
-          },
+                      SizedBox(height: bottomInset * (1 - t)),
+                    ],
+                  ),
+                );
+              },
+              child: StreamBuilder<int>(
+                stream: pager.currentPage,
+                initialData: 0,
+                builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
+                  return StreamBuilder<AppSettings>(
+                    stream: Provider.of<SettingsBloc>(context).settings,
+                    builder: (context, settingsSnapshot) => PinepodsBottomNav(
+                      order: settingsSnapshot.data?.bottomBarOrder ?? defaultBottomBarOrder,
+                      selectedIndex: snapshot.data ?? 0,
+                      onSelect: pager.changePage,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1074,6 +831,8 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
         return const PinepodsSaved();
       case 'Podcasts':
         return const PinepodsPodcasts();
+      case 'People':
+        return const PinepodsPeople();
       case 'Downloads':
         return const Downloads();
       case 'History':
@@ -1084,52 +843,6 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
         return const EpisodeSearchPage();
       default:
         return const PinepodsHome(); // Default to Home
-    }
-  }
-
-  IconData _getSelectedIcon(String label) {
-    switch (label) {
-      case 'Home':
-        return Icons.home;
-      case 'Feed':
-        return Icons.rss_feed;
-      case 'Saved':
-        return Icons.bookmark;
-      case 'Podcasts':
-        return Icons.podcasts;
-      case 'Downloads':
-        return Icons.download;
-      case 'History':
-        return Icons.history;
-      case 'Playlists':
-        return Icons.playlist_play;
-      case 'Search':
-        return Icons.search;
-      default:
-        return Icons.home;
-    }
-  }
-
-  IconData _getUnselectedIcon(String label) {
-    switch (label) {
-      case 'Home':
-        return Icons.home_outlined;
-      case 'Feed':
-        return Icons.rss_feed_outlined;
-      case 'Saved':
-        return Icons.bookmark_outline;
-      case 'Podcasts':
-        return Icons.podcasts_outlined;
-      case 'Downloads':
-        return Icons.download_outlined;
-      case 'History':
-        return Icons.history_outlined;
-      case 'Playlists':
-        return Icons.playlist_play_outlined;
-      case 'Search':
-        return Icons.search_outlined;
-      default:
-        return Icons.home_outlined;
     }
   }
 
@@ -1188,8 +901,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                   showDialog(
                     context: context,
                     barrierDismissible: false,
-                    builder: (context) =>
-                        const Center(child: CircularProgressIndicator()),
+                    builder: (context) => const Center(child: CircularProgressIndicator()),
                   );
 
                   try {
@@ -1198,10 +910,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                     if (mounted) {
                       Navigator.of(context).pop(); // Close loading dialog
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Failed to load podcast: $e'),
-                          backgroundColor: Colors.red,
-                        ),
+                        SnackBar(content: Text('Failed to load podcast: $e'), backgroundColor: Colors.red),
                       );
                     }
                   }
@@ -1250,11 +959,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
 
       if (userId != null) {
         try {
-          isFollowing = await pinepodsService.checkPodcastExists(
-            podcast.title ?? 'Unknown Podcast',
-            url,
-            userId,
-          );
+          isFollowing = await pinepodsService.checkPodcastExists(podcast.title ?? 'Unknown Podcast', url, userId);
         } catch (e) {
           print('Failed to check if podcast exists: $e');
         }
@@ -1302,13 +1007,34 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
   }
 }
 
+/// Tracks whether the tab navigator is showing its root page. Dialogs and
+/// sheets are ignored so they don't hide the nav bar.
+class _TabDepthObserver extends NavigatorObserver {
+  final ValueNotifier<bool> atRoot = ValueNotifier<bool>(true);
+  int _pages = 0;
+
+  void _update(Route<dynamic> route, int delta) {
+    if (route is! PageRoute) return;
+    _pages += delta;
+    // Post-frame: these callbacks fire during the navigator's build.
+    WidgetsBinding.instance.addPostFrameCallback((_) => atRoot.value = _pages <= 1);
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => _update(route, 1);
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => _update(route, -1);
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) => _update(route, -1);
+}
+
 class TitleWidget extends StatelessWidget {
   TitleWidget({super.key});
 
   String _generateGravatarUrl(String email, {int size = 40}) {
-    final hash = md5
-        .convert(utf8.encode(email.toLowerCase().trim()))
-        .toString();
+    final hash = md5.convert(utf8.encode(email.toLowerCase().trim())).toString();
     return 'https://www.gravatar.com/avatar/$hash?s=$size&d=identicon';
   }
 
@@ -1318,18 +1044,13 @@ class TitleWidget extends StatelessWidget {
       builder: (context, settingsBloc, child) {
         final settings = settingsBloc.currentSettings;
         final username = settings.pinepodsUsername;
-        final email = settings.pinepodsEmail;
+        final email = settings.pinepodsUseGravatar ? settings.pinepodsEmail : null;
 
         if (username == null || username.isEmpty) {
           // Fallback to PinePods logo if no user is logged in - make it clickable
           return GestureDetector(
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const PinepodsUserStats(),
-                ),
-              );
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const PinepodsUserStats()));
             },
             child: Padding(
               padding: const EdgeInsets.only(left: 2.0),
@@ -1347,9 +1068,7 @@ class TitleWidget extends StatelessWidget {
                   Text(
                     'Pods',
                     style: TextStyle(
-                      color: Theme.of(context).brightness == Brightness.light
-                          ? Colors.black
-                          : Colors.white,
+                      color: Theme.of(context).brightness == Brightness.light ? Colors.black : Colors.white,
                       fontWeight: FontWeight.bold,
                       fontFamily: 'MontserratRegular',
                       fontSize: 18,
@@ -1363,12 +1082,7 @@ class TitleWidget extends StatelessWidget {
 
         return GestureDetector(
           onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const PinepodsUserStats(),
-              ),
-            );
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const PinepodsUserStats()));
           },
           child: Padding(
             padding: const EdgeInsets.only(left: 2.0),
@@ -1395,12 +1109,7 @@ class TitleWidget extends StatelessWidget {
                             },
                           ),
                         )
-                      : Image.asset(
-                          'assets/images/pinepods-logo.png',
-                          width: 36,
-                          height: 36,
-                          fit: BoxFit.cover,
-                        ),
+                      : Image.asset('assets/images/pinepods-logo.png', width: 36, height: 36, fit: BoxFit.cover),
                 ),
                 const SizedBox(width: 12),
                 // Username
@@ -1408,9 +1117,7 @@ class TitleWidget extends StatelessWidget {
                   child: Text(
                     username,
                     style: TextStyle(
-                      color: Theme.of(context).brightness == Brightness.light
-                          ? Colors.black
-                          : Colors.white,
+                      color: Theme.of(context).brightness == Brightness.light ? Colors.black : Colors.white,
                       fontWeight: FontWeight.w600,
                       fontSize: 16,
                     ),
@@ -1424,16 +1131,4 @@ class TitleWidget extends StatelessWidget {
       },
     );
   }
-}
-
-class BottomNavItem {
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-
-  BottomNavItem({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-  });
 }

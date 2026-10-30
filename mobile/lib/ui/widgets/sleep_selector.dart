@@ -10,6 +10,7 @@ import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/ui/widgets/slider_handle.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This widget allows the user to change the playback speed and toggle audio effects.
 ///
@@ -61,16 +62,18 @@ class _SleepSelectorWidgetState extends State<SleepSelectorWidget> {
                             sl = '${L.of(context)!.semantic_current_value_label} ${L.of(context)!.sleep_episode_label}';
                           case SleepType.episodes:
                             sl = '${L.of(context)!.semantic_current_value_label} ${s.episodeCount} episodes';
+                          case SleepType.chapter:
+                            sl = '${L.of(context)!.semantic_current_value_label} end of chapter';
                         }
                       }
 
                       return IconButton(
                         icon: sleepSnapshot.data?.type != SleepType.none ? Icon(
-                          Icons.bedtime,
+                          PhosphorIconsFill.moon,
                           semanticLabel: '${L.of(context)!.sleep_timer_label}. $sl',
                           size: 20.0,
                         ) : Icon(
-                          Icons.bedtime_outlined,
+                          PhosphorIconsRegular.moon,
                           semanticLabel: L.of(context)!.sleep_timer_label,
                           size: 20.0,
                         ),
@@ -167,6 +170,12 @@ class _SleepSliderState extends State<SleepSlider> {
                         '${L.of(context)!.semantic_current_value_label} ${L.of(context)!.sleep_episode_label}',
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
+                if (s != null && s.type == SleepType.chapter)
+                  Text(
+                    '(End of chapter)',
+                    semanticsLabel: '${L.of(context)!.semantic_current_value_label} end of chapter',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
                 if (s != null && s.type == SleepType.episodes)
                   Text(
                     '(${s.episodeCount} episodes)',
@@ -238,6 +247,13 @@ class _SleepSliderState extends State<SleepSlider> {
                         ),
                         current: s,
                       ),
+                      if (audioBloc.nowPlaying?.valueOrNull?.hasChapters ?? false) ...[
+                        const Divider(),
+                        SleepSelectorEntry(
+                          sleep: Sleep(type: SleepType.chapter),
+                          current: s,
+                        ),
+                      ],
                       const Divider(),
                       SleepSelectorEntry(
                         sleep: Sleep(
@@ -332,9 +348,14 @@ class SleepSelectorEntry extends StatelessWidget {
                 '${sleep.episodeCount} episodes',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
+            if (sleep.type == SleepType.chapter)
+              Text(
+                'End of chapter',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
             if (sleep == current)
               const Icon(
-                Icons.check,
+                PhosphorIconsRegular.check,
                 size: 18.0,
               ),
           ],

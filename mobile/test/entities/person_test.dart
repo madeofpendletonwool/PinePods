@@ -55,4 +55,15 @@ void main() {
       expect(a, isNot(equals(b)));
     });
   });
+
+  group('personId', () {
+    test('survives a round trip through the stored map', () {
+      final person = Person(name: 'Host', personId: 12);
+      expect(Person.fromMap(person.toMap()).personId, 12);
+    });
+
+    test('older stored people without one still load', () {
+      expect(Person.fromMap({'name': 'Host'}).personId, isNull);
+    });
+  });
 }

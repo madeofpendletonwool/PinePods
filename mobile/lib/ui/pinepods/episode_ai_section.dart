@@ -9,14 +9,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
-
-/// A single transcript cue parsed from the stored `segments` JSON.
-class _Cue {
-  final double start;
-  final double end;
-  final String text;
-  const _Cue({required this.start, required this.end, required this.text});
-}
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class EpisodeAiSection extends StatefulWidget {
   final PinepodsEpisode episode;
@@ -50,7 +43,8 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
   AiStatus _aiStatus = const AiStatus();
   StoredTranscript? _transcript;
   List<SkipSegment> _adSegments = const [];
-  List<_Cue> _cues = const [];
+  AdAudio? _adAudio;
+  List<TranscriptCue> _cues = const [];
   bool _busy = false; // guards Detect/Transcribe/review buttons
 
   @override
@@ -73,18 +67,19 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
       final results = await Future.wait([
         widget.pinepodsService.getEpisodeTranscript(
             widget.episode.episodeId, widget.userId),
-        widget.pinepodsService.getEpisodeSkipSegments(
+        widget.pinepodsService.getEpisodeSkipInfo(
             widget.episode.episodeId, widget.userId),
       ]);
       final transcript = results[0] as StoredTranscript?;
-      final segments = results[1] as List<SkipSegment>;
+      final info = results[1] as SkipInfo;
 
       if (mounted) {
         setState(() {
           _aiStatus = status;
           _transcript = transcript;
-          _adSegments = segments.where((s) => s.kind == 'ad').toList();
-          _cues = _parseCues(transcript?.segments);
+          _adSegments = info.segments.where((s) => s.kind == 'ad').toList();
+          _adAudio = info.adAudio;
+          _cues = transcript?.cues ?? const [];
           _loading = false;
         });
       }
@@ -97,38 +92,19 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
   // native player via the parent. Never caches a stale snapshot.
   Future<void> _reloadSegments() async {
     try {
-      final segments = await widget.pinepodsService
-          .getEpisodeSkipSegments(widget.episode.episodeId, widget.userId);
+      final info = await widget.pinepodsService
+          .getEpisodeSkipInfo(widget.episode.episodeId, widget.userId);
       if (mounted) {
-        setState(() => _adSegments = segments.where((s) => s.kind == 'ad').toList());
+        setState(() {
+          _adSegments = info.segments.where((s) => s.kind == 'ad').toList();
+          _adAudio = info.adAudio;
+        });
       }
       await widget.onSegmentsChanged();
     } catch (_) {}
   }
 
-  List<_Cue> _parseCues(String? segmentsJson) {
-    if (segmentsJson == null || segmentsJson.isEmpty) return const [];
-    try {
-      final raw = jsonDecode(segmentsJson);
-      if (raw is! List) return const [];
-      final cues = <_Cue>[];
-      for (final item in raw) {
-        if (item is! Map) continue;
-        final text = (item['text'] as String?)?.trim() ?? '';
-        if (text.isEmpty) continue;
-        cues.add(_Cue(
-          start: (item['start'] as num?)?.toDouble() ?? 0.0,
-          end: (item['end'] as num?)?.toDouble() ?? 0.0,
-          text: text,
-        ));
-      }
-      return cues;
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  bool _cueIsAd(_Cue cue) {
+  bool _cueIsAd(TranscriptCue cue) {
     for (final ad in _adSegments) {
       // Overlap test (matches the web player's ad highlight).
       if (cue.start < ad.endTime && cue.end > ad.startTime) return true;
@@ -154,15 +130,58 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
     );
   }
 
+  /// Many podcasts insert different ads every time an episode is fetched, so
+  /// ads found on a one-off copy can land at the wrong times in the copy that
+  /// gets played. When the episode isn't on the server, offer to download it
+  /// there first so detection and playback use the same copy.
   Future<void> _detectAds() async {
+    if (_busy) return;
+    if (!widget.episode.downloaded && _aiStatus.downloadsEnabled) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Not downloaded to the server'),
+          content: const Text(
+            "Many podcasts insert different ads each time an episode is "
+            "fetched, so ads found on a one-off copy can land at the wrong "
+            "times when you play it. For exact skips, download it to the "
+            "server first; ads are then detected on the copy you'll play.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'stream'),
+              child: const Text('Detect anyway'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, 'download'),
+              child: const Text('Download first'),
+            ),
+          ],
+        ),
+      );
+      if (choice == null) return;
+      await _startDetect(downloadFirst: choice == 'download');
+    } else {
+      await _startDetect(downloadFirst: false);
+    }
+  }
+
+  Future<void> _startDetect({required bool downloadFirst}) async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final ok = await widget.pinepodsService
-          .detectAds(widget.episode.episodeId, widget.userId, force: true);
-      _snack(ok
-          ? 'Ad detection queued — this can take a few minutes.'
-          : 'AI is unavailable right now.');
+      final ok = await widget.pinepodsService.detectAds(
+          widget.episode.episodeId, widget.userId,
+          force: true, downloadFirst: downloadFirst);
+      _snack(!ok
+          ? 'AI is unavailable right now.'
+          : downloadFirst
+              ? 'Downloading to the server — ads will be detected on that copy.'
+              : 'Ad detection queued — this can take a few minutes.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -214,7 +233,7 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
       const SizedBox(height: 32),
       Row(
         children: [
-          Icon(Icons.auto_awesome, size: 20, color: theme.primaryColor),
+          Icon(PhosphorIconsRegular.sparkle, size: 20, color: theme.primaryColor),
           const SizedBox(width: 8),
           Text(
             'AI Features',
@@ -234,19 +253,26 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
         if (_aiStatus.adRemovalReady)
           OutlinedButton.icon(
             onPressed: _busy ? null : _detectAds,
-            icon: const Icon(Icons.block, size: 18),
+            icon: const Icon(PhosphorIconsRegular.prohibit, size: 18),
             label: const Text('Detect ads'),
           ),
         if (_aiStatus.transcriptionReady)
           OutlinedButton.icon(
             onPressed: _busy ? null : _transcribe,
-            icon: const Icon(Icons.record_voice_over, size: 18),
+            icon: const Icon(PhosphorIconsRegular.userSound, size: 18),
             label: Text(_transcript?.status == 'complete'
                 ? 'Re-transcribe'
                 : 'Transcribe'),
           ),
       ],
     ));
+
+    // How the ad times relate to the copy this user plays.
+    final accuracy = _adSegments.isEmpty ? null : _buildAdAccuracy(theme);
+    if (accuracy != null) {
+      children.add(const SizedBox(height: 12));
+      children.add(accuracy);
+    }
 
     // Detected-ads review list.
     if (_adSegments.isNotEmpty) {
@@ -284,6 +310,64 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
     );
   }
 
+  Widget? _buildAdAccuracy(ThemeData theme) {
+    final String text;
+    final bool ok;
+    var offerDownload = false;
+    switch (_adAudio?.download) {
+      case 'match':
+        ok = true;
+        text = 'Ads were found on your server download, so skips line up '
+            'exactly.';
+      case 'mismatch':
+        ok = false;
+        text = 'Your server download is a different copy from the one these '
+            'ads were found on, so their times may be off. Detect ads again '
+            'to match your download.';
+      case 'none':
+        ok = false;
+        offerDownload = _aiStatus.downloadsEnabled;
+        text = "You're streaming this episode. If the podcast inserts ads "
+            'dynamically, they can sit at different times than detected; '
+            "Pinepods only skips them when the stream's length matches the "
+            'analyzed copy. Download it to the server for exact skips.';
+      default:
+        return null;
+    }
+    final color = ok ? Colors.green : Colors.orange;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: color, width: 3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(ok ? PhosphorIconsRegular.checkCircle : PhosphorIconsRegular.warning,
+                  size: 18, color: color),
+              const SizedBox(width: 8),
+              Expanded(child: Text(text, style: theme.textTheme.bodySmall)),
+            ],
+          ),
+          if (offerDownload) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : () => _startDetect(downloadFirst: true),
+              icon: const Icon(PhosphorIconsRegular.cloudArrowDown, size: 18),
+              label: const Text('Download to server'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildAdRow(SkipSegment ad, ThemeData theme) {
     final skipping = ad.isActiveAd;
     return Padding(
@@ -312,14 +396,14 @@ class _EpisodeAiSectionState extends State<EpisodeAiSection> {
           IconButton(
             tooltip: 'Confirm ad (skip)',
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.check, size: 20),
+            icon: const Icon(PhosphorIconsRegular.check, size: 20),
             color: Colors.green,
             onPressed: _busy ? null : () => _review(ad, 'confirmed'),
           ),
           IconButton(
             tooltip: 'Keep (do not skip)',
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.close, size: 20),
+            icon: const Icon(PhosphorIconsRegular.x, size: 20),
             color: Colors.red,
             onPressed: _busy ? null : () => _review(ad, 'rejected'),
           ),

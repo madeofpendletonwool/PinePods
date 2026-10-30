@@ -11,50 +11,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  backend-tests:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:latest
-        env:
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: test_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.x"
-
-      - name: Setup test environment
-        run: |
-          chmod +x ./setup-tests.sh
-          ./setup-tests.sh
-
-      - name: Run backend tests
-        env:
-          TEST_MODE: true
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: test_user
-          DB_PASSWORD: test_password
-          DB_NAME: test_db
-          DB_TYPE: postgresql
-          TEST_DB_TYPE: postgresql
-          PYTHONPATH: ${{ github.workspace }}
-        run: |
-          chmod +x ./run-tests.sh
-          ./run-tests.sh postgresql
+  # Backend (rust-api) tests live in rust-api-tests.yml.
 
   frontend-tests:
     runs-on: ubuntu-latest

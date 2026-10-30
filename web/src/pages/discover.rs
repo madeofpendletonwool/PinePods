@@ -137,8 +137,9 @@ pub fn discover() -> Html {
     let history = BrowserHistory::new();
     let nav_to_person = {
         let history = history.clone();
-        Callback::from(move |name: String| {
-            history.push(format!("/person/{}", name));
+        // Discover hosts come from PodPeopleDB; the person page resolves the id.
+        Callback::from(move |podpeople_id: i32| {
+            history.push(format!("/person/pp-{}", podpeople_id));
         })
     };
 
@@ -183,12 +184,11 @@ pub fn discover() -> Html {
     let i18n_shows_count = i18n.t("discover.shows_count").to_string();
     let i18n_hosts_count = i18n.t("discover.hosts_count").to_string();
 
-    let render_host = |host: &DiscoverHost, on_nav: &Callback<String>| -> Html {
-        let name = host.name.clone();
+    let render_host = |host: &DiscoverHost, on_nav: &Callback<i32>| -> Html {
         let onclick = {
             let on_nav = on_nav.clone();
-            let name = name.clone();
-            Callback::from(move |_: MouseEvent| on_nav.emit(name.clone()))
+            let id = host.id;
+            Callback::from(move |_: MouseEvent| on_nav.emit(id))
         };
         let sub = if host.podcast_count > 0 {
             html! { <p class="text-xs item_container-text opacity-70">{ i18n_shows_count.replace("{count}", &host.podcast_count.to_string()) }</p> }

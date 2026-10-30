@@ -18,6 +18,8 @@ import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Sort direction options for history episodes
 enum HistorySortDirection {
@@ -48,6 +50,8 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
   String _errorMessage = '';
   List<PinepodsEpisode> _episodes = [];
   List<PinepodsEpisode> _filteredEpisodes = [];
+  // Position of each episode in [_episodes], for the context menu.
+  Map<PinepodsEpisode, int> _originalIndex = Map<PinepodsEpisode, int>.identity();
   final PinepodsService _pinepodsService = PinepodsService();
   // Use global audio service instead of creating local instance
   int? _contextMenuEpisodeIndex;
@@ -157,6 +161,8 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
           .toList();
     }
     _filteredEpisodes = filtered;
+    _originalIndex = Map<PinepodsEpisode, int>.identity()
+      ..addEntries([for (var i = 0; i < _episodes.length; i++) MapEntry(_episodes[i], i)]);
   }
 
   Future<void> _loadFavoritePodcastIds(int userId) async {
@@ -818,32 +824,12 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
 
     if (_episodes.isEmpty) {
       return const SliverFillRemaining(
+        hasScrollBody: false,
         child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.history,
-                size: 64,
-                color: Colors.grey,
-              ),
-              SizedBox(height: 16),
-              Text(
-                'No listening history',
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.grey,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Episodes you listen to will appear here',
-                style: TextStyle(
-                  color: Colors.grey,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+          child: SoftEmptyState(
+            icon: PhosphorIconsRegular.clockCounterClockwise,
+            title: 'No listening history',
+            body: 'Episodes you listen to will appear here',
           ),
         ),
       );
@@ -851,184 +837,64 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
 
     return MultiSliver(
       children: [
-        _buildSearchAndFilterBar(),
+        SliverToBoxAdapter(
+          child: SoftSectionHeader(
+            title: 'History',
+            count: _filteredEpisodes.length,
+            trailing: [
+              IconButton(
+                tooltip: 'Refresh',
+                icon: const Icon(PhosphorIconsRegular.arrowClockwise),
+                onPressed: _refresh,
+              ),
+            ],
+          ),
+        ),
+        ListToolbar.sliver(context, _buildToolbar()),
         _buildEpisodesList(),
       ],
     );
   }
 
-  Widget _buildSearchAndFilterBar() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Search and Sort row
-            Row(
-              children: [
-                // Search field
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search episodes...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _searchController.clear();
-                              },
-                            )
-                          : null,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      filled: true,
-                      fillColor: Theme.of(context).cardColor,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // Sort dropdown
-                Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Theme.of(context).dividerColor,
-                    ),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<HistorySortDirection>(
-                      value: _sortDirection,
-                      icon: const Icon(Icons.sort),
-                      items: const [
-                        DropdownMenuItem(
-                          value: HistorySortDirection.newestFirst,
-                          child: Text('Newest'),
-                        ),
-                        DropdownMenuItem(
-                          value: HistorySortDirection.oldestFirst,
-                          child: Text('Oldest'),
-                        ),
-                        DropdownMenuItem(
-                          value: HistorySortDirection.shortestFirst,
-                          child: Text('Shortest'),
-                        ),
-                        DropdownMenuItem(
-                          value: HistorySortDirection.longestFirst,
-                          child: Text('Longest'),
-                        ),
-                        DropdownMenuItem(
-                          value: HistorySortDirection.titleAZ,
-                          child: Text('Title A-Z'),
-                        ),
-                        DropdownMenuItem(
-                          value: HistorySortDirection.titleZA,
-                          child: Text('Title Z-A'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          _setSortDirection(value);
-                        }
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // Filter chips
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  // Clear all chip
-                  _buildFilterChip(
-                    label: 'Clear All',
-                    icon: Icons.clear_all,
-                    isActive: false,
-                    onTap: _clearAllFilters,
-                  ),
-                  const SizedBox(width: 8),
-                  // Completed chip
-                  _buildFilterChip(
-                    label: 'Completed',
-                    icon: Icons.check_circle_outline,
-                    isActive: _activeFilter == HistoryFilter.completed,
-                    onTap: () {
-                      _setFilter(_activeFilter == HistoryFilter.completed
-                          ? HistoryFilter.all
-                          : HistoryFilter.completed);
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  // In Progress chip
-                  _buildFilterChip(
-                    label: 'In Progress',
-                    icon: Icons.hourglass_bottom,
-                    isActive: _activeFilter == HistoryFilter.inProgress,
-                    onTap: () {
-                      _setFilter(_activeFilter == HistoryFilter.inProgress
-                          ? HistoryFilter.all
-                          : HistoryFilter.inProgress);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
+  ListToolbar<HistorySortDirection> _buildToolbar() {
+    return ListToolbar<HistorySortDirection>(
+      searchController: _searchController,
+      searchHint: 'Search episodes',
+      filters: [
+        ToolbarFilter(
+          label: 'All',
+          selected: _activeFilter == HistoryFilter.all && !_favoritesOnly,
+          onTap: _clearAllFilters,
         ),
-      ),
-    );
-  }
-
-  Widget _buildFilterChip({
-    required String label,
-    required IconData icon,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    return Material(
-      color: isActive ? theme.primaryColor : theme.cardColor,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isActive ? theme.primaryColor : theme.dividerColor,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isActive ? Colors.white : theme.iconTheme.color,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isActive ? Colors.white : theme.textTheme.bodyMedium?.color,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
+        ToolbarFilter(
+          label: 'In progress',
+          selected: _activeFilter == HistoryFilter.inProgress,
+          onTap: () => _setFilter(
+              _activeFilter == HistoryFilter.inProgress ? HistoryFilter.all : HistoryFilter.inProgress),
         ),
-      ),
+        ToolbarFilter(
+          label: 'Completed',
+          selected: _activeFilter == HistoryFilter.completed,
+          onTap: () => _setFilter(
+              _activeFilter == HistoryFilter.completed ? HistoryFilter.all : HistoryFilter.completed),
+        ),
+        ToolbarFilter(
+          label: 'Favorites',
+          icon: _favoritesOnly ? PhosphorIconsFill.star : PhosphorIconsRegular.star,
+          selected: _favoritesOnly,
+          onTap: _toggleFavoritesFilter,
+        ),
+      ],
+      sortOptions: const {
+        HistorySortDirection.newestFirst: 'Newest first',
+        HistorySortDirection.oldestFirst: 'Oldest first',
+        HistorySortDirection.shortestFirst: 'Shortest first',
+        HistorySortDirection.longestFirst: 'Longest first',
+        HistorySortDirection.titleAZ: 'Title A–Z',
+        HistorySortDirection.titleZA: 'Title Z–A',
+      },
+      sortValue: _sortDirection,
+      onSort: _setSortDirection,
     );
   }
 
@@ -1037,36 +903,12 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
     if (_filteredEpisodes.isEmpty &&
         !_isLoadingMore &&
         (hasActiveSearch || _favoritesOnly)) {
-      return SliverFillRemaining(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.filter_list_off,
-                size: 64,
-                color: Theme.of(context).primaryColor,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No episodes found',
-                style: Theme.of(context).textTheme.titleLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _getNoResultsMessage(),
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              TextButton.icon(
-                onPressed: _clearAllFilters,
-                icon: const Icon(Icons.clear_all),
-                label: const Text('Clear Filters'),
-              ),
-            ],
-          ),
+      return SliverToBoxAdapter(
+        child: SoftEmptyState(
+          icon: PhosphorIconsRegular.funnelSimpleX,
+          title: 'No episodes found',
+          body: _getNoResultsMessage(),
+          action: TextButton(onPressed: _clearAllFilters, child: const Text('Clear filters')),
         ),
       );
     }
@@ -1076,46 +918,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
-          if (index == 0) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _getHeaderTitle(),
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          _favoritesOnly ? Icons.star : Icons.star_border,
-                          color: _favoritesOnly
-                              ? Colors.amber
-                              : Theme.of(context).iconTheme.color,
-                        ),
-                        tooltip: _favoritesOnly
-                            ? 'Show all podcasts'
-                            : 'Show favorites only',
-                        onPressed: _toggleFavoritesFilter,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.refresh),
-                        onPressed: _refresh,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final episodeIndex = index - 1;
+          final episodeIndex = index;
 
           // Footer: triggers load more when it becomes visible
           if (showFooter && episodeIndex == _filteredEpisodes.length) {
@@ -1130,7 +933,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
 
           if (episodeIndex >= _filteredEpisodes.length) return null;
           final episode = _filteredEpisodes[episodeIndex];
-          final originalIndex = _episodes.indexOf(episode);
+          final originalIndex = _originalIndex[episode] ?? -1;
           return PinepodsEpisodeCard(
             episode: episode,
             onTap: () {
@@ -1147,19 +950,9 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
             onPlayPressed: () => _playEpisode(episode),
           );
         },
-        childCount: _filteredEpisodes.length + 1 + (showFooter ? 1 : 0),
+        childCount: _filteredEpisodes.length + (showFooter ? 1 : 0),
       ),
     );
-  }
-
-  String _getHeaderTitle() {
-    final count = _filteredEpisodes.length;
-    final hasFilters = _searchQuery.isNotEmpty || _activeFilter != HistoryFilter.all;
-
-    if (hasFilters) {
-      return 'Results ($count)';
-    }
-    return 'Listening History ($count)';
   }
 
   String _getNoResultsMessage() {

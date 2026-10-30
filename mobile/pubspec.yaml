@@ -35,6 +35,8 @@ dependencies:
   http: ^1.6.0
   intl: ^0.20.2
   logging: ^1.0.2
+  # Version is pinned by the Flutter SDK.
+  material_color_utilities: any
   meta: ^1.16.0
   mp3_info: ^0.2.3
   package_info_plus: ^10.2.0
@@ -60,7 +62,6 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-
 dev_dependencies:
   mockito: ^5.7.0
   # mocktail needs no codegen/build_runner - preferred for new tests. mockito is
@@ -109,3 +110,13 @@ flutter:
     - family: MontserratBold
       fonts:
         - asset: assets/fonts/Montserrat-Bold.otf
+    # Phosphor icons (MIT, see assets/fonts/Phosphor-LICENSE.txt); constants in lib/ui/icons/phosphor_icons.dart
+    - family: PhosphorRegular
+      fonts:
+        - asset: assets/fonts/Phosphor-Regular.ttf
+    - family: PhosphorFill
+      fonts:
+        - asset: assets/fonts/Phosphor-Fill.ttf
+    - family: PhosphorBold
+      fonts:
+        - asset: assets/fonts/Phosphor-Bold.ttf

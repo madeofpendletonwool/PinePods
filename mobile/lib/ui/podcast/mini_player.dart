@@ -2,27 +2,35 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:async';
-import 'dart:ui';
-
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/ui/podcast/now_playing.dart';
+import 'package:pinepods_mobile/ui/podcast/skip_interval_icon.dart';
 import 'package:pinepods_mobile/ui/widgets/placeholder_builder.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// Displays a mini podcast player widget if a podcast is playing or paused.
 ///
 /// If stopped a zero height box is built instead. Tapping on the mini player
 /// will open the main player window.
+///
+/// The app shell builds one instance outside the tab navigator, so it stays
+/// mounted while pages are pushed and popped above it.
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({
     super.key,
   });
+
+  static bool _isVisible(AudioState? state, Episode? episode) {
+    if (episode == null) return false;
+    return state != null && state != AudioState.stopped && state != AudioState.none;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,332 +38,203 @@ class MiniPlayer extends StatelessWidget {
 
     return StreamBuilder<AudioState>(
         stream: audioBloc.playingState,
-        initialData: AudioState.stopped,
+        initialData: audioBloc.playingState?.valueOrNull,
         builder: (context, snapshot) {
-          final active = snapshot.data != AudioState.stopped &&
-              snapshot.data != AudioState.none &&
-              snapshot.data != AudioState.error;
+          final active = _isVisible(snapshot.data, audioBloc.nowPlaying?.valueOrNull);
           return AnimatedSize(
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeOut,
-            child: active ? _MiniPlayerBuilder() : const SizedBox.shrink(),
+            child: active
+                ? const Material(type: MaterialType.transparency, child: _MiniPlayerBody())
+                : const SizedBox(width: double.infinity),
           );
         });
   }
 }
 
-class _MiniPlayerBuilder extends StatefulWidget {
-  @override
-  _MiniPlayerBuilderState createState() => _MiniPlayerBuilderState();
-}
+class _MiniPlayerBody extends StatelessWidget {
+  const _MiniPlayerBody();
 
-class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _playPauseController;
-  late StreamSubscription<AudioState> _audioStateSubscription;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _playPauseController = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 300));
-    _playPauseController.value = 1;
-
-    _audioStateListener();
-  }
-
-  @override
-  void dispose() {
-    _audioStateSubscription.cancel();
-    _playPauseController.dispose();
-
-    super.dispose();
-  }
+  void _openNowPlaying(BuildContext context) => showNowPlaying(context);
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
     final audioBloc = Provider.of<AudioBloc>(context, listen: false);
-    final width = MediaQuery.of(context).size.width;
     final placeholderBuilder = PlaceholderBuilder.of(context);
+    final fallbackImage = const Image(image: AssetImage('assets/images/favicon.png'));
 
-    return Dismissible(
-      key: UniqueKey(),
-      confirmDismiss: (direction) async {
-        await _audioStateSubscription.cancel();
-        audioBloc.transitionState(TransitionState.stop);
-        return true;
-      },
-      direction: DismissDirection.startToEnd,
-      background: Container(
-        color: Theme.of(context).colorScheme.surface,
-        height: 64.0,
-      ),
-      child: GestureDetector(
-        key: const Key('miniplayergesture'),
-        onTap: () async {
-          await _audioStateSubscription.cancel();
-
-          if (context.mounted) {
-            showModalBottomSheet<void>(
-              context: context,
-              routeSettings: const RouteSettings(name: 'nowplaying'),
-              isScrollControlled: true,
-              builder: (BuildContext modalContext) {
-                final contextPadding = MediaQuery.of(context).padding.top;
-                final modalPadding = MediaQuery.of(modalContext).padding.top;
-                
-                // Get the actual system safe area from the window (works on both iOS and Android)
-                final window = PlatformDispatcher.instance.views.first;
-                final systemPadding = window.padding.top / window.devicePixelRatio;
-                
-                // Use the best available padding value
-                double topPadding;
-                if (contextPadding > 0) {
-                  topPadding = contextPadding;
-                } else if (modalPadding > 0) {
-                  topPadding = modalPadding;
-                } else {
-                  // Fall back to system padding if both contexts have 0
-                  topPadding = systemPadding;
-                }
-                
-                
-                return Padding(
-                  padding: EdgeInsets.only(top: topPadding),
-                  child: const NowPlaying(),
-                );
-              },
-            ).then((_) {
-              _audioStateListener();
-            });
-          }
-        },
-        child: Semantics(
-          header: true,
-          label: L.of(context)!.semantics_mini_player_header,
-          child: Container(
-            height: 66,
-            decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                border: Border(
-                  top: Divider.createBorderSide(context,
-                      width: 1.0, color: Theme.of(context).dividerColor),
-                  bottom: Divider.createBorderSide(context,
-                      width: 0.0, color: Theme.of(context).dividerColor),
-                )),
-            child: Padding(
-              padding: const EdgeInsets.only(left: 4.0, right: 4.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  StreamBuilder<Episode?>(
-                      stream: audioBloc.nowPlaying,
-                      initialData: audioBloc.nowPlaying?.valueOrNull,
-                      builder: (context, snapshot) {
-                        return StreamBuilder<AudioState>(
+    return StreamBuilder<Episode?>(
+        stream: audioBloc.nowPlaying,
+        initialData: audioBloc.nowPlaying?.valueOrNull,
+        builder: (context, snapshot) {
+          final episode = snapshot.data;
+          return Dismissible(
+            key: ValueKey('mini-${episode?.guid}'),
+            confirmDismiss: (direction) async {
+              audioBloc.transitionState(TransitionState.stop);
+              return true;
+            },
+            direction: DismissDirection.startToEnd,
+            background: Container(color: theme.colorScheme.surface),
+            child: GestureDetector(
+              key: const Key('miniplayergesture'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _openNowPlaying(context),
+              child: Semantics(
+                header: true,
+                label: L.of(context)!.semantics_mini_player_header,
+                child: Container(
+                  height: 66,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    border: Border(
+                      top: Divider.createBorderSide(context, width: 1.0, color: theme.dividerColor),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      _ProgressLine(audioBloc: audioBloc),
+                      Expanded(
+                        child: StreamBuilder<AudioState>(
                             stream: audioBloc.playingState,
+                            initialData: audioBloc.playingState?.valueOrNull,
                             builder: (context, stateSnapshot) {
-                              var playing =
-                                  stateSnapshot.data == AudioState.playing;
+                              final state = stateSnapshot.data;
+                              final playing = state == AudioState.playing;
+                              final loading = state == AudioState.buffering || state == AudioState.starting;
+                              final failed = state == AudioState.error;
 
                               return Row(
-                                mainAxisAlignment: MainAxisAlignment.start,
                                 children: <Widget>[
-                                  SizedBox(
-                                    height: 58.0,
-                                    width: 58.0,
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
                                     child: ExcludeSemantics(
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(8.0),
-                                        child: snapshot.hasData
+                                      child: SizedBox(
+                                        height: 46,
+                                        width: 46,
+                                        child: episode?.imageUrl != null
                                             ? PodcastImage(
-                                                key: Key(
-                                                    'mini${snapshot.data!.imageUrl}'),
-                                                url: snapshot.data!.imageUrl!,
-                                                width: 58.0,
-                                                height: 58.0,
-                                                borderRadius: 4.0,
-                                                placeholder: placeholderBuilder !=
-                                                        null
-                                                    ? placeholderBuilder
-                                                        .builder()(context)
-                                                    : const Image(
-                                                        image: AssetImage(
-                                                            'assets/images/favicon.png')),
+                                                key: Key('mini${episode!.imageUrl}'),
+                                                url: episode.imageUrl!,
+                                                width: 46,
+                                                height: 46,
+                                                borderRadius: 8.0,
+                                                placeholder: placeholderBuilder?.builder()(context) ?? fallbackImage,
                                                 errorPlaceholder:
-                                                    placeholderBuilder != null
-                                                        ? placeholderBuilder
-                                                                .errorBuilder()(
-                                                            context)
-                                                        : const Image(
-                                                            image: AssetImage(
-                                                                'assets/images/favicon.png')),
+                                                    placeholderBuilder?.errorBuilder()(context) ?? fallbackImage,
                                               )
-                                            : Container(),
+                                            : const SizedBox.shrink(),
                                       ),
                                     ),
                                   ),
                                   Expanded(
-                                      flex: 1,
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: <Widget>[
-                                          Text(
-                                            snapshot.data?.title ?? '',
-                                            overflow: TextOverflow.ellipsis,
-                                            style: textTheme.bodyMedium,
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: <Widget>[
+                                        Text(
+                                          episode?.title ?? '',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          failed ? "Couldn't play this episode · tap ↻ to retry" : episode?.author ?? '',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: textTheme.bodySmall?.copyWith(
+                                            color: failed ? theme.colorScheme.error : theme.hintColor,
                                           ),
-                                          Padding(
-                                            padding:
-                                                const EdgeInsets.only(top: 4.0),
-                                            child: Text(
-                                              snapshot.data?.author ?? '',
-                                              overflow: TextOverflow.ellipsis,
-                                              style: textTheme.bodySmall,
-                                            ),
-                                          ),
-                                        ],
-                                      )),
-                                  SizedBox(
-                                    height: 52.0,
-                                    width: 52.0,
-                                    child: TextButton(
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 0.0),
-                                        shape: CircleBorder(
-                                            side: BorderSide(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .surface,
-                                                width: 0.0)),
-                                      ),
-                                      onPressed: () {
-                                        if (playing) {
-                                          audioBloc.transitionState(
-                                              TransitionState.fastforward);
-                                        }
-                                      },
-                                      child: Icon(
-                                        Icons.forward_30,
-                                        semanticLabel: L
-                                            .of(context)!
-                                            .fast_forward_button_label,
-                                        size: 36.0,
-                                      ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  SizedBox(
-                                    height: 52.0,
-                                    width: 52.0,
-                                    child: TextButton(
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 0.0),
-                                        shape: CircleBorder(
-                                            side: BorderSide(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .surface,
-                                                width: 0.0)),
+                                  if (!failed)
+                                    IconButton(
+                                      onPressed: playing
+                                          ? () => audioBloc.transitionState(TransitionState.fastforward)
+                                          : null,
+                                      icon: SkipIntervalIcon(
+                                        icon: PhosphorIconsRegular.arrowClockwise,
+                                        seconds: Provider.of<SettingsBloc>(context, listen: false)
+                                            .currentSettings
+                                            .fastForwardInterval,
+                                        size: 32,
+                                        semanticLabel: L.of(context)!.fast_forward_button_label,
                                       ),
-                                      onPressed: () {
-                                        if (playing) {
-                                          _pause(audioBloc);
-                                        } else {
-                                          _play(audioBloc);
-                                        }
-                                      },
-                                      child: AnimatedIcon(
-                                        semanticLabel: playing
-                                            ? L.of(context)!.pause_button_label
-                                            : L.of(context)!.play_button_label,
-                                        size: 48.0,
-                                        icon: AnimatedIcons.play_pause,
-                                        color:
-                                            Theme.of(context).iconTheme.color,
-                                        progress: _playPauseController,
+                                    ),
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: SizedBox(
+                                      width: 48,
+                                      height: 48,
+                                      child: AnimatedSwitcher(
+                                        duration: const Duration(milliseconds: 180),
+                                        child: loading
+                                            ? const Padding(
+                                                key: ValueKey('loading'),
+                                                padding: EdgeInsets.all(13),
+                                                child: CircularProgressIndicator(strokeWidth: 2.4),
+                                              )
+                                            : IconButton(
+                                                key: ValueKey(failed ? 'retry' : playing),
+                                                iconSize: 40,
+                                                padding: EdgeInsets.zero,
+                                                onPressed: () => audioBloc.transitionState(
+                                                  playing ? TransitionState.pause : TransitionState.play,
+                                                ),
+                                                icon: Icon(
+                                                  failed
+                                                      ? PhosphorIconsRegular.arrowClockwise
+                                                      : playing
+                                                          ? PhosphorIconsFill.pause
+                                                          : PhosphorIconsFill.play,
+                                                  semanticLabel: playing
+                                                      ? L.of(context)!.pause_button_label
+                                                      : L.of(context)!.play_button_label,
+                                                ),
+                                              ),
                                       ),
                                     ),
                                   ),
                                 ],
                               );
-                            });
-                      }),
-                  StreamBuilder<PositionState>(
-                      stream: audioBloc.playPosition,
-                      initialData: audioBloc.playPosition?.valueOrNull,
-                      builder: (context, snapshot) {
-                        var cw = 0.0;
-                        var position = snapshot.hasData
-                            ? snapshot.data!.position
-                            : const Duration(seconds: 0);
-                        var length = snapshot.hasData
-                            ? snapshot.data!.length
-                            : const Duration(seconds: 0);
-
-                        if (length.inSeconds > 0) {
-                          final pc = length.inSeconds / position.inSeconds;
-                          cw = width / pc;
-                        }
-
-                        return Container(
-                          width: cw,
-                          height: 1.0,
-                          color: Theme.of(context).primaryColor,
-                        );
-                      }),
-                ],
+                            }),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ),
-    );
+          );
+        });
   }
+}
 
-  /// We call this method to setup a listener for changing [AudioState]. This in turns calls upon the [_pauseController]
-  /// to animate the play/pause icon. The [AudioBloc] playingState method is backed by a [BehaviorSubject] so we'll
-  /// always get the current state when we subscribe. This, however, has a side effect causing the play/pause icon to
-  /// animate when returning from the full-size player, which looks a little odd. Therefore, on the first event we move
-  /// the controller to the correct state without animating. This feels a little hacky, but stops the UI from looking a
-  /// little odd.
-  void _audioStateListener() {
-    if (mounted) {
-      final audioBloc = Provider.of<AudioBloc>(context, listen: false);
-      var firstEvent = true;
+class _ProgressLine extends StatelessWidget {
+  final AudioBloc audioBloc;
 
-      _audioStateSubscription = audioBloc.playingState!.listen((event) {
-        if (event == AudioState.playing || event == AudioState.buffering) {
-          if (firstEvent) {
-            _playPauseController.value = 1;
-            firstEvent = false;
-          } else {
-            _playPauseController.forward();
-          }
-        } else {
-          if (firstEvent) {
-            _playPauseController.value = 0;
-            firstEvent = false;
-          } else {
-            _playPauseController.reverse();
-          }
-        }
-      });
-    }
-  }
+  const _ProgressLine({required this.audioBloc});
 
-  void _play(AudioBloc audioBloc) {
-    audioBloc.transitionState(TransitionState.play);
-  }
-
-  void _pause(AudioBloc audioBloc) {
-    audioBloc.transitionState(TransitionState.pause);
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<PositionState>(
+        stream: audioBloc.playPosition,
+        initialData: audioBloc.playPosition?.valueOrNull,
+        builder: (context, snapshot) {
+          final data = snapshot.data;
+          final length = data?.length.inMilliseconds ?? 0;
+          final fraction = length > 0 ? (data!.position.inMilliseconds / length).clamp(0.0, 1.0) : 0.0;
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: fraction,
+              child: Container(height: 2.0, color: Theme.of(context).primaryColor),
+            ),
+          );
+        });
   }
 }

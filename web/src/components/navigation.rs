@@ -194,9 +194,9 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
                         }
                     }
 
-                    // Add this check to skip authentication for the OAuth callback route
+                    // The OAuth callback and public shared-episode links work without a login.
                     let pathname = window.location().pathname().unwrap_or_default();
-                    if pathname != "/oauth/callback" {
+                    if pathname != "/oauth/callback" && !pathname.starts_with("/shared_episode/") {
                         use_check_authentication(dispatch.clone(), &current_route);
                     } else {
                         web_sys::console::log_1(&"Skipping auth check for OAuth callback".into());

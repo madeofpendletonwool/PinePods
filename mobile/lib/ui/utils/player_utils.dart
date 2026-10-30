@@ -13,15 +13,8 @@ import 'package:provider/provider.dart';
 /// If we have the 'show now playing upon play' option set to true, launch
 /// the [NowPlaying] widget automatically.
 void optionalShowNowPlaying(BuildContext context, AppSettings settings) {
-  if (settings.autoOpenNowPlaying) {
-    Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (context) => const NowPlaying(),
-        settings: const RouteSettings(name: 'nowplaying'),
-        fullscreenDialog: false,
-      ),
-    );
+  if (settings.autoOpenNowPlaying && context.mounted) {
+    showNowPlaying(context);
   }
 }
 

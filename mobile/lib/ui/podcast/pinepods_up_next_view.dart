@@ -2,11 +2,13 @@
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/ui/widgets/draggable_queue_episode_card.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// PinePods version of the Up Next queue that shows the server queue.
 ///
@@ -23,6 +25,10 @@ class PinepodsUpNextView extends StatefulWidget {
 class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
   final PinepodsService _pinepodsService = PinepodsService();
   List<PinepodsEpisode> _queuedEpisodes = [];
+
+  /// The queue's playing episode, kept out of the list (it's what's playing,
+  /// not what's next) but still sent first when reordering.
+  PinepodsEpisode? _playing;
   bool _isLoading = true;
   String? _errorMessage;
   StreamSubscription? _episodeSubscription;
@@ -99,9 +105,14 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
       );
 
       final episodes = await _pinepodsService.getQueuedEpisodes(settings.pinepodsUserId!);
-      
+      final audio = GlobalServices.pinepodsAudioService;
+      bool isPlaying(PinepodsEpisode e) =>
+          e.episodeId == audio?.currentEpisodeId && e.isYoutube == audio?.isYoutube;
+
+      if (!mounted) return;
       setState(() {
-        _queuedEpisodes = episodes;
+        _playing = episodes.where(isPlaying).firstOrNull;
+        _queuedEpisodes = episodes.where((e) => !isPlaying(e)).toList();
         _isLoading = false;
       });
     } catch (e) {
@@ -126,7 +137,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
 
     // Get episodes in new order, keeping is_youtube so colliding podcast/YouTube
     // ids are repositioned correctly.
-    final reorderItems = _queuedEpisodes
+    final reorderItems = [if (_playing != null) _playing!, ..._queuedEpisodes]
         .map((e) => (episodeId: e.episodeId, isYoutube: e.isYoutube))
         .toList();
 
@@ -157,6 +168,15 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
         SnackBar(content: Text('Error updating queue: $e')),
       );
       await _loadQueue(); // Reload to restore original order
+    }
+  }
+
+  Future<void> _play(PinepodsEpisode episode) async {
+    try {
+      await GlobalServices.pinepodsAudioService?.playPinepodsEpisode(pinepodsEpisode: episode);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not play episode: $e')));
     }
   }
 
@@ -364,7 +384,7 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: 20),
                     child: const Icon(
-                      Icons.delete,
+                      PhosphorIconsRegular.trash,
                       color: Colors.white,
                     ),
                   ),
@@ -374,12 +394,8 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
                     child: DraggableQueueEpisodeCard(
                       episode: episode,
                       index: index,
-                      onTap: () {
-                        // Could navigate to episode details if needed
-                      },
-                      onPlayPressed: () {
-                        // Could implement play functionality if needed
-                      },
+                      onTap: () => _play(episode),
+                      onPlayPressed: () => _play(episode),
                     ),
                   ),
                 );

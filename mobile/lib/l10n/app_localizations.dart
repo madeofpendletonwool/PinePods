@@ -382,10 +382,10 @@ abstract class AppLocalizations {
   /// **'Cancel'**
   String get cancel_option_label;
 
-  /// Dark theme
+  /// Label for the theme picker
   ///
   /// In en, this message translates to:
-  /// **'Dark theme'**
+  /// **'Theme'**
   String get settings_theme_switch_label;
 
   /// Set playback speed icon label

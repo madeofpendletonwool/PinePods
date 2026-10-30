@@ -8,13 +8,17 @@ use crate::components::gen_funcs::{
     format_error_message, get_default_sort_direction, get_filter_preference, set_filter_preference,
 };
 use crate::components::loading::Loading;
+use crate::components::youtube_video_filter::YouTubeVideoFilterSettings;
 use crate::components::episode_list_view::EpisodeListView;
+use crate::components::people::{AddPeopleSheet, PeopleLayout, PeopleStrip};
+use crate::requests::people_req::{CreditedPerson, PodcastCredits};
 use crate::pages::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_silence_trim, call_adjust_skip_times,
     call_get_silence_trim, SilenceTrimRequest,
     call_adjust_auto_transcribe, call_get_ai_status, call_get_auto_transcribe, AutoTranscribeRequest,
     call_get_auto_ad_detect, call_adjust_auto_ad_detect, AutoAdDetectRequest,
+    call_get_auto_delete_on_complete, call_set_podcast_auto_delete_on_complete,
     call_get_ad_skip_auto_activate, call_adjust_ad_skip_auto_activate,
     call_bulk_download_episodes,
     call_bulk_mark_episodes_completed, call_bulk_queue_episodes, call_bulk_save_episodes,
@@ -28,7 +32,8 @@ use crate::requests::pod_req::{
     call_get_rss_key, call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
     call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_favorite,
     call_toggle_podcast_notifications,
-    call_unmerge_podcast, call_update_feed_cutoff_days, call_update_podcast_info,
+    call_refresh_podcast_details, call_unmerge_podcast, call_update_feed_cutoff_days,
+    call_update_podcast_info,
     call_get_podcast_auto_delete_days, call_set_podcast_auto_delete_days,
     call_clear_podcast_auto_delete_days,
     AddCategoryRequest, AutoDownloadRequest, BulkEpisodeActionRequest, ClearPlaybackSpeedRequest,
@@ -545,13 +550,37 @@ pub fn episode_layout() -> Html {
     let playback_speed_clone = playback_speed.clone();
     let playback_speed_customized_render = playback_speed_customized.clone();
     let auto_delete_customized_render = auto_delete_customized.clone();
-    let rss_key_state = use_state(|| None::<String>);
+    // (podcast id, key): the key only covers that podcast's feed.
+    let rss_key_state = use_state(|| None::<(i32, String)>);
 
     // Bulk selection state
     let selected_episodes = use_state(|| HashSet::<i32>::new());
     let is_selecting = use_state(|| false);
 
     let history = BrowserHistory::new();
+    // People on the podcast and the add-people sheet.
+    let show_add_people = use_state(|| false);
+    let open_add_people = {
+        let show_add_people = show_add_people.clone();
+        Callback::from(move |_: ()| show_add_people.set(true))
+    };
+    let people_loaded = state.podcast_people.is_some();
+    let people_rc = Rc::new(state.podcast_people.clone().unwrap_or_default());
+    let guests_rc = Rc::new(state.podcast_guests.clone().unwrap_or_default());
+    let close_add_people = {
+        let show_add_people = show_add_people.clone();
+        Callback::from(move |_: ()| show_add_people.set(false))
+    };
+    let on_people_added = {
+        let dispatch = _dispatch.clone();
+        Callback::from(move |list: Vec<CreditedPerson>| {
+            let credits = PodcastCredits::from_flat(list);
+            dispatch.reduce_mut(|state| {
+                state.podcast_people = Some(credits.people);
+                state.podcast_guests = Some(credits.guests);
+            });
+        })
+    };
     // let node_ref = use_node_ref();
     let user_id = search_state
         .user_details
@@ -640,6 +669,7 @@ pub fn episode_layout() -> Html {
             state.podcast_funding = None;
             state.podcast_podroll = None;
             state.podcast_people = None;
+            state.podcast_guests = None;
         });
         || ()
     });
@@ -878,6 +908,9 @@ pub fn episode_layout() -> Html {
     let auto_play_next_status = use_state(|| false);
     let auto_queue_status = use_state(|| false);
     let podcast_id = use_state(|| 0);
+    // Bumped after the podcast's details are read from its feed again, to reload its episodes.
+    let details_reload = use_state(|| 0u32);
+    let refreshing_details = use_state(|| false);
     let start_skip = use_state(|| 0);
     let end_skip = use_state(|| 0);
     // Silence-trim (#727) per-podcast settings
@@ -1144,7 +1177,18 @@ pub fn episode_layout() -> Html {
                                         let key_opt = Some(api_key.clone().unwrap());
                                         let key_str = api_key.clone().unwrap();
                                         let server = server_name.clone();
-                                        let (auto_dl_result, auto_play_result, auto_queue_result, cutoff_result, notif_result, fav_result, play_details_result, auto_delete_result) = futures::join!(
+                                        // People, podroll, funding and value are stored server-side, so this is a
+                                        // quick DB read; fetched with the rest so hosts render with the page.
+                                        let p2_request = FetchPodcasting2PodDataRequest {
+                                            podcast_id: id,
+                                            user_id,
+                                        };
+                                        let (p2_result, auto_dl_result, auto_play_result, auto_queue_result, cutoff_result, notif_result, fav_result, play_details_result, auto_delete_result) = futures::join!(
+                                            call_fetch_podcasting_2_pod_data(
+                                                &server,
+                                                &key_opt,
+                                                &p2_request,
+                                            ),
                                             call_get_auto_download_status(
                                                 &server,
                                                 user_id,
@@ -1195,6 +1239,22 @@ pub fn episode_layout() -> Html {
                                                 user_id,
                                             ),
                                         );
+                                        match p2_result {
+                                            Ok(response) => {
+                                                audio_dispatch.reduce_mut(|state| {
+                                                    state.podcast_value4value = Some(response.value);
+                                                    state.podcast_funding = Some(response.funding);
+                                                    state.podcast_podroll = Some(response.podroll);
+                                                    state.podcast_people = Some(response.people);
+                                                    state.podcast_guests = Some(response.guests);
+                                                });
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!("Error fetching 2.0 data: {}", e).into(),
+                                                );
+                                            }
+                                        }
                                         match auto_dl_result {
                                             Ok(status) => { download_status.set(status); }
                                             Err(e) => { web_sys::console::log_1(&format!("Error getting auto-download status: {}", e).into()); }
@@ -1238,37 +1298,6 @@ pub fn episode_layout() -> Html {
                                                 effect_auto_delete_customized.set(customized);
                                             }
                                             Err(e) => { web_sys::console::log_1(&format!("Error getting auto-delete days: {}", e).into()); }
-                                        }
-                                        let chap_request = FetchPodcasting2PodDataRequest {
-                                            podcast_id: id,
-                                            user_id,
-                                        };
-                                        match call_fetch_podcasting_2_pod_data(
-                                            &server_name,
-                                            &api_key,
-                                            &chap_request,
-                                        )
-                                        .await
-                                        {
-                                            Ok(response) => {
-                                                // let chapters = response.chapters.clone(); // Clone chapters to avoid move issue
-                                                let value = response.value.clone();
-                                                let funding = response.funding.clone();
-                                                let podroll = response.podroll.clone();
-                                                let people = response.people.clone();
-                                                audio_dispatch.reduce_mut(|state| {
-                                                    state.podcast_value4value = Some(value);
-                                                    state.podcast_funding = Some(funding);
-                                                    state.podcast_podroll = Some(podroll);
-                                                    state.podcast_people = Some(people);
-                                                });
-                                            }
-                                            Err(e) => {
-                                                web_sys::console::log_1(
-                                                    &format!("Error fetching 2.0 data: {}", e)
-                                                        .into(),
-                                                );
-                                            }
                                         }
                                     }
                             }
@@ -1653,6 +1682,64 @@ pub fn episode_layout() -> Html {
         let page_state = page_state.clone();
         Callback::from(move |_: MouseEvent| {
             page_state.set(PageState::EditPodcast);
+        })
+    };
+
+    // Read the podcast's feed again and show its current details; `true` also drops the user's
+    // own edits to them.
+    let refresh_from_feed = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        let podcast_id = podcast_id.clone();
+        let page_state = page_state.clone();
+        let details_reload = details_reload.clone();
+        let refreshing_details = refreshing_details.clone();
+        let i18n_done = i18n.t("episodes_layout.details_refreshed").to_string();
+        let i18n_failed = i18n.t("episodes_layout.details_refresh_failed").to_string();
+        Callback::from(move |reset_edits: bool| {
+            let (Some(Some(api_key)), Some(server_name), Some(user_id)) =
+                (api_key.clone(), server_name.clone(), user_id)
+            else {
+                return;
+            };
+            let pid = *podcast_id;
+            if pid == 0 || *refreshing_details {
+                return;
+            }
+            refreshing_details.set(true);
+            let page_state = page_state.clone();
+            let details_reload = details_reload.clone();
+            let refreshing_details = refreshing_details.clone();
+            let i18n_done = i18n_done.clone();
+            let i18n_failed = i18n_failed.clone();
+            spawn_local(async move {
+                match call_refresh_podcast_details(&server_name, &api_key, pid, reset_edits).await {
+                    Ok(()) => {
+                        if let Ok(d) = call_get_podcast_details(&server_name, &api_key, user_id, pid).await {
+                            Dispatch::<PodcastFeedState>::global().reduce_mut(move |state| {
+                                if let Some(info) = state.clicked_podcast_info.as_mut() {
+                                    info.podcastname = d.podcastname;
+                                    info.artworkurl = d.artworkurl;
+                                    info.author = d.author;
+                                    info.description = d.description;
+                                    info.websiteurl = d.websiteurl;
+                                    info.episodecount = d.episodecount;
+                                }
+                            });
+                        }
+                        details_reload.set(*details_reload + 1);
+                        page_state.set(PageState::Hidden);
+                        Dispatch::<NotificationState>::global()
+                            .reduce_mut(|state| state.info_message = Some(i18n_done));
+                    }
+                    Err(e) => {
+                        Dispatch::<NotificationState>::global()
+                            .reduce_mut(|state| state.error_message = Some(format!("{i18n_failed}: {e}")));
+                    }
+                }
+                refreshing_details.set(false);
+            });
         })
     };
 
@@ -2522,6 +2609,79 @@ pub fn episode_layout() -> Html {
             });
         })
     };
+    // Ad times only fit the copy they were found on, and dynamically inserted ads differ between
+    // fetches, so auto ad-detect is only reliable when episodes are downloaded to the server.
+    let enable_auto_download_for_ads = toggle_download.clone();
+
+    // Delete server downloads once an episode is finished: this podcast's override, or the
+    // user's default when not customized.
+    let delete_on_complete = use_state(|| false);
+    let delete_on_complete_customized = use_state(|| false);
+    let delete_on_complete_default = use_state(|| false);
+    {
+        let delete_on_complete = delete_on_complete.clone();
+        let delete_on_complete_customized = delete_on_complete_customized.clone();
+        let delete_on_complete_default = delete_on_complete_default.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        use_effect_with(*podcast_id, move |pid| {
+            let pid = *pid;
+            if let (true, Some(api_key), Some(server_name), Some(user_id)) =
+                (pid != 0, api_key.clone(), server_name.clone(), user_id.clone())
+            {
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok((enabled, _)) = call_get_auto_delete_on_complete(&server_name, &api_key, user_id, None).await {
+                        delete_on_complete_default.set(enabled);
+                    }
+                    if let Ok((enabled, customized)) = call_get_auto_delete_on_complete(&server_name, &api_key, user_id, Some(pid)).await {
+                        delete_on_complete.set(enabled);
+                        delete_on_complete_customized.set(customized);
+                    }
+                });
+            }
+            || ()
+        });
+    }
+    let on_delete_on_complete_change = {
+        let delete_on_complete = delete_on_complete.clone();
+        let delete_on_complete_customized = delete_on_complete_customized.clone();
+        let delete_on_complete_default = delete_on_complete_default.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        let podcast_id = podcast_id.clone();
+        Callback::from(move |e: Event| {
+            let value = e.target_unchecked_into::<web_sys::HtmlSelectElement>().value();
+            let choice = match value.as_str() {
+                "on" => Some(true),
+                "off" => Some(false),
+                _ => None,
+            };
+            delete_on_complete.set(choice.unwrap_or(*delete_on_complete_default));
+            delete_on_complete_customized.set(choice.is_some());
+            let (api_key, server_name, user_id, pid) = (api_key.clone(), server_name.clone(), user_id.clone(), *podcast_id);
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key, server_name, user_id) {
+                    if let Err(e) = call_set_podcast_auto_delete_on_complete(&server_name, &api_key, user_id, pid, choice).await {
+                        web_sys::console::log_1(&format!("Error updating delete-when-finished: {}", e).into());
+                    }
+                }
+            });
+        })
+    };
+    let delete_on_complete_value = if !*delete_on_complete_customized {
+        "default"
+    } else if *delete_on_complete {
+        "on"
+    } else {
+        "off"
+    };
+    let delete_on_complete_default_label = if *delete_on_complete_default {
+        i18n.t("episodes_layout.delete_on_complete_default_on").to_string()
+    } else {
+        i18n.t("episodes_layout.delete_on_complete_default_off").to_string()
+    };
 
     // let onclick_cat = new_category
     let app_dispatch_add = _search_dispatch.clone();
@@ -2659,19 +2819,23 @@ pub fn episode_layout() -> Html {
             .map(|ud| ud.server_name.clone());
         let api_key = api_key.clone().flatten();
         let page_state_clone = page_state.clone();
+        let current_podcast_id = *podcast_id;
+        let have_key = rss_key_state
+            .as_ref()
+            .map_or(false, |(id, _)| *id == current_podcast_id);
 
         use_effect_with(
-            (page_state_clone.clone(), rss_key_state.is_none()),
-            move |(current_page_state, rss_key_is_none)| {
-                if matches!(**current_page_state, PageState::RSSFeed) && *rss_key_is_none {
+            (page_state_clone.clone(), have_key),
+            move |(current_page_state, have_key)| {
+                if matches!(**current_page_state, PageState::RSSFeed) && !*have_key {
                     if let (Some(server_name), Some(api_key), Some(user_id)) =
                         (server_name.clone(), api_key.clone(), user_id.clone())
                     {
                         let rss_key_state = rss_key_state.clone();
                         wasm_bindgen_futures::spawn_local(async move {
-                            match call_get_rss_key(&server_name, &Some(api_key), user_id).await {
+                            match call_get_rss_key(&server_name, &Some(api_key), user_id, Some(current_podcast_id)).await {
                                 Ok(rss_key) => {
-                                    rss_key_state.set(Some(rss_key));
+                                    rss_key_state.set(Some((current_podcast_id, rss_key)));
                                 }
                                 Err(e) => {
                                     web_sys::console::log_1(
@@ -2690,8 +2854,11 @@ pub fn episode_layout() -> Html {
     let rss_feed_modal = {
         let rss_key_state_clone = rss_key_state.clone();
 
-        let rss_url = match (*rss_key_state_clone).as_ref() {
-            Some(rss_key) => format!(
+        let rss_url = match (*rss_key_state_clone)
+            .as_ref()
+            .filter(|(id, _)| *id == *podcast_id)
+        {
+            Some((_, rss_key)) => format!(
                 "{}/{}?api_key={}&podcast_id={}",
                 get_rss_base_url(),
                 user_id.clone().unwrap_or_default(),
@@ -2905,6 +3072,20 @@ pub fn episode_layout() -> Html {
                             </div>
 
                             <div class="mt-4">
+                                <label for="delete-on-complete" class="block mb-2 text-sm font-medium">{ &i18n.t("episodes_layout.delete_on_complete_label") }</label>
+                                <select
+                                    id="delete-on-complete"
+                                    class="email-input border text-sm rounded-lg p-2.5"
+                                    onchange={on_delete_on_complete_change}
+                                >
+                                    <option value="default" selected={delete_on_complete_value == "default"}>{ &delete_on_complete_default_label }</option>
+                                    <option value="on" selected={delete_on_complete_value == "on"}>{ &i18n.t("episodes_layout.delete_on_complete_on") }</option>
+                                    <option value="off" selected={delete_on_complete_value == "off"}>{ &i18n.t("episodes_layout.delete_on_complete_off") }</option>
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">{ &i18n.t("episodes_layout.delete_on_complete_description") }</p>
+                            </div>
+
+                            <div class="mt-4">
                                 <label class="block mb-2 text-sm font-medium">{ &i18n_use_podcast_covers }</label>
                                 <div class="flex items-center space-x-2">
                                     <label class="relative inline-flex items-center cursor-pointer">
@@ -3039,6 +3220,34 @@ pub fn episode_layout() -> Html {
                                                 <span class="ms-3 text-sm">{ &i18n.t("episodes_layout.auto_ad_detect_desc") }</span>
                                             </label>
                                             {
+                                                if auto_ad_detect_checked && !*download_status {
+                                                    html! {
+                                                        <div class="ep-ad-notice">
+                                                            <i class="ph ph-warning"></i>
+                                                            <div class="ep-ad-notice-body">
+                                                                <span>{ &i18n.t("episodes_layout.auto_ad_detect_needs_download") }</span>
+                                                                <div class="ep-ad-notice-actions">
+                                                                    <button class="ep-ai-transcript-btn" onclick={enable_auto_download_for_ads}>
+                                                                        <i class="ph ph-cloud-arrow-down"></i>{ &i18n.t("episodes_layout.auto_ad_detect_enable_download") }
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                } else if auto_ad_detect_checked {
+                                                    html! {
+                                                        <div class="ep-ad-notice is-ok">
+                                                            <i class="ph ph-check-circle"></i>
+                                                            <div class="ep-ad-notice-body">
+                                                                <span>{ &i18n.t("episodes_layout.auto_ad_detect_download_ok") }</span>
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+                                            {
                                                 // Skip-immediately vs. confirm-first — only when auto-detect is on.
                                                 if auto_transcribe_checked && auto_ad_detect_checked {
                                                     html! {
@@ -3089,6 +3298,7 @@ pub fn episode_layout() -> Html {
                                                     </button>
                                                 </div>
                                                 <p class="text-xs text-gray-500 mt-1">{&i18n_youtube_limit_description}</p>
+                                                <YouTubeVideoFilterSettings podcast_id={*podcast_id} />
                                             </div>
                                         }
                                     } else {
@@ -3110,7 +3320,7 @@ pub fn episode_layout() -> Html {
                                         if let Some(categories) = &feed.categories {
                                             html! {
                                                 <>
-                                                    { categories.iter().map(|(_, category_name)| {
+                                                    { categories.iter().filter(|(_, name)| !name.trim().is_empty()).map(|(_, category_name)| {
                                                         let category_name = category_name.clone();
                                                         let onclick_remove = onclick_remove.clone();
                                                         let category_to_remove = category_to_remove.clone();
@@ -3168,14 +3378,25 @@ pub fn episode_layout() -> Html {
                                 </div>
                             </div>
 
-                            // Edit podcast info button
-                            <div class="mt-4">
+                            // Edit podcast info / read its details from the feed again
+                            <div class="mt-4 flex flex-wrap gap-2">
                                 <button
                                     type="button"
                                     class="download-button font-bold py-2 px-4 rounded"
                                     onclick={toggle_edit_podcast}
                                 >
                                     {&i18n.t("episodes_layout.modify_podcast_info")}
+                                </button>
+                                <button
+                                    type="button"
+                                    class="download-button font-bold py-2 px-4 rounded"
+                                    disabled={*refreshing_details}
+                                    onclick={{
+                                        let refresh_from_feed = refresh_from_feed.clone();
+                                        Callback::from(move |_: MouseEvent| refresh_from_feed.emit(false))
+                                    }}
+                                >
+                                    {&i18n.t("episodes_layout.refresh_from_feed")}
                                 </button>
                             </div>
                         </form>
@@ -3192,7 +3413,7 @@ pub fn episode_layout() -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
-                            {&i18n.t("episodes_layout.verify_downloads")}
+                            {&i18n.t("episodes_layout.download_all_title")}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
@@ -3653,7 +3874,7 @@ pub fn episode_layout() -> Html {
                                     }
                                 </div>
 
-                                <div class="flex justify-between space-x-4">
+                                <div class="flex flex-wrap justify-between gap-2">
                                     <button
                                         type="button"
                                         class="save-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
@@ -3815,6 +4036,18 @@ pub fn episode_layout() -> Html {
                                         }}
                                     >
                                         {&i18n.t("episodes_layout.save_changes")}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="download-button font-bold py-2 px-4 rounded"
+                                        title={i18n.t("episodes_layout.reset_to_feed_hint").to_string()}
+                                        disabled={*refreshing_details}
+                                        onclick={{
+                                            let refresh_from_feed = refresh_from_feed.clone();
+                                            Callback::from(move |_: MouseEvent| refresh_from_feed.emit(true))
+                                        }}
+                                    >
+                                        {&i18n.t("episodes_layout.reset_to_feed")}
                                     </button>
                                     <button
                                         type="button"
@@ -4127,6 +4360,7 @@ pub fn episode_layout() -> Html {
         let show_in_progress_dep = *show_in_progress;
         let search_dep = (*debounced_search_term).clone();
         let prefs_loaded_dep = *prefs_loaded_for_podcast;
+        let reload_dep = *details_reload;
         let synced_episode_count_eff = synced_episode_count.clone();
 
         use_effect_with(
@@ -4140,8 +4374,9 @@ pub fn episode_layout() -> Html {
                 show_in_progress_dep,
                 search_dep,
                 prefs_loaded_dep,
+                reload_dep,
             ),
-            move |(api_key, user_id, server_name, pid, sort, completed, show_ip, search, prefs_loaded)| {
+            move |(api_key, user_id, server_name, pid, sort, completed, show_ip, search, prefs_loaded, _reload)| {
                 if *pid <= 0 || Some(*pid) != *prefs_loaded {
                     return Box::new(|| ()) as Box<dyn FnOnce()>;
                 }
@@ -4466,7 +4701,6 @@ pub fn episode_layout() -> Html {
                                             .map(|r| r.episodes.iter().any(|e| e.is_video))
                                             .unwrap_or(false);
                                         let layout = if state.is_mobile.unwrap_or(false) {
-                                            let server_for_proxy = server_name.clone().unwrap_or_default();
                                             html! {
                                                 <div class="mobile-layout ep-mobile-pod-header">
 
@@ -4575,104 +4809,49 @@ pub fn episode_layout() -> Html {
                                                         </div>
                                                     </div>
 
-                                                    // ── Host strip or unmatched warning ──
-                                                    { if !podcast_info.is_youtube.unwrap_or(false) {
-                                                        if podcast_info.podcastindexid == 0 {
-                                                            html! {
-                                                                <div class="ep-mobile-hosts">
-                                                                    <div class="import-box">
-                                                                        <p class="item_container-text text-sm">
-                                                                            {"⚠️ This podcast isn't matched to Podcast Index. "}
-                                                                            <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
-                                                                                {&i18n.t("episodes_layout.match_it_here")}
-                                                                            </a>
-                                                                            {" to enable host and guest information."}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            }
-                                                        } else if let Some(people) = &state.podcast_people {
-                                                            if !people.is_empty() {
-                                                                let has_unknown_host = people.len() == 1
-                                                                    && people[0].name == "Unknown Host"
-                                                                    && people[0].role == Some("Host".to_string());
-                                                                if has_unknown_host {
-                                                                    let people_url = search_state.server_details.as_ref()
-                                                                        .and_then(|sd| sd.people_url.as_ref())
-                                                                        .cloned()
-                                                                        .unwrap_or_default();
-                                                                    let host_url = format!("{}/podcast/{}", people_url, podcast_info.podcastindexid);
-                                                                    html! {
-                                                                        <div class="ep-mobile-hosts">
-                                                                            <p class="ep-mobile-section-label">{ &i18n_hosts }</p>
-                                                                            <p class="ep-mobile-no-hosts-msg">
-                                                                                { i18n.t("host_component.no_hosts_found") }
-                                                                                <a href={host_url} target="_blank" class="ep-mobile-no-hosts-link">
-                                                                                    { i18n.t("host_component.add_hosts_here") }
-                                                                                </a>
-                                                                            </p>
-                                                                        </div>
-                                                                    }
-                                                                } else {
-                                                                    let server = server_for_proxy.clone();
-                                                                    html! {
-                                                                        <div class="ep-mobile-hosts">
-                                                                            <p class="ep-mobile-section-label">{ &i18n_hosts }</p>
-                                                                            <div class="ep-mobile-hosts-scroll">
-                                                                            { for people.iter().map(|person| {
-                                                                                let name = person.name.clone();
-                                                                                let role = person.role.clone();
-                                                                                let img_url = person.img.as_ref().map(|url| {
-                                                                                    format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
-                                                                                });
-                                                                                let hist = history.clone();
-                                                                                let nav_name = name.clone();
-                                                                                let on_chip_click = Callback::from(move |_: MouseEvent| {
-                                                                                    hist.push(format!("/person/{}", nav_name));
-                                                                                });
-                                                                                html! {
-                                                                                    <div class="ep-mobile-host-chip" onclick={on_chip_click}>
-                                                                                        { if let Some(src) = img_url {
-                                                                                            html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
-                                                                                        } else {
-                                                                                            html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
-                                                                                        }}
-                                                                                        <span class="ep-mobile-host-name">{ &person.name }</span>
-                                                                                        { if let Some(r) = &role {
-                                                                                            html! { <span class="ep-mobile-host-role">{ r }</span> }
-                                                                                        } else { html! {} }}
-                                                                                    </div>
-                                                                                }
-                                                                            })}
-                                                                            </div>
-                                                                        </div>
-                                                                    }
-                                                                }
-                                                            } else { html! {} }
-                                                        } else { html! {} }
+                                                    // ── People ──
+                                                    { if !podcast_info.is_youtube.unwrap_or(false) && *podcast_id > 0 {
+                                                        html! {
+                                                            <>
+                                                            <PeopleStrip
+                                                                people={people_rc.clone()}
+                                                                layout={PeopleLayout::Chips}
+                                                                label={i18n_hosts.clone()}
+                                                                on_add={people_loaded.then(|| open_add_people.clone())}
+                                                                empty_text={i18n.t("people.none_on_podcast")}
+                                                                class={classes!("ep-mobile-hosts")}
+                                                            />
+                                                            { if guests_rc.is_empty() { html! {} } else { html! {
+                                                                <PeopleStrip
+                                                                    people={guests_rc.clone()}
+                                                                    layout={PeopleLayout::Chips}
+                                                                    label={i18n.t("people.guests")}
+                                                                    class={classes!("ep-mobile-hosts")}
+                                                                />
+                                                            } } }
+                                                            </>
+                                                        }
                                                     } else { html! {} }}
 
                                                     // ── Categories ──
-                                                    { if let Some(categories) = &podcast_info.categories {
-                                                        if !categories.is_empty() {
-                                                            html! {
-                                                                <div class="ep-mobile-categories">
-                                                                    { for categories.iter().map(|(_, category_name)| {
-                                                                        html! { <span class="category-box">{ category_name }</span> }
-                                                                    })}
-                                                                </div>
-                                                            }
-                                                        } else { html! {} }
-                                                    } else { html! {} }}
+                                                    { {
+                                                        let categories = visible_categories(podcast_info.categories.as_ref());
+                                                        if categories.is_empty() { html! {} } else { html! {
+                                                            <div class="ep-mobile-categories">
+                                                                { for categories.iter().map(|category_name| {
+                                                                    html! { <span class="category-box">{ category_name }</span> }
+                                                                })}
+                                                            </div>
+                                                        } }
+                                                    } }
 
                                                 </div>
                                             }
                                         } else {
                                             let pod_link = podcast_info.feedurl.clone();
-                                            let server = server_name.clone().unwrap_or_default();
                                             let subscribed = podcast_state.podcast_added.unwrap_or(false);
                                             let backdrop_style = format!("background-image: url('{}');", &podcast_info.artworkurl);
-                                            let eyebrow_text = match podcast_info.categories.as_ref().and_then(|c| c.values().next()) {
+                                            let eyebrow_text = match visible_categories(podcast_info.categories.as_ref()).first() {
                                                 Some(cat) => format!("{} · {}", i18n.t("episodes_layout.podcast"), cat),
                                                 None => i18n.t("episodes_layout.podcast").to_string(),
                                             };
@@ -4787,107 +4966,50 @@ pub fn episode_layout() -> Html {
                                                             <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
                                                         </div>
 
-                                                        { if !podcast_info.is_youtube.unwrap_or(false) {
-                                                            if podcast_info.podcastindexid == 0 {
-                                                                html! {
-                                                                    <div class="pd-banner-warning">
-                                                                        <div class="import-box">
-                                                                            <p class="item_container-text text-sm">
-                                                                                {"⚠️ This podcast isn't matched to Podcast Index. "}
-                                                                                <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
-                                                                                    {&i18n.t("episodes_layout.match_it_here")}
-                                                                                </a>
-                                                                                {" to enable host and guest information."}
-                                                                            </p>
-                                                                        </div>
-                                                                    </div>
-                                                                }
-                                                            } else if let Some(people) = &state.podcast_people {
-                                                                if !people.is_empty() {
-                                                                    let has_unknown_host = people.len() == 1
-                                                                        && people[0].name == "Unknown Host"
-                                                                        && people[0].role == Some("Host".to_string());
-                                                                    if has_unknown_host {
-                                                                        let people_url = search_state.server_details.as_ref()
-                                                                            .and_then(|sd| sd.people_url.as_ref())
-                                                                            .cloned()
-                                                                            .unwrap_or_default();
-                                                                        let host_url = format!("{}/podcast/{}", people_url, podcast_info.podcastindexid);
-                                                                        html! {
-                                                                            <div class="pd-banner-nohosts">
-                                                                                <span class="pd-host-by">{ &i18n_hosts }</span>
-                                                                                <p class="pd-banner-nohosts-msg">
-                                                                                    { i18n.t("host_component.no_hosts_found") }
-                                                                                    <a href={host_url} target="_blank" class="pd-banner-nohosts-link">
-                                                                                        { i18n.t("host_component.add_hosts_here") }
-                                                                                    </a>
-                                                                                </p>
-                                                                            </div>
-                                                                        }
-                                                                    } else {
-                                                                        let names: Vec<String> = people.iter().map(|p| p.name.clone()).collect();
-                                                                        let names_joined = match names.len() {
-                                                                            0 => String::new(),
-                                                                            1 => names[0].clone(),
-                                                                            2 => format!("{} & {}", names[0], names[1]),
-                                                                            _ => {
-                                                                                let (last, rest) = names.split_last().unwrap();
-                                                                                format!("{} & {}", rest.join(", "), last)
-                                                                            }
-                                                                        };
-                                                                        let server2 = server.clone();
-                                                                        html! {
-                                                                            <div class="pd-banner-hosts">
-                                                                                <div class="pd-host-stack">
-                                                                                    { for people.iter().take(6).map(|person| {
-                                                                                        let name = person.name.clone();
-                                                                                        let img_url = person.img.as_ref().map(|url| {
-                                                                                            format!("{}/api/proxy/image?url={}", server2, urlencoding::encode(url))
-                                                                                        });
-                                                                                        let hist = history.clone();
-                                                                                        let nav_name = name.clone();
-                                                                                        let on_chip_click = Callback::from(move |_: MouseEvent| {
-                                                                                            hist.push(format!("/person/{}", nav_name));
-                                                                                        });
-                                                                                        html! {
-                                                                                            <div class="pd-host-avatar-wrap" title={name.clone()} onclick={on_chip_click}>
-                                                                                                { if let Some(src) = img_url {
-                                                                                                    html! { <img src={src} alt={name.clone()} class="pd-host-avatar" /> }
-                                                                                                } else {
-                                                                                                    html! { <div class="pd-host-avatar pd-host-avatar-ph"><i class="ph ph-user"></i></div> }
-                                                                                                }}
-                                                                                            </div>
-                                                                                        }
-                                                                                    })}
-                                                                                </div>
-                                                                                <div class="pd-host-label">
-                                                                                    <span class="pd-host-by">{ i18n.t("episodes_layout.hosted_by") }</span>
-                                                                                    <span class="pd-host-names">{ names_joined }</span>
-                                                                                </div>
-                                                                            </div>
-                                                                        }
-                                                                    }
-                                                                } else { html! {} }
-                                                            } else { html! {} }
+                                                        { if !podcast_info.is_youtube.unwrap_or(false) && *podcast_id > 0 {
+                                                            html! {
+                                                                <>
+                                                                <PeopleStrip
+                                                                    people={people_rc.clone()}
+                                                                    layout={PeopleLayout::Banner}
+                                                                    label={i18n.t("episodes_layout.hosted_by")}
+                                                                    on_add={people_loaded.then(|| open_add_people.clone())}
+                                                                    empty_text={i18n.t("people.none_on_podcast")}
+                                                                    class={classes!("pd-banner-people")}
+                                                                />
+                                                                { if guests_rc.is_empty() { html! {} } else { html! {
+                                                                    <PeopleStrip
+                                                                        people={guests_rc.clone()}
+                                                                        layout={PeopleLayout::Chips}
+                                                                        label={i18n.t("people.guests")}
+                                                                        class={classes!("pd-banner-guests")}
+                                                                    />
+                                                                } } }
+                                                                </>
+                                                            }
                                                         } else { html! {} } }
 
-                                                        { if let Some(categories) = &podcast_info.categories {
-                                                            if !categories.is_empty() {
-                                                                html! {
-                                                                    <div class="pd-banner-cats">
-                                                                        { for categories.values().map(|category_name| {
-                                                                            html! { <span class="category-box">{ category_name }</span> }
-                                                                        }) }
-                                                                    </div>
-                                                                }
-                                                            } else { html! {} }
-                                                        } else { html! {} } }
+                                                        { {
+                                                            let categories = visible_categories(podcast_info.categories.as_ref());
+                                                            if categories.is_empty() { html! {} } else { html! {
+                                                                <div class="pd-banner-cats">
+                                                                    { for categories.iter().map(|category_name| {
+                                                                        html! { <span class="category-box">{ category_name }</span> }
+                                                                    }) }
+                                                                </div>
+                                                            } }
+                                                        } }
                                                     </div>
                                                 </div>
                                             }
                                         };
 
-                                        layout
+                                        html! {
+                                            <>
+                                                { layout }
+                                                <crate::components::setting_components::feed_problems::FeedProblemBanner podcast_id={*podcast_id} />
+                                            </>
+                                        }
                                     } else {
                                         html! {}
                                     }
@@ -5152,7 +5274,14 @@ pub fn episode_layout() -> Html {
                                 {
                                     if *is_selecting && !selected_episodes.is_empty() {
                                         let selected_count = selected_episodes.len();
-                                        let selected_ids: Vec<i32> = selected_episodes.iter().cloned().collect();
+                                        // In list order, so bulk-queued episodes keep the order they're shown in.
+                                        let mut selected_ids: Vec<i32> = filtered_episodes
+                                            .iter()
+                                            .map(|ep| ep.episodeid)
+                                            .filter(|id| selected_episodes.contains(id))
+                                            .collect();
+                                        let unlisted: Vec<i32> = selected_episodes.iter().filter(|id| !selected_ids.contains(id)).cloned().collect();
+                                        selected_ids.extend(unlisted);
                                         let user_id_value = user_id.unwrap_or(0);
 
                                         html! {
@@ -5452,9 +5581,35 @@ pub fn episode_layout() -> Html {
                         }
                     }
                 }
+            { if *show_add_people && *podcast_id > 0 {
+                html! {
+                    <AddPeopleSheet
+                        podcast_id={*podcast_id}
+                        on_close={close_add_people}
+                        on_added={on_people_added}
+                    />
+                }
+            } else { html! {} } }
             <App_drawer />
             <AudioPlayerBar />
             </div>
 
         }
+}
+
+/// Category names worth showing: no blanks, each name once (ignoring case), in key order so the
+/// list doesn't reshuffle between renders.
+fn visible_categories(categories: Option<&HashMap<String, String>>) -> Vec<String> {
+    let Some(categories) = categories else { return Vec::new() };
+    let mut entries: Vec<(&String, &String)> = categories.iter().collect();
+    entries.sort_by(|(a, _), (b, _)| match (a.parse::<i64>(), b.parse::<i64>()) {
+        (Ok(x), Ok(y)) => x.cmp(&y),
+        _ => a.cmp(b),
+    });
+    let mut seen = std::collections::HashSet::new();
+    entries
+        .into_iter()
+        .map(|(_, name)| name.trim().to_string())
+        .filter(|name| !name.is_empty() && seen.insert(name.to_lowercase()))
+        .collect()
 }

@@ -23,97 +23,114 @@ pinepods_path = Path(__file__).parent.parent
 sys.path.insert(0, str(pinepods_path))
 sys.path.insert(0, '/pinepods')  # Also add the container path for Docker
 
-def wait_for_postgresql_ready():
-    """Wait for PostgreSQL to be ready to accept connections (not just port open)"""
+DEFAULT_DB_WAIT_TIMEOUT = 300
+
+
+def get_db_wait_timeout():
+    """Seconds to wait for the database at startup (DB_WAIT_TIMEOUT); 0 waits forever."""
+    raw = os.environ.get("DB_WAIT_TIMEOUT", "").strip()
+    if not raw:
+        return DEFAULT_DB_WAIT_TIMEOUT
+    try:
+        timeout = int(raw)
+        if timeout < 0:
+            raise ValueError
+        return timeout
+    except ValueError:
+        logger.warning(f"Invalid DB_WAIT_TIMEOUT {raw!r}, using {DEFAULT_DB_WAIT_TIMEOUT}s")
+        return DEFAULT_DB_WAIT_TIMEOUT
+
+
+def wait_for_database(label, db_host, db_port, probe):
+    """Call probe() until it succeeds or DB_WAIT_TIMEOUT runs out.
+
+    The database container often starts slower than PinePods (first-boot init,
+    slow hosts, no orchestrator-level health gating), so every failure is
+    treated as transient and retried with a short backoff.
+    """
     import time
+
+    timeout = get_db_wait_timeout()
+    limit = "no time limit" if timeout == 0 else f"up to {timeout}s"
+    logger.info(f"Waiting for {label} at {db_host}:{db_port} to be ready ({limit})...")
+
+    start = time.monotonic()
+    attempt = 1
+    delay = 1
+    while True:
+        try:
+            probe()
+            logger.info(f"{label} is ready after {attempt} attempt(s)")
+            return True
+        except Exception as e:
+            elapsed = time.monotonic() - start
+            if timeout and elapsed >= timeout:
+                logger.error(
+                    f"{label} at {db_host}:{db_port} did not become ready within {timeout}s: {e}. "
+                    f"Check DB_HOST/DB_PORT/DB_USER/DB_PASSWORD, or raise DB_WAIT_TIMEOUT (0 waits forever)."
+                )
+                return False
+            logger.info(f"{label} not ready yet (attempt {attempt}, {int(elapsed)}s elapsed): {e}")
+            time.sleep(min(delay, timeout - elapsed) if timeout else delay)
+            delay = min(delay * 2, 5)
+            attempt += 1
+
+
+def wait_for_postgresql_ready():
+    """Wait for PostgreSQL to be ready to accept queries (not just port open)"""
     import psycopg
-    
+
     db_host = os.environ.get("DB_HOST", "127.0.0.1")
     db_port = os.environ.get("DB_PORT", "5432")
     db_user = os.environ.get("DB_USER", "postgres")
     db_password = os.environ.get("DB_PASSWORD", "password")
-    
-    max_attempts = 30  # 30 seconds
-    attempt = 1
-    
-    logger.info(f"Waiting for PostgreSQL at {db_host}:{db_port} to be ready...")
-    
-    while attempt <= max_attempts:
-        try:
-            # Try to connect to the postgres database
-            with psycopg.connect(
-                host=db_host,
-                port=db_port,
-                user=db_user,
-                password=db_password,
-                dbname='postgres',
-                connect_timeout=3
-            ) as conn:
-                with conn.cursor() as cur:
-                    # Test if PostgreSQL is ready to accept queries
-                    cur.execute("SELECT 1")
-                    cur.fetchone()
-                logger.info(f"PostgreSQL is ready after {attempt} attempts")
-                return True
-        except Exception as e:
-            if "not yet accepting connections" in str(e) or "recovery" in str(e).lower():
-                logger.info(f"PostgreSQL not ready yet (attempt {attempt}/{max_attempts}): {e}")
-            else:
-                logger.warning(f"Connection attempt {attempt}/{max_attempts} failed: {e}")
-            
-            if attempt < max_attempts:
-                time.sleep(1)
-            attempt += 1
-    
-    logger.error(f"PostgreSQL failed to become ready after {max_attempts} attempts")
-    return False
+
+    def probe():
+        with psycopg.connect(
+            host=db_host,
+            port=db_port,
+            user=db_user,
+            password=db_password,
+            dbname='postgres',
+            connect_timeout=3
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+
+    return wait_for_database("PostgreSQL", db_host, db_port, probe)
+
 
 def wait_for_mysql_ready():
-    """Wait for MySQL/MariaDB to be ready to accept connections"""
-    import time
+    """Wait for MySQL/MariaDB to be ready to accept queries"""
     try:
         import mariadb as mysql_connector
     except ImportError:
-        import mysql.connector
-    
+        import mysql.connector as mysql_connector
+
     db_host = os.environ.get("DB_HOST", "127.0.0.1")
     db_port = int(os.environ.get("DB_PORT", "3306"))
     db_user = os.environ.get("DB_USER", "root")
     db_password = os.environ.get("DB_PASSWORD", "password")
-    
-    max_attempts = 30  # 30 seconds
-    attempt = 1
-    
-    logger.info(f"Waiting for MySQL/MariaDB at {db_host}:{db_port} to be ready...")
-    
-    while attempt <= max_attempts:
+
+    def probe():
+        conn = mysql_connector.connect(
+            host=db_host,
+            port=db_port,
+            user=db_user,
+            password=db_password,
+            connect_timeout=3,
+            autocommit=True
+        )
         try:
-            # Try to connect to MySQL/MariaDB
-            conn = mysql_connector.connect(
-                host=db_host,
-                port=db_port,
-                user=db_user,
-                password=db_password,
-                connect_timeout=3,
-                autocommit=True
-            )
             cursor = conn.cursor()
-            # Test if MySQL is ready to accept queries
             cursor.execute("SELECT 1")
             cursor.fetchone()
             cursor.close()
+        finally:
             conn.close()
-            logger.info(f"MySQL/MariaDB is ready after {attempt} attempts")
-            return True
-        except Exception as e:
-            logger.info(f"MySQL/MariaDB not ready yet (attempt {attempt}/{max_attempts}): {e}")
-            
-            if attempt < max_attempts:
-                time.sleep(1)
-            attempt += 1
-    
-    logger.error(f"MySQL/MariaDB failed to become ready after {max_attempts} attempts")
-    return False
+
+    return wait_for_database("MySQL/MariaDB", db_host, db_port, probe)
 
 def create_database_if_not_exists():
     """Create the database if it doesn't exist and wait for database to be ready"""
@@ -131,9 +148,6 @@ def create_database_if_not_exists():
         return
     
     # PostgreSQL database creation logic continues below
-    if not wait_for_postgresql_ready():
-        raise Exception("PostgreSQL did not become ready in time")
-    
     try:
         import psycopg
         

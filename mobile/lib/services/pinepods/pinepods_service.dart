@@ -8,7 +8,9 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/user_stats.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
+import 'package:pinepods_mobile/entities/people.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
+import 'package:pinepods_mobile/entities/youtube_channel.dart';
 
 /// Debug-only logger: in release builds this compiles out, so request URLs and
 /// other diagnostics never reach the device console in production.
@@ -17,6 +19,8 @@ void _devLog(Object? message) {
     print(message);
   }
 }
+
+Object? _decodeJson(String body) => jsonDecode(body);
 
 class PinepodsService {
   String? _server;
@@ -563,6 +567,32 @@ class PinepodsService {
     }
   }
 
+  // Read a podcast's feed again now and take its current details (name,
+  // artwork, author, description, website). [resetEdits] also drops the
+  // user's own edits to them. Throws with the server's message on failure.
+  Future<void> refreshPodcastDetails(int podcastId, {bool resetEdits = false}) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/refresh_podcast_details');
+    // Reading a slow feed can take longer than an ordinary request.
+    final response = await _client
+        .post(
+          url,
+          headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+          body: jsonEncode({'podcast_id': podcastId, 'reset_edits': resetEdits}),
+        )
+        .timeout(const Duration(seconds: 90));
+    if (response.statusCode != 200) {
+      String message = 'HTTP ${response.statusCode}';
+      try {
+        message = (jsonDecode(response.body) as Map<String, dynamic>)['message'] as String? ?? message;
+      } catch (_) {}
+      throw Exception(message);
+    }
+  }
+
   // Get a podcast's favorite status.
   Future<bool> getPodcastFavoriteStatus(int podcastId, int userId) async {
     if (_server == null || _apiKey == null) {
@@ -658,6 +688,7 @@ class PinepodsService {
           playbackSpeed: (data['playback_speed'] as num?)?.toDouble() ?? 1.0,
           startSkip: data['start_skip'] ?? 0,
           endSkip: data['end_skip'] ?? 0,
+          playbackSpeedCustomized: data['playback_speed_customized'] as bool? ?? false,
         );
       }
       return PlayEpisodeDetails(playbackSpeed: 1.0, startSkip: 0, endSkip: 0);
@@ -691,7 +722,11 @@ class PinepodsService {
   }
 
   // Get auto-skip segments (silence #727) for an episode, in seconds.
-  Future<List<SkipSegment>> getEpisodeSkipSegments(int episodeId, int userId) async {
+  Future<List<SkipSegment>> getEpisodeSkipSegments(int episodeId, int userId) async =>
+      (await getEpisodeSkipInfo(episodeId, userId)).segments;
+
+  /// Skip ranges plus, when there are ads, which audio copy they were found on.
+  Future<SkipInfo> getEpisodeSkipInfo(int episodeId, int userId) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
@@ -703,21 +738,35 @@ class PinepodsService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final segments = (data['segments'] as List?) ?? [];
-        return segments
-            .map((s) => SkipSegment(
-                  segmentId: (s['segment_id'] as num?)?.toInt() ?? 0,
-                  kind: s['kind'] ?? '',
-                  startTime: (s['start_time'] as num?)?.toDouble() ?? 0.0,
-                  endTime: (s['end_time'] as num?)?.toDouble() ?? 0.0,
-                  source: s['source'] as String?,
-                  status: s['status'] as String?,
-                ))
-            .toList();
+        final audio = data['ad_audio'];
+        final analyzed = audio is Map ? audio['analyzed'] : null;
+        return SkipInfo(
+          segments: segments
+              .map((s) => SkipSegment(
+                    segmentId: (s['segment_id'] as num?)?.toInt() ?? 0,
+                    kind: s['kind'] ?? '',
+                    startTime: (s['start_time'] as num?)?.toDouble() ?? 0.0,
+                    endTime: (s['end_time'] as num?)?.toDouble() ?? 0.0,
+                    source: s['source'] as String?,
+                    status: s['status'] as String?,
+                  ))
+              .toList(),
+          adAudio: audio is Map
+              ? AdAudio(
+                  download: audio['download'] as String? ?? 'unknown',
+                  analyzedDuration: analyzed is Map
+                      ? (analyzed['duration'] as num?)?.toDouble()
+                      : null,
+                  analyzedSource:
+                      analyzed is Map ? analyzed['source'] as String? : null,
+                )
+              : null,
+        );
       }
     } catch (e) {
       _devLog('Error getting skip segments: $e');
     }
-    return const [];
+    return const SkipInfo(segments: []);
   }
 
   // --- AI features (#726 transcripts / #790 ad-block) --------------------
@@ -738,6 +787,7 @@ class PinepodsService {
           available: data['available'] == true,
           transcriptionReady: data['transcription_ready'] == true,
           adRemovalReady: data['ad_removal_ready'] == true,
+          downloadsEnabled: data['downloads_enabled'] == true,
         );
       }
     } catch (e) {
@@ -747,8 +797,11 @@ class PinepodsService {
   }
 
   // POST /api/data/detect_ads — trigger ad detection (async background job).
-  // Returns true if the request was accepted (503 => AI unavailable).
-  Future<bool> detectAds(int episodeId, int userId, {bool force = false}) async {
+  // Returns true if the request was accepted (503 => AI unavailable). With
+  // [downloadFirst], an episode not on the server is downloaded there first and
+  // ads are detected on that copy, so they line up with what gets played.
+  Future<bool> detectAds(int episodeId, int userId,
+      {bool force = false, bool downloadFirst = false}) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
@@ -761,6 +814,7 @@ class PinepodsService {
           'episode_id': episodeId,
           'user_id': userId,
           'force': force,
+          'download_first': downloadFirst,
         }),
       );
       return response.statusCode == 200;
@@ -912,6 +966,108 @@ class PinepodsService {
           int userId, int podcastId, bool enabled) =>
       _setPodcastEnabled(
           'adjust_ad_skip_auto_activate', userId, podcastId, enabled);
+
+  // --- Server downloads: auto-download + retention ---------------------
+  // These are the server's settings (what the server downloads and keeps),
+  // separate from the app's own on-device auto-download.
+
+  Future<Map<String, dynamic>?> _postJson(
+      String path, Map<String, dynamic> body) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    try {
+      final response = await http.post(
+        Uri.parse('$_server/api/data/$path'),
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data is Map<String, dynamic> ? data : <String, dynamic>{};
+      }
+      _devLog('POST $path failed: ${response.statusCode}');
+    } catch (e) {
+      _devLog('Error calling $path: $e');
+    }
+    return null;
+  }
+
+  Future<bool> getServerAutoDownload(int userId, int podcastId) async {
+    final data = await _postJson('get_auto_download_status',
+        {'podcast_id': podcastId, 'user_id': userId});
+    return data?['auto_download'] == true;
+  }
+
+  Future<bool> setServerAutoDownload(
+          int userId, int podcastId, bool enabled) async =>
+      await _postJson('enable_auto_download', {
+        'podcast_id': podcastId,
+        'user_id': userId,
+        'auto_download': enabled,
+      }) !=
+      null;
+
+  /// Delete a server download once its episode is finished. Without
+  /// [podcastId] this is the user's default; with one it is the podcast's
+  /// effective value and whether it overrides the default.
+  Future<({bool enabled, bool customized})> getAutoDeleteOnComplete(
+      int userId,
+      {int? podcastId}) async {
+    final data = await _postJson('get_auto_delete_on_complete',
+        {'user_id': userId, 'podcast_id': podcastId});
+    return (
+      enabled: data?['enabled'] == true,
+      customized: data?['customized'] == true,
+    );
+  }
+
+  Future<bool> setUseGravatar(int userId, bool enabled) async =>
+      await _postJson('user/set_use_gravatar', {'user_id': userId, 'enabled': enabled}) != null;
+
+  Future<bool> setAutoDeleteOnCompleteDefault(int userId, bool enabled) async =>
+      await _postJson('user/set_auto_delete_on_complete',
+          {'user_id': userId, 'enabled': enabled}) !=
+      null;
+
+  /// [enabled] null goes back to the user's default.
+  Future<bool> setPodcastAutoDeleteOnComplete(
+          int userId, int podcastId, bool? enabled) async =>
+      await _postJson('podcast/set_auto_delete_on_complete', {
+        'user_id': userId,
+        'podcast_id': podcastId,
+        'enabled': enabled,
+      }) !=
+      null;
+
+  /// Delete server downloads older than this many days (0 = keep). Without
+  /// [podcastId] this is the user's default; with one, the podcast's value and
+  /// whether it overrides the default.
+  Future<({int days, bool customized})> getAutoDeleteDays(int userId,
+      {int? podcastId}) async {
+    final data = await _postJson('get_auto_download_delete_days',
+        {'user_id': userId, 'podcast_id': podcastId});
+    return (
+      days: (data?['days'] as num?)?.toInt() ?? 0,
+      customized: data?['customized'] == true,
+    );
+  }
+
+  Future<bool> setAutoDeleteDaysDefault(int userId, int days) async =>
+      await _postJson('user/set_auto_download_delete_days',
+          {'user_id': userId, 'days': days}) !=
+      null;
+
+  Future<bool> setPodcastAutoDeleteDays(
+          int userId, int podcastId, int days) async =>
+      await _postJson('podcast/set_auto_download_delete_days',
+          {'user_id': userId, 'podcast_id': podcastId, 'days': days}) !=
+      null;
+
+  Future<bool> clearPodcastAutoDeleteDays(int userId, int podcastId) async =>
+      await _postJson('clear_podcast_auto_download_delete_days',
+          {'user_id': userId, 'podcast_id': podcastId}) !=
+      null;
 
   // Record listen duration for episode
   Future<bool> recordListenDuration(
@@ -1420,12 +1576,11 @@ class PinepodsService {
     try {
       final response = await _get(url, headers: {'Api-Key': _apiKey!});
 
-      _devLog(
-        'Queued episodes response: ${response.statusCode} - ${response.body}',
-      );
+      _devLog('Queued episodes response: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        // Long queues are large payloads; decode off the UI thread.
+        final data = await compute(_decodeJson, response.body) as Map<String, dynamic>;
         final episodesList = data['data'] as List<dynamic>? ?? [];
 
         return episodesList.map((episodeData) {
@@ -1920,6 +2075,113 @@ class PinepodsService {
       _devLog('Error removing podcast: $e');
       rethrow;
     }
+  }
+
+  /// YouTube channels matching [query], through the server's search proxy.
+  Future<List<YouTubeChannelResult>> searchYouTubeChannels(String query) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Server and API key must be set');
+    }
+    final url = Uri.parse('$_server/api/data/proxy_search')
+        .replace(queryParameters: {'query': query, 'index': 'youtube'});
+    final response =
+        await _client.get(url, headers: _authHeaders).timeout(const Duration(seconds: 60));
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    final data = jsonDecode(response.body);
+    final results = data is Map ? data['results'] as List<dynamic>? ?? const [] : const [];
+    return results
+        .whereType<Map<String, dynamic>>()
+        .map(YouTubeChannelResult.fromJson)
+        .where((c) => c.channelId.isNotEmpty)
+        .toList();
+  }
+
+  /// Feed URL to podcast ID for everything the user follows.
+  Future<Map<String, int>> getFollowedFeedIds(int userId) async {
+    final podcasts = await getUserPodcasts(userId);
+    return {
+      for (final p in podcasts)
+        if (p.url.isNotEmpty && p.id != null) p.url: p.id!,
+    };
+  }
+
+  /// Subscribes to a channel and returns its podcast ID. The server adds its
+  /// videos in the background.
+  Future<int> subscribeToYouTubeChannel(String channelId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/youtube/subscribe')
+        .replace(queryParameters: {'channel_id': channelId, 'user_id': userId.toString()});
+    // The server reads the channel with yt-dlp before answering.
+    final response =
+        await _client.post(url, headers: _authHeaders).timeout(const Duration(seconds: 90));
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final podcastId = data['podcast_id'];
+    if (data['success'] != true || podcastId is! int) {
+      throw Exception(data['message'] ?? 'Subscribing failed');
+    }
+    return podcastId;
+  }
+
+  Future<bool> removeYouTubeChannel(String channelName, String channelUrl, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final response = await _post(
+      Uri.parse('$_server/api/data/remove_youtube_channel'),
+      headers: {..._authHeaders, 'Content-Type': 'application/json'},
+      body: jsonEncode({'user_id': userId, 'channel_name': channelName, 'channel_url': channelUrl}),
+    );
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return (jsonDecode(response.body) as Map<String, dynamic>)['success'] == true;
+  }
+
+  /// How many days of videos a channel keeps; 0 is no limit.
+  Future<int?> getFeedCutoffDays(int podcastId, int userId) async {
+    final url = Uri.parse('$_server/api/data/get_feed_cutoff_days').replace(
+      queryParameters: {'podcast_id': podcastId.toString(), 'user_id': userId.toString()},
+    );
+    final response = await _get(url, headers: _authHeaders);
+    if (response.statusCode != 200) return null;
+    return (jsonDecode(response.body) as Map<String, dynamic>)['feed_cutoff_days'] as int?;
+  }
+
+  Future<void> updateFeedCutoffDays(int podcastId, int userId, int days) async {
+    final response = await _post(
+      Uri.parse('$_server/api/data/update_feed_cutoff_days'),
+      headers: {..._authHeaders, 'Content-Type': 'application/json'},
+      body: jsonEncode({'podcast_id': podcastId, 'user_id': userId, 'feed_cutoff_days': days}),
+    );
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+  }
+
+  Future<YouTubeVideoFilter> getYouTubeVideoFilter(int podcastId, int userId) async {
+    final url = Uri.parse('$_server/api/data/youtube_video_filter').replace(
+      queryParameters: {'podcast_id': podcastId.toString(), 'user_id': userId.toString()},
+    );
+    final response = await _get(url, headers: _authHeaders);
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return YouTubeVideoFilter.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// Saves the filter and returns it as the server stored it.
+  Future<YouTubeVideoFilter> updateYouTubeVideoFilter(
+      int podcastId, int userId, YouTubeVideoFilter filter) async {
+    final response = await _post(
+      Uri.parse('$_server/api/data/update_youtube_video_filter'),
+      headers: {..._authHeaders, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'podcast_id': podcastId,
+        'user_id': userId,
+        'min_minutes': filter.minMinutes,
+        'max_minutes': filter.maxMinutes,
+        'title_contains': filter.titleContains,
+      }),
+    );
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return YouTubeVideoFilter.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   // Get podcast details dynamically (whether added or not)
@@ -2600,6 +2862,125 @@ class PinepodsService {
     }
   }
 
+  // ---- People (/api/data/people/*) ----
+
+  Map<String, String> get _authHeaders {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    return {'Api-Key': _apiKey!};
+  }
+
+  Uri _peopleUrl(String path, [Map<String, String>? query]) =>
+      Uri.parse('$_server/api/data/people/$path').replace(queryParameters: query);
+
+  /// The server's own message for a failed request, if it sent one.
+  static String _errorMessage(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      final message = body is Map ? body['message'] : null;
+      if (message is String && message.isNotEmpty) return message;
+    } catch (_) {}
+    return 'Request failed (${response.statusCode})';
+  }
+
+  /// Everyone credited on one of the user's podcasts. Returns null when the
+  /// server predates the people endpoints (404), so callers can fall back to
+  /// [fetchPodcasting2PodData].
+  Future<PodcastCredits?> getPodcastPeople(int podcastId) async {
+    final response = await _get(_peopleUrl('podcast/$podcastId'), headers: _authHeaders);
+    if (response.statusCode == 200) {
+      return PodcastCredits.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    }
+    _devLog('Podcast people: ${response.statusCode}');
+    return null;
+  }
+
+  /// People on one of the user's episodes (its own credits plus the show's
+  /// regulars). Null when the server predates the people endpoints.
+  Future<List<CreditedPerson>?> getEpisodePeople(int episodeId) async {
+    final response = await _get(_peopleUrl('episode/$episodeId'), headers: _authHeaders);
+    if (response.statusCode == 200) {
+      return (jsonDecode(response.body) as List<dynamic>)
+          .map((e) => CreditedPerson.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    _devLog('Episode people: ${response.statusCode}');
+    return null;
+  }
+
+  Future<PersonProfile> getPersonProfile(int personId, {int limit = 50, int offset = 0}) async {
+    final response = await _get(
+      _peopleUrl('$personId', {'limit': '$limit', 'offset': '$offset'}),
+      headers: _authHeaders,
+    );
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return PersonProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// Resolve a PodPeopleDB id (e.g. a search result not yet on this server) to a
+  /// PinePods person id.
+  Future<int?> lookupPerson({int? podpeopleId, String? name}) async {
+    final response = await _get(
+      _peopleUrl('lookup', {
+        if (podpeopleId != null) 'podpeople_id': '$podpeopleId',
+        if (name != null) 'name': name,
+      }),
+      headers: _authHeaders,
+    );
+    if (response.statusCode != 200) return null;
+    return (jsonDecode(response.body) as Map<String, dynamic>)['person_id'] as int?;
+  }
+
+  /// People on this server and PodPeopleDB matching [query].
+  Future<List<PersonHit>> searchPeople(String query) async {
+    final response = await _get(_peopleUrl('search', {'q': query}), headers: _authHeaders);
+    if (response.statusCode != 200) return [];
+    return (jsonDecode(response.body) as List<dynamic>)
+        .map((e) => PersonHit.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Follow or unfollow a person. Returns whether the server accepted it.
+  Future<bool> setPersonFollowed(int personId, bool follow) async {
+    final url = _peopleUrl('$personId/follow');
+    final response = follow
+        ? await _post(url, headers: _authHeaders)
+        : await _client.delete(url, headers: _authHeaders).timeout(_timeout);
+    return response.statusCode == 200;
+  }
+
+  Future<List<PersonInfo>> getFollowedPeople() async {
+    final response = await _get(_peopleUrl('followed'), headers: _authHeaders);
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return (jsonDecode(response.body) as List<dynamic>)
+        .map((e) => PersonInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Add people to a podcast (or one of its episodes). They go to PodPeopleDB,
+  /// live right away as unverified. Returns everyone credited afterwards;
+  /// throws with the server's (or PodPeopleDB's) reason on failure.
+  Future<List<CreditedPerson>> contributePeople({
+    required int podcastId,
+    int? episodeId,
+    required List<ContributePerson> people,
+  }) async {
+    final response = await _post(
+      _peopleUrl('contribute'),
+      headers: {..._authHeaders, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'podcast_id': podcastId,
+        if (episodeId != null) 'episode_id': episodeId,
+        'people': people.map((p) => p.toJson()).toList(),
+      }),
+    );
+    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    return (jsonDecode(response.body) as List<dynamic>)
+        .map((e) => CreditedPerson.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<bool> getAutoPlayNextStatus(int podcastId, int userId) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
@@ -2792,11 +3173,14 @@ class PlayEpisodeDetails {
   final double playbackSpeed;
   final int startSkip;
   final int endSkip;
+  // True only for a genuine per-podcast override, not the echoed-back account default.
+  final bool playbackSpeedCustomized;
 
   PlayEpisodeDetails({
     required this.playbackSpeed,
     required this.startSkip,
     required this.endSkip,
+    this.playbackSpeedCustomized = false,
   });
 }
 
@@ -2833,21 +3217,67 @@ class SkipSegment {
       kind == 'ad' && (status == 'active' || status == 'confirmed');
 }
 
+// How the user's playback copy relates to the copy ads were detected on.
+// Dynamically inserted ads differ between fetches of an episode, so ad times
+// only fit the copy they came from. `download` is "match" (the user's server
+// download is that copy), "mismatch", "none" (no server download) or "unknown".
+class AdAudio {
+  final String download;
+  final double? analyzedDuration;
+  final String? analyzedSource;
+
+  const AdAudio({
+    required this.download,
+    this.analyzedDuration,
+    this.analyzedSource,
+  });
+
+  /// Whether ad times can be trusted on what is playing: the user's server
+  /// download when it is the analyzed copy, otherwise a copy whose length
+  /// (seconds) matches the analyzed one, since inserted ads usually change it.
+  bool fits(double durationSec, {required bool playingServerCopy}) {
+    if (download == 'match' && playingServerCopy) return true;
+    final expected = analyzedDuration;
+    if (expected == null || expected <= 0) return true;
+    if (!durationSec.isFinite || durationSec <= 0) return false;
+    final tolerance = (expected * 0.003) < 2.0 ? 2.0 : expected * 0.003;
+    return (durationSec - expected).abs() <= tolerance;
+  }
+}
+
+class SkipInfo {
+  final List<SkipSegment> segments;
+  final AdAudio? adAudio;
+
+  const SkipInfo({required this.segments, this.adAudio});
+}
+
 // AI capability status from GET /api/data/ai_status; gates all AI UI.
 class AiStatus {
   final bool available;
   final bool transcriptionReady;
   final bool adRemovalReady;
+  final bool downloadsEnabled;
 
   const AiStatus({
     this.available = false,
     this.transcriptionReady = false,
     this.adRemovalReady = false,
+    this.downloadsEnabled = false,
   });
 }
 
 // Stored AI transcript from GET /api/data/episode_transcript.
 // `segments` is the raw JSON string of [{start,end,text}] (seconds), or null.
+/// One timed line of a transcript (times in seconds).
+class TranscriptCue {
+  final double start;
+  final double end;
+  final String text;
+
+  const TranscriptCue({required this.start, required this.end, required this.text});
+}
+
 class StoredTranscript {
   final String source;
   final String? language;
@@ -2864,6 +3294,30 @@ class StoredTranscript {
     this.fullText,
     this.segments,
   });
+
+  /// The timed lines parsed from [segments]; empty when there are none.
+  List<TranscriptCue> get cues {
+    final json = segments;
+    if (json == null || json.isEmpty) return const [];
+    try {
+      final raw = jsonDecode(json);
+      if (raw is! List) return const [];
+      final cues = <TranscriptCue>[];
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final text = (item['text'] as String?)?.trim() ?? '';
+        if (text.isEmpty) continue;
+        cues.add(TranscriptCue(
+          start: (item['start'] as num?)?.toDouble() ?? 0.0,
+          end: (item['end'] as num?)?.toDouble() ?? 0.0,
+          text: text,
+        ));
+      }
+      return cues;
+    } catch (_) {
+      return const [];
+    }
+  }
 }
 
 // Playlist Data Classes

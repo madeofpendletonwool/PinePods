@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/services/auto_download/download_cleanup_service.dart';
 import 'package:pinepods_mobile/services/network/network_status.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
@@ -81,13 +82,16 @@ class MirrorDownloadService {
       await LocalDownloadUtils.deleteLocalDownloadByGuid(context, guid);
     }
 
-    // Add: server downloads missing on the device.
+    // Add: server downloads missing on the device, except ones removed from
+    // the device for being finished.
+    final cleaned = await DownloadCleanupService.cleanedGuids();
     final newManaged = managed.intersection(serverGuids);
     for (final entry in serverByGuid.entries) {
       if (!context.mounted) break;
       final guid = entry.key;
-      if (localGuids.contains(guid)) {
-        // Already present locally. Keep tracking it only if we owned it.
+      if (localGuids.contains(guid) || cleaned.contains(guid)) {
+        // Already present locally (keep tracking it only if we owned it), or
+        // already finished and cleaned up.
         continue;
       }
       final success = await LocalDownloadUtils.localDownloadEpisode(context, entry.value);

@@ -27,6 +27,7 @@ use utoipa::{Modify, OpenApi};
         (name = "health", description = "Health and instance checks (no auth)"),
         (name = "auth", description = "Authentication, sessions, MFA, and OIDC"),
         (name = "podcasts", description = "Podcast subscriptions, episodes, queue, and playback"),
+        (name = "people", description = "Hosts and guests on podcasts and episodes, person pages, follows, and contributing to PodPeopleDB"),
         (name = "episodes", description = "Episode actions: download, save, share, bulk ops"),
         (name = "playlists", description = "Smart and manual playlists"),
         (name = "settings", description = "User and server settings"),

@@ -120,6 +120,8 @@ pub struct GetUserDetails {
     pub Email: Option<String>,
     pub Hashed_PW: Option<String>,
     pub Salt: Option<String>,
+    #[serde(default)]
+    pub UseGravatar: bool,
 }
 
 pub async fn call_get_user_details(
@@ -973,6 +975,9 @@ pub struct StoreStateRequest {
     pub origin_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code_verifier: Option<String>,
+    // The server repeats this exact value in the token request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redirect_uri: Option<String>,
 }
 
 // Then create the function to make the request
@@ -983,6 +988,7 @@ pub async fn call_store_oidc_state(
     client_id: String,
     origin_url: Option<String>,
     code_verifier: Option<String>,
+    redirect_uri: Option<String>,
 ) -> Result<(), Error> {
     let url = format!("{}/api/auth/store_state", server_name);
     let request_body = StoreStateRequest {
@@ -990,6 +996,7 @@ pub async fn call_store_oidc_state(
         client_id,
         origin_url,
         code_verifier,
+        redirect_uri,
     };
 
     let response = Request::post(&url).json(&request_body)?.send().await?;

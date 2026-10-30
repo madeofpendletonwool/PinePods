@@ -164,7 +164,7 @@ class AppLocalizationsIt extends AppLocalizations {
   String get cancel_option_label => 'Annulla';
 
   @override
-  String get settings_theme_switch_label => 'Tema scuro';
+  String get settings_theme_switch_label => 'Tema';
 
   @override
   String get playback_speed_label => 'Velocità di riproduzione';

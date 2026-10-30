@@ -4,7 +4,7 @@ use i18nrs::yew::use_translation;
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::format_time;
 use crate::components::notification_center::{NotificationCenter, ToastNotification};
-use crate::components::remote_devices::RemoteDevices;
+use crate::components::remote_devices::{RemoteDevices, RemoteDevicesPanel};
 use crate::components::safehtml::SafeHtml;
 use crate::requests::search_pods::{
     call_get_podcast_info, call_youtube_search, YouTubeSearchResults,
@@ -32,7 +32,13 @@ pub struct FallbackImageProps {
     pub loading: String,
     #[prop_or("async".to_string())]
     pub decoding: String,
+    /// Shown when there's no artwork or it fails to load.
+    #[prop_or(DEFAULT_PODCAST_ART.to_string())]
+    pub fallback: String,
 }
+
+pub const DEFAULT_PODCAST_ART: &str = "/static/assets/default-podcast.png";
+pub const DEFAULT_EPISODE_ART: &str = "/static/assets/default-episode.png";
 
 #[function_component(FallbackImage)]
 pub fn fallback_image(props: &FallbackImageProps) -> Html {
@@ -43,12 +49,12 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     });
     let server_name = (*server_name_sel).clone();
 
-    const FALLBACK_IMAGE: &str = "/static/assets/favicon.png";
+    let fallback = props.fallback.clone();
 
     // Just use the original src without timestamps; treat empty src as immediate fallback
     let image_src = use_state(|| {
         if props.src.is_empty() {
-            FALLBACK_IMAGE.to_string()
+            fallback.clone()
         } else {
             props.src.clone()
         }
@@ -58,9 +64,10 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     {
         let image_src = image_src.clone();
         let props_src = props.src.clone();
+        let fallback = fallback.clone();
         use_effect_with(props_src, move |src| {
             if src.is_empty() {
-                image_src.set(FALLBACK_IMAGE.to_string());
+                image_src.set(fallback);
             } else {
                 image_src.set(src.clone());
             }
@@ -72,7 +79,7 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     let proxied_url = {
         let original_url = props.src.clone();
         if original_url.is_empty() {
-            FALLBACK_IMAGE.to_string()
+            fallback.clone()
         } else {
             format!(
                 "{}/api/proxy/image?url={}",
@@ -87,6 +94,7 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
         let has_error = has_error.clone();
         let image_src = image_src.clone();
         let proxied_url = proxied_url.clone();
+        let fallback = fallback.clone();
         Callback::from(move |_: Event| {
             if !*has_error {
                 // First error - switch to proxied URL
@@ -95,6 +103,9 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
                 web_sys::console::log_1(
                     &format!("Image load failed, switching to proxy: {}", proxied_url).into(),
                 );
+            } else if *image_src != fallback {
+                // The proxy couldn't load it either
+                image_src.set(fallback.clone());
             }
         })
     };
@@ -217,9 +228,12 @@ pub fn search_bar() -> Html {
         let history = history_clone.clone();
         let podcast_value = podcast_value_clone.clone();
         let search_index = search_index_clone.clone();
+        let search_unavailable_msg = i18n.t("update_services.search_unavailable").to_string();
+        let search_failed_msg = i18n.t("update_services.search_failed").to_string();
 
         move || {
-            if *is_submitting {
+            // Enter in an empty search box does nothing.
+            if *is_submitting || podcast_value.trim().is_empty() {
                 return;
             }
             is_submitting.set(true);
@@ -235,6 +249,7 @@ pub fn search_bar() -> Html {
             let search_value = podcast_value.clone();
             let search_index = search_index.clone();
             let is_submitting_clone = is_submitting.clone();
+            let (search_unavailable_msg, search_failed_msg) = (search_unavailable_msg.clone(), search_failed_msg.clone());
 
             wasm_bindgen_futures::spawn_local(async move {
                 Dispatch::<PageLoadState>::global().reduce_mut(|state| state.is_loading = Some(true));
@@ -279,9 +294,15 @@ pub fn search_bar() -> Html {
                                 .reduce_mut(|state| state.is_loading = Some(false));
                             history.push("/pod_layout");
                         }
-                        Err(_) => {
+                        Err(e) => {
                             Dispatch::<PageLoadState>::global()
                                 .reduce_mut(|state| state.is_loading = Some(false));
+                            let message = if e.downcast_ref::<crate::requests::search_pods::SearchUnavailable>().is_some() {
+                                search_unavailable_msg.clone()
+                            } else {
+                                format!("{}: {}", search_failed_msg, e)
+                            };
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| state.error_message = Some(message));
                         }
                     }
                 }
@@ -591,6 +612,7 @@ pub fn search_bar() -> Html {
                                 <span class="topbar-queue-badge">{ queue_count }</span>
                             }
                         </button>
+                        <RemoteDevices />
                         <button type="button" class="iconbtn search-trigger"
                                 onclick={on_expand.clone()}
                                 title="Search" aria-label="Open search">
@@ -665,6 +687,7 @@ pub fn search_bar() -> Html {
                     </form>
                 }
             </div>
+            <RemoteDevicesPanel />
             <ToastNotification />
         </div>
     }
@@ -948,6 +971,7 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                 <div class="flex items-start space-x-4 p-6 border-b border-custom-border">
                     <FallbackImage
                         src={props.episode_artwork.clone()}
+                        fallback={DEFAULT_EPISODE_ART}
                         alt="Episode artwork"
                         class="w-32 h-32 rounded-lg object-cover flex-shrink-0"
                     />

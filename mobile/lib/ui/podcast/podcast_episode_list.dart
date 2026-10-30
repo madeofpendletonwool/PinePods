@@ -8,6 +8,7 @@ import 'package:pinepods_mobile/state/queue_event_state.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PodcastEpisodeList extends StatelessWidget {
   final List<Episode?>? episodes;
@@ -16,7 +17,7 @@ class PodcastEpisodeList extends StatelessWidget {
   final bool play;
   final bool download;
 
-  static const _defaultIcon = Icons.add_alert;
+  static const _defaultIcon = PhosphorIconsRegular.bellRinging;
 
   const PodcastEpisodeList({
     super.key,

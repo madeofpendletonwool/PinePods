@@ -28,7 +28,7 @@ try:
     MYSQL_AVAILABLE = True
 except ImportError:
     try:
-        import mysql.connector
+        import mysql.connector as mysql_connector
         MYSQL_AVAILABLE = True
     except ImportError:
         MYSQL_AVAILABLE = False
@@ -318,7 +318,7 @@ class DatabaseMigrationManager:
                     logger.info("Detected existing schema for migration 004")
             
             # Check for gpodder tables - if ANY exist, ALL gpodder migrations are applied
-            # (since they were created by the Go gpodder-api service and haven't changed)
+            # (older installs created them outside this runner, all at once)
             gpodder_indicator_tables = ['"GpodderSyncMigrations"', '"GpodderSyncDeviceState"', 
                                       '"GpodderSyncSubscriptions"', '"GpodderSyncSettings"', 
                                       '"GpodderSessions"', '"GpodderSyncState"']

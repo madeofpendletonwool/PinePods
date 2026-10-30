@@ -38,6 +38,21 @@ class NowPlayingDevice {
   final double speed;
   final int updatedAt;
 
+  /// Actions the device says it applies. Empty: it predates the `capabilities`
+  /// connect parameter, so it handles [legacyActions].
+  final List<String> capabilities;
+
+  /// What every client applied before devices could list their actions.
+  static const legacyActions = [
+    'play',
+    'pause',
+    'seek',
+    'skip_forward',
+    'skip_back',
+    'set_speed',
+    'play_episode',
+  ];
+
   const NowPlayingDevice({
     required this.deviceId,
     required this.deviceName,
@@ -51,7 +66,13 @@ class NowPlayingDevice {
     required this.playing,
     required this.speed,
     required this.updatedAt,
+    this.capabilities = const [],
   });
+
+  /// Whether this device applies [action], so the UI can hide controls it lacks.
+  bool supports(String action) => capabilities.isEmpty
+      ? legacyActions.contains(action)
+      : capabilities.contains(action);
 
   static double _toDouble(dynamic v) => (v is num) ? v.toDouble() : 0.0;
   static int _toInt(dynamic v) => (v is num) ? v.toInt() : 0;
@@ -70,6 +91,9 @@ class NowPlayingDevice {
       playing: json['playing'] as bool? ?? false,
       speed: _toDouble(json['speed']),
       updatedAt: _toInt(json['updated_at']),
+      capabilities:
+          (json['capabilities'] as List?)?.whereType<String>().toList() ??
+              const [],
     );
   }
 }
@@ -102,13 +126,41 @@ class NowPlayingService {
   /// Whether the socket is currently open.
   final ValueNotifier<bool> connected = ValueNotifier<bool>(false);
 
+  /// Last command the server couldn't deliver (target offline), for the UI to
+  /// surface; null when there's nothing to report.
+  final ValueNotifier<String?> lastCommandError = ValueNotifier<String?>(null);
+
+  /// Close code the server sends when a newer connection took over our
+  /// device_id (rust-api handlers/nowplaying.rs `CLOSE_REPLACED`).
+  static const _closeReplaced = 4000;
+
+  // What this device last reported, so "Send to" can hand it off.
+  int? _reportedEpisodeId;
+  bool _reportedIsYoutube = false;
+  double _reportedPositionSec = 0;
+
+  // cmd_id of an in-flight "Send to" handoff; we pause locally only once the
+  // server acks delivery, so an offline target doesn't strand playback.
+  String? _pendingHandoffCmdId;
+
+  int _cmdSeq = 0;
+
   WebSocketChannel? _channel;
   StreamSubscription? _channelSub;
   Timer? _reconnectTimer;
 
+  /// Consecutive failed connects; drives the reconnect backoff so a server
+  /// without this endpoint (or an unreachable one) isn't dialled every 10s
+  /// forever.
+  int _failedAttempts = 0;
+
   String? _deviceId;
   String? _deviceName;
   String _deviceType = 'Mobile';
+
+  /// The actions [_applyCommand] handles, announced on connect.
+  static const _capabilities =
+      'play,pause,seek,skip_forward,skip_back,set_speed,play_episode';
 
   // Credentials of the currently-connected session; reused for `play_episode`.
   String? _server;
@@ -144,6 +196,19 @@ class NowPlayingService {
     }
     _deviceId = generated;
     return generated;
+  }
+
+  /// Take a fresh device id. Used when the server says another live connection
+  /// holds ours (e.g. secure storage restored onto a second phone), so the two
+  /// installs stop evicting each other.
+  Future<void> _rotateDeviceId() async {
+    final generated = _generateId();
+    try {
+      await _storage.write(key: _deviceIdKey, value: generated);
+    } catch (e) {
+      log.fine('Could not persist rotated device id (continuing): $e');
+    }
+    _deviceId = generated;
   }
 
   String _generateId() {
@@ -212,7 +277,8 @@ class NowPlayingService {
       '?api_key=${Uri.encodeComponent(apiKey)}'
       '&device_id=${Uri.encodeComponent(deviceId)}'
       '&device_name=${Uri.encodeComponent(_deviceName ?? _deviceType)}'
-      '&device_type=${Uri.encodeComponent(_deviceType)}',
+      '&device_type=${Uri.encodeComponent(_deviceType)}'
+      '&capabilities=${Uri.encodeComponent(_capabilities)}',
     );
 
     try {
@@ -224,34 +290,52 @@ class NowPlayingService {
           log.fine('Now-playing socket error: $e');
           _onDisconnected();
         },
-        onDone: _onDisconnected,
+        onDone: () => _onDisconnected(closeCode: channel.closeCode),
         cancelOnError: true,
       );
-      connected.value = true;
       log.info('Now-playing socket connecting to $proto://$clean (device $deviceId)');
+      // A failed handshake also surfaces on the stream (handled above); this
+      // just keeps `ready`'s error from escaping as an unhandled exception.
+      channel.ready.then((_) {
+        if (_channel != channel) return;
+        _failedAttempts = 0;
+        connected.value = true;
+      }, onError: (Object e) {});
     } catch (e) {
       log.fine('Now-playing socket failed to open (continuing): $e');
       _onDisconnected();
     }
   }
 
-  void _onDisconnected() {
+  void _onDisconnected({int? closeCode}) {
     connected.value = false;
     devices.value = const [];
     _channelSub?.cancel();
     _channelSub = null;
     _channel = null;
     if (_closing) return;
-    // Best-effort reconnect with a fixed backoff.
     _reconnectTimer?.cancel();
     final server = _server;
     final apiKey = _apiKey;
     final userId = _userId;
     if (server == null || apiKey == null || userId == null) return;
-    _reconnectTimer = Timer(const Duration(seconds: 10), () {
+    // Another live connection took over our id: rotate it and reconnect promptly,
+    // rather than reclaiming the old id and evicting the other one in a loop.
+    final replaced = closeCode == _closeReplaced;
+    if (replaced) log.info('Now-playing device id taken over elsewhere; rotating');
+    final delay = replaced ? const Duration(seconds: 1) : _nextBackoff();
+    _reconnectTimer = Timer(delay, () async {
       if (_closing) return;
+      if (replaced) await _rotateDeviceId();
       connect(server: server, apiKey: apiKey, userId: userId);
     });
+  }
+
+  /// 10s, 20s, 40s ... capped at 5 minutes.
+  Duration _nextBackoff() {
+    final seconds = 10 * (1 << _failedAttempts.clamp(0, 5));
+    _failedAttempts++;
+    return Duration(seconds: seconds.clamp(10, 300));
   }
 
   void _teardown() {
@@ -274,6 +358,7 @@ class NowPlayingService {
   /// Intentionally close the socket (e.g. on logout). Cancels reconnection.
   void disconnect() {
     _closing = true;
+    _failedAttempts = 0;
     _teardown();
     _server = null;
     _apiKey = null;
@@ -302,6 +387,9 @@ class NowPlayingService {
     required bool playing,
     required double speed,
   }) {
+    _reportedEpisodeId = episodeId;
+    _reportedIsYoutube = isYoutube;
+    _reportedPositionSec = positionSec;
     _send({
       'type': 'report',
       'episode_id': episodeId,
@@ -317,15 +405,51 @@ class NowPlayingService {
 
   void sendHeartbeat() => _send({'type': 'heartbeat'});
 
-  /// Send an advisory remote-control command to another device.
-  void sendCommand(String targetDeviceId, String action,
+  /// Send an advisory remote-control command to another device. If the server
+  /// reports the target offline, [lastCommandError] is set.
+  /// Returns the correlation id the server echoes back in its `ack`.
+  String sendCommand(String targetDeviceId, String action,
       [Map<String, dynamic> args = const {}]) {
+    lastCommandError.value = null;
+    final cmdId = '${++_cmdSeq}';
     _send({
       'type': 'command',
       'target_device_id': targetDeviceId,
       'action': action,
       'args': args,
+      'cmd_id': cmdId,
     });
+    return cmdId;
+  }
+
+  /// "Play on ▸": start an episode on another device. With no position the
+  /// target resumes from the server-stored listen position.
+  void playOnDevice(String targetDeviceId, int episodeId, bool isYoutube) {
+    sendCommand(targetDeviceId, 'play_episode', {
+      'episode_id': episodeId,
+      'is_youtube': isYoutube,
+    });
+  }
+
+  /// Whether something is loaded here that [sendPlaybackTo] could hand off.
+  bool get hasLocalPlayback =>
+      _reportedEpisodeId != null && _audioPlayerService.nowPlaying != null;
+
+  /// "Send to ▸": hand off what this device is playing to another device at the
+  /// live position — the push mirror of [playHere]. The local player pauses once
+  /// the server acks delivery. Returns false when nothing is playing here.
+  bool sendPlaybackTo(String targetDeviceId) {
+    final episodeId = _reportedEpisodeId;
+    if (episodeId == null || _audioPlayerService.nowPlaying == null) return false;
+    final live = _audioPlayerService.playPosition?.valueOrNull;
+    final positionSec =
+        live?.position.inSeconds.toDouble() ?? _reportedPositionSec;
+    _pendingHandoffCmdId = sendCommand(targetDeviceId, 'play_episode', {
+      'episode_id': episodeId,
+      'is_youtube': _reportedIsYoutube,
+      'position_sec': positionSec,
+    });
+    return true;
   }
 
   void _handleInbound(dynamic raw) {
@@ -358,6 +482,20 @@ class NowPlayingService {
         unawaited(_applyCommand(action, args));
         break;
       case 'ack':
+        final cmdId = msg['cmd_id'] as String?;
+        final handoff = cmdId != null && cmdId == _pendingHandoffCmdId;
+        if (handoff) _pendingHandoffCmdId = null;
+        if (msg['ok'] == true && handoff) {
+          unawaited(_applyCommand('pause', const {}));
+        }
+        if (msg['ok'] == false) {
+          final targetId = msg['target_device_id'] as String?;
+          final match = devices.value.where((d) => d.deviceId == targetId);
+          final name = match.isNotEmpty && match.first.deviceName.isNotEmpty
+              ? match.first.deviceName
+              : 'That device';
+          lastCommandError.value = '$name is offline — command not delivered';
+        }
         break;
     }
   }
@@ -394,7 +532,13 @@ class NowPlayingService {
         case 'play_episode':
           final id = (args['episode_id'] as num?)?.toInt();
           if (id != null) {
-            await _playEpisodeById(id, args['is_youtube'] == true);
+            // A handoff carries the sender's live position; otherwise resume
+            // from the server-stored one.
+            await _playEpisodeById(
+              id,
+              args['is_youtube'] == true,
+              positionSec: (args['position_sec'] as num?)?.toDouble(),
+            );
           }
           break;
         default:
@@ -414,11 +558,23 @@ class NowPlayingService {
     await _audioPlayerService.seek(position: target.round());
   }
 
-  /// Start a device's episode on *this* device ("Play here" in the UI).
-  Future<void> playEpisodeLocally(int episodeId, bool isYoutube) =>
-      _playEpisodeById(episodeId, isYoutube);
+  /// Take over another device's episode on *this* device ("Play here" in the
+  /// UI): pause the source if it's playing (advisory) so it doesn't keep going in
+  /// two places, and resume at its live position rather than the staler
+  /// server-stored one. Mirrors web remote_devices.rs.
+  Future<void> playHere(NowPlayingDevice source) async {
+    if (source.playing && source.supports('pause')) {
+      sendCommand(source.deviceId, 'pause');
+    }
+    await _playEpisodeById(
+      source.episodeId,
+      source.isYoutube,
+      positionSec: source.positionSec,
+    );
+  }
 
-  Future<void> _playEpisodeById(int episodeId, bool isYoutube) async {
+  Future<void> _playEpisodeById(int episodeId, bool isYoutube,
+      {double? positionSec}) async {
     final server = _server;
     final apiKey = _apiKey;
     final userId = _userId;
@@ -434,8 +590,11 @@ class NowPlayingService {
       log.fine('Remote play_episode: metadata not found for $episodeId');
       return;
     }
+    final resumeAt = (positionSec != null && positionSec.isFinite && positionSec > 0)
+        ? episode.withListenDuration(positionSec.round())
+        : episode;
     await _pinepodsAudioService.playPinepodsEpisode(
-      pinepodsEpisode: episode,
+      pinepodsEpisode: resumeAt,
       resume: true,
     );
   }
@@ -444,5 +603,6 @@ class NowPlayingService {
     disconnect();
     devices.dispose();
     connected.dispose();
+    lastCommandError.dispose();
   }
 }

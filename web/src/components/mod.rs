@@ -5,7 +5,7 @@ pub(crate) mod context_menu_button;
 pub(crate) mod collection_picker_modal;
 pub(crate) mod episode_list_item;
 pub(crate) mod episode_list_view;
-pub(crate) mod host_component;
+pub(crate) mod people;
 pub(crate) mod loading;
 pub mod misc_func;
 pub(crate) mod navigation;
@@ -15,6 +15,7 @@ pub(crate) mod oauth_callback;
 pub(crate) mod restore_overlay;
 pub(crate) mod safehtml;
 pub(crate) mod virtual_list;
+pub(crate) mod youtube_video_filter;
 
 pub(crate) mod audio;
 pub(crate) mod click_events;

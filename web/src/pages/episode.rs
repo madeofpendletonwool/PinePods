@@ -9,7 +9,9 @@ use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::components::loading::Loading;
+use crate::components::people::{AddPeopleSheet, PeopleLayout, PeopleStrip};
 use crate::components::safehtml::SafeHtml;
+use crate::requests::people_req::{call_get_episode_people, CreditedPerson};
 use crate::requests::pod_req;
 use crate::requests::pod_req::{
     call_check_podcast, call_create_share_link, call_download_episode, call_download_episode_file,
@@ -19,7 +21,7 @@ use crate::requests::pod_req::{
     call_save_episode, DownloadEpisodeRequest, EpisodeRequest, FetchPodcasting2DataRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest, Transcript,
     call_get_ai_status, call_get_episode_transcript, call_transcribe_episode, StoredTranscript,
-    call_get_episode_skip_segments, SkipSegment, call_detect_ads, call_adjust_ad_segment_review,
+    call_get_episode_skip_segments, SkipSegment, AdAudio, call_get_ai_status_full, call_detect_ads, call_adjust_ad_segment_review,
     AdSegmentReviewRequest,
 };
 use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_parse_podcast_url};
@@ -34,7 +36,7 @@ use web_sys::UrlSearchParams;
 use web_sys::{window, Headers, Request, RequestInit, Response};
 use yew::prelude::*;
 use yew::{function_component, html, Html};
-use yew_router::history::{BrowserHistory, History};
+use yew_router::history::BrowserHistory;
 use yew_router::hooks::use_location;
 use yewdux::prelude::*;
 
@@ -783,11 +785,14 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
         });
     }
 
-    // Load detected ad segments for inline review + transcript highlighting (#790).
+    // Load detected ad segments for inline review + transcript highlighting (#790), and which
+    // audio copy they were found on.
     let ad_segments = use_state(Vec::<SkipSegment>::new);
+    let ad_audio = use_state(|| Option::<AdAudio>::None);
     let ad_refresh = use_state(|| 0u32);
     {
         let ad_segments = ad_segments.clone();
+        let ad_audio = ad_audio.clone();
         let server_name = props.server_name.clone();
         let api_key = props.api_key.clone();
         let refresh = *ad_refresh;
@@ -795,14 +800,35 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
             let episode_id = *episode_id;
             if let Some(user_id) = *user_id {
                 wasm_bindgen_futures::spawn_local(async move {
-                    if let Ok(segs) = call_get_episode_skip_segments(&server_name, &Some(api_key), user_id, episode_id).await {
-                        ad_segments.set(segs.into_iter().filter(|s| s.kind == "ad").collect());
+                    if let Ok(info) = call_get_episode_skip_segments(&server_name, &Some(api_key), user_id, episode_id).await {
+                        ad_segments.set(info.segments.into_iter().filter(|s| s.kind == "ad").collect());
+                        ad_audio.set(info.ad_audio);
                     }
                 });
             }
             || ()
         });
     }
+
+    // Whether the admin allows server downloads (offered as the accurate way to detect ads).
+    let downloads_enabled = use_state(|| false);
+    {
+        let downloads_enabled = downloads_enabled.clone();
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
+        use_effect_with(props.ai_available, move |ai_available| {
+            if *ai_available {
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(st) = call_get_ai_status_full(&server_name, &Some(api_key)).await {
+                        downloads_enabled.set(st.downloads_enabled);
+                    }
+                });
+            }
+            || ()
+        });
+    }
+    let (episode_status, _) = use_store::<EpisodeStatusState>();
+    let on_server = episode_status.downloaded_episodes.is_server_download(episode_id);
     let ad_ranges: Vec<(f64, f64)> = ad_segments.iter().map(|s| (s.start_time, s.end_time)).collect();
 
     let status = ai_transcript.as_ref().map(|t| t.status.clone());
@@ -896,22 +922,41 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
         return html! {};
     }
 
-    // Ad detection (#790): manual trigger + per-user confirm/deny of detected ads.
-    let on_detect_ads = {
+    // Ad detection (#790): manual trigger + per-user confirm/deny of detected ads. Ads that are
+    // inserted dynamically differ between copies of an episode, so detecting on a fresh stream
+    // can give times that don't fit what the user later plays; the server copy is the reliable one.
+    let detect_choice = use_state(|| false);
+    let start_detect = {
         let server_name = props.server_name.clone();
         let api_key = props.api_key.clone();
+        let detect_choice = detect_choice.clone();
         let started = i18n.t("episode.ad_detection_started").to_string();
+        let download_started = i18n.t("episode.ad_detection_download_started").to_string();
         let err = i18n.t("episode.ad_detection_error").to_string();
-        Callback::from(move |_: MouseEvent| {
+        Callback::from(move |download_first: bool| {
+            detect_choice.set(false);
             if let Some(user_id) = user_id {
                 let (server_name, api_key) = (server_name.clone(), api_key.clone());
-                let (started, err) = (started.clone(), err.clone());
+                let msg = if download_first { download_started.clone() } else { started.clone() };
+                let err = err.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_detect_ads(&server_name, &Some(api_key), episode_id, user_id, true).await {
-                        Ok(_) => Dispatch::<NotificationState>::global().reduce_mut(|s| s.info_message = Some(started)),
+                    match call_detect_ads(&server_name, &Some(api_key), episode_id, user_id, true, download_first).await {
+                        Ok(_) => Dispatch::<NotificationState>::global().reduce_mut(|s| s.info_message = Some(msg)),
                         Err(e) => Dispatch::<NotificationState>::global().reduce_mut(|s| s.error_message = Some(format!("{}: {}", err, e))),
                     }
                 });
+            }
+        })
+    };
+    let offer_download = !on_server && *downloads_enabled;
+    let on_detect_ads = {
+        let start_detect = start_detect.clone();
+        let detect_choice = detect_choice.clone();
+        Callback::from(move |_: MouseEvent| {
+            if offer_download {
+                detect_choice.set(true);
+            } else {
+                start_detect.emit(false);
             }
         })
     };
@@ -943,6 +988,64 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
         html! {}
     };
 
+    let detect_choice_panel = if *detect_choice {
+        let download = { let s = start_detect.clone(); Callback::from(move |_: MouseEvent| s.emit(true)) };
+        let stream = { let s = start_detect.clone(); Callback::from(move |_: MouseEvent| s.emit(false)) };
+        let cancel = { let c = detect_choice.clone(); Callback::from(move |_: MouseEvent| c.set(false)) };
+        html! {
+            <div class="ep-ad-notice">
+                <i class="ph ph-warning"></i>
+                <div class="ep-ad-notice-body">
+                    <span>{ i18n.t("episode.ad_detect_not_downloaded") }</span>
+                    <div class="ep-ad-notice-actions">
+                        <button class="ep-ai-transcript-btn" onclick={download}>
+                            <i class="ph ph-cloud-arrow-down"></i>{ i18n.t("episode.ad_detect_download_first") }
+                        </button>
+                        <button class="ep-ai-transcript-btn" onclick={stream}>{ i18n.t("episode.ad_detect_stream_anyway") }</button>
+                        <button class="ep-ai-transcript-btn" onclick={cancel}>{ i18n.t("episode.cancel") }</button>
+                    </div>
+                </div>
+            </div>
+        }
+    } else {
+        html! {}
+    };
+
+    // How the ad times relate to what this user plays.
+    let ad_accuracy = match (ad_segments.is_empty(), ad_audio.as_ref().map(|a| a.download.as_str())) {
+        (false, Some("match")) => html! {
+            <div class="ep-ad-notice is-ok">
+                <i class="ph ph-check-circle"></i>
+                <div class="ep-ad-notice-body"><span>{ i18n.t("episode.ad_accuracy_match") }</span></div>
+            </div>
+        },
+        (false, Some("mismatch")) => html! {
+            <div class="ep-ad-notice">
+                <i class="ph ph-warning"></i>
+                <div class="ep-ad-notice-body"><span>{ i18n.t("episode.ad_accuracy_mismatch") }</span></div>
+            </div>
+        },
+        (false, Some("none")) => {
+            let download = { let s = start_detect.clone(); Callback::from(move |_: MouseEvent| s.emit(true)) };
+            html! {
+                <div class="ep-ad-notice">
+                    <i class="ph ph-warning"></i>
+                    <div class="ep-ad-notice-body">
+                        <span>{ i18n.t("episode.ad_accuracy_streaming") }</span>
+                        if *downloads_enabled {
+                            <div class="ep-ad-notice-actions">
+                                <button class="ep-ai-transcript-btn" onclick={download}>
+                                    <i class="ph ph-cloud-arrow-down"></i>{ i18n.t("episode.ad_detect_download_first") }
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+        _ => html! {},
+    };
+
     let ad_review = if !ad_segments.is_empty() {
         html! {
             <div class="ep-ad-review">
@@ -960,10 +1063,10 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
                             <span class={ if skipping { "ep-ad-status skipping" } else { "ep-ad-status kept" } }>
                                 { if skipping { i18n.t("episode.ad_skipping") } else { i18n.t("episode.ad_kept") } }
                             </span>
-                            <button class="ep-ad-btn confirm" onclick={confirm} title="Skip this ad">
+                            <button class="ep-ad-btn confirm" onclick={confirm} title={i18n.t("episode.ad_skip_this").to_string()}>
                                 <i class="ph ph-check"></i>
                             </button>
-                            <button class="ep-ad-btn deny" onclick={deny} title="Keep this ad">
+                            <button class="ep-ad-btn deny" onclick={deny} title={i18n.t("episode.ad_keep_this").to_string()}>
                                 <i class="ph ph-x"></i>
                             </button>
                         </div>
@@ -981,6 +1084,8 @@ pub fn transcript_tab(props: &TranscriptTabProps) -> Html {
             { content }
             { action }
             { detect_action }
+            { detect_choice_panel }
+            { ad_accuracy }
             { ad_review }
         </div>
     }
@@ -1087,7 +1192,7 @@ pub fn mobile_transcript_actions(props: &MobileTranscriptActionsProps) -> Html {
 #[function_component(Episode)]
 pub fn epsiode() -> Html {
     let (i18n, _) = use_translation();
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, dispatch) = use_store::<AppState>();
     let (episode_detail_state, _) = use_store::<EpisodeDetailState>();
     let (prefs_state, _) = use_store::<UserPreferencesState>();
 
@@ -1140,8 +1245,6 @@ pub fn epsiode() -> Html {
     let i18n_cover_alt_text = i18n.t("episode.cover_alt_text").to_string();
     let i18n_failed_to_find_podcast_metadata =
         i18n.t("failed_to_find_podcast_metadata").to_string();
-    let i18n_no_hosts_found = i18n.t("host_component.no_hosts_found").to_string();
-    let i18n_add_hosts_here = i18n.t("host_component.add_hosts_here").to_string();
 
     let (app_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
@@ -1156,6 +1259,13 @@ pub fn epsiode() -> Html {
 
     //let episode_id = state.selected_episode_id.clone();
     let ep_in_db = use_state(|| false);
+    let show_add_people = use_state(|| false);
+    let open_add_people = {
+        let show_add_people = show_add_people.clone();
+        Callback::from(move |_: ()| show_add_people.set(true))
+    };
+    let episode_people_loaded = audio_state.episode_page_people.is_some();
+    let episode_people_rc = Rc::new(audio_state.episode_page_people.clone().unwrap_or_default());
     let ep_2_loading = use_state(|| true);
 
     // Whether the optional AI sidecar is connected — gates the Transcript tab + generate action.
@@ -1225,12 +1335,27 @@ pub fn epsiode() -> Html {
             };
             let ep_2_loading = ep_2_loading.clone();
 
+            // People are a quick DB read; the 2.0 data below can wait on a remote chapters file,
+            // so they're fetched on their own and show up with the page.
+            audio_dispatch.reduce_mut(|state| state.episode_page_people = None);
+            {
+                let audio_dispatch = audio_dispatch.clone();
+                let server_name = server_name.clone();
+                let api_key = api_key.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let Some(key) = api_key.as_deref() else { return };
+                    match call_get_episode_people(&server_name, key, episode_id).await {
+                        Ok(people) => audio_dispatch.reduce_mut(|state| state.episode_page_people = Some(people)),
+                        Err(e) => web_sys::console::log_1(&format!("Error fetching episode people: {}", e).into()),
+                    }
+                });
+            }
+
             wasm_bindgen_futures::spawn_local(async move {
                 match call_fetch_podcasting_2_data(&server_name, &api_key, &chap_request).await {
                     Ok(response) => {
                         audio_dispatch.reduce_mut(|state| {
                             state.episode_page_transcript = Some(response.transcripts);
-                            state.episode_page_people = Some(response.people);
                             state.episode_page_chapters = Some(response.chapters);
                         });
                         ep_2_loading.set(false);
@@ -1241,7 +1366,6 @@ pub fn epsiode() -> Html {
                         );
                         audio_dispatch.reduce_mut(|state| {
                             state.episode_page_transcript = None;
-                            state.episode_page_people = None;
                             state.episode_page_chapters = None;
                         });
                         ep_2_loading.set(false);
@@ -2236,8 +2360,6 @@ pub fn epsiode() -> Html {
                         };
 
                         let layout = if audio_state.is_mobile.unwrap_or(false) {
-                            let server_for_proxy = server_name.clone().unwrap_or_default();
-                            let history_for_host = history.clone();
                             html! {
                                 <div class="mobile-layout ep-mobile-page">
 
@@ -2245,6 +2367,7 @@ pub fn epsiode() -> Html {
                                     <div class="ep-mobile-header">
                                         <FallbackImage
                                             src={episode.episodeartwork.clone()}
+                                            fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                                             alt={format!("{}{}", i18n_cover_alt_text, episode.episodeartwork.clone())}
                                             class="ep-mobile-art rounded-corners"
                                         />
@@ -2351,67 +2474,18 @@ pub fn epsiode() -> Html {
                                         }
                                     }}
 
-                                    // ── Host strip ──
-                                    { if !*ep_2_loading {
-                                        if let Some(people) = &audio_state.episode_page_people {
-                                            if !people.is_empty() {
-                                                let has_unknown_host = people.len() == 1
-                                                    && people[0].name == "Unknown Host"
-                                                    && people[0].role == Some("Host".to_string());
-                                                if has_unknown_host {
-                                                    let people_url = state.server_details.as_ref()
-                                                        .and_then(|sd| sd.people_url.as_ref())
-                                                        .cloned()
-                                                        .unwrap_or_default();
-                                                    let host_url = format!("{}/podcast/{}", people_url, episode.podcastid);
-                                                    html! {
-                                                        <div class="ep-mobile-hosts">
-                                                            <p class="ep-mobile-section-label">{ &i18n_in_this_episode }</p>
-                                                            <p class="ep-mobile-no-hosts-msg">
-                                                                { i18n_no_hosts_found.clone() }
-                                                                <a href={host_url} target="_blank" class="ep-mobile-no-hosts-link">
-                                                                    { i18n_add_hosts_here.clone() }
-                                                                </a>
-                                                            </p>
-                                                        </div>
-                                                    }
-                                                } else {
-                                                    let server = server_for_proxy.clone();
-                                                    html! {
-                                                        <div class="ep-mobile-hosts">
-                                                            <p class="ep-mobile-section-label">{ &i18n_in_this_episode }</p>
-                                                            <div class="ep-mobile-hosts-scroll">
-                                                            { for people.iter().map(|person| {
-                                                                let name = person.name.clone();
-                                                                let role = person.role.clone();
-                                                                let img_url = person.img.as_ref().map(|url| {
-                                                                    format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
-                                                                });
-                                                                let hist = history_for_host.clone();
-                                                                let nav_name = name.clone();
-                                                                let on_chip_click = Callback::from(move |_: MouseEvent| {
-                                                                    hist.push(format!("/person/{}", nav_name));
-                                                                });
-                                                                html! {
-                                                                    <div class="ep-mobile-host-chip" onclick={on_chip_click}>
-                                                                        { if let Some(src) = img_url {
-                                                                            html! { <img src={src} alt={name.clone()} class="ep-mobile-host-avatar" /> }
-                                                                        } else {
-                                                                            html! { <div class="ep-mobile-host-avatar ep-mobile-host-placeholder"><i class="ph ph-user"></i></div> }
-                                                                        }}
-                                                                        <span class="ep-mobile-host-name">{ &person.name }</span>
-                                                                        { if let Some(r) = &role {
-                                                                            html! { <span class="ep-mobile-host-role">{ r }</span> }
-                                                                        } else { html! {} }}
-                                                                    </div>
-                                                                }
-                                                            })}
-                                                            </div>
-                                                        </div>
-                                                    }
-                                                }
-                                            } else { html! {} }
-                                        } else { html! {} }
+                                    // ── People ──
+                                    { if *ep_in_db && !episode.is_youtube {
+                                        html! {
+                                            <PeopleStrip
+                                                people={episode_people_rc.clone()}
+                                                layout={PeopleLayout::Chips}
+                                                label={i18n_in_this_episode.clone()}
+                                                on_add={episode_people_loaded.then(|| open_add_people.clone())}
+                                                empty_text={i18n.t("people.none_on_episode")}
+                                                class={classes!("ep-mobile-hosts")}
+                                            />
+                                        }
                                     } else { html! {} }}
 
                                     // ── Transcript (built-in + AI, #726) ──
@@ -2496,6 +2570,7 @@ pub fn epsiode() -> Html {
                                         <div class="ep-hero-cover" onclick={on_title_click.clone()} title={episode.podcastname.clone()}>
                                             <FallbackImage
                                                 src={episode.episodeartwork.clone()}
+                                                fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                                                 alt={format!("{}{}", i18n_cover_alt_text, episode.episodeartwork.clone())}
                                                 class="ep-hero-cover-img"
                                             />
@@ -2595,7 +2670,9 @@ pub fn epsiode() -> Html {
                                         // The Transcript tab is available if there's a built-in transcript OR the AI
                                         // sidecar is connected (so the user can generate one).
                                         let has_transcript = has_feed_transcript || *ai_available;
-                                        let has_people = !*ep_2_loading && audio_state.episode_page_people.as_ref().map_or(false, |p| !p.is_empty());
+                                        // Always offered for library episodes, so people can be added when none are listed.
+                                        let has_people = *ep_in_db && !episode.is_youtube && episode_people_loaded;
+                                        let people_count = episode_people_rc.len();
                                         let effective_tab = match *active_tab {
                                             EpisodeTab::Chapters if has_chapters => EpisodeTab::Chapters,
                                             EpisodeTab::Transcript if has_transcript => EpisodeTab::Transcript,
@@ -2620,7 +2697,7 @@ pub fn epsiode() -> Html {
                                                 { tab_btn(EpisodeTab::Notes, "ph-note", i18n.t("episode.episode_notes").to_string(), None) }
                                                 { if has_chapters { tab_btn(EpisodeTab::Chapters, "ph-list-numbers", i18n.t("audio.chapters").to_string(), Some(chapter_count)) } else { html! {} } }
                                                 { if has_transcript { tab_btn(EpisodeTab::Transcript, "ph-scroll", i18n_transcript.clone(), None) } else { html! {} } }
-                                                { if has_people { tab_btn(EpisodeTab::People, "ph-users-three", i18n_in_this_episode.clone(), None) } else { html! {} } }
+                                                { if has_people { tab_btn(EpisodeTab::People, "ph-users-three", i18n_in_this_episode.clone(), (people_count > 0).then_some(people_count)) } else { html! {} } }
                                             </div>
 
                                             { match effective_tab {
@@ -2741,69 +2818,35 @@ pub fn epsiode() -> Html {
                                                         ai_available={*ai_available}
                                                     />
                                                 },
-                                                EpisodeTab::People => {
-                                                    if let Some(people) = &audio_state.episode_page_people {
-                                                        let has_unknown_host = people.len() == 1
-                                                            && people[0].name == "Unknown Host"
-                                                            && people[0].role == Some("Host".to_string());
-                                                        if has_unknown_host {
-                                                            let people_url = state.server_details.as_ref()
-                                                                .and_then(|sd| sd.people_url.as_ref())
-                                                                .cloned()
-                                                                .unwrap_or_default();
-                                                            let host_url = format!("{}/podcast/{}", people_url, episode.podcastid);
-                                                            html! {
-                                                                <div class="ep-pane">
-                                                                    <p class="ep-nohosts-msg">
-                                                                        { i18n_no_hosts_found.clone() }
-                                                                        <a href={host_url} target="_blank" class="ep-nohosts-link">
-                                                                            { i18n_add_hosts_here.clone() }
-                                                                        </a>
-                                                                    </p>
-                                                                </div>
-                                                            }
-                                                        } else {
-                                                            let server = server_name.clone().unwrap_or_default();
-                                                            html! {
-                                                                <div class="ep-pane">
-                                                                    <div class="ep-people">
-                                                                        { for people.iter().map(|person| {
-                                                                            let name = person.name.clone();
-                                                                            let role = person.role.clone();
-                                                                            let img_url = person.img.as_ref().map(|url| {
-                                                                                format!("{}/api/proxy/image?url={}", server, urlencoding::encode(url))
-                                                                            });
-                                                                            let hist = history.clone();
-                                                                            let nav_name = name.clone();
-                                                                            let on_chip_click = Callback::from(move |_: MouseEvent| {
-                                                                                hist.push(format!("/person/{}", nav_name));
-                                                                            });
-                                                                            html! {
-                                                                                <div class="ep-person" onclick={on_chip_click} title={name.clone()}>
-                                                                                    { if let Some(src) = img_url {
-                                                                                        html! { <img src={src} alt={name.clone()} class="ep-person-avatar" /> }
-                                                                                    } else {
-                                                                                        html! { <div class="ep-person-avatar ep-person-avatar-ph"><i class="ph ph-user"></i></div> }
-                                                                                    } }
-                                                                                    <div class="ep-person-body">
-                                                                                        <div class="ep-person-name">{ &person.name }</div>
-                                                                                        { if let Some(r) = &role {
-                                                                                            html! { <span class="ep-person-role">{ r }</span> }
-                                                                                        } else { html! {} } }
-                                                                                    </div>
-                                                                                </div>
-                                                                            }
-                                                                        }) }
-                                                                    </div>
-                                                                </div>
-                                                            }
-                                                        }
-                                                    } else { html! {} }
+                                                EpisodeTab::People => html! {
+                                                    <div class="ep-pane">
+                                                        <PeopleStrip
+                                                            people={episode_people_rc.clone()}
+                                                            layout={PeopleLayout::Cards}
+                                                            on_add={Some(open_add_people.clone())}
+                                                            empty_text={i18n.t("people.none_on_episode")}
+                                                        />
+                                                    </div>
                                                 },
                                             } }
                                             </>
                                         }
                                     }}
+
+                                    { if *show_add_people && *ep_in_db {
+                                        let show_add_people = show_add_people.clone();
+                                        let dispatch = audio_dispatch.clone();
+                                        html! {
+                                            <AddPeopleSheet
+                                                podcast_id={episode.podcastid}
+                                                episode_id={Some(episode.episodeid)}
+                                                on_close={Callback::from(move |_: ()| show_add_people.set(false))}
+                                                on_added={Callback::from(move |people: Vec<CreditedPerson>| {
+                                                    dispatch.reduce_mut(|state| state.episode_page_people = Some(people));
+                                                })}
+                                            />
+                                        }
+                                    } else { html! {} } }
 
                                     // ===== TRANSCRIPT MODAL =====
                                     { if let Some(show_modal) = episode_detail_state.show_transcript_modal {

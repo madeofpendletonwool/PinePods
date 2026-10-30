@@ -7,6 +7,7 @@
 
 use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
+use crate::requests::pod_req::{call_get_auto_delete_on_complete, call_set_auto_delete_on_complete_user};
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -138,6 +139,7 @@ pub fn auto_delete_settings() -> Html {
     let i18n_save = i18n.t("common.save").to_string();
 
     let auto_delete_days = use_state(|| 0);
+    let delete_on_complete = use_state(|| false);
     let is_loading = use_state(|| true);
     let show_success = use_state(|| false);
     let success_message = use_state(|| "".to_string());
@@ -183,6 +185,55 @@ pub fn auto_delete_settings() -> Html {
             },
         );
     }
+
+    // "Delete downloads when finished" default
+    {
+        let delete_on_complete = delete_on_complete.clone();
+        use_effect_with(
+            (api_key.clone(), server_name.clone()),
+            move |(api_key, server_name)| {
+                if let (Some(api_key), Some(server_name), Some(user_id)) =
+                    (api_key.clone(), server_name.clone(), user_id)
+                {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok((enabled, _)) =
+                            call_get_auto_delete_on_complete(&server_name, &api_key, user_id, None).await
+                        {
+                            delete_on_complete.set(enabled);
+                        }
+                    });
+                }
+                || ()
+            },
+        );
+    }
+    let on_delete_on_complete = {
+        let delete_on_complete = delete_on_complete.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let i18n_failed_to_update = i18n_failed_to_update.clone();
+        Callback::from(move |_: Event| {
+            let enabled = !*delete_on_complete;
+            delete_on_complete.set(enabled);
+            if let (Some(api_key), Some(server_name), Some(user_id)) =
+                (api_key.clone(), server_name.clone(), user_id)
+            {
+                let delete_on_complete = delete_on_complete.clone();
+                let i18n_failed_to_update = i18n_failed_to_update.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(e) =
+                        call_set_auto_delete_on_complete_user(&server_name, &api_key, user_id, enabled).await
+                    {
+                        delete_on_complete.set(!enabled);
+                        let formatted_error = format_error_message(&e.to_string());
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                            state.error_message = Some(format!("{}{}", i18n_failed_to_update, formatted_error));
+                        });
+                    }
+                });
+            }
+        })
+    };
 
     // Input handler
     let on_days_change = {
@@ -278,6 +329,19 @@ pub fn auto_delete_settings() -> Html {
                     <i class="ph ph-floppy-disk"></i>
                     <span>{&i18n_save}</span>
                 </button>
+            </div>
+        </div>
+        <div class="settings-row">
+            <div>
+                <div class="settings-row-label">{ i18n.t("auto_delete_settings.on_complete_label") }</div>
+                <div class="settings-row-desc">{ i18n.t("auto_delete_settings.on_complete_description") }</div>
+            </div>
+            <div class="settings-row-control">
+                <label class="toggle">
+                    <input type="checkbox" disabled={*is_loading} checked={*delete_on_complete}
+                        onchange={on_delete_on_complete} />
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
             </div>
         </div>
         if *auto_delete_days > 0 {

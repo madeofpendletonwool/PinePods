@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dialogs/flutter_dialogs.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This class is responsible for rendering the funding menu on the podcast details page.
 ///
@@ -79,7 +80,7 @@ class _MaterialFundingMenu extends StatelessWidget {
                     });
                   },
                   icon: const Icon(
-                    Icons.payment,
+                    PhosphorIconsRegular.creditCard,
                   ),
                   itemBuilder: (BuildContext context) {
                     return List<PopupMenuEntry<String>>.generate(funding!.length, (index) {
@@ -118,7 +119,7 @@ class _CupertinoFundingMenu extends StatelessWidget {
             builder: (context, snapshot) {
               return IconButton(
                 tooltip: L.of(context)!.podcast_funding_dialog_header,
-                icon: const Icon(Icons.payment),
+                icon: const Icon(PhosphorIconsRegular.creditCard),
                 visualDensity: VisualDensity.compact,
                 onPressed: () => showCupertinoModalPopup<void>(
                   context: context,

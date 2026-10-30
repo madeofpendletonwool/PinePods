@@ -118,6 +118,208 @@ pub async fn downloaded_location(db_pool: &DatabasePool, episode_id: i32) -> Res
     Ok(loc)
 }
 
+/// Fingerprint of an audio file's content: SHA-256 of the bytes between any leading ID3v2 tags and
+/// a trailing ID3v1 tag. Tagging a download doesn't change it, so a tagged server download and the
+/// untagged copy it was fetched as compare equal; a copy with different ads does not.
+pub async fn audio_fingerprint(path: &str) -> Result<String, String> {
+    let path = path.to_string();
+    tokio::task::spawn_blocking(move || fingerprint_file(&path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn fingerprint_file(path: &str) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path).map_err(|e| format!("open {}: {}", path, e))?;
+    let len = file.metadata().map_err(|e| e.to_string())?.len();
+
+    // Skip ID3v2 tags (there can be more than one). Header: "ID3", version (2), flags (1),
+    // syncsafe size (4); a footer (flag 0x10) adds another 10 bytes.
+    let mut start = 0u64;
+    loop {
+        let mut header = [0u8; 10];
+        file.seek(SeekFrom::Start(start)).map_err(|e| e.to_string())?;
+        if start + 10 > len || file.read_exact(&mut header).is_err() || &header[..3] != b"ID3" {
+            break;
+        }
+        let size = header[6..10].iter().fold(0u64, |acc, b| (acc << 7) | (*b as u64 & 0x7f));
+        let footer = if header[5] & 0x10 != 0 { 10 } else { 0 };
+        start += 10 + size + footer;
+    }
+
+    let mut end = len;
+    if end >= start + 128 {
+        let mut tail = [0u8; 3];
+        file.seek(SeekFrom::Start(end - 128)).map_err(|e| e.to_string())?;
+        if file.read_exact(&mut tail).is_ok() && &tail == b"TAG" {
+            end -= 128;
+        }
+    }
+    if start >= end {
+        start = 0;
+        end = len;
+    }
+
+    file.seek(SeekFrom::Start(start)).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut remaining = end - start;
+    let mut buf = vec![0u8; 1 << 20];
+    while remaining > 0 {
+        let want = remaining.min(buf.len() as u64) as usize;
+        let n = file.read(&mut buf[..want]).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+        remaining -= n as u64;
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// One user's server download of an episode.
+#[derive(Debug, Clone)]
+pub struct EpisodeDownload {
+    pub user_id: i32,
+    pub path: String,
+    pub fingerprint: Option<String>,
+}
+
+/// Every server download of an episode whose file is still on disk.
+pub async fn episode_downloads(db_pool: &DatabasePool, episode_id: i32) -> Result<Vec<EpisodeDownload>, String> {
+    let rows: Vec<EpisodeDownload> = match db_pool {
+        DatabasePool::Postgres(pool) => sqlx::query(
+            r#"SELECT userid, downloadedlocation, audiofingerprint FROM "DownloadedEpisodes" WHERE episodeid = $1"#,
+        )
+        .bind(episode_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter_map(|r| Some(EpisodeDownload {
+            user_id: r.try_get("userid").ok()?,
+            path: r.try_get("downloadedlocation").ok()?,
+            fingerprint: r.try_get("audiofingerprint").ok().flatten(),
+        }))
+        .collect(),
+        DatabasePool::MySQL(pool) => sqlx::query(
+            "SELECT UserID, DownloadedLocation, AudioFingerprint FROM DownloadedEpisodes WHERE EpisodeID = ?",
+        )
+        .bind(episode_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter_map(|r| Some(EpisodeDownload {
+            user_id: r.try_get("UserID").ok()?,
+            path: r.try_get("DownloadedLocation").ok()?,
+            fingerprint: r.try_get("AudioFingerprint").ok().flatten(),
+        }))
+        .collect(),
+    };
+    Ok(rows.into_iter().filter(|d| std::path::Path::new(&d.path).exists()).collect())
+}
+
+/// Store a download's fingerprint.
+pub async fn set_download_fingerprint(
+    db_pool: &DatabasePool,
+    episode_id: i32,
+    user_id: i32,
+    fingerprint: &str,
+) -> Result<(), String> {
+    match db_pool {
+        DatabasePool::Postgres(pool) => {
+            sqlx::query(r#"UPDATE "DownloadedEpisodes" SET audiofingerprint = $1 WHERE episodeid = $2 AND userid = $3"#)
+                .bind(fingerprint)
+                .bind(episode_id)
+                .bind(user_id)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        DatabasePool::MySQL(pool) => {
+            sqlx::query("UPDATE DownloadedEpisodes SET AudioFingerprint = ? WHERE EpisodeID = ? AND UserID = ?")
+                .bind(fingerprint)
+                .bind(episode_id)
+                .bind(user_id)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// A download's fingerprint, computing and storing it first for downloads made before
+/// fingerprints were recorded.
+pub async fn download_fingerprint(db_pool: &DatabasePool, download: &EpisodeDownload, episode_id: i32) -> Option<String> {
+    if let Some(fp) = &download.fingerprint {
+        return Some(fp.clone());
+    }
+    match audio_fingerprint(&download.path).await {
+        Ok(fp) => {
+            if let Err(e) = set_download_fingerprint(db_pool, episode_id, download.user_id, &fp).await {
+                warn!("Could not store fingerprint for episode {} download: {}", episode_id, e);
+            }
+            Some(fp)
+        }
+        Err(e) => {
+            warn!("Could not fingerprint {}: {}", download.path, e);
+            None
+        }
+    }
+}
+
+/// Instead of fetching an episode again, link `dest` to another user's server download of it,
+/// preferring the copy ads were detected on. Dynamically inserted ads differ between fetches, so
+/// this keeps every user on the same copy. Returns the size and fingerprint when it reused one.
+pub async fn reuse_download(
+    db_pool: &DatabasePool,
+    episode_id: i32,
+    user_id: i32,
+    dest: &std::path::Path,
+) -> Option<(u64, Option<String>)> {
+    let downloads: Vec<EpisodeDownload> = episode_downloads(db_pool, episode_id)
+        .await
+        .ok()?
+        .into_iter()
+        .filter(|d| d.user_id != user_id && std::path::Path::new(&d.path) != dest)
+        .collect();
+    if downloads.is_empty() {
+        return None;
+    }
+    let analyzed = crate::services::transcription::analyzed_audio(db_pool, episode_id)
+        .await
+        .and_then(|a| a.fingerprint);
+    let mut source = None;
+    if analyzed.is_some() {
+        for d in &downloads {
+            if download_fingerprint(db_pool, d, episode_id).await == analyzed {
+                source = Some(d.clone());
+                break;
+            }
+        }
+    }
+    let source = source.unwrap_or_else(|| downloads[0].clone());
+
+    let _ = std::fs::remove_file(dest);
+    if let Err(e) = std::fs::hard_link(&source.path, dest) {
+        debug!("Hard link to {} failed ({}); copying", source.path, e);
+        if let Err(e) = tokio::fs::copy(&source.path, dest).await {
+            warn!("Could not reuse {} for episode {}: {}", source.path, episode_id, e);
+            return None;
+        }
+    }
+    let size = std::fs::metadata(dest).ok()?.len();
+    let fingerprint = match source.fingerprint {
+        Some(fp) => Some(fp),
+        None => download_fingerprint(db_pool, &source, episode_id).await,
+    };
+    debug!("Episode {} download for user {} reuses {}", episode_id, user_id, source.path);
+    Some((size, fingerprint))
+}
+
 /// Read a podcast's silence-trim settings for the podcast owning `episode_id`.
 /// Returns `(trim_enabled, threshold_level)`.
 async fn podcast_silence_settings(db_pool: &DatabasePool, episode_id: i32) -> Result<(bool, i32), String> {
@@ -125,8 +327,9 @@ async fn podcast_silence_settings(db_pool: &DatabasePool, episode_id: i32) -> Re
         DatabasePool::Postgres(pool) => {
             sqlx::query(r#"
                 SELECT COALESCE(p.trimsilence, FALSE) AS trim, COALESCE(p.silencethreshold, 2) AS thr
-                FROM "Episodes" e JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
                 WHERE e.episodeid = $1
+                ORDER BY COALESCE(p.trimsilence, FALSE) DESC LIMIT 1
             "#)
             .bind(episode_id)
             .fetch_optional(pool)
@@ -140,8 +343,9 @@ async fn podcast_silence_settings(db_pool: &DatabasePool, episode_id: i32) -> Re
         DatabasePool::MySQL(pool) => {
             sqlx::query("
                 SELECT COALESCE(p.TrimSilence, 0) AS trim, COALESCE(p.SilenceThreshold, 2) AS thr
-                FROM Episodes e JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
                 WHERE e.EpisodeID = ?
+                ORDER BY COALESCE(p.TrimSilence, 0) DESC LIMIT 1
             ")
             .bind(episode_id)
             .fetch_optional(pool)
@@ -364,4 +568,50 @@ pub fn maybe_detect_silence_after_download(db_pool: DatabasePool, episode_id: i3
             Err(e) => warn!("Could not read silence settings for episode {}: {}", episode_id, e),
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fingerprint_file;
+
+    fn id3v2(body_len: u32) -> Vec<u8> {
+        // Syncsafe size: 7 bits per byte.
+        let size = [(body_len >> 21) as u8 & 0x7f, (body_len >> 14) as u8 & 0x7f, (body_len >> 7) as u8 & 0x7f, body_len as u8 & 0x7f];
+        let mut tag = b"ID3\x04\x00\x00".to_vec();
+        tag.extend_from_slice(&size);
+        tag.extend(std::iter::repeat(b'x').take(body_len as usize));
+        tag
+    }
+
+    fn fingerprint(bytes: &[u8]) -> String {
+        let dir = std::env::temp_dir().join(format!("pinepods-fp-{}-{}", std::process::id(), rand_suffix()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.mp3");
+        std::fs::write(&path, bytes).unwrap();
+        let fp = fingerprint_file(path.to_str().unwrap()).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        fp
+    }
+
+    fn rand_suffix() -> u128 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    }
+
+    #[test]
+    fn tags_dont_change_the_fingerprint_but_audio_does() {
+        let audio = b"\xff\xfbframes of audio".to_vec();
+        let plain = fingerprint(&audio);
+
+        let mut tagged = id3v2(300);
+        tagged.extend(id3v2(20)); // a second tag
+        tagged.extend(&audio);
+        let mut v1 = b"TAG".to_vec();
+        v1.extend(std::iter::repeat(0u8).take(125));
+        tagged.extend(v1);
+        assert_eq!(fingerprint(&tagged), plain);
+
+        let mut other = audio.clone();
+        other.extend(b" plus an inserted ad");
+        assert_ne!(fingerprint(&other), plain);
+    }
 }

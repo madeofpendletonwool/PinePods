@@ -260,17 +260,57 @@ impl RedisClient {
         Ok(out)
     }
 
-    /// Extend a device's snapshot TTL without changing its contents (heartbeat while
-    /// paused). No-op if the snapshot has already expired.
-    pub async fn touch_now_playing(&self, user_id: i32, device_id: &str) -> AppResult<()> {
-        let key = Self::now_playing_key(user_id, device_id);
+    /// List a device with `snapshot` only if it has no live snapshot yet (SET NX),
+    /// so a freshly-connected or long-quiet device is visible/targetable as idle
+    /// without clobbering a fresher report.
+    pub async fn ensure_now_playing_present(
+        &self,
+        user_id: i32,
+        mut snapshot: crate::models::NowPlayingSnapshot,
+    ) -> AppResult<()> {
+        snapshot.updated_at = chrono::Utc::now().timestamp();
+        let device_id = snapshot.device_id.clone();
+        let json = serde_json::to_string(&snapshot)
+            .map_err(|e| crate::error::AppError::internal(format!("serialize now-playing: {}", e)))?;
+
+        let key = Self::now_playing_key(user_id, &device_id);
         let index = Self::now_playing_index_key(user_id);
         let mut conn = self.connection.clone();
-        let _: () = conn.expire(&key, Self::NOW_PLAYING_TTL_SECONDS as i64).await?;
+        let _: Option<String> = redis::cmd("SET")
+            .arg(&key)
+            .arg(json)
+            .arg("NX")
+            .arg("EX")
+            .arg(Self::NOW_PLAYING_TTL_SECONDS)
+            .query_async(&mut conn)
+            .await?;
+        let _: () = conn.sadd(&index, &device_id).await?;
         let _: () = conn
             .expire(&index, (Self::NOW_PLAYING_TTL_SECONDS * 4) as i64)
             .await?;
         Ok(())
+    }
+
+    /// Extend a device's snapshot TTL without changing its contents (heartbeat while
+    /// paused). Returns false if the snapshot had already expired (nothing extended).
+    pub async fn touch_now_playing(&self, user_id: i32, device_id: &str) -> AppResult<bool> {
+        let key = Self::now_playing_key(user_id, device_id);
+        let index = Self::now_playing_index_key(user_id);
+        let mut conn = self.connection.clone();
+        let alive: bool = conn.expire(&key, Self::NOW_PLAYING_TTL_SECONDS as i64).await?;
+        if alive {
+            // Re-index too, in case the index set expired on its own.
+            let _: () = conn.sadd(&index, device_id).await?;
+        }
+        let _: () = conn
+            .expire(&index, (Self::NOW_PLAYING_TTL_SECONDS * 4) as i64)
+            .await?;
+        Ok(alive)
+    }
+
+    /// Whether a device currently has a live snapshot (i.e. is connected somewhere).
+    pub async fn now_playing_exists(&self, user_id: i32, device_id: &str) -> AppResult<bool> {
+        self.exists(&Self::now_playing_key(user_id, device_id)).await
     }
 
     /// Remove a device's snapshot (e.g. on socket disconnect).

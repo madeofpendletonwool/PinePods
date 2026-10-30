@@ -7,6 +7,30 @@
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
 
+/// Integration tests serve fixture feeds/audio from a loopback HTTP server, which this guard
+/// would otherwise (correctly) refuse. Only the `test-support` feature can open that hole, and
+/// only for loopback — private/link-local/metadata ranges stay blocked. Never enabled in
+/// release builds.
+#[cfg(feature = "test-support")]
+static ALLOW_LOOPBACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(feature = "test-support")]
+pub fn allow_loopback_for_tests() {
+    ALLOW_LOOPBACK.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[inline]
+fn loopback_allowed() -> bool {
+    #[cfg(feature = "test-support")]
+    {
+        ALLOW_LOOPBACK.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    #[cfg(not(feature = "test-support"))]
+    {
+        false
+    }
+}
+
 /// Returns true if `ip` must never be the target of a server-side fetch.
 fn is_blocked_ip(ip: IpAddr) -> bool {
     match ip {
@@ -33,7 +57,7 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
 }
 
 fn is_blocked_v4(v4: Ipv4Addr) -> bool {
-    v4.is_loopback()            // 127.0.0.0/8
+    (v4.is_loopback() && !loopback_allowed()) // 127.0.0.0/8
         || v4.is_private()      // 10/8, 172.16/12, 192.168/16
         || v4.is_link_local()   // 169.254.0.0/16 (incl. cloud metadata)
         || v4.is_unspecified()  // 0.0.0.0
@@ -43,7 +67,7 @@ fn is_blocked_v4(v4: Ipv4Addr) -> bool {
 }
 
 fn is_blocked_v6(v6: Ipv6Addr) -> bool {
-    v6.is_loopback()            // ::1
+    (v6.is_loopback() && !loopback_allowed()) // ::1
         || v6.is_unspecified()  // ::
         || (v6.segments()[0] & 0xffc0) == 0xfe80 // fe80::/10 link-local
         || (v6.segments()[0] & 0xfe00) == 0xfc00 // fc00::/7 unique-local

@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This widget renders the search bar and allows the user to search for podcasts.
 class Search extends StatefulWidget {
@@ -66,8 +67,8 @@ class _SearchState extends State<Search> {
             leading: IconButton(
               tooltip: L.of(context)!.search_back_button_label,
               icon: Platform.isAndroid
-                  ? Icon(Icons.arrow_back, color: Theme.of(context).appBarTheme.foregroundColor)
-                  : const Icon(Icons.arrow_back_ios),
+                  ? Icon(PhosphorIconsRegular.arrowLeft, color: Theme.of(context).appBarTheme.foregroundColor)
+                  : const Icon(PhosphorIconsRegular.caretLeft),
               onPressed: () => Navigator.pop(context),
             ),
             title: TextField(
@@ -94,7 +95,7 @@ class _SearchState extends State<Search> {
             actions: <Widget>[
               IconButton(
                 tooltip: L.of(context)!.clear_search_button_label,
-                icon: const Icon(Icons.clear),
+                icon: const Icon(PhosphorIconsRegular.x),
                 onPressed: () {
                   _searchController.clear();
                   FocusScope.of(context).requestFocus(_searchFocusNode);

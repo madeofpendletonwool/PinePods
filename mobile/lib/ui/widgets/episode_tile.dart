@@ -24,6 +24,7 @@ import 'package:flutter_dialogs/flutter_dialogs.dart';
 import 'package:intl/intl.dart' show DateFormat;
 import 'package:provider/provider.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This class builds a tile for each episode in the podcast feed.
 class EpisodeTile extends StatelessWidget {
@@ -236,7 +237,7 @@ class _ExpandableEpisodeTileState extends State<ExpandableEpisodeTile> {
                   child: Column(
                     children: <Widget>[
                       Icon(
-                        Icons.delete_outline,
+                        PhosphorIconsRegular.trash,
                         semanticLabel: L.of(context)!.delete_episode_button_label,
                         size: 22,
                       ),
@@ -274,7 +275,7 @@ class _ExpandableEpisodeTileState extends State<ExpandableEpisodeTile> {
                   child: Column(
                     children: <Widget>[
                       Icon(
-                        widget.queued ? Icons.playlist_add_check_outlined : Icons.playlist_add_outlined,
+                        widget.queued ? PhosphorIconsRegular.listChecks : PhosphorIconsRegular.listPlus,
                         semanticLabel: widget.queued
                             ? L.of(context)!.semantics_remove_from_queue
                             : L.of(context)!.semantics_add_to_queue,
@@ -310,7 +311,7 @@ class _ExpandableEpisodeTileState extends State<ExpandableEpisodeTile> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: <Widget>[
                       Icon(
-                        widget.episode.played ? Icons.unpublished_outlined : Icons.check_circle_outline,
+                        widget.episode.played ? PhosphorIconsRegular.arrowCounterClockwise : PhosphorIconsRegular.checkCircle,
                         size: 22,
                       ),
                       const Padding(
@@ -356,7 +357,7 @@ class _ExpandableEpisodeTileState extends State<ExpandableEpisodeTile> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: <Widget>[
                       const Icon(
-                        Icons.unfold_more_outlined,
+                        PhosphorIconsRegular.caretUpDown,
                         size: 22,
                       ),
                       const Padding(

@@ -4,6 +4,18 @@
 
 import 'package:pinepods_mobile/entities/search_providers.dart';
 
+/// Every bottom-bar page, in the default order.
+const List<String> defaultBottomBarOrder = [
+  'Home', 'Feed', 'Saved', 'Podcasts', 'People', 'Downloads', 'History', 'Playlists', 'Search',
+];
+
+/// A saved bar order made usable: pages it doesn't know are dropped, and pages
+/// added since it was saved are appended, so updates don't hide new tabs.
+List<String> normalizeBottomBarOrder(List<String> saved) {
+  final known = saved.where(defaultBottomBarOrder.contains).toSet().toList();
+  return [...known, ...defaultBottomBarOrder.where((p) => !known.contains(p))];
+}
+
 class AppSettings {
   /// The current theme name.
   final String theme;
@@ -73,11 +85,23 @@ class AppSettings {
   /// exists, falling back to the original feed URL otherwise.
   final bool preferServerDownloadSource;
 
+  /// Whether to show the user's Gravatar. Mirrors the server setting; off by default.
+  final bool pinepodsUseGravatar;
+
   /// Number of leading queue episodes to keep downloaded locally (0 = disabled).
   final int autoDownloadQueueCount;
 
   /// Keep local downloads mirrored to the server's downloaded episodes.
   final bool mirrorServerDownloads;
+
+  /// Remove device downloads older than this many days (0 = never).
+  final int deleteDownloadsAfterDays;
+
+  /// Episode card play button style: ring, outline, bare or tinted.
+  final String playButtonStyle;
+
+  /// Tint episode cards with a colour pulled from the podcast artwork.
+  final bool artworkAccentColors;
 
   AppSettings({
     required this.theme,
@@ -104,8 +128,12 @@ class AppSettings {
     required this.bottomBarOrder,
     this.autoDownloadWifiOnly = true,
     this.preferServerDownloadSource = true,
+    this.pinepodsUseGravatar = false,
     this.autoDownloadQueueCount = 0,
     this.mirrorServerDownloads = false,
+    this.deleteDownloadsAfterDays = 0,
+    this.playButtonStyle = 'ring',
+    this.artworkAccentColors = true,
   });
 
   AppSettings.sensibleDefaults()
@@ -130,11 +158,15 @@ class AppSettings {
         pinepodsUserId = null,
         pinepodsUsername = null,
         pinepodsEmail = null,
-        bottomBarOrder = const ['Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists', 'Search'],
+        bottomBarOrder = defaultBottomBarOrder,
         autoDownloadWifiOnly = true,
         preferServerDownloadSource = true,
+        pinepodsUseGravatar = false,
         autoDownloadQueueCount = 0,
-        mirrorServerDownloads = false;
+        mirrorServerDownloads = false,
+        deleteDownloadsAfterDays = 0,
+        playButtonStyle = 'ring',
+        artworkAccentColors = true;
 
   AppSettings copyWith({
     String? theme,
@@ -161,8 +193,12 @@ class AppSettings {
     List<String>? bottomBarOrder,
     bool? autoDownloadWifiOnly,
     bool? preferServerDownloadSource,
+    bool? pinepodsUseGravatar,
     int? autoDownloadQueueCount,
     bool? mirrorServerDownloads,
+    int? deleteDownloadsAfterDays,
+    String? playButtonStyle,
+    bool? artworkAccentColors,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -189,7 +225,11 @@ class AppSettings {
         bottomBarOrder: bottomBarOrder ?? this.bottomBarOrder,
         autoDownloadWifiOnly: autoDownloadWifiOnly ?? this.autoDownloadWifiOnly,
         preferServerDownloadSource: preferServerDownloadSource ?? this.preferServerDownloadSource,
+        pinepodsUseGravatar: pinepodsUseGravatar ?? this.pinepodsUseGravatar,
         autoDownloadQueueCount: autoDownloadQueueCount ?? this.autoDownloadQueueCount,
         mirrorServerDownloads: mirrorServerDownloads ?? this.mirrorServerDownloads,
+        deleteDownloadsAfterDays: deleteDownloadsAfterDays ?? this.deleteDownloadsAfterDays,
+        playButtonStyle: playButtonStyle ?? this.playButtonStyle,
+        artworkAccentColors: artworkAccentColors ?? this.artworkAccentColors,
       );
 }

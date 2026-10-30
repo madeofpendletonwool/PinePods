@@ -12,6 +12,7 @@ import 'package:pinepods_mobile/ui/widgets/podcast_grid_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 /// This class displays the list of podcasts the user is currently following.
 class Library extends StatefulWidget {
@@ -43,7 +44,7 @@ class _LibraryState extends State<Library> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: <Widget>[
                       Icon(
-                        Icons.headset,
+                        PhosphorIconsRegular.headset,
                         size: 75,
                         color: Theme.of(context).primaryColor,
                       ),

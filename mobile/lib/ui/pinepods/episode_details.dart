@@ -10,20 +10,25 @@ import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pending_action.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
-import 'package:pinepods_mobile/entities/person.dart';
+import 'package:pinepods_mobile/entities/people.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_html.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_description.dart';
-import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_nav.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_ai_section.dart';
-import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
+import 'package:pinepods_mobile/ui/pinepods/people/add_people_sheet.dart';
+import 'package:pinepods_mobile/ui/pinepods/people/people_widgets.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:pinepods_mobile/ui/utils/action_guard.dart';
+import 'package:pinepods_mobile/ui/utils/artwork_colors.dart';
+import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
+import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart' show humanDuration;
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class PinepodsEpisodeDetails extends StatefulWidget {
   final PinepodsEpisode initialEpisode;
@@ -43,13 +48,16 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
   PinepodsEpisode? _episode;
   bool _isLoading = true;
   String _errorMessage = '';
-  List<Person> _persons = [];
+  List<CreditedPerson> _people = [];
+  // True once people loaded from a server that supports adding them.
+  bool _canAddPeople = false;
   bool _isDownloadedLocally = false;
   int? _userId; // set once credentials are established in _loadEpisodeDetails
 
   // Play-button loading feedback: true while we've kicked off playback for this
   // episode but the audio system hasn't yet acknowledged it as now-playing.
   bool _isStartingPlayback = false;
+  Color? _artColor;
   AudioPlayerService? _audioPlayerService;
   StreamSubscription? _episodeSub;
   StreamSubscription? _stateSub;
@@ -74,6 +82,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_audioPlayerService != null) return;
+    _resolveArtColor();
     final aps = Provider.of<AudioPlayerService>(context, listen: false);
     _audioPlayerService = aps;
 
@@ -207,7 +216,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
               Clipboard.setData(ClipboardData(text: shareUrl));
               _showSnackBar('Link copied', Colors.green);
             },
-            icon: const Icon(Icons.copy),
+            icon: const Icon(PhosphorIconsRegular.copy),
             label: const Text('Copy'),
           ),
           TextButton.icon(
@@ -216,7 +225,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                 ShareParams(text: shareUrl, subject: _episode?.episodeTitle),
               );
             },
-            icon: const Icon(Icons.ios_share),
+            icon: const Icon(PhosphorIconsRegular.export),
             label: const Text('Share'),
           ),
           TextButton(
@@ -254,48 +263,23 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
       final userId = settings.pinepodsUserId!;
       _userId = userId;
 
-      // Fetch episode metadata and podcast 2.0 data (persons) in parallel -
-      // neither depends on the other's result, and fetching them sequentially
-      // only adds latency before the page can render.
-      final results = await Future.wait<dynamic>([
-        _pinepodsService.getEpisodeMetadata(
-          _episode!.episodeId,
-          userId,
-          isYoutube: _episode!.isYoutube,
-          personEpisode: false, // Adjust if needed
-        ),
-        _pinepodsService.fetchPodcasting2Data(_episode!.episodeId, userId),
-      ]);
-      final episodeDetails = results[0] as PinepodsEpisode?;
-      final podcast2Data = results[1] as Map<String, dynamic>?;
+      // People load on their own: they're a quick database read, while the
+      // metadata can wait on the server.
+      unawaited(_loadPeople(userId));
+
+      final episodeDetails = await _pinepodsService.getEpisodeMetadata(
+        _episode!.episodeId,
+        userId,
+        isYoutube: _episode!.isYoutube,
+        personEpisode: false, // Adjust if needed
+      );
 
       if (episodeDetails != null) {
-        List<Person> persons = [];
-        if (podcast2Data != null) {
-          final personsData = podcast2Data['people'] as List<dynamic>?;
-          if (personsData != null) {
-            try {
-              persons = personsData.map((personData) {
-                return Person(
-                  name: personData['name'] ?? '',
-                  role: personData['role'] ?? '',
-                  group: personData['group'] ?? '',
-                  image: personData['img'],
-                  link: personData['href'],
-                );
-              }).toList();
-              print('Loaded ${persons.length} persons from episode 2.0 data');
-            } catch (e) {
-              print('Error parsing persons data: $e');
-            }
-          }
-        }
-        
         setState(() {
           _episode = episodeDetails;
-          _persons = persons;
           _isLoading = false;
         });
+        _resolveArtColor();
       } else {
         // Metadata unavailable: fall back to the episode passed in so the page
         // (and playback of a local download) still works.
@@ -313,6 +297,39 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _loadPeople(int userId) async {
+    final episode = _episode;
+    if (episode == null || episode.episodeId <= 0 || episode.isYoutube) return;
+    try {
+      final people = await _pinepodsService.getEpisodePeople(episode.episodeId);
+      if (people != null) {
+        if (mounted) {
+          setState(() {
+            _people = people;
+            _canAddPeople = true;
+          });
+        }
+        return;
+      }
+      // Servers before the people endpoints: read-only, from the 2.0 data.
+      final data = await _pinepodsService.fetchPodcasting2Data(episode.episodeId, userId);
+      final legacy = (data?['people'] as List<dynamic>? ?? const [])
+          .map((e) => CreditedPerson.fromJson(e as Map<String, dynamic>))
+          .where((p) => p.name.isNotEmpty && p.name != 'Unknown Host')
+          .toList();
+      if (mounted) setState(() => _people = legacy);
+    } catch (e) {
+      debugPrint('Error loading episode people: $e');
+    }
+  }
+
+  Future<void> _addPeople() async {
+    final podcastId = _episode?.podcastId;
+    if (podcastId == null || podcastId <= 0) return;
+    final added = await showAddPeopleSheet(context, podcastId: podcastId, episodeId: _episode!.episodeId);
+    if (added != null && mounted) setState(() => _people = added);
   }
 
   bool _isCurrentEpisodePlaying() {
@@ -711,24 +728,8 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Episode Details'),
-        ),
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading episode details...'),
-            ],
-          ),
-        ),
-      );
-    }
-
+    // No loading screen: the episode we were handed renders immediately and
+    // the full metadata fills in when it arrives.
     if (_errorMessage.isNotEmpty) {
       return Scaffold(
         appBar: AppBar(
@@ -741,7 +742,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  Icons.error_outline,
+                  PhosphorIconsRegular.warningCircle,
                   color: Theme.of(context).colorScheme.error,
                   size: 48,
                 ),
@@ -765,391 +766,382 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
       );
     }
 
+    final theme = Theme.of(context);
+    // Eases the header between colours when fuller artwork arrives.
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: _accentColor(theme)),
+      duration: const Duration(milliseconds: 350),
+      builder: (context, accent, _) => _buildPage(theme, accent!),
+    );
+  }
+
+  Widget _buildPage(ThemeData theme, Color accent) {
+    final bg = theme.scaffoldBackgroundColor;
+    final headerTint = Color.alphaBlend(accent.withOpacity(0.18), bg);
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_episode!.podcastName),
+        backgroundColor: headerTint,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Share',
+            icon: const Icon(PhosphorIconsRegular.shareNetwork),
+            onPressed: _shareEpisode,
+          ),
+        ],
       ),
-      body: SafeArea(child: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-            // Episode artwork and basic info
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Episode artwork
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: _episode!.episodeArtwork.isNotEmpty
-                      ? Image.network(
-                          _episode!.episodeArtwork,
-                          width: 120,
-                          height: 120,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              width: 120,
-                              height: 120,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[300],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.music_note,
-                                color: Colors.grey,
-                                size: 48,
-                              ),
-                            );
-                          },
-                        )
-                      : Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[300],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.music_note,
-                            color: Colors.grey,
-                            size: 48,
-                          ),
-                        ),
-                ),
-                const SizedBox(width: 16),
-                // Episode info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Clickable podcast name
-                      GestureDetector(
-                        onTap: () => _navigateToPodcast(),
-                        child: Text(
-                          _episode!.podcastName,
-                          style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                            color: Theme.of(context).primaryColor,
-                            fontWeight: FontWeight.w500,
-                            decoration: TextDecoration.underline,
-                            decorationColor: Theme.of(context).primaryColor,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _episode!.episodeTitle,
-                        style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _episode!.formattedDuration,
-                        style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _episode!.formattedPubDate,
-                        style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      if (_episode!.isStarted) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'Listened: ${_episode!.formattedListenDuration}',
-                          style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                            color: Theme.of(context).primaryColor,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        LinearProgressIndicator(
-                          value: _episode!.progressPercentage / 100,
-                          backgroundColor: Colors.grey[300],
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Theme.of(context).primaryColor,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // Action buttons
-            Column(
-              children: [
-                // First row: Play, Save, Queue (3 buttons, each 1/3 width)
-                Row(
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Play/Pause button
-                    Expanded(
-                      child: StreamBuilder<AudioState>(
-                        stream: Provider.of<AudioPlayerService>(context, listen: false).playingState,
-                        builder: (context, snapshot) {
-                          final isCurrentEpisode = _isCurrentEpisodePlaying();
-                          final state = snapshot.data;
-                          // Treat buffering/starting as active so the button
-                          // reads correctly through the whole start sequence.
-                          final isActive = isCurrentEpisode &&
-                              (state == AudioState.playing ||
-                                  state == AudioState.buffering ||
-                                  state == AudioState.starting);
-                          // Spinner while we've started this episode but the
-                          // audio system hasn't acknowledged it yet.
-                          final showSpinner =
-                              _isStartingPlayback && !isCurrentEpisode;
-
-                          IconData icon;
-                          String label;
-
-                          if (_episode!.completed && !isActive) {
-                            icon = Icons.replay;
-                            label = 'Replay';
-                          } else if (isActive) {
-                            icon = Icons.pause;
-                            label = 'Pause';
-                          } else {
-                            icon = Icons.play_arrow;
-                            label = 'Play';
-                          }
-
-                          return OutlinedButton.icon(
-                            onPressed: _actionGuard.inProgress ? null : () => _runGuarded(_togglePlayPause),
-                            icon: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 200),
-                              child: showSpinner
-                                  ? const SizedBox(
-                                      key: ValueKey('loading'),
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : Icon(icon, key: ValueKey(icon)),
-                            ),
-                            label: Text(showSpinner ? 'Loading…' : label),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    
-                    // Save/Unsave button
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _actionGuard.inProgress
-                            ? null
-                            : () => _runGuarded(_episode!.saved ? _removeSavedEpisode : _saveEpisode),
-                        icon: Icon(
-                          _episode!.saved ? Icons.bookmark : Icons.bookmark_outline,
-                          color: _episode!.saved ? Colors.orange : null,
-                        ),
-                        label: Text(_episode!.saved ? 'Saved' : 'Save'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    
-                    // Queue button
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _actionGuard.inProgress ? null : () => _runGuarded(_toggleQueue),
-                        icon: Icon(
-                          _episode!.queued ? Icons.queue_music : Icons.queue_music_outlined,
-                          color: _episode!.queued ? Colors.purple : null,
-                        ),
-                        label: Text(_episode!.queued ? 'Queued' : 'Queue'),
-                      ),
-                    ),
-                  ],
-                ),
-                
-                const SizedBox(height: 8),
-                
-                // Second row: Download, Complete (2 buttons, each 1/2 width)
-                Row(
-                  children: [
-                    // Download button
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _actionGuard.inProgress ? null : () => _runGuarded(_toggleDownload),
-                        icon: Icon(
-                          _episode!.downloaded ? Icons.download_done : Icons.download_outlined,
-                          color: _episode!.downloaded ? Colors.blue : null,
-                        ),
-                        label: Text(_episode!.downloaded ? 'Downloaded' : 'Download'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    
-                    // Complete button
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _actionGuard.inProgress ? null : () => _runGuarded(_toggleComplete),
-                        icon: Icon(
-                          _episode!.completed ? Icons.check_circle : Icons.check_circle_outline,
-                          color: _episode!.completed ? Colors.green : null,
-                        ),
-                        label: Text(_episode!.completed ? 'Complete' : 'Mark Complete'),
-                      ),
-                    ),
-                  ],
-                ),
-                
-                const SizedBox(height: 8),
-                
-                // Third row: Local Download (full width)
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _actionGuard.inProgress
-                            ? null
-                            : () => _runGuarded(
-                                _isDownloadedLocally ? _deleteLocalDownload : _localDownloadEpisode),
-                        icon: Icon(
-                          _isDownloadedLocally ? Icons.delete_forever_outlined : Icons.file_download_outlined,
-                          color: _isDownloadedLocally ? Colors.red : Colors.green,
-                        ),
-                        label: Text(_isDownloadedLocally ? 'Delete Local Download' : 'Download Locally'),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: _isDownloadedLocally ? Colors.red : Colors.green,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-
-                // Fourth row: Share (full width)
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _shareEpisode,
-                        icon: const Icon(Icons.share_outlined),
-                        label: const Text('Share'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-
-            // Hosts/Guests section
-            if (_persons.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Hosts & Guests',
-                  style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 80,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _persons.length,
-                  itemBuilder: (context, index) {
-                    final person = _persons[index];
-                    return Container(
-                      width: 70,
-                      margin: const EdgeInsets.only(right: 12),
+                    _buildHeader(theme, accent, headerTint, bg),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.grey[300],
+                          _buildPlayButton(accent),
+                          const SizedBox(height: 12),
+                          _buildActionStrip(theme, accent),
+                          if (_people.isNotEmpty || _canAddPeople) ...[
+                            const SizedBox(height: 20),
+                            PeopleStrip(
+                              title: 'In This Episode',
+                              people: _people,
+                              onAdd: _canAddPeople && (_episode!.podcastId ?? 0) > 0 ? _addPeople : null,
+                              emptyPrompt: 'Know who\'s in this episode? Add the hosts and guests.',
                             ),
-                            child: person.image != null && person.image!.isNotEmpty
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(25),
-                                    child: PodcastImage(
-                                      url: person.image!,
-                                      width: 50,
-                                      height: 50,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.person,
-                                    size: 30,
-                                    color: Colors.grey,
-                                  ),
-                          ),
-                          const SizedBox(height: 4),
+                          ],
+                          const SizedBox(height: 24),
                           Text(
-                            person.name,
-                            style: Theme.of(context).textTheme.bodySmall,
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            'Description',
+                            style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.bold),
                           ),
+                          const SizedBox(height: 8),
+                          if (_isLoading && _episode!.episodeDescription.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                                ),
+                              ),
+                            )
+                          else
+                            EpisodeDescription(
+                              content: _episode!.episodeDescription,
+                              onTimestampTap: _handleTimestampTap,
+                            ),
+                          // AI features (#726 transcript / #790 ad-block). Self-hides unless
+                          // the server reports the AI sidecar as available.
+                          if (_userId != null)
+                            EpisodeAiSection(
+                              episode: _episode!,
+                              userId: _userId!,
+                              pinepodsService: _pinepodsService,
+                              onSeek: _handleTimestampTap,
+                              onSegmentsChanged: _resupplySkipSegmentsIfPlaying,
+                            ),
                         ],
                       ),
-                    );
-                  },
-                ),
-              ),
-            ],
-            
-            const SizedBox(height: 32),
-            
-            // Episode description
-            Text(
-              'Description',
-              style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            EpisodeDescription(
-              content: _episode!.episodeDescription,
-              onTimestampTap: _handleTimestampTap,
-            ),
-
-            // AI features (#726 transcript / #790 ad-block). Self-hides unless
-            // the server reports the AI sidecar as available.
-            if (_userId != null)
-              EpisodeAiSection(
-                episode: _episode!,
-                userId: _userId!,
-                pinepodsService: _pinepodsService,
-                onSeek: _handleTimestampTap,
-                onSegmentsChanged: _resupplySkipSegmentsIfPlaying,
-              ),
+                    ),
                   ],
                 ),
               ),
             ),
-            const MiniPlayer(),
           ],
-        )),
+        ),
+      ),
+    );
+  }
+
+  /// Artwork-derived accent when that setting is on, else the theme's.
+  Color _accentColor(ThemeData theme) {
+    final enabled = Provider.of<SettingsBloc>(context, listen: false).currentSettings.artworkAccentColors;
+    return (enabled ? _artColor : null) ?? theme.primaryColor;
+  }
+
+  void _resolveArtColor() {
+    final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
+    if (!settings.artworkAccentColors || _episode == null) return;
+    final brightness = ThemeData.estimateBrightnessForColor(Theme.of(context).scaffoldBackgroundColor);
+    final url = _episode!.episodeArtwork;
+    _artColor = ArtworkColors.cached(url, null, brightness);
+    if (_artColor != null) return;
+    ArtworkColors.resolve(url, null, brightness).then((color) {
+      if (!mounted || color == null || url != _episode?.episodeArtwork) return;
+      setState(() => _artColor = color);
+    });
+  }
+
+  Widget _buildHeader(ThemeData theme, Color accent, Color headerTint, Color bg) {
+    final muted = theme.hintColor;
+    final meta = [
+      _episode!.formattedPubDate,
+      if (_episode!.episodeDuration > 0) humanDuration(_episode!.episodeDuration),
+    ].join('  ·  ');
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [headerTint, bg],
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+        child: Column(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 24, offset: const Offset(0, 8)),
+                ],
+              ),
+              child: LazyNetworkImage(
+                imageUrl: _episode!.episodeArtwork,
+                width: 200,
+                height: 200,
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            const SizedBox(height: 20),
+            InkWell(
+              onTap: _navigateToPodcast,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        _episode!.podcastName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall!.copyWith(color: accent, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    Icon(PhosphorIconsBold.caretRight, size: 14, color: accent),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _episode!.episodeTitle,
+              textAlign: TextAlign.center,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold, height: 1.25),
+            ),
+            const SizedBox(height: 8),
+            Text(meta, style: theme.textTheme.bodyMedium!.copyWith(color: muted)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlayButton(Color accent) {
+    final onAccent = ThemeData.estimateBrightnessForColor(accent) == Brightness.dark ? Colors.white : Colors.black;
+
+    return StreamBuilder<AudioState>(
+      stream: Provider.of<AudioPlayerService>(context, listen: false).playingState,
+      builder: (context, snapshot) {
+        final isCurrentEpisode = _isCurrentEpisodePlaying();
+        final state = snapshot.data;
+        // Treat buffering/starting as active so the button reads correctly
+        // through the whole start sequence.
+        final isActive = isCurrentEpisode &&
+            (state == AudioState.playing || state == AudioState.buffering || state == AudioState.starting);
+        // Spinner while we've started this episode but the audio system
+        // hasn't acknowledged it yet.
+        final showSpinner = _isStartingPlayback && !isCurrentEpisode;
+        final started = _episode!.isStarted && !_episode!.completed;
+
+        final IconData icon;
+        final String label;
+        if (isActive) {
+          icon = PhosphorIconsFill.pause;
+          label = 'Pause';
+        } else if (_episode!.completed) {
+          icon = PhosphorIconsBold.arrowCounterClockwise;
+          label = 'Play again';
+        } else if (started) {
+          icon = PhosphorIconsFill.play;
+          final remaining = _episode!.episodeDuration - (_episode!.listenDuration ?? 0);
+          label = 'Resume  ·  ${humanDuration(remaining)} left';
+        } else {
+          icon = PhosphorIconsFill.play;
+          label = 'Play';
+        }
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(26),
+          child: Stack(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: accent,
+                    foregroundColor: onAccent,
+                    disabledBackgroundColor: accent.withOpacity(0.5),
+                    disabledForegroundColor: onAccent.withOpacity(0.7),
+                    shape: const StadiumBorder(),
+                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  onPressed: _actionGuard.inProgress ? null : () => _runGuarded(_togglePlayPause),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: showSpinner
+                        ? SizedBox(
+                            key: const ValueKey('loading'),
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.5, color: onAccent),
+                          )
+                        : Row(
+                            key: ValueKey(label),
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(icon, size: 22),
+                              const SizedBox(width: 8),
+                              Text(label),
+                            ],
+                          ),
+                  ),
+                ),
+              ),
+              if (started)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: LinearProgressIndicator(
+                    value: (_episode!.progressPercentage / 100).clamp(0.0, 1.0),
+                    minHeight: 3,
+                    backgroundColor: onAccent.withOpacity(0.15),
+                    valueColor: AlwaysStoppedAnimation<Color>(onAccent.withOpacity(0.6)),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildActionStrip(ThemeData theme, Color accent) {
+    final busy = _actionGuard.inProgress;
+    final e = _episode!;
+    return Row(
+      children: [
+        _EpisodeAction(
+          icon: e.saved ? PhosphorIconsFill.bookmarkSimple : PhosphorIconsRegular.bookmarkSimple,
+          label: e.saved ? 'Saved' : 'Save',
+          active: e.saved,
+          accent: accent,
+          onTap: busy ? null : () => _runGuarded(e.saved ? _removeSavedEpisode : _saveEpisode),
+        ),
+        _EpisodeAction(
+          icon: e.queued ? PhosphorIconsFill.queue : PhosphorIconsRegular.queue,
+          label: e.queued ? 'Queued' : 'Queue',
+          active: e.queued,
+          accent: accent,
+          onTap: busy ? null : () => _runGuarded(_toggleQueue),
+        ),
+        _EpisodeAction(
+          icon: _isDownloadedLocally ? PhosphorIconsFill.checkCircle : PhosphorIconsRegular.downloadSimple,
+          label: _isDownloadedLocally ? 'On device' : 'Download',
+          active: _isDownloadedLocally,
+          accent: accent,
+          onTap: busy ? null : () => _runGuarded(_isDownloadedLocally ? _confirmDeleteLocalDownload : _localDownloadEpisode),
+        ),
+        _EpisodeAction(
+          icon: e.completed ? PhosphorIconsFill.checkCircle : PhosphorIconsRegular.checkCircle,
+          label: 'Played',
+          active: e.completed,
+          accent: accent,
+          onTap: busy ? null : () => _runGuarded(_toggleComplete),
+        ),
+        _EpisodeAction(
+          icon: PhosphorIconsRegular.dotsThree,
+          label: 'More',
+          active: false,
+          accent: accent,
+          onTap: _showMoreSheet,
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmDeleteLocalDownload() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove download?'),
+        content: const Text('This deletes the copy stored on this device.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (confirmed == true) await _deleteLocalDownload();
+  }
+
+  void _showMoreSheet() {
+    final e = _episode!;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        void run(VoidCallback action) {
+          Navigator.pop(sheetContext);
+          action();
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(e.downloaded ? PhosphorIconsRegular.cloudSlash : PhosphorIconsRegular.cloudArrowDown),
+                title: Text(e.downloaded ? 'Remove server download' : 'Download to server'),
+                subtitle: const Text('Stored on your PinePods server'),
+                enabled: !_actionGuard.inProgress,
+                onTap: () => run(() => _runGuarded(_toggleDownload)),
+              ),
+              ListTile(
+                leading: const Icon(PhosphorIconsRegular.microphoneStage),
+                title: const Text('Go to podcast'),
+                onTap: () => run(_navigateToPodcast),
+              ),
+              ListTile(
+                leading: const Icon(PhosphorIconsRegular.shareNetwork),
+                title: const Text('Share episode'),
+                onTap: () => run(_shareEpisode),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1159,5 +1151,55 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
     _stateSub?.cancel();
     // Don't dispose global audio service - it should persist across pages
     super.dispose();
+  }
+}
+
+/// Icon-over-label action used in the episode page's action strip.
+class _EpisodeAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final Color accent;
+  final VoidCallback? onTap;
+
+  const _EpisodeAction({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final base = active ? accent : softNeutral(theme).withOpacity(0.8);
+    final color = onTap == null ? base.withOpacity(0.4) : base;
+    return Expanded(
+      child: Semantics(
+        button: true,
+        label: label,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 26, color: color),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: color, fontSize: 11.5, fontWeight: FontWeight.w500, letterSpacing: 0),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

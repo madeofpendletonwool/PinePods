@@ -1,13 +1,80 @@
 use crate::{
     error::AppResult,
     handlers::{refresh, tasks},
+    services::sync::engine,
     AppState,
 };
-use std::sync::Arc;
+use std::future::Future;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock};
 use chrono::Utc;
 use croner::parser::{CronParser, Seconds};
 use tokio_cron_scheduler::{Job, JobScheduler};
-use tracing::{info, error, warn};
+use tracing::{debug, info, error, warn};
+
+/// Failure backoff shared by feed refresh and external sync: 30 minutes per consecutive failure,
+/// at most 24 hours.
+pub const BACKOFF_STEP_MINUTES: i64 = 30;
+pub const BACKOFF_MAX_STEPS: i32 = 48;
+
+pub fn failure_backoff(failures: i32) -> chrono::Duration {
+    chrono::Duration::minutes(BACKOFF_STEP_MINUTES * i64::from(failures.clamp(0, BACKOFF_MAX_STEPS)))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobKind {
+    Refresh,
+    Sync,
+    Nightly,
+    Cleanup,
+}
+
+impl JobKind {
+    fn name(self) -> &'static str {
+        match self {
+            JobKind::Refresh => "podcast refresh",
+            JobKind::Sync => "sync",
+            JobKind::Nightly => "nightly tasks",
+            JobKind::Cleanup => "cleanup",
+        }
+    }
+}
+
+/// At most one run per job kind at a time; a run that would overlap the previous one is skipped.
+#[derive(Default)]
+pub struct SingleFlight {
+    running: [AtomicBool; 4],
+}
+
+impl SingleFlight {
+    /// None when a run of `job` was already going.
+    pub async fn run<Fut: Future<Output = AppResult<()>>>(&self, job: JobKind, fut: Fut) -> Option<AppResult<()>> {
+        struct Done<'a>(&'a AtomicBool);
+        impl Drop for Done<'_> {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::Release);
+            }
+        }
+        let flag = &self.running[job as usize];
+        if flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
+            debug!("Skipping scheduled {}: the previous run is still going", job.name());
+            return None;
+        }
+        let _done = Done(flag);
+        Some(fut.await)
+    }
+}
+
+static JOBS: LazyLock<SingleFlight> = LazyLock::new(SingleFlight::default);
+
+/// Run a scheduled job unless the previous run of its kind is still going.
+async fn guarded<Fut: Future<Output = AppResult<()>>>(job: JobKind, fut: Fut) {
+    match JOBS.run(job, fut).await {
+        None => {}
+        Some(Ok(())) => debug!("Scheduled {} completed", job.name()),
+        Some(Err(e)) => error!("❌ Scheduled {} failed: {}", job.name(), e),
+    }
+}
 
 pub struct BackgroundScheduler {
     scheduler: JobScheduler,
@@ -22,23 +89,31 @@ impl BackgroundScheduler {
     pub async fn start(&self, app_state: Arc<AppState>) -> AppResult<()> {
         info!("🕒 Starting background task scheduler...");
 
-        // Schedule podcast refresh. Interval is configurable via PINEPODS_REFRESH_CRON (a 6-field
-        // cron expression, sec min hour dom mon dow); defaults to every 30 minutes.
-        let refresh_cron = std::env::var("PINEPODS_REFRESH_CRON")
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "0 */30 * * * *".to_string());
-        info!("📅 Podcast refresh schedule: {}", refresh_cron);
+        // Every minute, refresh the feeds that are due. Each feed's next refresh follows how often
+        // it publishes, at most PINEPODS_REFRESH_MAX_INTERVAL apart (read now, so a deprecated or
+        // invalid setting is reported at startup).
+        crate::services::refresh_schedule::max_interval();
         let refresh_state = app_state.clone();
-        let refresh_job = Job::new_async(refresh_cron.as_str(), move |_uuid, _l| {
+        let refresh_job = Job::new_async("0 * * * * *", move |_uuid, _l| {
             let state = refresh_state.clone();
             Box::pin(async move {
-                info!("🔄 Running scheduled podcast refresh");
-                if let Err(e) = Self::run_refresh_pods(state.clone()).await {
-                    error!("❌ Scheduled podcast refresh failed: {}", e);
-                } else {
-                    info!("✅ Scheduled podcast refresh completed");
-                }
+                guarded(JobKind::Refresh, run_refresh_job(&state)).await;
+            })
+        })?;
+
+        // External sync (gpodder servers, Nextcloud), separate from the refresh. Configurable via
+        // PINEPODS_SYNC_CRON (same format); defaults to every 5 minutes. Local changes are also
+        // pushed shortly after they happen.
+        let sync_cron = std::env::var("PINEPODS_SYNC_CRON")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "0 */5 * * * *".to_string());
+        info!("📅 External sync schedule: {}", sync_cron);
+        let sync_state = app_state.clone();
+        let sync_job = Job::new_async(sync_cron.as_str(), move |_uuid, _l| {
+            let state = sync_state.clone();
+            Box::pin(async move {
+                guarded(JobKind::Sync, run_sync_job(&state)).await;
             })
         })?;
 
@@ -48,11 +123,7 @@ impl BackgroundScheduler {
             let state = nightly_state.clone();
             Box::pin(async move {
                 info!("🌙 Running scheduled nightly tasks");
-                if let Err(e) = Self::run_nightly_tasks(state.clone()).await {
-                    error!("❌ Scheduled nightly tasks failed: {}", e);
-                } else {
-                    info!("✅ Scheduled nightly tasks completed");
-                }
+                guarded(JobKind::Nightly, Self::run_nightly_tasks(state.clone())).await;
             })
         })?;
 
@@ -62,11 +133,17 @@ impl BackgroundScheduler {
             let state = cleanup_state.clone();
             Box::pin(async move {
                 info!("🧹 Running scheduled cleanup tasks");
-                if let Err(e) = Self::run_cleanup_tasks(state.clone()).await {
-                    error!("❌ Scheduled cleanup tasks failed: {}", e);
-                } else {
-                    info!("✅ Scheduled cleanup tasks completed");
-                }
+                guarded(JobKind::Cleanup, Self::run_cleanup_tasks(state.clone())).await;
+            })
+        })?;
+
+        // Delete server downloads of finished episodes (for users who turned that on) hourly,
+        // so they don't sit around until the 6-hourly cleanup.
+        let finished_state = app_state.clone();
+        let finished_job = Job::new_async("0 15 * * * *", move |_uuid, _l| {
+            let state = finished_state.clone();
+            Box::pin(async move {
+                guarded(JobKind::Cleanup, async move { state.db_pool.auto_delete_finished_downloads().await }).await;
             })
         })?;
 
@@ -98,8 +175,10 @@ impl BackgroundScheduler {
 
         // Add jobs to scheduler
         self.scheduler.add(refresh_job).await?;
+        self.scheduler.add(sync_job).await?;
         self.scheduler.add(nightly_job).await?;
         self.scheduler.add(cleanup_job).await?;
+        self.scheduler.add(finished_job).await?;
         self.scheduler.add(backup_job).await?;
         self.scheduler.add(ytdlp_job).await?;
 
@@ -110,54 +189,18 @@ impl BackgroundScheduler {
         Ok(())
     }
 
-    // Direct function calls instead of HTTP requests
-    async fn run_refresh_pods(state: Arc<AppState>) -> AppResult<()> {
-        // Call refresh_pods function directly
-        match refresh::refresh_pods_admin_internal(&state).await {
-            Ok(_) => {
-                info!("✅ Podcast refresh completed");
-                
-                // Also run gpodder sync  
-                if let Err(e) = refresh::refresh_gpodder_subscriptions_admin_internal(&state).await {
-                    warn!("⚠️ GPodder sync failed during scheduled refresh: {}", e);
-                }
-                
-                // Also run nextcloud sync
-                if let Err(e) = refresh::refresh_nextcloud_subscriptions_admin_internal(&state).await {
-                    warn!("⚠️ Nextcloud sync failed during scheduled refresh: {}", e);
-                }
-                
-                // Update playlist episode counts (replaces complex playlist content updates)
-                if let Err(e) = state.db_pool.update_playlist_episode_counts().await {
-                    warn!("⚠️ Playlist episode count update failed during scheduled refresh: {}", e);
-                }
-
-                // Auto-add freshly-ingested episodes into collections with a category rule
-                if let Err(e) = state.db_pool.refresh_category_collections().await {
-                    warn!("⚠️ Category collection auto-add failed during scheduled refresh: {}", e);
-                }
-
-                // Propagate new podcast episodes into PeopleEpisodes for subscribed people
-                if let Err(e) = state.db_pool.refresh_people_episodes_from_podcasts().await {
-                    warn!("⚠️ People episodes sync failed during scheduled refresh: {}", e);
-                }
-            }
-            Err(e) => {
-                error!("❌ Podcast refresh failed: {}", e);
-                return Err(e);
-            }
-        }
-        Ok(())
-    }
-
     async fn run_nightly_tasks(state: Arc<AppState>) -> AppResult<()> {
         // Call nightly tasks directly
         if let Err(e) = tasks::refresh_hosts_internal(&state).await {
-            warn!("⚠️ Refresh hosts failed during nightly tasks: {}", e);
+            warn!("⚠️ People sync failed during nightly tasks: {}", e);
         }
         
         if let Err(e) = tasks::auto_complete_episodes_internal(&state).await {
             warn!("⚠️ Auto complete episodes failed during nightly tasks: {}", e);
+        }
+
+        if let Err(e) = crate::services::sync::compact::run(&state.db_pool).await {
+            warn!("⚠️ Sync log compaction failed during nightly tasks: {}", e);
         }
 
         // Refresh Discover-page recommendations for users who already have a cached set,
@@ -346,20 +389,76 @@ impl BackgroundScheduler {
             warn!("⚠️ Cleaning blank podcast categories failed: {}", e);
         }
 
+        info!("✅ Startup tasks completed");
+        Ok(())
+    }
+
+    // Started once the server is listening: yt-dlp update, a refresh of the feeds that are due,
+    // then people sync.
+    pub async fn run_startup_refresh(state: Arc<AppState>) {
         // Log the yt-dlp version and self-update on startup (#793), so a freshly recreated
-        // container pulls the latest YouTube fix before the initial refresh runs. Runs before
-        // the refresh below because that refresh pulls YouTube feeds.
+        // container pulls the latest YouTube fix before the refresh below pulls YouTube feeds.
         crate::services::ytdlp::log_version_at_startup().await;
         if let Err(e) = Self::run_ytdlp_update(state.clone()).await {
             warn!("⚠️ Startup yt-dlp update failed: {}", e);
         }
 
-        // Run an immediate refresh to ensure data is current on startup
-        if let Err(e) = Self::run_refresh_pods(state.clone()).await {
-            warn!("⚠️ Initial startup refresh failed: {}", e);
-        }
-        
-        info!("✅ Startup tasks completed");
-        Ok(())
+        guarded(JobKind::Refresh, run_refresh_job(&state)).await;
+
+        // People: drop old host-feed placeholders, backfill stored tags, first PodPeopleDB sync.
+        tokio::spawn(crate::services::people::startup(
+            state.db_pool.clone(),
+            crate::services::people::Endpoints::from_config(&state.config),
+        ));
+    }
+}
+
+/// The scheduled refresh: the feeds that are due, nothing else. Sync runs on its own schedule.
+pub async fn run_refresh_job(state: &AppState) -> AppResult<()> {
+    refresh::refresh_due_podcasts(state).await.map(|_| ())
+}
+
+/// The scheduled external sync.
+pub async fn run_sync_job(state: &AppState) -> AppResult<()> {
+    if let Err(e) = crate::services::sync::imports::retry_due(&state.db_pool, &state.task_spawner).await {
+        warn!("Retrying failed sync imports failed: {}", e);
+    }
+    let s = engine::run_due(&state.db_pool, &state.task_spawner).await?;
+    if s.synced + s.failed + s.held > 0 {
+        debug!("Scheduled sync: {} synced, {} failed, {} in backoff", s.synced, s.failed, s.held);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backoff_grows_linearly_and_caps_at_a_day() {
+        assert_eq!(failure_backoff(0), chrono::Duration::zero());
+        assert_eq!(failure_backoff(1), chrono::Duration::minutes(30));
+        assert_eq!(failure_backoff(4), chrono::Duration::hours(2));
+        assert_eq!(failure_backoff(500), chrono::Duration::hours(24));
+    }
+
+    #[tokio::test]
+    async fn single_flight_skips_an_overlapping_run() {
+        let jobs = SingleFlight::default();
+        let (release, wait) = tokio::sync::oneshot::channel::<()>();
+        let first = jobs.run(JobKind::Refresh, async {
+            let _ = wait.await;
+            Ok(())
+        });
+        let second = async {
+            tokio::task::yield_now().await;
+            let overlapping = jobs.run(JobKind::Refresh, async { Ok(()) }).await;
+            let other_kind = jobs.run(JobKind::Sync, async { Ok(()) }).await;
+            let _ = release.send(());
+            (overlapping.is_none(), other_kind.is_some())
+        };
+        let (first, (skipped, other_ran)) = tokio::join!(first, second);
+        assert!(first.is_some() && skipped && other_ran);
+        assert!(jobs.run(JobKind::Refresh, async { Ok(()) }).await.is_some(), "runs again once the first finished");
     }
 }

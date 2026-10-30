@@ -76,8 +76,12 @@ pub struct UserDetails {
     pub Fullname: Option<String>,
     pub Username: Option<String>,
     pub Email: Option<String>,
+    /// Always null: the password hash is never sent to clients. Kept for response compatibility.
     pub Hashed_PW: Option<String>,
+    /// Always null; kept for response compatibility.
     pub Salt: Option<String>,
+    /// Whether the clients show the user's Gravatar. Off by default.
+    pub UseGravatar: bool,
 }
 
 #[derive(Serialize, utoipa::ToSchema)]
@@ -440,7 +444,9 @@ pub async fn get_public_oidc_providers(
             button_color: p.button_color,
             button_text: p.button_text,
             button_text_color: p.button_text_color,
-            icon_svg: p.icon_svg,
+            // Env-configured providers store "" when OIDC_ICON_SVG is unset; an empty icon slot
+            // would push the button text off centre.
+            icon_svg: p.icon_svg.filter(|s| !s.trim().is_empty()),
         })
         .collect();
     
@@ -1003,9 +1009,9 @@ async fn process_opml_import(
         
         // Try to get podcast values and add podcast with robust error handling
         match get_podcast_values_from_url(podcast_url, &db_pool).await {
-            Ok(mut podcast_values) => {
+            Ok((mut podcast_values, feed_body)) => {
                 podcast_values.user_id = import_request.user_id;
-                match db_pool.add_podcast(&podcast_values, 0, None, None).await {
+                match db_pool.add_podcast_with_feed(&podcast_values, 0, None, None, Some(&feed_body), crate::services::sync::SyncOrigin::Pinepods).await {
                     Ok(_) => {
                         tracing::info!("✅ Successfully imported podcast: {}", podcast_url);
                     }
@@ -1037,12 +1043,13 @@ async fn process_opml_import(
 }
 
 // Get podcast values from URL - simplified version of Python get_podcast_values
-async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::DatabasePool) -> Result<crate::handlers::podcasts::PodcastValues, AppError> {
+/// Also returns the fetched feed body, so the import reuses it for the episodes.
+async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::DatabasePool) -> Result<(crate::handlers::podcasts::PodcastValues, String), AppError> {
     // Use the same feed-rs based parsing that manual add uses (which works correctly)
     // This avoids the ampersand truncation issue in the custom quick_xml parser
     
     // Use the working get_podcast_values function that manual add uses
-    let podcast_values_map = db_pool.get_podcast_values(url, 0, None, None).await
+    let (podcast_values_map, feed_body) = db_pool.get_podcast_values_with_body(url, 0, None, None).await
         .map_err(|e| AppError::internal(&format!("Failed to parse podcast feed: {}", e)))?;
     
     debug!("🎙️  Parsed podcast: title='{}', author='{}', description_len={}", 
@@ -1055,7 +1062,7 @@ async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::Datab
         serde_json::from_str(podcast_values_map.get("categories").unwrap_or(&"{}".to_string()))
         .unwrap_or_default();
     
-    Ok(crate::handlers::podcasts::PodcastValues {
+    Ok((crate::handlers::podcasts::PodcastValues {
         pod_title: podcast_values_map.get("podcastname").unwrap_or(&"Unknown Podcast".to_string()).clone(),
         pod_artwork: podcast_values_map.get("artworkurl").unwrap_or(&"".to_string()).clone(),
         pod_author: podcast_values_map.get("author").unwrap_or(&"Unknown Author".to_string()).clone(),
@@ -1066,7 +1073,7 @@ async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::Datab
         pod_website: podcast_values_map.get("websiteurl").unwrap_or(&"".to_string()).clone(),
         pod_explicit: podcast_values_map.get("explicit").unwrap_or(&"False".to_string()) == "True",
         user_id: 0, // Will be set by the caller
-    })
+    }, feed_body))
 }
 
 // OIDC Authentication Flow Endpoints
@@ -1078,6 +1085,7 @@ pub struct StoreStateRequest {
     pub client_id: String,
     pub origin_url: Option<String>, // URL user was on when they clicked OIDC login
     pub code_verifier: Option<String>, // PKCE code verifier for token exchange
+    pub redirect_uri: Option<String>, // Exact redirect_uri sent in the authorize request
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1085,6 +1093,8 @@ struct StoredOidcState {
     client_id: String,
     origin_url: Option<String>,
     code_verifier: Option<String>, // PKCE code verifier
+    #[serde(default)]
+    redirect_uri: Option<String>,
 }
 
 #[utoipa::path(
@@ -1104,10 +1114,17 @@ pub async fn store_oidc_state(
     // Store state in Redis with 10-minute expiration
     let state_key = format!("oidc_state:{}", request.state);
     
+    let redirect_uri = match request.redirect_uri.as_deref() {
+        Some(uri) => Some(crate::services::oidc::validate_redirect_uri(uri)
+            .ok_or_else(|| AppError::bad_request("redirect_uri must be an http(s) URL ending in /api/auth/callback"))?),
+        None => None,
+    };
+
     let stored_state = StoredOidcState {
         client_id: request.client_id,
         origin_url: request.origin_url,
         code_verifier: request.code_verifier,
+        redirect_uri,
     };
     
     let state_json = serde_json::to_string(&stored_state)
@@ -1250,15 +1267,15 @@ pub async fn oidc_callback(
     let state_param = query.state.ok_or_else(|| AppError::bad_request("Missing state parameter"))?;
 
     // Get client_id, origin_url, and code_verifier from state
-    let (client_id, stored_origin_url, code_verifier) = match state.redis_client.get_del(&format!("oidc_state:{}", state_param)).await {
+    let (client_id, stored_origin_url, code_verifier, stored_redirect_uri) = match state.redis_client.get_del(&format!("oidc_state:{}", state_param)).await {
         Ok(Some(state_json)) => {
             // Try to parse as new JSON format first
             if let Ok(stored_state) = serde_json::from_str::<StoredOidcState>(&state_json) {
                 tracing::info!("OIDC: Retrieved state for client_id={}", stored_state.client_id);
-                (stored_state.client_id, stored_state.origin_url, stored_state.code_verifier)
+                (stored_state.client_id, stored_state.origin_url, stored_state.code_verifier, stored_state.redirect_uri)
             } else {
                 // Fallback to old format (just client_id string) for backwards compatibility
-                (state_json, None, None)
+                (state_json, None, None, None)
             }
         },
         Ok(None) => {
@@ -1293,7 +1310,11 @@ pub async fn oidc_callback(
         default_frontend_base.clone()
     };
 
-    let registered_redirect_uri = format!("{}/api/auth/callback", base_url);
+    // The token request must repeat the authorize request's redirect_uri exactly (RFC 6749
+    // 4.1.3). Rebuilding it from request headers loses non-default ports behind some proxies, so
+    // use the client's own value and only derive one for clients that don't send it.
+    let registered_redirect_uri = stored_redirect_uri
+        .unwrap_or_else(|| format!("{}{}", base_url, crate::services::oidc::CALLBACK_PATH));
 
     // Get OIDC provider details - EXACT match to Python get_oidc_provider returning tuple
     let provider_tuple = match state.db_pool.get_oidc_provider(&client_id).await {
@@ -1945,7 +1966,7 @@ fn construct_base_url_from_request(headers: &HeaderMap) -> Result<String, AppErr
 
     let mut base_url = format!("{}://{}", scheme, host);
     
-    tracing::info!("OIDC Debug - Headers: Host={}, X-Forwarded-Proto={:?}, X-Forwarded-Host={:?}, X-Forwarded-Port={:?}, constructed base_url={}", 
+    tracing::debug!("OIDC Debug - Headers: Host={}, X-Forwarded-Proto={:?}, X-Forwarded-Host={:?}, X-Forwarded-Port={:?}, constructed base_url={}", 
         host, 
         headers.get("x-forwarded-proto").and_then(|v| v.to_str().ok()),
         headers.get("x-forwarded-host").and_then(|v| v.to_str().ok()),

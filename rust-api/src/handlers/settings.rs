@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::AppError,
-    handlers::{extract_api_key, validate_api_key, check_user_access},
+    handlers::{extract_api_key, require_valid_api_key, check_user_access},
     models::{AvailableLanguage, LanguageUpdateRequest, UserLanguageResponse, AvailableLanguagesResponse},
+    services::sync::engine::{self, RunMode},
+    services::sync::targets::gpodder::GpodderTarget,
     AppState,
 };
 use tracing::{debug, error, info, warn};
@@ -45,7 +47,7 @@ pub async fn set_theme(
     Json(request): Json<SetThemeRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only set their own theme
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -79,7 +81,7 @@ pub async fn set_playback_speed_user(
     Json(request): Json<SetPlaybackSpeedUser>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only set their own playback speed
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -120,7 +122,7 @@ pub async fn set_default_volume_user(
     Json(request): Json<SetDefaultVolumeUser>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only set their own default volume
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -162,7 +164,7 @@ pub async fn set_auto_download_delete_days_user(
     Json(request): Json<SetAutoDownloadDeleteDaysUser>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only modify their own settings
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -214,7 +216,7 @@ pub async fn get_user_info(
     headers: HeaderMap,
 ) -> Result<Json<Vec<UserInfo>>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin (matches Python check_if_admin dependency)
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -247,7 +249,7 @@ pub async fn get_my_user_info(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only get their own info
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -292,7 +294,7 @@ pub async fn add_user(
     Json(user_values): Json<AddUserRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -376,7 +378,7 @@ pub async fn set_fullname(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let new_name = params.get("new_name")
         .ok_or_else(|| AppError::bad_request("Missing new_name parameter"))?;
@@ -420,7 +422,7 @@ pub async fn set_password(
     Json(request): Json<PasswordUpdateRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - admins can edit other users, users can edit themselves
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -453,7 +455,7 @@ pub async fn delete_user(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -461,6 +463,13 @@ pub async fn delete_user(
     
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
+    }
+
+    if user_id == 1 {
+        return Err(AppError::forbidden("The background tasks user cannot be deleted"));
+    }
+    if state.db_pool.final_admin(user_id).await? {
+        return Err(AppError::forbidden("Cannot delete the last admin"));
     }
 
     state.db_pool.delete_user(user_id).await?;
@@ -493,7 +502,7 @@ pub async fn set_email(
     Json(request): Json<SetEmailRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - admins can edit other users, users can edit themselves
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -533,7 +542,7 @@ pub async fn set_username(
     Json(request): Json<SetUsernameRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - admins can edit other users, users can edit themselves
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -573,7 +582,7 @@ pub async fn set_isadmin(
     Json(request): Json<SetIsAdminRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -581,6 +590,10 @@ pub async fn set_isadmin(
     
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
+    }
+
+    if !request.isadmin && state.db_pool.final_admin(request.user_id).await? {
+        return Err(AppError::forbidden("Cannot remove admin rights from the last admin"));
     }
 
     state.db_pool.set_isadmin(request.user_id, request.isadmin).await?;
@@ -606,7 +619,7 @@ pub async fn final_admin(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -618,37 +631,6 @@ pub async fn final_admin(
 
     let is_final_admin = state.db_pool.final_admin(user_id).await?;
     Ok(Json(serde_json::json!({ "final_admin": is_final_admin })))
-}
-
-// Enable/disable guest - matches Python api_enable_disable_guest function exactly (admin only)
-#[utoipa::path(
-    post,
-    path = "/enable_disable_guest",
-    tag = "settings",
-    summary = "Enable disable guest",
-    security(("api_key" = [])),
-    responses(
-        (status = 200, description = "Success", body = serde_json::Value),
-        (status = 401, description = "Invalid or missing API key"),
-    ),
-)]
-pub async fn enable_disable_guest(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check if user is admin (matches Python check_if_admin dependency)
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
-    if !is_admin {
-        return Err(AppError::forbidden("Admin access required"));
-    }
-
-    state.db_pool.enable_disable_guest().await?;
-    Ok(Json(serde_json::json!({ "success": true })))
 }
 
 // Enable/disable downloads - matches Python api_enable_disable_downloads function exactly (admin only)
@@ -668,7 +650,7 @@ pub async fn enable_disable_downloads(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -699,7 +681,7 @@ pub async fn enable_disable_self_service(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -711,29 +693,6 @@ pub async fn enable_disable_self_service(
 
     state.db_pool.enable_disable_self_service().await?;
     Ok(Json(serde_json::json!({ "success": true })))
-}
-
-// Get guest status - matches Python api_guest_status function exactly
-#[utoipa::path(
-    get,
-    path = "/guest_status",
-    tag = "settings",
-    summary = "Guest status",
-    security(("api_key" = [])),
-    responses(
-        (status = 200, description = "Success", body = bool),
-        (status = 401, description = "Invalid or missing API key"),
-    ),
-)]
-pub async fn guest_status(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<bool>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    let result = state.db_pool.guest_status().await?;
-    Ok(Json(result))
 }
 
 // Get RSS feed status - matches Python get_rss_feed_status function exactly
@@ -753,7 +712,7 @@ pub async fn rss_feed_status(
     headers: HeaderMap,
 ) -> Result<Json<bool>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let result = state.db_pool.get_rss_feed_status(user_id).await?;
@@ -777,7 +736,7 @@ pub async fn toggle_rss_feeds(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let new_status = state.db_pool.toggle_rss_feeds(user_id).await?;
@@ -801,7 +760,7 @@ pub async fn download_status(
     headers: HeaderMap,
 ) -> Result<Json<bool>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let result = state.db_pool.download_status().await?;
     Ok(Json(result))
@@ -859,7 +818,7 @@ pub async fn get_download_metadata_settings(
     headers: HeaderMap,
 ) -> Result<Json<DownloadMetadataSettings>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let settings = state.db_pool.get_download_settings().await?;
     Ok(Json(settings.into()))
@@ -884,7 +843,7 @@ pub async fn set_download_metadata_settings(
     Json(payload): Json<DownloadMetadataSettings>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
@@ -913,7 +872,7 @@ pub async fn self_service_status(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let result = state.db_pool.self_service_status().await?;
     Ok(Json(serde_json::json!({
@@ -931,12 +890,15 @@ pub struct SaveEmailSettingsRequest {
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct EmailSettings {
     pub server_name: String,
+    // Clients send the port as a string and the flag as a bool; document the wire format.
     #[serde(deserialize_with = "deserialize_string_to_i32")]
+    #[schema(value_type = String, example = "587")]
     pub server_port: i32,
     pub from_email: String,
     pub send_mode: String,
     pub encryption: String,
     #[serde(deserialize_with = "deserialize_bool_to_i32")]
+    #[schema(value_type = bool)]
     pub auth_required: i32,
     pub email_username: String,
     pub email_password: String,
@@ -981,7 +943,7 @@ pub async fn save_email_settings(
     Json(request): Json<SaveEmailSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -1035,7 +997,7 @@ pub async fn get_email_settings(
     headers: HeaderMap,
 ) -> Result<Json<EmailSettingsResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -1085,7 +1047,7 @@ pub async fn send_test_email(
     Json(request): Json<SendTestEmailRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -1377,8 +1339,8 @@ pub async fn send_email(
     headers: HeaderMap,
     Json(request): Json<SendEmailRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    // Arbitrary recipient/subject/body through the server's SMTP account: admin only.
+    crate::handlers::require_admin(&state, &headers).await?;
 
     // Get email settings from database
     let email_settings = state.db_pool.get_email_settings().await?;
@@ -1568,7 +1530,7 @@ pub async fn get_api_info(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization (elevated access or own user)
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -1612,7 +1574,7 @@ pub async fn create_api_key(
     Json(request): Json<CreateApiKeyRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or own user
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -1623,6 +1585,13 @@ pub async fn create_api_key(
     }
 
     if request.rssonly {
+        if let Some(ids) = &request.podcast_ids {
+            for &podcast_id in ids {
+                if !state.db_pool.verify_podcast_belongs_to_user(podcast_id, request.user_id).await? {
+                    return Err(AppError::not_found("Podcast not found"));
+                }
+            }
+        }
         let new_key = state.db_pool.create_rss_key(request.user_id, request.podcast_ids).await?;
         Ok(Json(serde_json::json!({ "rss_key": new_key })))
     } else {
@@ -1656,7 +1625,7 @@ pub async fn delete_api_key(
     Json(request): Json<DeleteApiKeyRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Parse api_id from string (user_id not used for authorization)
     let api_id: i32 = request.api_id.parse()
@@ -1736,7 +1705,7 @@ pub async fn backup_user(
     Json(request): Json<BackupUserRequest>,
 ) -> Result<String, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or own user
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -1775,7 +1744,7 @@ pub async fn backup_server(
     Json(request): Json<BackupServerRequest>,
 ) -> Result<axum::response::Response, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -1951,7 +1920,7 @@ pub async fn restore_server(
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2018,18 +1987,21 @@ pub async fn restore_server(
     // upload itself can take a while; the restore then runs against the streamed file).
     // The guard is moved into the task and released (via Drop) when it finishes.
     let db_pool = state.db_pool.clone();
+    let merged = state.merged_episodes.clone();
     let task_id = state.task_spawner.spawn_progress_task(
         "restore_server".to_string(),
         user_id,
         move |reporter| {
             let db_pool = db_pool.clone();
             let tmp_path = tmp_path.clone();
+            let merged = merged.clone();
             let _restore_guard = restore_guard;
             async move {
                 reporter.update_progress(10.0, Some("Starting restore...".to_string())).await?;
                 reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
 
                 let result = db_pool.restore_server_data_from_path(&tmp_path).await;
+                merged.reset();
 
                 // Always clean up the temp upload, success or failure.
                 if let Err(e) = tokio::fs::remove_file(&tmp_path).await {
@@ -2088,7 +2060,7 @@ pub async fn generate_mfa_secret(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or own user
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2131,7 +2103,7 @@ pub async fn verify_temp_mfa(
     Json(request): Json<VerifyTempMfaRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or own user
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2164,7 +2136,7 @@ pub async fn check_mfa_enabled(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check for elevated access (admin/web key)
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -2205,7 +2177,7 @@ pub async fn save_mfa_secret(
     Json(request): Json<SaveMfaSecretRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or own user
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2236,7 +2208,7 @@ pub async fn delete_mfa(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let success = state.db_pool.delete_mfa_secret(user_id).await?;
@@ -2269,7 +2241,7 @@ pub async fn initiate_nextcloud_login(
     Json(request): Json<InitiateNextcloudLoginRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
@@ -2311,7 +2283,7 @@ pub async fn add_nextcloud_server(
     Json(request): Json<AddNextcloudServerRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
@@ -2320,8 +2292,7 @@ pub async fn add_nextcloud_server(
         return Err(AppError::forbidden("You are not authorized to access these user details"));
     }
 
-    // Reset gPodder settings to default like Python version
-    state.db_pool.remove_podcast_sync(request.user_id).await?;
+    // The current setup stays until the login completes; saving the Nextcloud target replaces it.
 
     // Create a task for the Nextcloud authentication polling  
     let task_id = state.task_manager.create_task("nextcloud_auth".to_string(), request.user_id).await?;
@@ -2347,7 +2318,7 @@ async fn poll_for_auth_completion_background(state: AppState, request: AddNextcl
 
     match poll_for_auth_completion(&request.poll_endpoint, &request.token, &state.task_manager, &task_id).await {
         Ok(credentials) => {
-            info!("Nextcloud authentication successful: {:?}", credentials);
+            debug!("Nextcloud authentication completed for user {}", request.user_id);
             
             // Update task progress
             if let Err(e) = state.task_manager.update_task_progress(&task_id, 90.0, Some("Authentication successful, saving credentials...".to_string())).await {
@@ -2368,6 +2339,8 @@ async fn poll_for_auth_completion_background(state: AppState, request: AddNextcl
                             Some("Nextcloud authentication completed successfully".to_string())).await {
                             error!("Failed to complete task: {}", e);
                         }
+                        // First sync with the new server; a failure is recorded on the target.
+                        let _ = engine::run_for_user(&state.db_pool, &state.task_spawner, request.user_id, RunMode::Full).await;
                     }
                     Err(e) => {
                         error!("Failed to add Nextcloud settings: {}", e);
@@ -2428,7 +2401,6 @@ async fn poll_for_auth_completion(
                 match response.status().as_u16() {
                     200 => {
                         let credentials = response.json::<serde_json::Value>().await?;
-                        info!("Authentication successful: {:?}", credentials);
                         return Ok(credentials);
                     }
                     404 => {
@@ -2478,29 +2450,16 @@ pub async fn verify_gpodder_auth(
     Json(request): Json<VerifyGpodderAuthRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
-    // Direct HTTP call to match Python implementation exactly
-    let client = reqwest::Client::new();
-    let auth_url = format!("{}/api/2/auth/{}/login.json", 
-                          request.gpodder_url.trim_end_matches('/'), 
-                          request.gpodder_username);
-    
-    match client
-        .post(&auth_url)
-        .basic_auth(&request.gpodder_username, Some(&request.gpodder_password))
-        .send()
-        .await
-    {
-        Ok(response) => {
-            if response.status().is_success() {
-                Ok(Json(serde_json::json!({"status": "success", "message": "Logged in!"})))
-            } else {
-                Err(AppError::unauthorized("Authentication failed"))
-            }
-        }
-        Err(_) => {
-            Err(AppError::internal("Internal Server Error"))
+    // The same login the sync engine does.
+    match GpodderTarget::verify(&request.gpodder_url, &request.gpodder_username, &request.gpodder_password).await {
+        Ok(()) => Ok(Json(serde_json::json!({"status": "success", "message": "Logged in!"}))),
+        Err(AppError::Auth(_)) => Err(AppError::unauthorized("Authentication failed")),
+        Err(AppError::BadRequest(m)) => Err(AppError::bad_request(m)),
+        Err(e) => {
+            warn!("Checking gpodder server credentials failed: {}", e);
+            Err(AppError::internal("Couldn't reach the gpodder server"))
         }
     }
 }
@@ -2532,12 +2491,17 @@ pub async fn add_gpodder_server(
     Json(request): Json<AddGpodderServerRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let success = state.db_pool.add_gpodder_server(user_id, &request.gpodder_url, &request.gpodder_username, &request.gpodder_password).await?;
     
     if success {
+        // First sync in the background; a failure is recorded on the target.
+        let (db, tasks) = (state.db_pool.clone(), state.task_spawner.clone());
+        tokio::spawn(async move {
+            let _ = engine::run_for_user(&db, &tasks, user_id, RunMode::Full).await;
+        });
         Ok(Json(serde_json::json!({ "status": "success" })))
     } else {
         Err(AppError::internal("Failed to add gPodder server"))
@@ -2563,7 +2527,7 @@ pub async fn get_gpodder_settings(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or own user
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2599,7 +2563,7 @@ pub async fn check_gpodder_settings(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or own user
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2638,7 +2602,7 @@ pub async fn remove_podcast_sync(
     Json(request): Json<RemoveSyncRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if the user has permission to modify this user's data
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2752,7 +2716,7 @@ pub async fn add_custom_podcast(
     Json(request): Json<CustomPodcastRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - user can only add podcasts for themselves
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2795,12 +2759,7 @@ pub async fn add_custom_podcast(
         let state_clone = state.clone();
         let channel_id_clone = channel_id.clone();
         tokio::spawn(async move {
-            if let Err(e) = crate::handlers::youtube::process_youtube_channel(
-                podcast_id,
-                &channel_id_clone,
-                feed_cutoff,
-                &state_clone
-            ).await {
+            if let Err(e) = crate::handlers::refresh::import_added_channel(&state_clone, podcast_id, &channel_id_clone, feed_cutoff).await {
                 warn!("Error processing YouTube channel {}: {}", channel_id_clone, e);
             }
         });
@@ -2813,7 +2772,7 @@ pub async fn add_custom_podcast(
 
     // Regular podcast feed handling
     // Get podcast values from feed URL
-    let podcast_values = state.db_pool.get_podcast_values(
+    let (podcast_values, feed_body) = state.db_pool.get_podcast_values_with_body(
         &request.feed_url,
         request.user_id,
         request.username.as_deref(),
@@ -2826,7 +2785,9 @@ pub async fn add_custom_podcast(
         request.user_id,
         30,
         request.username.as_deref(),
-        request.password.as_deref()
+        request.password.as_deref(),
+        Some(&feed_body),
+        crate::services::sync::SyncOrigin::Pinepods,
     ).await?;
 
     // Get complete podcast details for response
@@ -2892,7 +2853,7 @@ pub async fn get_notification_settings(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2925,7 +2886,7 @@ pub async fn update_notification_settings(
     Json(request): Json<NotificationSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2972,7 +2933,7 @@ pub async fn test_notification(
     Json(request): Json<NotificationTestRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -2999,6 +2960,45 @@ pub async fn test_notification(
     }
 }
 
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct OidcDiscoveryRequest {
+    /// Issuer URL or full .well-known/openid-configuration URL
+    pub url: String,
+}
+
+// Fetch a provider's OpenID discovery document so the settings form can fill in its endpoints
+#[utoipa::path(
+    post,
+    path = "/oidc_discovery",
+    tag = "settings",
+    summary = "Discover oidc provider endpoints",
+    request_body = OidcDiscoveryRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = crate::services::oidc::OidcDiscovery),
+        (status = 400, description = "Discovery document could not be fetched or parsed"),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn discover_oidc_provider(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<OidcDiscoveryRequest>,
+) -> Result<Json<crate::services::oidc::OidcDiscovery>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if !state.db_pool.user_admin_check(user_id).await? {
+        return Err(AppError::forbidden("Admin access required to discover OIDC providers"));
+    }
+
+    crate::services::oidc::discover(&request.url)
+        .await
+        .map(Json)
+        .map_err(|e| AppError::bad_request(&e))
+}
+
 // Add OIDC provider - matches Python add_oidc_provider function exactly  
 #[utoipa::path(
     post,
@@ -3018,7 +3018,7 @@ pub async fn add_oidc_provider(
     Json(request): Json<OidcProviderRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin - OIDC provider management requires admin access
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3072,7 +3072,7 @@ pub async fn update_oidc_provider(
     Json(request): Json<OidcProviderRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin - OIDC provider management requires admin access
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3133,8 +3133,8 @@ pub async fn list_oidc_providers(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    // Instance auth configuration (admin settings tab).
+    crate::handlers::require_admin(&state, &headers).await?;
 
     let providers = state.db_pool.list_oidc_providers().await?;
     Ok(Json(serde_json::json!({ "providers": providers })))
@@ -3146,7 +3146,7 @@ pub async fn list_oidc_providers(
     path = "/remove_oidc_provider",
     tag = "settings",
     summary = "Remove oidc provider",
-    request_body = i32,
+    request_body(content = i32, content_type = "application/json"),
     security(("api_key" = [])),
     responses(
         (status = 200, description = "Success", body = serde_json::Value),
@@ -3159,7 +3159,7 @@ pub async fn remove_oidc_provider(
     Json(provider_id): Json<i32>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin - OIDC provider management requires admin access
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3203,7 +3203,7 @@ pub async fn get_startpage(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3236,7 +3236,7 @@ pub async fn update_startpage(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3253,304 +3253,6 @@ pub async fn update_startpage(
         "success": true,
         "message": "StartPage updated successfully"
     })))
-}
-
-// Request struct for person subscribe
-#[derive(Deserialize, utoipa::ToSchema)]
-pub struct PersonSubscribeRequest {
-    pub person_name: String,
-    pub person_img: String,
-    pub podcast_id: i32,
-}
-
-// Request struct for person unsubscribe
-#[derive(Deserialize, utoipa::ToSchema)]
-pub struct PersonUnsubscribeRequest {
-    pub person_name: String,
-}
-
-// Subscribe to person - matches Python api_subscribe_to_person function exactly
-#[utoipa::path(
-    post,
-    path = "/person/subscribe/{user_id}/{person_id}",
-    tag = "settings",
-    summary = "Subscribe to person",
-    params(("user_id" = i32, Path), ("person_id" = i32, Path)),
-    request_body = PersonSubscribeRequest,
-    security(("api_key" = [])),
-    responses(
-        (status = 200, description = "Success", body = serde_json::Value),
-        (status = 401, description = "Invalid or missing API key"),
-    ),
-)]
-pub async fn subscribe_to_person(
-    State(state): State<AppState>,
-    Path((user_id, person_id)): Path<(i32, i32)>,
-    headers: HeaderMap,
-    Json(request): Json<PersonSubscribeRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check authorization - web key or user can only subscribe for themselves
-    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if key_id != user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only subscribe for yourself!"));
-    }
-
-    let person_db_id = state.db_pool.subscribe_to_person(
-        user_id,
-        person_id,
-        &request.person_name,
-        &request.person_img,
-        request.podcast_id,
-    ).await?;
-
-    // Trigger immediate background task to process person subscription and gather episodes
-    let db_pool = state.db_pool.clone();
-    let person_name = request.person_name.clone();
-    tokio::spawn(async move {
-        match db_pool.process_person_subscription(user_id, person_db_id, person_name.clone()).await {
-            Ok(_) => {
-                tracing::info!("Successfully processed immediate person subscription for {}", person_name);
-            }
-            Err(e) => {
-                tracing::error!("Failed to process immediate person subscription for {}: {}", person_name, e);
-            }
-        }
-    });
-
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": "Successfully subscribed to person",
-        "person_id": person_db_id
-    })))
-}
-
-// Unsubscribe from person - matches Python api_unsubscribe_from_person function exactly
-#[utoipa::path(
-    delete,
-    path = "/person/unsubscribe/{user_id}/{person_id}",
-    tag = "settings",
-    summary = "Unsubscribe from person",
-    params(("user_id" = i32, Path), ("person_id" = i32, Path)),
-    request_body = PersonUnsubscribeRequest,
-    security(("api_key" = [])),
-    responses(
-        (status = 200, description = "Success", body = serde_json::Value),
-        (status = 401, description = "Invalid or missing API key"),
-    ),
-)]
-pub async fn unsubscribe_from_person(
-    State(state): State<AppState>,
-    Path((user_id, person_id)): Path<(i32, i32)>,
-    headers: HeaderMap,
-    Json(request): Json<PersonUnsubscribeRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check authorization - web key or user can only unsubscribe for themselves
-    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if key_id != user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only unsubscribe for yourself!"));
-    }
-
-    let success = state.db_pool.unsubscribe_from_person(
-        user_id,
-        person_id,
-        &request.person_name,
-    ).await?;
-
-    if success {
-        Ok(Json(serde_json::json!({
-            "success": true,
-            "message": "Successfully unsubscribed from person"
-        })))
-    } else {
-        Ok(Json(serde_json::json!({
-            "success": false,
-            "message": "Person subscription not found"
-        })))
-    }
-}
-
-// Get person subscriptions - matches Python api_get_person_subscriptions function exactly
-#[utoipa::path(
-    get,
-    path = "/person/subscriptions/{user_id}",
-    tag = "settings",
-    summary = "Get person subscriptions",
-    params(("user_id" = i32, Path)),
-    security(("api_key" = [])),
-    responses(
-        (status = 200, description = "Success", body = serde_json::Value),
-        (status = 401, description = "Invalid or missing API key"),
-    ),
-)]
-pub async fn get_person_subscriptions(
-    State(state): State<AppState>,
-    Path(user_id): Path<i32>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check authorization - web key or user can only get their own subscriptions
-    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if key_id != user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only retrieve your own subscriptions!"));
-    }
-
-    let subscriptions = state.db_pool.get_person_subscriptions(user_id).await?;
-    Ok(Json(serde_json::json!({
-        "subscriptions": subscriptions
-    })))
-}
-
-#[derive(Deserialize, utoipa::IntoParams)]
-pub struct PersonEpisodesQuery {
-    pub limit: Option<i64>,
-    pub offset: Option<i64>,
-}
-
-// Get person episodes - matches Python api_return_person_episodes function exactly
-#[utoipa::path(
-    get,
-    path = "/person/episodes/{user_id}/{person_id}",
-    tag = "settings",
-    summary = "Get person episodes",
-    params(PersonEpisodesQuery, ("user_id" = i32, Path), ("person_id" = i32, Path)),
-    security(("api_key" = [])),
-    responses(
-        (status = 200, description = "Success", body = serde_json::Value),
-        (status = 401, description = "Invalid or missing API key"),
-    ),
-)]
-pub async fn get_person_episodes(
-    State(state): State<AppState>,
-    Path((user_id, person_id)): Path<(i32, i32)>,
-    Query(params): Query<PersonEpisodesQuery>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check authorization - web key or user can only get their own subscriptions
-    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if key_id != user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only retrieve your own person episodes!"));
-    }
-
-    let limit = params.limit.unwrap_or(50);
-    let offset = params.offset.unwrap_or(0);
-    let episodes = state.db_pool.get_person_episodes(user_id, person_id, limit, offset).await?;
-    Ok(Json(serde_json::json!({
-        "episodes": episodes
-    })))
-}
-
-#[derive(Deserialize, utoipa::IntoParams)]
-pub struct HostFeedQuery {
-    pub name: String,
-    pub person_id: Option<i32>,
-    pub include_podcasts: Option<bool>,
-}
-
-fn empty_host_feed(name: &str) -> serde_json::Value {
-    serde_json::json!({ "person": { "name": name, "image": null }, "podcasts": [], "episodes": [] })
-}
-
-// Unified host feed — the single source of a host's episodes (and the shows they appear in),
-// drawn from BOTH the Podcast Index person index and PodPeopleDB, viewable whether or not the
-// user is subscribed. Returns { person, podcasts, episodes }.
-//
-// - Subscribed, episodes-only callers (the subscribed-people list) take a fast path served from
-//   the cached PeopleEpisodes table.
-// - The host profile page takes the live path: a short-lived Redis cache holds the shared
-//   (non-user) feed by host name, and per-user interaction state is overlaid per request so the
-//   cache can be shared across users.
-#[utoipa::path(
-    get,
-    path = "/person/feed/{user_id}",
-    tag = "settings",
-    summary = "Get host feed",
-    params(HostFeedQuery, ("user_id" = i32, Path)),
-    security(("api_key" = [])),
-    responses(
-        (status = 200, description = "Success", body = serde_json::Value),
-        (status = 401, description = "Invalid or missing API key"),
-    ),
-)]
-pub async fn get_host_feed(
-    State(state): State<AppState>,
-    Path(user_id): Path<i32>,
-    Query(params): Query<HostFeedQuery>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-    if key_id != user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only retrieve your own host feed!"));
-    }
-
-    let include_podcasts = params.include_podcasts.unwrap_or(true);
-
-    // Fast path: subscribed host, episodes only — serve from the prebuilt PeopleEpisodes table.
-    if !include_podcasts {
-        if let Some(person_id) = params.person_id {
-            if person_id > 0 {
-                let episodes = state.db_pool.get_person_episodes(user_id, person_id, 300, 0).await?;
-                return Ok(Json(serde_json::json!({
-                    "person": { "name": params.name, "image": null },
-                    "podcasts": [],
-                    "episodes": episodes
-                })));
-            }
-        }
-    }
-
-    // Live path: serve the shared (non-user-specific) feed from a two-layer cache, then overlay
-    // this user's interaction state. Layers, fastest first:
-    //   1. Redis hot cache (5 min) — absorbs repeat visits.
-    //   2. HostFeedCache DB warm cache (24h) — survives Redis expiry/restart so a cold entry
-    //      doesn't force a full N-feed rebuild.
-    //   3. Live build (fetch + parse every feed the host appears in), then write both caches.
-    let cache_key = format!("host_feed:{}:{}", include_podcasts, params.name.to_lowercase());
-    const REDIS_TTL_SECS: u64 = 300;
-    const DB_CACHE_MAX_AGE_SECS: i64 = 86_400;
-
-    let mut feed: serde_json::Value = if let Ok(Some(cached)) = state.redis_client.get::<String>(&cache_key).await {
-        serde_json::from_str(&cached).unwrap_or_else(|_| empty_host_feed(&params.name))
-    } else if let Ok(Some(warm)) = state.db_pool.get_cached_host_feed(&cache_key, DB_CACHE_MAX_AGE_SECS).await {
-        // Warm DB hit — repopulate Redis so subsequent hits stay hot.
-        if let Ok(serialized) = serde_json::to_string(&warm) {
-            let _ = state.redis_client.set_ex(&cache_key, serialized, REDIS_TTL_SECS).await;
-        }
-        warm
-    } else {
-        let built = state.db_pool.build_host_feed_shared(&params.name, include_podcasts).await?;
-        if let Ok(serialized) = serde_json::to_string(&built) {
-            let _ = state.redis_client.set_ex(&cache_key, serialized.clone(), REDIS_TTL_SECS).await;
-            let _ = state.db_pool.set_cached_host_feed(&cache_key, &serialized).await;
-        }
-        built
-    };
-
-    state.db_pool.overlay_host_feed_user_state(user_id, &mut feed).await?;
-
-    Ok(Json(feed))
 }
 
 // Request struct for set_podcast_playback_speed - matches Python SetPlaybackSpeedPodcast model
@@ -3580,7 +3282,7 @@ pub async fn set_podcast_playback_speed(
     Json(request): Json<SetPlaybackSpeedPodcast>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3621,7 +3323,7 @@ pub async fn clear_podcast_playback_speed(
     Json(request): Json<ClearPlaybackSpeedPodcast>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3663,7 +3365,7 @@ pub async fn set_podcast_auto_download_delete_days(
     Json(request): Json<SetAutoDownloadDeleteDaysPodcast>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3705,7 +3407,7 @@ pub async fn clear_podcast_auto_download_delete_days(
     Json(request): Json<ClearAutoDownloadDeleteDaysPodcast>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3718,6 +3420,154 @@ pub async fn clear_podcast_auto_download_delete_days(
     state.db_pool.clear_podcast_auto_download_delete_days(request.user_id, request.podcast_id).await?;
 
     Ok(Json(serde_json::json!({ "message": "Podcast auto-delete downloads reset to global default." })))
+}
+
+// "Delete server downloads when I finish an episode": the user's default (no podcast_id) or a
+// podcast's effective value and whether it overrides the default.
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct GetAutoDeleteOnCompleteRequest {
+    pub user_id: i32,
+    pub podcast_id: Option<i32>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/get_auto_delete_on_complete",
+    tag = "settings",
+    summary = "Get delete-downloads-when-finished",
+    request_body = GetAutoDeleteOnCompleteRequest,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "`enabled` and, for a podcast, whether it is `customized`", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn get_auto_delete_on_complete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<GetAutoDeleteOnCompleteRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own settings."));
+    }
+
+    let (enabled, customized) = state.db_pool.get_auto_delete_on_complete(request.user_id, request.podcast_id).await?;
+    Ok(Json(serde_json::json!({ "enabled": enabled, "customized": customized })))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct SetAutoDeleteOnCompleteUser {
+    pub user_id: i32,
+    pub enabled: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/user/set_auto_delete_on_complete",
+    tag = "settings",
+    summary = "Set delete-downloads-when-finished (user default)",
+    request_body = SetAutoDeleteOnCompleteUser,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn set_auto_delete_on_complete_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetAutoDeleteOnCompleteUser>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own settings."));
+    }
+
+    state.db_pool.set_auto_delete_on_complete_user(request.user_id, request.enabled).await?;
+    Ok(Json(serde_json::json!({ "detail": "Delete-when-finished setting updated." })))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct SetUseGravatar {
+    pub user_id: i32,
+    pub enabled: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/user/set_use_gravatar",
+    tag = "settings",
+    summary = "Set whether the user's Gravatar is shown",
+    request_body = SetUseGravatar,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn set_use_gravatar(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetUseGravatar>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own settings."));
+    }
+
+    state.db_pool.set_use_gravatar(request.user_id, request.enabled).await?;
+    Ok(Json(serde_json::json!({ "detail": "Gravatar setting updated." })))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct SetAutoDeleteOnCompletePodcast {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    /// `null` goes back to the user's default.
+    pub enabled: Option<bool>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/podcast/set_auto_delete_on_complete",
+    tag = "settings",
+    summary = "Set or clear a podcast's delete-downloads-when-finished",
+    request_body = SetAutoDeleteOnCompletePodcast,
+    security(("api_key" = [])),
+    responses(
+        (status = 200, description = "Success", body = serde_json::Value),
+        (status = 401, description = "Invalid or missing API key"),
+    ),
+)]
+pub async fn set_podcast_auto_delete_on_complete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetAutoDeleteOnCompletePodcast>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    require_valid_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.set_podcast_auto_delete_on_complete(request.user_id, request.podcast_id, request.enabled).await?;
+    Ok(Json(serde_json::json!({ "detail": "Podcast delete-when-finished setting updated." })))
 }
 
 // Request struct for enable_auto_download - matches Python AutoDownloadRequest model
@@ -3747,7 +3597,7 @@ pub async fn enable_auto_download(
     Json(request): Json<AutoDownloadRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3788,7 +3638,7 @@ pub async fn enable_auto_queue(
     Json(request): Json<AutoQueueRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3828,7 +3678,7 @@ pub async fn enable_auto_play_next(
     Json(request): Json<AutoPlayNextRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
@@ -3868,7 +3718,7 @@ pub async fn toggle_podcast_notifications(
     Json(request): Json<TogglePodcastNotificationData>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3914,7 +3764,7 @@ pub async fn toggle_podcast_favorite(
     Json(request): Json<TogglePodcastFavoriteData>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -3962,7 +3812,7 @@ pub async fn adjust_skip_times(
     Json(request): Json<SkipTimesRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -3995,7 +3845,7 @@ pub async fn ai_status(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     let available = state.ai_available.is_available();
     // Per-capability readiness: transcription needs a whisper model (always defaulted); ad removal
     // needs a configured LLM backend (a local model, or a remote URL).
@@ -4014,10 +3864,12 @@ pub async fn ai_status(
     } else {
         (false, false)
     };
+    let downloads_enabled = state.db_pool.download_status().await.unwrap_or(false);
     Ok(Json(serde_json::json!({
         "available": available,
         "transcription_ready": transcription_ready,
         "ad_removal_ready": ad_removal_ready,
+        "downloads_enabled": downloads_enabled,
     })))
 }
 
@@ -4051,13 +3903,14 @@ pub async fn transcribe_episode(
     Json(request): Json<TranscribeEpisodeRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
     if key_id != request.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only process your own episodes."));
     }
+    crate::handlers::require_episode_owner(&state, request.user_id, request.episode_id, false).await?;
     if !state.ai_available.is_available() {
         return Err(AppError::service_unavailable("AI service is not available."));
     }
@@ -4095,13 +3948,14 @@ pub async fn get_episode_transcript(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
     if key_id != query.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only view your own episodes."));
     }
+    crate::handlers::require_episode_owner(&state, query.user_id, query.episode_id, false).await?;
 
     let transcript = crate::services::transcription::get_episode_transcript(&state.db_pool, query.episode_id)
         .await
@@ -4137,7 +3991,7 @@ pub async fn adjust_auto_transcribe(
     Json(request): Json<AutoTranscribeRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -4178,7 +4032,7 @@ pub async fn get_auto_transcribe(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -4226,7 +4080,7 @@ pub async fn adjust_silence_trim(
     Json(request): Json<SilenceTrimRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -4268,7 +4122,7 @@ pub async fn get_silence_trim(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -4309,13 +4163,14 @@ pub async fn get_episode_skip_segments(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
     if key_id != query.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only view your own episodes."));
     }
+    crate::handlers::require_episode_owner(&state, query.user_id, query.episode_id, false).await?;
 
     // Per-user view: enriches each segment with its DB id and (for ads) the requesting user's
     // effective status, so the player and transcript review UI share one shape.
@@ -4325,7 +4180,15 @@ pub async fn get_episode_skip_segments(
     .await
     .map_err(|e| AppError::internal(&e))?;
 
-    Ok(Json(serde_json::json!({ "segments": segments })))
+    // Which audio copy the ad times fit, so players can hold off skipping on a copy whose ads
+    // sit elsewhere (dynamically inserted ads differ between fetches).
+    let audio = if segments.iter().any(|s| s.kind == crate::services::ad_detection::KIND_AD) {
+        Some(crate::services::ad_detection::ad_audio_match(&state.db_pool, query.user_id, query.episode_id).await)
+    } else {
+        None
+    };
+
+    Ok(Json(serde_json::json!({ "segments": segments, "ad_audio": audio })))
 }
 
 // Manually (re-)run silence detection for one episode as a tracked background task
@@ -4355,13 +4218,14 @@ pub async fn detect_silence(
     Json(request): Json<DetectSilenceRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
     if key_id != request.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only process your own episodes."));
     }
+    crate::handlers::require_episode_owner(&state, request.user_id, request.episode_id, false).await?;
 
     let task_id = state
         .task_spawner
@@ -4380,6 +4244,10 @@ pub struct DetectAdsRequest {
     pub user_id: i32,
     #[serde(default)]
     pub force: bool,
+    /// Download the episode to the server first (when it isn't) and detect ads on that copy, so
+    /// ad times match what the user plays.
+    #[serde(default)]
+    pub download_first: bool,
 }
 
 #[utoipa::path(
@@ -4401,15 +4269,32 @@ pub async fn detect_ads(
     Json(request): Json<DetectAdsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
     if key_id != request.user_id && !is_web_key {
         return Err(AppError::forbidden("You can only process your own episodes."));
     }
+    crate::handlers::require_episode_owner(&state, request.user_id, request.episode_id, false).await?;
     if !state.ai_available.is_available() {
         return Err(AppError::service_unavailable("AI service is not available."));
+    }
+
+    if request.download_first && !state.db_pool.check_downloaded(request.user_id, request.episode_id, false).await? {
+        if !state.db_pool.download_status().await? {
+            return Err(AppError::forbidden("Server downloads are disabled by the administrator."));
+        }
+        crate::services::ad_detection::request_detect_after_download(request.episode_id, request.user_id);
+        let task_id = state
+            .task_spawner
+            .spawn_download_podcast_episode(request.episode_id, request.user_id)
+            .await?;
+        return Ok(Json(serde_json::json!({
+            "task_id": task_id,
+            "waiting_for_download": true,
+            "detail": "Downloading to the server; ads will be detected on that copy when it finishes.",
+        })));
     }
 
     let task_id = state
@@ -4446,7 +4331,7 @@ pub async fn adjust_ad_segment_review(
     Json(request): Json<AdSegmentReviewRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -4490,7 +4375,7 @@ pub async fn adjust_auto_ad_detect(
     Json(request): Json<AutoAdDetectRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -4531,7 +4416,7 @@ pub async fn get_auto_ad_detect(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -4573,7 +4458,7 @@ pub async fn adjust_ad_skip_auto_activate(
     Json(request): Json<AdSkipAutoActivateRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -4614,7 +4499,7 @@ pub async fn get_ad_skip_auto_activate(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -4648,7 +4533,7 @@ pub async fn get_ai_settings(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if !state.db_pool.user_admin_check(key_id).await? {
         return Err(AppError::forbidden("Admin access required."));
@@ -4680,7 +4565,7 @@ pub async fn update_ai_settings(
     Json(request): Json<crate::services::ai_settings::AiSettingsUpdate>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if !state.db_pool.user_admin_check(key_id).await? {
         return Err(AppError::forbidden("Admin access required."));
@@ -4710,7 +4595,7 @@ pub async fn get_ytdlp_settings(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if !state.db_pool.user_admin_check(key_id).await? {
         return Err(AppError::forbidden("Admin access required."));
@@ -4744,7 +4629,7 @@ pub async fn update_ytdlp_settings(
     Json(request): Json<crate::services::ytdlp::YtDlpSettingsUpdate>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if !state.db_pool.user_admin_check(key_id).await? {
         return Err(AppError::forbidden("Admin access required."));
@@ -4774,7 +4659,7 @@ pub async fn trigger_ytdlp_update(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if !state.db_pool.user_admin_check(key_id).await? {
         return Err(AppError::forbidden("Admin access required."));
@@ -4821,7 +4706,7 @@ pub async fn get_ai_models(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if !state.db_pool.user_admin_check(key_id).await? {
         return Err(AppError::forbidden("Admin access required."));
@@ -4866,7 +4751,7 @@ pub async fn ai_pull_model(
     Json(request): Json<AiPullModelRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if !state.db_pool.user_admin_check(key_id).await? {
         return Err(AppError::forbidden("Admin access required."));
@@ -4914,7 +4799,7 @@ pub async fn remove_category(
     Json(request): Json<RemoveCategoryData>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -4955,7 +4840,7 @@ pub async fn add_category(
     Json(request): Json<AddCategoryData>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -4987,7 +4872,7 @@ pub async fn get_user_rss_key(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if key_id == 0 {
@@ -5027,7 +4912,7 @@ pub async fn verify_mfa(
     Json(request): Json<VerifyMfaRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization
     if !check_user_access(&state, &api_key, request.user_id).await? {
@@ -5097,7 +4982,7 @@ pub async fn schedule_backup(
     Json(request): Json<ScheduleBackupRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -5143,7 +5028,7 @@ pub async fn get_scheduled_backup(
     Json(request): Json<GetScheduledBackupRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -5177,7 +5062,7 @@ pub async fn list_backup_files(
     Json(_request): Json<ListBackupFilesRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -5251,7 +5136,7 @@ pub async fn restore_from_backup_file(
     Json(request): Json<RestoreBackupFileRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -5281,6 +5166,7 @@ pub async fn restore_from_backup_file(
     // Clone for the async closure
     let backup_filename_for_closure = backup_filename.clone();
     let db_pool = state.db_pool.clone();
+    let merged = state.merged_episodes.clone();
 
     // Spawn restoration task
     let task_id = state.task_spawner.spawn_progress_task(
@@ -5290,6 +5176,7 @@ pub async fn restore_from_backup_file(
             let backup_path = backup_path.clone();
             let backup_filename = backup_filename_for_closure;
             let db_pool = db_pool.clone();
+            let merged = merged.clone();
             // Released (via Drop) when the restore task finishes.
             let _restore_guard = restore_guard;
             async move {
@@ -5297,7 +5184,9 @@ pub async fn restore_from_backup_file(
                 reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
 
                 // Clears existing data, then streams the dump into psql/mysql.
-                db_pool.restore_server_data_from_path(std::path::Path::new(&backup_path)).await?;
+                let result = db_pool.restore_server_data_from_path(std::path::Path::new(&backup_path)).await;
+                merged.reset();
+                result?;
 
                 reporter.update_progress(100.0, Some("Restoration completed successfully".to_string())).await?;
 
@@ -5334,7 +5223,7 @@ pub async fn delete_backup_file(
     Json(request): Json<DeleteBackupFileRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -5388,7 +5277,7 @@ pub async fn manual_backup_to_directory(
     Json(_request): Json<ManualBackupRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check if user is admin
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -5723,6 +5612,7 @@ pub async fn get_ignored_podcasts(
     path = "/get_user_language",
     tag = "settings",
     summary = "Get user language",
+    params(("user_id" = i32, Query)),
     security(("api_key" = [])),
     responses(
         (status = 200, description = "Success", body = UserLanguageResponse),
@@ -5735,7 +5625,7 @@ pub async fn get_user_language(
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<UserLanguageResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let user_id: i32 = params
         .get("user_id")
@@ -5743,7 +5633,7 @@ pub async fn get_user_language(
         .parse()
         .map_err(|_| AppError::bad_request("Invalid user_id format"))?;
     
-    check_user_access(&state, &api_key, user_id).await?;
+    crate::handlers::require_user_access(&state, &api_key, user_id).await?;
     
     let language = state.db_pool.get_user_language(user_id).await?;
     
@@ -5769,9 +5659,9 @@ pub async fn update_user_language(
     Json(request): Json<LanguageUpdateRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
-    check_user_access(&state, &api_key, request.user_id).await?;
+    crate::handlers::require_user_access(&state, &api_key, request.user_id).await?;
     
     let success = state.db_pool.update_user_language(request.user_id, &request.language).await?;
     
@@ -5791,10 +5681,8 @@ pub async fn update_user_language(
     path = "/get_available_languages",
     tag = "settings",
     summary = "Get available languages",
-    security(("api_key" = [])),
     responses(
         (status = 200, description = "Success", body = AvailableLanguagesResponse),
-        (status = 401, description = "Invalid or missing API key"),
     ),
 )]
 pub async fn get_available_languages() -> Result<Json<AvailableLanguagesResponse>, AppError> {
@@ -5888,10 +5776,8 @@ pub async fn get_available_languages() -> Result<Json<AvailableLanguagesResponse
     path = "/get_server_default_language",
     tag = "settings",
     summary = "Get server default language",
-    security(("api_key" = [])),
     responses(
         (status = 200, description = "Success", body = serde_json::Value),
-        (status = 401, description = "Invalid or missing API key"),
     ),
 )]
 pub async fn get_server_default_language() -> Result<Json<serde_json::Value>, AppError> {
@@ -5937,7 +5823,7 @@ pub async fn set_global_podcast_cover_preference(
     Json(request): Json<SetGlobalPodcastCoverPreference>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only set their own preference
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -5984,7 +5870,7 @@ pub async fn set_podcast_cover_preference(
     Json(request): Json<SetPodcastCoverPreference>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -6025,7 +5911,7 @@ pub async fn clear_podcast_cover_preference(
     Json(request): Json<ClearPodcastCoverPreference>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     // Check authorization - web key or user can only modify their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
@@ -6058,7 +5944,7 @@ pub async fn get_global_podcast_cover_preference(
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
     
     let user_id: i32 = params
         .get("user_id")
@@ -6113,7 +5999,7 @@ pub async fn get_user_shared_links(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if user_id_from_api_key != user_id {
@@ -6148,7 +6034,7 @@ pub async fn delete_shared_link(
     Json(request): Json<DeleteSharedLinkRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let deleted = state.db_pool.delete_user_shared_episode(&request.share_code, user_id).await?;
@@ -6185,7 +6071,7 @@ pub async fn extend_shared_link(
     Json(request): Json<ExtendSharedLinkRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     if request.days < 1 || request.days > 365 {
         return Err(AppError::bad_request("Days must be between 1 and 365."));
@@ -6219,7 +6105,7 @@ pub async fn get_custom_themes(
     Path(user_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -6250,7 +6136,7 @@ pub async fn create_custom_theme(
     Json(request): Json<crate::models::CreateCustomThemeRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -6281,7 +6167,7 @@ pub async fn delete_custom_theme(
     Json(request): Json<crate::models::DeleteCustomThemeRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    require_valid_api_key(&state, &api_key).await?;
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;

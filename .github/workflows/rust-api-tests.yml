@@ -1,52 +1,104 @@
-name: Rust API Tests
+name: rust-api tests
 
 permissions:
   contents: read
 
+# Unit tests plus the integration suite (rust-api/tests/integration): the real router
+# against real, freshly migrated Postgres and MariaDB databases and Valkey. Also triggered
+# by migration changes, since the suite builds its schema from database_functions/.
 on:
-  pull_request:
-    branches: [main]
-    paths: ["rust-api/**", ".github/workflows/rust-api-tests.yml"]
   push:
-    branches: [main]
-    paths: ["rust-api/**", ".github/workflows/rust-api-tests.yml"]
+    branches:
+      - main
+    paths:
+      - 'rust-api/**'
+      - 'database_functions/**'
+      - 'startup/setup_database_new.py'
+      - '.github/workflows/rust-api-tests.yml'
+  pull_request:
+    paths:
+      - 'rust-api/**'
+      - 'database_functions/**'
+      - 'startup/setup_database_new.py'
+      - '.github/workflows/rust-api-tests.yml'
   workflow_dispatch:
 
 jobs:
   test:
+    name: ${{ matrix.db }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [postgresql, mariadb]
+
     services:
       postgres:
-        image: postgres:18
+        image: postgres:17-alpine
         env:
-          POSTGRES_USER: pinepods_test
-          POSTGRES_PASSWORD: pinepods_test
-          POSTGRES_DB: pinepods_test
-        ports: ["5432:5432"]
+          POSTGRES_USER: pinepods
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: postgres
+        ports:
+          - 55433:5432
         options: >-
-          --health-cmd "pg_isready -U pinepods_test"
-          --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd "pg_isready -U pinepods"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
       mariadb:
-        image: mariadb:11.4
+        image: mariadb:11
         env:
-          MARIADB_ROOT_PASSWORD: pinepods_test
-          MARIADB_DATABASE: pinepods_test
-        ports: ["3306:3306"]
+          MARIADB_ROOT_PASSWORD: testpass
+        ports:
+          - 33307:3306
         options: >-
           --health-cmd "healthcheck.sh --connect --innodb_initialized"
-          --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 56380:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
     steps:
-      - uses: actions/checkout@v7
-      - uses: hecrj/setup-rust-action@v2
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
         with:
-          rust-version: "1.99.0"
-      - name: Unit and database regressions
+          workspaces: rust-api
+
+      - name: Set up Python (schema migrations)
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install migration dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qy libmariadb-dev
+          python -m pip install -q -r rust-api/tests/requirements.txt
+          # Production runs migrations with the mariadb connector; use it here too.
+          python -m pip install -q mariadb
+
+      - name: Unit tests
+        working-directory: rust-api
+        run: cargo test --lib --bins
+
+      - name: Integration tests (${{ matrix.db }})
+        working-directory: rust-api
         env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: pinepods_test
-          DB_PASSWORD: pinepods_test
-          DB_NAME: pinepods_test
-          PINEPODS_TEST_POSTGRES_URL: postgres://pinepods_test:pinepods_test@localhost:5432/pinepods_test
-          PINEPODS_TEST_MYSQL_URL: mysql://root:pinepods_test@127.0.0.1:3306/pinepods_test
-        run: cargo test --locked --manifest-path rust-api/Cargo.toml -- --include-ignored --test-threads=1
+          PINEPODS_TEST_EXTERNAL_SERVICES: "1"
+          PINEPODS_TEST_PYTHON: python
+        run: scripts/integration-tests.sh --db ${{ matrix.db }}

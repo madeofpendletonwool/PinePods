@@ -13,6 +13,8 @@ use std::collections::{HashMap, HashSet};
 use tokio::process::Command;
 use chrono;
 
+mod podping;
+
 #[derive(Deserialize)]
 struct SearchQuery {
     query: Option<String>,
@@ -168,6 +170,9 @@ async fn search_handler(
     }
 
     let search_term = query.query.clone().unwrap_or_default();
+    if search_term.trim().is_empty() {
+        return HttpResponse::BadRequest().json(serde_json::json!({ "error": "empty search" }));
+    }
     let index = query.index.clone().unwrap_or_default().to_lowercase();
     let search_type = query.search_type.clone().unwrap_or_else(|| "term".to_string());
 
@@ -651,6 +656,9 @@ async fn main() -> std::io::Result<()> {
     println!("Starting the Actix Web server with yt-dlp YouTube search");
 
     let hit_counters = web::Data::new(HitCounters::new());
+    let podping = podping::Podping::from_env();
+    podping.start();
+    let podping = web::Data::new(podping);
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -662,13 +670,17 @@ async fn main() -> std::io::Result<()> {
 
         App::new()
             .app_data(hit_counters.clone())
+            .app_data(podping.clone())
             .wrap(cors)
+            .wrap(actix_web::middleware::Compress::default())
             .route("/api/search", web::get().to(search_handler))
             .route("/api/podcast", web::get().to(podcast_handler))
             .route("/api/trending", web::get().to(trending_handler))
             .route("/api/categories", web::get().to(categories_handler))
             .route("/api/youtube/channel", web::get().to(youtube_channel_handler))
             .route("/api/stats", web::get().to(stats_handler))
+            .route("/api/podping/updates", web::get().to(podping::updates_handler))
+            .route("/api/podping/status", web::get().to(podping::status_handler))
     })
     .bind("0.0.0.0:5000")?
     .run()

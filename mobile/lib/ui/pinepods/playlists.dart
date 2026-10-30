@@ -8,6 +8,8 @@ import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlist_episodes.dart';
 import 'package:pinepods_mobile/ui/pinepods/create_playlist.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 
 class PinepodsPlaylists extends StatefulWidget {
   const PinepodsPlaylists({Key? key}) : super(key: key);
@@ -30,23 +32,12 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
     _loadPlaylists();
   }
 
-  /// Calculate responsive cross axis count for playlist grid
+  /// One column of rows on phones, more on tablets.
   int _getPlaylistCrossAxisCount(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    if (screenWidth > 1200) return 4;      // Very wide screens (large tablets, desktop)
-    if (screenWidth > 800) return 3;       // Wide tablets like iPad
-    if (screenWidth > 500) return 2;       // Standard phones and small tablets
-    return 1;                              // Very small phones (< 500px)
-  }
-
-  /// Calculate responsive aspect ratio for playlist cards
-  double _getPlaylistAspectRatio(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    if (screenWidth <= 500) {
-      // Single column on small screens - generous height for multi-line descriptions + padding
-      return 1.8; // Allows space for title + 2-3 lines of description + proper padding
-    }
-    return 1.1; // Standard aspect ratio for multi-column layouts
+    if (screenWidth > 1000) return 3;
+    if (screenWidth > 640) return 2;
+    return 1;
   }
 
   Future<void> _loadPlaylists() async {
@@ -224,40 +215,40 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
   }
 
   IconData _getPlaylistIcon(String? iconName) {
-    if (iconName == null) return Icons.playlist_play;
+    if (iconName == null) return PhosphorIconsRegular.playlist;
     
     // Map common icon names to Material icons
     switch (iconName) {
       case 'ph-playlist':
-        return Icons.playlist_play;
+        return PhosphorIconsRegular.playlist;
       case 'ph-music-notes':
-        return Icons.music_note;
+        return PhosphorIconsRegular.musicNote;
       case 'ph-play-circle':
-        return Icons.play_circle;
+        return PhosphorIconsFill.playCircle;
       case 'ph-headphones':
-        return Icons.headphones;
+        return PhosphorIconsRegular.headphones;
       case 'ph-star':
-        return Icons.star;
+        return PhosphorIconsFill.star;
       case 'ph-heart':
-        return Icons.favorite;
+        return PhosphorIconsFill.heart;
       case 'ph-bookmark':
-        return Icons.bookmark;
+        return PhosphorIconsFill.bookmarkSimple;
       case 'ph-clock':
-        return Icons.access_time;
+        return PhosphorIconsRegular.clock;
       case 'ph-calendar':
-        return Icons.calendar_today;
+        return PhosphorIconsRegular.calendarBlank;
       case 'ph-timer':
-        return Icons.timer;
+        return PhosphorIconsRegular.timer;
       case 'ph-shuffle':
-        return Icons.shuffle;
+        return PhosphorIconsRegular.shuffle;
       case 'ph-repeat':
-        return Icons.repeat;
+        return PhosphorIconsRegular.repeat;
       case 'ph-microphone':
-        return Icons.mic;
+        return PhosphorIconsRegular.microphone;
       case 'ph-queue':
-        return Icons.queue_music;
+        return PhosphorIconsRegular.queue;
       default:
-        return Icons.playlist_play;
+        return PhosphorIconsRegular.playlist;
     }
   }
 
@@ -292,36 +283,16 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
     if (_playlists == null || _playlists!.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              Icon(
-                Icons.playlist_play,
-                size: 75,
-                color: Theme.of(context).primaryColor,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No playlists found',
-                style: Theme.of(context).textTheme.titleLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Create a smart playlist to get started!',
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _createPlaylist,
-                icon: const Icon(Icons.add),
-                label: const Text('Create Playlist'),
-              ),
-            ],
+        child: Center(
+          child: SoftEmptyState(
+            icon: PhosphorIconsRegular.playlist,
+            title: 'No playlists yet',
+            body: 'Create a smart playlist to get started',
+            action: FilledButton.icon(
+              onPressed: _createPlaylist,
+              icon: const Icon(PhosphorIconsRegular.plus),
+              label: const Text('Create playlist'),
+            ),
           ),
         ),
       );
@@ -334,47 +305,37 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header with action buttons
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Smart Playlists',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+              SoftSectionHeader(
+                title: 'Playlists',
+                count: _playlists!.length,
+                padding: const EdgeInsets.only(bottom: 4),
+                trailing: [
+                  if (_isSelectionMode) ...[
+                    IconButton(
+                      icon: const Icon(PhosphorIconsRegular.x),
+                      onPressed: _toggleSelectionMode,
+                      tooltip: 'Cancel',
                     ),
-                  ),
-                  Row(
-                    children: [
-                      if (_isSelectionMode) ...[
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: _toggleSelectionMode,
-                          tooltip: 'Cancel',
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete),
-                          onPressed: _selectedPlaylists.isNotEmpty ? _deleteSelectedPlaylists : null,
-                          tooltip: 'Delete selected (${_selectedPlaylists.length})',
-                        ),
-                      ] else ...[
-                        IconButton(
-                          icon: const Icon(Icons.select_all),
-                          onPressed: _toggleSelectionMode,
-                          tooltip: 'Select multiple',
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.add),
-                          onPressed: _createPlaylist,
-                          tooltip: 'Create playlist',
-                        ),
-                      ],
-                    ],
-                  ),
+                    IconButton(
+                      icon: const Icon(PhosphorIconsRegular.trash),
+                      onPressed: _selectedPlaylists.isNotEmpty ? _deleteSelectedPlaylists : null,
+                      tooltip: 'Delete selected (${_selectedPlaylists.length})',
+                    ),
+                  ] else ...[
+                    IconButton(
+                      icon: const Icon(PhosphorIconsRegular.selectionAll),
+                      onPressed: _toggleSelectionMode,
+                      tooltip: 'Select multiple',
+                    ),
+                    IconButton(
+                      icon: const Icon(PhosphorIconsRegular.plus),
+                      onPressed: _createPlaylist,
+                      tooltip: 'Create playlist',
+                    ),
+                  ],
                 ],
               ),
-              
+
               // Info banner for selection mode
               if (_isSelectionMode)
                 Container(
@@ -382,15 +343,12 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Theme.of(context).primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Theme.of(context).primaryColor.withOpacity(0.3),
-                    ),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        Icons.info_outline,
+                        PhosphorIconsRegular.info,
                         color: Theme.of(context).primaryColor,
                       ),
                       const SizedBox(width: 8),
@@ -406,23 +364,25 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
               
               const SizedBox(height: 8),
               
-              // Playlists grid
+              // Playlists
               GridView.builder(
                 shrinkWrap: true,
+                padding: EdgeInsets.zero,
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: _getPlaylistCrossAxisCount(context),
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: _getPlaylistAspectRatio(context),
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 8,
+                  mainAxisExtent: 76,
                 ),
                 itemCount: _playlists!.length,
                 itemBuilder: (context, index) {
                   final playlist = _playlists![index];
-                  final isSelected = _selectedPlaylists.contains(playlist.playlistId);
-                  final canSelect = _isSelectionMode && !playlist.isSystemPlaylist;
-                  
-                  return GestureDetector(
+                  return _PlaylistRow(
+                    playlist: playlist,
+                    icon: _getPlaylistIcon(playlist.iconName),
+                    selectionMode: _isSelectionMode,
+                    selected: _selectedPlaylists.contains(playlist.playlistId),
                     onTap: () {
                       if (_isSelectionMode && !playlist.isSystemPlaylist) {
                         _togglePlaylistSelection(playlist.playlistId);
@@ -430,110 +390,7 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
                         _openPlaylist(playlist);
                       }
                     },
-                    child: Card(
-                      elevation: isSelected ? 8 : 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      color: isSelected 
-                          ? Theme.of(context).primaryColor.withOpacity(0.1)
-                          : null,
-                      child: Stack(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      _getPlaylistIcon(playlist.iconName),
-                                      size: 32,
-                                      color: Theme.of(context).primaryColor,
-                                    ),
-                                    const Spacer(),
-                                    if (playlist.isSystemPlaylist)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Theme.of(context).colorScheme.secondary.withOpacity(0.2),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          'System',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: Theme.of(context).colorScheme.secondary,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  playlist.name,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${playlist.episodeCount ?? 0} episodes',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Theme.of(context).textTheme.bodyMedium?.color,
-                                  ),
-                                ),
-                                if (playlist.description != null && playlist.description!.isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    playlist.description!,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Theme.of(context).textTheme.bodySmall?.color,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          
-                          // Selection checkbox
-                          if (canSelect)
-                            Positioned(
-                              top: 8,
-                              left: 8,
-                              child: Checkbox(
-                                value: isSelected,
-                                onChanged: (value) {
-                                  _togglePlaylistSelection(playlist.playlistId);
-                                },
-                              ),
-                            ),
-                          
-                          // Delete button for non-system playlists (when not in selection mode)
-                          if (!_isSelectionMode && !playlist.isSystemPlaylist)
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: IconButton(
-                                icon: const Icon(Icons.delete_outline, size: 20),
-                                onPressed: () => _deletePlaylist(playlist),
-                                color: Theme.of(context).colorScheme.error.withOpacity(0.7),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
+                    onDelete: () => _deletePlaylist(playlist),
                   );
                 },
               ),
@@ -541,6 +398,117 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
           ),
         ),
       ]),
+    );
+  }
+}
+class _PlaylistRow extends StatelessWidget {
+  final PlaylistData playlist;
+  final IconData icon;
+  final bool selectionMode;
+  final bool selected;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const _PlaylistRow({
+    required this.playlist,
+    required this.icon,
+    required this.selectionMode,
+    required this.selected,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = theme.primaryColor;
+    final count = playlist.episodeCount ?? 0;
+    final description = playlist.description?.trim() ?? '';
+    final subtitle = [
+      '$count episode${count == 1 ? '' : 's'}',
+      if (description.isNotEmpty) description,
+    ].join('  ·  ');
+
+    final Widget trailing;
+    if (selectionMode) {
+      trailing = playlist.isSystemPlaylist
+          ? const SizedBox(width: 48)
+          : Checkbox(value: selected, onChanged: (_) => onTap());
+    } else if (playlist.isSystemPlaylist) {
+      trailing = Padding(
+        padding: const EdgeInsets.only(right: 12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: theme.hintColor.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text('System', style: TextStyle(fontSize: 11, color: theme.hintColor)),
+        ),
+      );
+    } else {
+      trailing = PopupMenuButton<String>(
+        tooltip: 'Playlist options',
+        icon: Icon(PhosphorIconsRegular.dotsThreeVertical, color: theme.hintColor),
+        onSelected: (_) => onDelete(),
+        itemBuilder: (context) => [
+          PopupMenuItem<String>(
+            value: 'delete',
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(PhosphorIconsRegular.trash, color: theme.colorScheme.error),
+              title: Text('Delete', style: TextStyle(color: theme.colorScheme.error)),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Card(
+      margin: EdgeInsets.zero,
+      color: selected ? accent.withOpacity(0.12) : null,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: accent, size: 26),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      playlist.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12.5, color: theme.hintColor),
+                    ),
+                  ],
+                ),
+              ),
+              trailing,
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

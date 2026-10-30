@@ -26,11 +26,13 @@ pub struct StoredTranscript {
 }
 
 /// Whether a generated transcript already exists OR is in progress for the episode. Used to skip
-/// redundant work (and to avoid two triggers racing to transcribe the same episode).
+/// redundant work (and to avoid two triggers racing to transcribe the same episode). A job still
+/// `running` after 12 hours was cut off by a restart and no longer counts.
 async fn has_complete_transcript(db_pool: &DatabasePool, episode_id: i32) -> bool {
     match db_pool {
         DatabasePool::Postgres(pool) => sqlx::query(
-            r#"SELECT 1 FROM "EpisodeTranscripts" WHERE episodeid = $1 AND source = $2 AND status IN ('complete','running','pending') LIMIT 1"#,
+            r#"SELECT 1 FROM "EpisodeTranscripts" WHERE episodeid = $1 AND source = $2
+               AND (status = 'complete' OR (status IN ('running','pending') AND createdat > NOW() - INTERVAL '12 hours')) LIMIT 1"#,
         )
         .bind(episode_id)
         .bind(SOURCE_GENERATED)
@@ -39,7 +41,8 @@ async fn has_complete_transcript(db_pool: &DatabasePool, episode_id: i32) -> boo
         .map(|r| r.is_some())
         .unwrap_or(false),
         DatabasePool::MySQL(pool) => sqlx::query(
-            "SELECT 1 FROM EpisodeTranscripts WHERE EpisodeID = ? AND Source = ? AND Status IN ('complete','running','pending') LIMIT 1",
+            "SELECT 1 FROM EpisodeTranscripts WHERE EpisodeID = ? AND Source = ?
+             AND (Status = 'complete' OR (Status IN ('running','pending') AND CreatedAt > NOW() - INTERVAL 12 HOUR)) LIMIT 1",
         )
         .bind(episode_id)
         .bind(SOURCE_GENERATED)
@@ -109,18 +112,23 @@ async fn complete_row(
     model: &str,
     full_text: &str,
     segments_json: &str,
+    audio: &AudioCopy,
 ) -> Result<(), String> {
     match db_pool {
         DatabasePool::Postgres(pool) => {
             sqlx::query(r#"
                 UPDATE "EpisodeTranscripts"
-                SET language = $1, model = $2, transcripttext = $3, segments = $4::jsonb, status = 'complete'
-                WHERE transcriptid = $5
+                SET language = $1, model = $2, transcripttext = $3, segments = $4::jsonb, status = 'complete',
+                    audiofingerprint = $5, audioduration = $6, audiosource = $7
+                WHERE transcriptid = $8
             "#)
             .bind(language)
             .bind(model)
             .bind(full_text)
             .bind(segments_json)
+            .bind(&audio.fingerprint)
+            .bind(audio.duration)
+            .bind(&audio.source)
             .bind(transcript_id as i32)
             .execute(pool)
             .await
@@ -129,13 +137,17 @@ async fn complete_row(
         DatabasePool::MySQL(pool) => {
             sqlx::query(r#"
                 UPDATE EpisodeTranscripts
-                SET Language = ?, Model = ?, TranscriptText = ?, Segments = ?, Status = 'complete'
+                SET Language = ?, Model = ?, TranscriptText = ?, Segments = ?, Status = 'complete',
+                    AudioFingerprint = ?, AudioDuration = ?, AudioSource = ?
                 WHERE TranscriptID = ?
             "#)
             .bind(language)
             .bind(model)
             .bind(full_text)
             .bind(segments_json)
+            .bind(&audio.fingerprint)
+            .bind(audio.duration)
+            .bind(&audio.source)
             .bind(transcript_id)
             .execute(pool)
             .await
@@ -174,8 +186,8 @@ async fn fetch_episode_audio_temp(db_pool: &DatabasePool, episode_id: i32) -> Re
         DatabasePool::Postgres(pool) => {
             let row = sqlx::query(r#"
                 SELECT e.episodeurl, p.username, p.password
-                FROM "Episodes" e JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                WHERE e.episodeid = $1
+                FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
+                WHERE e.episodeid = $1 LIMIT 1
             "#)
             .bind(episode_id)
             .fetch_one(pool)
@@ -190,8 +202,8 @@ async fn fetch_episode_audio_temp(db_pool: &DatabasePool, episode_id: i32) -> Re
         DatabasePool::MySQL(pool) => {
             let row = sqlx::query("
                 SELECT e.EpisodeURL, p.Username, p.Password
-                FROM Episodes e JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                WHERE e.EpisodeID = ?
+                FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
+                WHERE e.EpisodeID = ? LIMIT 1
             ")
             .bind(episode_id)
             .fetch_one(pool)
@@ -243,15 +255,69 @@ async fn fetch_episode_audio_temp(db_pool: &DatabasePool, episode_id: i32) -> Re
     Ok(tmp_path)
 }
 
+/// The copy of an episode's audio a transcript (and the ad times found in it) was made from.
+#[derive(Debug, Clone, Default, Serialize, utoipa::ToSchema)]
+pub struct AudioCopy {
+    /// [`audio_processing::audio_fingerprint`] of the file, when known.
+    pub fingerprint: Option<String>,
+    /// Decoded length in seconds.
+    pub duration: Option<f64>,
+    /// `download` (a server download) or `stream` (fetched from the feed just for this).
+    pub source: Option<String>,
+}
+
+pub const AUDIO_SOURCE_DOWNLOAD: &str = "download";
+pub const AUDIO_SOURCE_STREAM: &str = "stream";
+
+/// The audio copy behind the episode's completed generated transcript, if there is one.
+pub async fn analyzed_audio(db_pool: &DatabasePool, episode_id: i32) -> Option<AudioCopy> {
+    match db_pool {
+        DatabasePool::Postgres(pool) => sqlx::query(r#"
+            SELECT audiofingerprint, audioduration, audiosource FROM "EpisodeTranscripts"
+            WHERE episodeid = $1 AND source = $2 AND status = 'complete'
+            ORDER BY createdat DESC LIMIT 1
+        "#)
+        .bind(episode_id)
+        .bind(SOURCE_GENERATED)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| AudioCopy {
+            fingerprint: r.try_get("audiofingerprint").ok().flatten(),
+            duration: r.try_get("audioduration").ok().flatten(),
+            source: r.try_get("audiosource").ok().flatten(),
+        }),
+        DatabasePool::MySQL(pool) => sqlx::query(r#"
+            SELECT AudioFingerprint, AudioDuration, AudioSource FROM EpisodeTranscripts
+            WHERE EpisodeID = ? AND Source = ? AND Status = 'complete'
+            ORDER BY CreatedAt DESC LIMIT 1
+        "#)
+        .bind(episode_id)
+        .bind(SOURCE_GENERATED)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| AudioCopy {
+            fingerprint: r.try_get("AudioFingerprint").ok().flatten(),
+            duration: r.try_get("AudioDuration").ok().flatten(),
+            source: r.try_get("AudioSource").ok().flatten(),
+        }),
+    }
+}
+
 /// Transcribe one episode via the AI sidecar and persist the result.
 ///
-/// `force` re-runs even if a complete transcript already exists. The episode does NOT need to be
-/// downloaded — if there's no local file, the audio is fetched to a temp file just for
-/// transcription and removed afterward.
+/// `force` re-runs even if a complete transcript already exists. Audio comes from a server
+/// download when there is one (`prefer_user`'s first), since that is the copy users play; with no
+/// download it is fetched from the feed to a temp file and removed afterward. Ad times found on a
+/// different copy are cleared, as dynamically inserted ads move between copies.
 pub async fn transcribe_episode(
     db_pool: &DatabasePool,
     episode_id: i32,
     force: bool,
+    prefer_user: Option<i32>,
     on_progress: impl FnMut(f64),
 ) -> Result<(), String> {
     if ai_client::ai_base_url().is_none() {
@@ -262,12 +328,25 @@ pub async fn transcribe_episode(
         return Ok(());
     }
 
-    // Prefer an existing download; otherwise fetch a temp copy we clean up afterward.
-    let (file_path, is_temp) = match audio_processing::downloaded_location(db_pool, episode_id).await? {
-        Some(p) if std::path::Path::new(&p).exists() => (p, false),
-        _ => (fetch_episode_audio_temp(db_pool, episode_id).await?, true),
+    let downloads = audio_processing::episode_downloads(db_pool, episode_id).await?;
+    let download = prefer_user
+        .and_then(|u| downloads.iter().find(|d| d.user_id == u))
+        .or_else(|| downloads.first());
+    let (file_path, is_temp, fingerprint, source) = match download {
+        Some(d) => (
+            d.path.clone(),
+            false,
+            audio_processing::download_fingerprint(db_pool, d, episode_id).await,
+            AUDIO_SOURCE_DOWNLOAD,
+        ),
+        None => {
+            let tmp = fetch_episode_audio_temp(db_pool, episode_id).await?;
+            let fp = audio_processing::audio_fingerprint(&tmp).await.ok();
+            (tmp, true, fp, AUDIO_SOURCE_STREAM)
+        }
     };
 
+    let previous = analyzed_audio(db_pool, episode_id).await;
     clear_generated(db_pool, episode_id).await?;
     let transcript_id = insert_running(db_pool, episode_id).await?;
 
@@ -287,11 +366,23 @@ pub async fn transcribe_episode(
                     .collect::<Vec<_>>(),
             )
             .unwrap_or_else(|_| "[]".to_string());
-            complete_row(db_pool, transcript_id, &result.language, &result.model, &result.text, &segments_json).await?;
-            debug!("Stored transcript for episode {} ({} segments)", episode_id, result.segments.len());
-            // Chain ad detection if any subscriber to this feed opted in (safe against the
-            // ad-path's own transcription trigger via an in-flight guard).
-            crate::services::ad_detection::maybe_detect_ads_after_transcript(db_pool.clone(), episode_id);
+            let audio = AudioCopy {
+                fingerprint,
+                duration: (result.duration > 0.0).then_some(result.duration),
+                source: Some(source.to_string()),
+            };
+            complete_row(db_pool, transcript_id, &result.language, &result.model, &result.text, &segments_json, &audio).await?;
+            debug!("Stored transcript for episode {} ({} segments, {} copy)", episode_id, result.segments.len(), source);
+
+            // Ads found on another copy don't line up with this one: drop them and detect again.
+            let same_copy = matches!((&previous, &audio.fingerprint), (Some(p), Some(fp)) if p.fingerprint.as_deref() == Some(fp.as_str()));
+            let mut redetect = false;
+            if !same_copy {
+                redetect = crate::services::ad_detection::clear_ad_segments(db_pool, episode_id).await?;
+            }
+            // Chain ad detection if a subscriber opted in, or ads had been found before (safe
+            // against the ad path's own transcription trigger via an in-flight guard).
+            crate::services::ad_detection::maybe_detect_ads_after_transcript(db_pool.clone(), episode_id, redetect);
             Ok(())
         }
         Err(e) => {
@@ -301,14 +392,17 @@ pub async fn transcribe_episode(
     }
 }
 
-/// Read the stored generated transcript for an episode, if any.
+/// Read the stored generated transcript for an episode, if any. A job still `running` after 12
+/// hours was cut off by a restart and reads as `failed`, so it can be started again.
 pub async fn get_episode_transcript(
     db_pool: &DatabasePool,
     episode_id: i32,
 ) -> Result<Option<StoredTranscript>, String> {
     let transcript = match db_pool {
         DatabasePool::Postgres(pool) => sqlx::query(r#"
-            SELECT source, language, model, status, transcripttext, segments::text AS segments_text
+            SELECT source, language, model, transcripttext, segments::text AS segments_text,
+                   CASE WHEN status IN ('running','pending') AND createdat < NOW() - INTERVAL '12 hours'
+                        THEN 'failed' ELSE status END AS status
             FROM "EpisodeTranscripts"
             WHERE episodeid = $1 AND source = $2
             ORDER BY createdat DESC LIMIT 1
@@ -327,7 +421,9 @@ pub async fn get_episode_transcript(
             segments: r.try_get("segments_text").ok(),
         }),
         DatabasePool::MySQL(pool) => sqlx::query(r#"
-            SELECT Source, Language, Model, Status, TranscriptText, Segments
+            SELECT Source, Language, Model, TranscriptText, Segments,
+                   CASE WHEN Status IN ('running','pending') AND CreatedAt < NOW() - INTERVAL 12 HOUR
+                        THEN 'failed' ELSE Status END AS Status
             FROM EpisodeTranscripts
             WHERE EpisodeID = ? AND Source = ?
             ORDER BY CreatedAt DESC LIMIT 1
@@ -448,47 +544,98 @@ pub async fn get_auto_transcribe(db_pool: &DatabasePool, podcast_id: i32) -> Res
     Ok(enabled)
 }
 
-/// Auto-transcribe hook, fired when a new episode arrives (on refresh) or finishes downloading.
-/// Runs only if the AI sidecar is configured and the owning podcast opted in. Detached so it
-/// never blocks the caller; transcription fetches the audio on demand if it isn't downloaded.
-pub fn maybe_transcribe_episode(db_pool: DatabasePool, episode_id: i32) {
+/// Whether any subscription to the episode's feed opted into auto-transcription, and whether one
+/// of those also auto-downloads to the server.
+async fn auto_transcribe_opt_in(db_pool: &DatabasePool, episode_id: i32) -> (bool, bool) {
+    let row = match db_pool {
+        DatabasePool::Postgres(pool) => sqlx::query(r#"
+            SELECT COALESCE(BOOL_OR(COALESCE(p.autotranscribe, FALSE)), FALSE) AS t,
+                   COALESCE(BOOL_OR(COALESCE(p.autotranscribe, FALSE) AND COALESCE(p.autodownload, FALSE)), FALSE) AS d
+            FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
+            WHERE e.episodeid = $1
+        "#)
+        .bind(episode_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| (r.try_get::<bool, _>("t").unwrap_or(false), r.try_get::<bool, _>("d").unwrap_or(false))),
+        DatabasePool::MySQL(pool) => sqlx::query("
+            SELECT CAST(COALESCE(MAX(COALESCE(p.AutoTranscribe, 0)), 0) AS SIGNED) AS t,
+                   CAST(COALESCE(MAX(COALESCE(p.AutoTranscribe, 0) AND COALESCE(p.AutoDownload, 0)), 0) AS SIGNED) AS d
+            FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
+            WHERE e.EpisodeID = ?
+        ")
+        .bind(episode_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| (
+            r.try_get::<i64, _>("t").map(|v| v != 0).unwrap_or(false),
+            r.try_get::<i64, _>("d").map(|v| v != 0).unwrap_or(false),
+        )),
+    };
+    row.unwrap_or((false, false))
+}
+
+/// Auto-transcribe hook for a newly arrived episode. When an opted-in subscription also
+/// auto-downloads, this waits for the download instead ([`after_download`]), so the transcript
+/// and ad times come from the copy that gets played.
+pub fn maybe_transcribe_new_episode(db_pool: DatabasePool, episode_id: i32) {
     if ai_client::ai_base_url().is_none() {
         return; // AI features disabled — nothing to do
     }
     tokio::spawn(async move {
-        // Read the podcast's AutoTranscribe via the episode.
-        let podcast_enabled = match db_pool {
-            DatabasePool::Postgres(ref pool) => sqlx::query(r#"
-                SELECT COALESCE(p.autotranscribe, FALSE) AS a
-                FROM "Episodes" e JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                WHERE e.episodeid = $1
-            "#)
-            .bind(episode_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|r| r.try_get::<bool, _>("a").ok())
-            .unwrap_or(false),
-            DatabasePool::MySQL(ref pool) => sqlx::query("
-                SELECT COALESCE(p.AutoTranscribe, 0) AS a
-                FROM Episodes e JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                WHERE e.EpisodeID = ?
-            ")
-            .bind(episode_id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|r| r.try_get::<i8, _>("a").ok())
-            .map(|a| a != 0)
-            .unwrap_or(false),
-        };
-
-        if podcast_enabled {
-            if let Err(e) = transcribe_episode(&db_pool, episode_id, false, |_| {}).await {
+        let (opted_in, downloads) = auto_transcribe_opt_in(&db_pool, episode_id).await;
+        if opted_in && !downloads {
+            if let Err(e) = transcribe_episode(&db_pool, episode_id, false, None, |_| {}).await {
                 warn!("Auto-transcription failed for episode {}: {}", episode_id, e);
             }
+        }
+    });
+}
+
+/// Hook run when a user's server download finishes. Transcribes it if the feed opted in and has no
+/// transcript yet, and redoes the transcript (and ad times) on this download when the existing one
+/// came from a copy that no longer exists on the server, e.g. a one-off stream with other ads.
+pub fn after_download(db_pool: DatabasePool, episode_id: i32, user_id: i32) {
+    if ai_client::ai_base_url().is_none() {
+        return;
+    }
+    tokio::spawn(async move {
+        let (opted_in, _) = auto_transcribe_opt_in(&db_pool, episode_id).await;
+        let analyzed = analyzed_audio(&db_pool, episode_id).await;
+        let had_ads = crate::services::ad_detection::has_ad_segments(&db_pool, episode_id).await;
+
+        let force = match &analyzed {
+            None => {
+                if !opted_in {
+                    return;
+                }
+                false
+            }
+            Some(copy) => {
+                if !opted_in && !had_ads {
+                    return;
+                }
+                let downloads = audio_processing::episode_downloads(&db_pool, episode_id).await.unwrap_or_default();
+                let mut analyzed_copy_on_server = false;
+                for d in &downloads {
+                    let fp = audio_processing::download_fingerprint(&db_pool, d, episode_id).await;
+                    if fp.is_some() && fp == copy.fingerprint {
+                        analyzed_copy_on_server = true;
+                        break;
+                    }
+                }
+                if analyzed_copy_on_server {
+                    return; // this download is that copy, or another user's download still is
+                }
+                true
+            }
+        };
+        if let Err(e) = transcribe_episode(&db_pool, episode_id, force, Some(user_id), |_| {}).await {
+            warn!("Transcription after download failed for episode {}: {}", episode_id, e);
         }
     });
 }

@@ -750,7 +750,9 @@ pub fn search(_props: &SearchProps) -> Html {
         && sel_cur.len() == sel_all_ids.len()
         && sel_all_ids.iter().all(|id| sel_cur.contains(id));
     let sel_count = sel_cur.len();
-    let sel_ids: Vec<i32> = sel_cur.iter().cloned().collect();
+    // In list order, so bulk-queued episodes keep the order they're shown in.
+    let mut sel_ids: Vec<i32> = visible_ep_ids.iter().filter(|id| sel_cur.contains(id)).cloned().collect();
+    sel_ids.extend(sel_cur.iter().filter(|id| !visible_ep_ids.contains(id)).cloned().collect::<Vec<_>>());
     let sel_user_id = user_id.unwrap_or(0);
 
     // ── HTML ─────────────────────────────────────────────────────────────────

@@ -28,9 +28,17 @@ abstract class Repository {
   /// Episodes
   Future<List<Episode>> findAllEpisodes();
 
+  /// Rows saved from the PinePods server (guid `pinepods_<id>`), unsorted.
+  /// Cheaper than [findAllEpisodes] when only those rows matter.
+  Future<List<Episode>> findPinepodsEpisodes();
+
   Future<Episode?> findEpisodeById(int id);
 
   Future<Episode?> findEpisodeByGuid(String guid);
+
+  /// Rows whose guid is [guid] or starts with `<guid>_` (the legacy
+  /// timestamp-suffixed local-download format).
+  Future<List<Episode>> findEpisodesByGuidOrLegacy(String guid);
 
   Future<List<Episode?>> findEpisodesByPodcastGuid(
     String pguid, {

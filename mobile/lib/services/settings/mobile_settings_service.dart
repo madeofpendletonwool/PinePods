@@ -280,9 +280,9 @@ class MobileSettingsService extends SettingsService {
   List<String> get bottomBarOrder {
     final orderString = _sharedPreferences.getString('bottom_bar_order');
     if (orderString != null) {
-      return orderString.split(',');
+      return normalizeBottomBarOrder(orderString.split(','));
     }
-    return ['Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists', 'Search'];
+    return defaultBottomBarOrder;
   }
 
   @override
@@ -310,6 +310,15 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  bool get pinepodsUseGravatar => _sharedPreferences.getBool('pinepods_use_gravatar') ?? false;
+
+  @override
+  set pinepodsUseGravatar(bool value) {
+    _sharedPreferences.setBool('pinepods_use_gravatar', value);
+    settingsNotifier.sink.add('pinepods_use_gravatar');
+  }
+
+  @override
   int get autoDownloadQueueCount => _sharedPreferences.getInt('autoDownloadQueueCount') ?? 0;
 
   @override
@@ -325,6 +334,33 @@ class MobileSettingsService extends SettingsService {
   set mirrorServerDownloads(bool value) {
     _sharedPreferences.setBool('mirrorServerDownloads', value);
     settingsNotifier.sink.add('mirrorServerDownloads');
+  }
+
+  @override
+  int get deleteDownloadsAfterDays => _sharedPreferences.getInt('deleteDownloadsAfterDays') ?? 0;
+
+  @override
+  set deleteDownloadsAfterDays(int value) {
+    _sharedPreferences.setInt('deleteDownloadsAfterDays', value);
+    settingsNotifier.sink.add('deleteDownloadsAfterDays');
+  }
+
+  @override
+  String get playButtonStyle => _sharedPreferences.getString('playButtonStyle') ?? 'ring';
+
+  @override
+  set playButtonStyle(String value) {
+    _sharedPreferences.setString('playButtonStyle', value);
+    settingsNotifier.sink.add('playButtonStyle');
+  }
+
+  @override
+  bool get artworkAccentColors => _sharedPreferences.getBool('artworkAccentColors') ?? true;
+
+  @override
+  set artworkAccentColors(bool value) {
+    _sharedPreferences.setBool('artworkAccentColors', value);
+    settingsNotifier.sink.add('artworkAccentColors');
   }
 
   @override

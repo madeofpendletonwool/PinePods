@@ -51,6 +51,10 @@ spec:
             - name: backups
               mountPath: /opt/pinepods/backups
             {{- end }}
+            {{- if .Values.persistence.localMedia.enabled }}
+            - name: local-media
+              mountPath: /opt/pinepods/local-media
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /api/pinepods_check
@@ -79,4 +83,9 @@ spec:
         - name: backups
           persistentVolumeClaim:
             claimName: {{ if .Values.persistence.backups.existingClaim }}{{ .Values.persistence.backups.existingClaim }}{{ else }}{{ include "pinepods.fullname" . }}-backups{{ end }}
+        {{- end }}
+        {{- if .Values.persistence.localMedia.enabled }}
+        - name: local-media
+          persistentVolumeClaim:
+            claimName: {{ if .Values.persistence.localMedia.existingClaim }}{{ .Values.persistence.localMedia.existingClaim }}{{ else }}{{ include "pinepods.fullname" . }}-local-media{{ end }}
         {{- end }}

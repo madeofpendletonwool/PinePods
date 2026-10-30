@@ -5,15 +5,19 @@ use axum::{
 use axum::extract::ws::{WebSocket, Message};
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, LazyLock};
+use tokio::sync::{Mutex, OwnedMutexGuard, RwLock};
 use sqlx::Row;
 use tracing::{debug, info, warn};
 
 use crate::{
     error::{AppError, AppResult},
     handlers::check_user_access,
+    services::feed_health::{self, FeedErrorKind},
+    services::refresh_schedule::{self, FeedHints, Schedule},
+    services::sync::engine::{self, RunMode},
+    services::sync::engine_db::TargetKind,
     AppState,
 };
 
@@ -73,7 +77,10 @@ lazy_static::lazy_static! {
 )]
 pub async fn refresh_pods_admin(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
+    // Server-wide fan-out over every user: admin (or background key) only.
+    crate::handlers::require_admin(&state, &headers).await?;
     info!("Starting admin refresh process - background task (no WebSocket)");
     
     // This is the background task version - NO WebSocket, just direct refresh like Python
@@ -103,7 +110,10 @@ pub async fn refresh_pods_admin(
 )]
 pub async fn refresh_gpodder_subscriptions_admin(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
+    // Server-wide fan-out over every user: admin (or background key) only.
+    crate::handlers::require_admin(&state, &headers).await?;
     info!("Starting admin gPodder sync process for all users");
     
     let state_clone = state.clone();
@@ -114,8 +124,8 @@ pub async fn refresh_gpodder_subscriptions_admin(
             let state = state_clone;
             reporter.update_progress(10.0, Some("Starting gPodder sync for all users...".to_string())).await?;
             
-            // Get all users who have gPodder sync enabled
-            let gpodder_users = state.db_pool.get_all_users_with_gpodder_sync().await
+            // Every user syncing with an external gpodder server
+            let gpodder_users = state.db_pool.sync_target_users(Some(TargetKind::Gpodder)).await
                 .map_err(|e| AppError::internal(&format!("Failed to get gPodder users: {}", e)))?;
             
             debug!("Found {} users with gPodder sync enabled", gpodder_users.len());
@@ -128,29 +138,16 @@ pub async fn refresh_gpodder_subscriptions_admin(
                 let progress = 10.0 + (80.0 * (index as f64) / (gpodder_users.len() as f64));
                 reporter.update_progress(progress, Some(format!("Syncing user {}/{}", index + 1, gpodder_users.len()))).await?;
                 
-                info!("Running gPodder sync for user {} ({}/{})", user_id, index + 1, gpodder_users.len());
-                
-                // Get user's sync type
-                let gpodder_status = state.db_pool.gpodder_get_status(*user_id).await
-                    .map_err(|e| AppError::internal(&format!("Failed to get status for user {}: {}", user_id, e)))?;
-                
-                if gpodder_status.sync_type != "None" && !gpodder_status.sync_type.is_empty() {
-                    match run_admin_gpodder_sync(&state, *user_id, &gpodder_status.sync_type).await {
-                        Ok(sync_result) => {
-                            successful_syncs += 1;
-                            total_synced_podcasts += sync_result.synced_podcasts;
-                            info!("gPodder sync successful for user {}: {} podcasts", 
-                                user_id, sync_result.synced_podcasts);
-                        }
-                        Err(e) => {
-                            failed_syncs += 1;
-                            warn!("gPodder sync failed for user {}: {}", user_id, e);
-                            tracing::error!("gPodder sync failed for user {}: {}", user_id, e);
-                            // Continue with other users
-                        }
+                match run_admin_gpodder_sync(&state, *user_id).await {
+                    Ok(sync_result) => {
+                        successful_syncs += 1;
+                        total_synced_podcasts += sync_result.synced_podcasts;
+                        debug!("gPodder sync successful for user {}: {} podcasts", user_id, sync_result.synced_podcasts);
                     }
-                } else {
-                    info!("gPodder sync not properly configured for user {}", user_id);
+                    Err(e) => {
+                        failed_syncs += 1;
+                        debug!("gPodder sync failed for user {}: {}", user_id, e);
+                    }
                 }
             }
             
@@ -179,12 +176,55 @@ pub async fn refresh_gpodder_subscriptions_admin(
 
 // Max feeds refreshed in parallel. Shared by the background and per-user refresh paths.
 const REFRESH_CONCURRENCY: usize = 10;
+// Max feeds one scheduled tick refreshes; the rest wait for the next tick.
+const REFRESH_TICK_MAX_FEEDS: i64 = 250;
+
+// One refresh of a feed at a time, scheduled or manual. Keyed like the refresh groups
+// (URL + credentials); YouTube channels by channel URL.
+type FeedKey = (String, Option<String>, Option<String>);
+static FEED_LOCKS: LazyLock<std::sync::Mutex<HashMap<FeedKey, Arc<Mutex<()>>>>> = LazyLock::new(Default::default);
+
+struct FeedLock {
+    key: FeedKey,
+    guard: Option<OwnedMutexGuard<()>>,
+}
+
+impl FeedLock {
+    fn key(feed_url: &str, username: Option<&str>, password: Option<&str>) -> FeedKey {
+        (feed_url.to_string(), username.map(str::to_string), password.map(str::to_string))
+    }
+
+    /// Wait for any other refresh of the feed to finish (the scheduled refresh).
+    async fn acquire(key: FeedKey) -> FeedLock {
+        let lock = FEED_LOCKS.lock().unwrap().entry(key.clone()).or_default().clone();
+        FeedLock { key, guard: Some(lock.lock_owned().await) }
+    }
+
+    /// None while another refresh has the feed (the manual refresh skips it).
+    fn try_acquire(key: FeedKey) -> Option<FeedLock> {
+        let lock = FEED_LOCKS.lock().unwrap().entry(key.clone()).or_default().clone();
+        let guard = lock.try_lock_owned().ok()?;
+        Some(FeedLock { key, guard: Some(guard) })
+    }
+}
+
+impl Drop for FeedLock {
+    fn drop(&mut self) {
+        let mut locks = FEED_LOCKS.lock().unwrap();
+        self.guard.take();
+        // Nobody else holds or waits for it: forget the feed.
+        if locks.get(&self.key).is_some_and(|l| Arc::strong_count(l) == 1) {
+            locks.remove(&self.key);
+        }
+    }
+}
 
 // One podcast row to refresh. Defined at module scope so the grouped/concurrent helpers below
 // can take owned values without borrowing the DB connection.
 #[derive(Clone)]
 struct PodcastRefreshItem {
     podcast_id: i32,
+    feed_id: Option<i32>,
     feed_url: String,
     artwork_url: Option<String>,
     auto_download: bool,
@@ -196,6 +236,8 @@ struct PodcastRefreshItem {
     feed_cutoff: Option<i32>,
     etag: Option<String>,
     last_modified: Option<String>,
+    content_hash: Option<String>,
+    refresh_interval: Option<i32>,
 }
 
 /// Queue server-side auto-downloads for newly inserted episodes, if the podcast has auto-download
@@ -263,154 +305,330 @@ async fn queue_auto_new_episodes(
 }
 
 /// Refresh one feed that may be shared by several subscriber podcasts (cross-user dedup). The feed
-/// is fetched (with conditional GET) and parsed ONCE, then applied to every subscriber's podcast
-/// row. Cache validators and success/failure state are recorded for the whole group.
-async fn refresh_feed_group(state: &AppState, group: &[PodcastRefreshItem]) -> usize {
+/// is fetched (conditional GET + body hash) and parsed ONCE, then applied to every subscriber's
+/// podcast row; new episodes are auto-downloaded/queued/transcribed and added to matching
+/// category collections (sync rematch runs inside `apply_parsed_episodes`). Cache validators and
+/// success/failure state are recorded for the whole group. The caller holds the feed's lock.
+/// Returns every newly inserted episode across the group; Err only when the feed itself failed.
+async fn refresh_feed_group(
+    state: &AppState,
+    group: &[PodcastRefreshItem],
+) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
     let rep = &group[0];
     let ids: Vec<i32> = group.iter().map(|i| i.podcast_id).collect();
-    let mut total_new = 0usize;
+    let mut all_new = Vec::new();
 
     // Reuse any stored validator from the group (they converge after the first unified cycle).
+    // The body hash is only trusted when every subscriber has it: a row that never applied this
+    // body (e.g. its first import failed) must not be skipped because another row did.
     let etag = group.iter().find_map(|i| i.etag.clone());
     let last_modified = group.iter().find_map(|i| i.last_modified.clone());
+    let content_hash = rep
+        .content_hash
+        .clone()
+        .filter(|h| group.iter().all(|i| i.content_hash.as_deref() == Some(h.as_str())));
+    let validators = crate::database::FeedValidators {
+        etag: etag.as_deref(),
+        last_modified: last_modified.as_deref(),
+        content_hash: content_hash.as_deref(),
+    };
 
-    match state
+    let fetched = state
         .db_pool
-        .fetch_feed_conditional(
-            &rep.feed_url,
-            rep.username.as_deref(),
-            rep.password.as_deref(),
-            etag.as_deref(),
-            last_modified.as_deref(),
-        )
-        .await
-    {
-        Ok(crate::database::FeedFetch::NotModified) => {
-            debug!("Feed unchanged (304), skipping parse: {}", rep.feed_url);
-            let _ = state.db_pool.record_refresh_success(&ids).await;
+        .fetch_feed_conditional(&rep.feed_url, rep.username.as_deref(), rep.password.as_deref(), validators)
+        .await;
+    match fetched {
+        Ok(crate::database::FeedFetch::NotModified { etag, last_modified, max_age }) => {
+            debug!("Feed unchanged, skipping parse: {}", rep.feed_url);
+            if etag.is_some() || last_modified.is_some() {
+                let _ = state
+                    .db_pool
+                    .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), None)
+                    .await;
+            }
+            let next = unchanged_schedule(state, rep, max_age).await;
+            mark_refreshed(state, &ids, next).await;
         }
-        Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified }) => {
-            let artwork = rep.artwork_url.clone().unwrap_or_default();
-            match state.db_pool.parse_feed_body(&body, rep.podcast_id, &artwork).await {
-                Ok(parsed) => {
-                    for item in group {
-                        let art = item.artwork_url.as_deref().unwrap_or("");
-                        match state
-                            .db_pool
-                            .apply_parsed_episodes(item.podcast_id, &parsed, art, item.feed_cutoff, true)
-                            .await
-                        {
-                            Ok(new_eps) => {
-                                if !new_eps.is_empty() {
-                                    info!("Podcast {}: {} new episodes", item.podcast_id, new_eps.len());
-                                    total_new += new_eps.len();
-                                }
-                                queue_auto_downloads(state, item.user_id, item.auto_download, &new_eps).await;
-                                queue_auto_new_episodes(state, item.user_id, item.auto_queue, &new_eps).await;
-                                // Auto-transcribe new episodes for opted-in podcasts (independent
-                                // of downloads — the pipeline fetches audio on demand).
-                                for ep in &new_eps {
-                                    crate::services::transcription::maybe_transcribe_episode(state.db_pool.clone(), ep.episodeid);
-                                }
-                            }
-                            Err(e) => warn!("Error applying feed to podcast {}: {}", item.podcast_id, e),
-                        }
-                    }
-                    let _ = state
-                        .db_pool
-                        .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref())
-                        .await;
-                    let _ = state.db_pool.record_refresh_success(&ids).await;
-                }
+        Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified, content_hash, max_age }) => {
+            // The podcast's details first, so episodes without artwork of their own fall back
+            // to the feed's current artwork.
+            let meta = crate::services::feed_metadata::parse(&body);
+            if let Some(meta) = &meta {
+                state.db_pool.store_feed_metadata(rep.feed_id, &ids, meta).await;
+            }
+            let artwork = meta
+                .and_then(|m| m.artwork)
+                .or_else(|| rep.artwork_url.clone())
+                .unwrap_or_default();
+            let parsed = match state.db_pool.parse_feed_body(&body, rep.podcast_id, &artwork).await {
+                Ok(parsed) => parsed,
                 Err(e) => {
                     warn!("Error parsing feed {}: {}", rep.feed_url, e);
-                    let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
+                    mark_failed(state, &ids, FeedErrorKind::NotFeed, &e.to_string(), None).await;
+                    return Err(e);
                 }
-            }
+            };
+            // The feed's episodes are shared: insert them once (with the loosest cutoff of its
+            // subscribers), then hand the new ones to each subscription.
+            let cutoff = if group.iter().any(|i| i.feed_cutoff.unwrap_or(0) <= 0) {
+                None
+            } else {
+                group.iter().filter_map(|i| i.feed_cutoff).max()
+            };
+            let all_applied = match state.db_pool.apply_parsed_episodes(rep.podcast_id, &parsed, &artwork, cutoff, true).await {
+                Ok(new_eps) => {
+                    if !new_eps.is_empty() {
+                        info!("Feed {}: {} new episodes", rep.feed_url, new_eps.len());
+                    }
+                    let ids: Vec<i32> = new_eps.iter().map(|e| e.episodeid).collect();
+                    for item in group {
+                        let mine: Vec<_> = new_eps.iter().cloned().map(|mut e| { e.podcastid = item.podcast_id; e }).collect();
+                        queue_auto_downloads(state, item.user_id, item.auto_download, &mine).await;
+                        queue_auto_new_episodes(state, item.user_id, item.auto_queue, &mine).await;
+                        if let Err(e) = state.db_pool.auto_add_category_episodes_for(item.user_id, item.podcast_id, &ids).await {
+                            warn!("Category auto-add for podcast {} failed: {}", item.podcast_id, e);
+                        }
+                        all_new.extend(mine);
+                    }
+                    // Auto-transcribe new episodes for opted-in podcasts (ones that also
+                    // auto-download wait for the download).
+                    for id in ids {
+                        crate::services::transcription::maybe_transcribe_new_episode(state.db_pool.clone(), id);
+                    }
+                    true
+                }
+                Err(e) => {
+                    warn!("Error applying feed {}: {}", rep.feed_url, e);
+                    false
+                }
+            };
+            state.db_pool.store_feed_tags(&ids, &body).await;
+            // Only remember the body hash once every subscriber has it applied; otherwise the
+            // next cycle would skip the row that failed.
+            let hash = all_applied.then_some(content_hash.as_str());
+            let _ = state
+                .db_pool
+                .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), hash)
+                .await;
+            let dates: Vec<_> = parsed.iter().map(|e| e.pub_date).collect();
+            let hints = FeedHints { max_age, ..refresh_schedule::parse_hints(&body) };
+            mark_refreshed(state, &ids, refresh_schedule::schedule(&dates, &hints, chrono::Utc::now())).await;
+        }
+        Ok(crate::database::FeedFetch::Throttled { status, retry_after }) => {
+            let msg = format!("Feed host throttled refresh (HTTP {})", status);
+            mark_failed(state, &ids, FeedErrorKind::Throttled, &msg, retry_after).await;
+            return Err(AppError::external_error(&msg));
         }
         Err(e) => {
             warn!("Error fetching feed {}: {}", rep.feed_url, e);
-            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
+            mark_failed(state, &ids, FeedErrorKind::of(&e), &e.to_string(), None).await;
+            return Err(e);
         }
     }
 
-    total_new
+    Ok(all_new)
 }
 
-/// Refresh a single YouTube channel podcast.
-async fn refresh_youtube_item(state: &AppState, item: &PodcastRefreshItem) {
-    let channel_id = if item.feed_url.contains("channel/") {
-        item.feed_url
-            .split("channel/")
-            .nth(1)
-            .unwrap_or(&item.feed_url)
-            .split('/')
-            .next()
-            .unwrap_or(&item.feed_url)
-            .split('?')
-            .next()
-            .unwrap_or(&item.feed_url)
-            .to_string()
-    } else {
-        item.feed_url.clone()
+/// The next refresh of a feed whose body hasn't changed: it keeps the interval it had (at least
+/// the host's max-age), unless it has gone quiet since.
+async fn unchanged_schedule(state: &AppState, rep: &PodcastRefreshItem, max_age: Option<chrono::Duration>) -> Schedule {
+    let now = chrono::Utc::now();
+    let max = refresh_schedule::max_interval();
+    let dates = state.db_pool.recent_pub_dates(rep.podcast_id, false, 10).await.unwrap_or_default();
+    let hints = FeedHints { max_age, ..Default::default() };
+    let interval = match rep.refresh_interval {
+        Some(minutes) if !refresh_schedule::is_dormant(&dates, now) => {
+            let floor = max_age.unwrap_or_default().min(refresh_schedule::ACTIVE_MAX_INTERVAL);
+            chrono::Duration::minutes(minutes.into()).max(floor).min(max)
+        }
+        _ => refresh_schedule::interval(&dates, &hints, now, max),
     };
-    let ids = [item.podcast_id];
-    match crate::handlers::youtube::process_youtube_channel(
-        item.podcast_id,
-        &channel_id,
-        item.feed_cutoff.unwrap_or(30),
-        state,
-    )
-    .await
-    {
-        Ok(_) => {
-            info!("Successfully refreshed YouTube channel {}", item.podcast_id);
-            let _ = state.db_pool.record_refresh_success(&ids).await;
+    refresh_schedule::schedule_with(interval, &dates, &hints, now, max)
+}
+
+/// The next refresh of a YouTube channel, from its videos.
+async fn youtube_schedule(state: &AppState, podcast_id: i32) -> Schedule {
+    let dates = state.db_pool.recent_pub_dates(podcast_id, true, 10).await.unwrap_or_default();
+    refresh_schedule::schedule(&dates, &FeedHints::default(), chrono::Utc::now())
+}
+
+/// Record a successful refresh and schedule the next, telling users whose feed had been
+/// reported as failing.
+async fn mark_refreshed(state: &AppState, ids: &[i32], next: Schedule) {
+    let recovered = state.db_pool.feed_problems_reported(ids).await.unwrap_or_default();
+    if let Err(e) = state.db_pool.record_refresh_success(ids, next).await {
+        warn!("Recording a successful refresh of {:?} failed: {}", ids, e);
+        return;
+    }
+    feed_health::after_success(&state.task_manager, recovered).await;
+}
+
+/// Import a newly added YouTube channel's videos and schedule its refreshes. The channel is
+/// refreshed for all its subscribers, holding its refresh lock so a scheduled refresh can't run
+/// alongside.
+pub async fn import_added_channel(state: &AppState, podcast_id: i32, channel_id: &str, feed_cutoff: i32) -> AppResult<()> {
+    let url = format!("https://www.youtube.com/channel/{}", channel_id);
+    let _lock = FeedLock::acquire(FeedLock::key(&url, None, None)).await;
+    let feed_id = Some(state.db_pool.feed_of_podcast(podcast_id).await?);
+    let item = PodcastRefreshItem {
+        podcast_id,
+        feed_id,
+        feed_url: url,
+        artwork_url: None,
+        auto_download: false,
+        auto_queue: false,
+        username: None,
+        password: None,
+        is_youtube: true,
+        user_id: 0,
+        feed_cutoff: Some(feed_cutoff),
+        etag: None,
+        last_modified: None,
+        content_hash: None,
+        refresh_interval: None,
+    };
+    let group = feed_group(state, feed_id, item).await?;
+    refresh_youtube_group(state, &group).await?;
+    Ok(())
+}
+
+/// Record a failed refresh and report feeds that have now been failing long enough.
+async fn mark_failed(state: &AppState, ids: &[i32], kind: FeedErrorKind, error: &str, retry_after: Option<std::time::Duration>) {
+    if let Err(e) = state.db_pool.record_refresh_failure(ids, kind, error, retry_after).await {
+        warn!("Recording a failed refresh of {:?} failed: {}", ids, e);
+        return;
+    }
+    feed_health::after_failure(&state.db_pool, &state.task_manager, ids).await;
+}
+
+/// Refresh one YouTube channel for every subscriber podcast in the group: its feed is fetched once
+/// (conditional GET + body hash, yt-dlp's listing when the feed fails), yt-dlp fetches only the
+/// videos a subscriber is missing, and each subscriber gets its own new rows. The caller holds the
+/// channel's lock. Returns every inserted video across the group; Err only when the channel failed.
+async fn refresh_youtube_group(
+    state: &AppState,
+    group: &[PodcastRefreshItem],
+) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
+    use crate::handlers::youtube::{self, ChannelListing, ChannelSubscriber};
+    let rep = &group[0];
+    let ids: Vec<i32> = group.iter().map(|i| i.podcast_id).collect();
+    let channel_id = youtube::channel_id_from_url(&rep.feed_url);
+
+    // Validators are only trusted when every subscriber applied the stored feed; a new
+    // subscription gets a full fetch.
+    let content_hash = rep
+        .content_hash
+        .clone()
+        .filter(|h| group.iter().all(|i| i.content_hash.as_deref() == Some(h.as_str())));
+    let validators = match &content_hash {
+        Some(hash) => crate::database::FeedValidators {
+            etag: rep.etag.as_deref(),
+            last_modified: rep.last_modified.as_deref(),
+            content_hash: Some(hash),
+        },
+        None => crate::database::FeedValidators::default(),
+    };
+
+    match youtube::list_channel_videos(state, channel_id, validators).await {
+        Ok(ChannelListing::Unchanged { etag, last_modified }) => {
+            if etag.is_some() || last_modified.is_some() {
+                let _ = state
+                    .db_pool
+                    .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), None)
+                    .await;
+            }
+            mark_refreshed(state, &ids, youtube_schedule(state, rep.podcast_id).await).await;
+            Ok(Vec::new())
+        }
+        Ok(ChannelListing::Listed { videos, etag, last_modified, content_hash }) => {
+            let mut filters = match state.db_pool.youtube_video_filters(&ids).await {
+                Ok(filters) => filters,
+                Err(e) => {
+                    mark_failed(state, &ids, FeedErrorKind::Other, &e.to_string(), None).await;
+                    return Err(e);
+                }
+            };
+            let subscribers: Vec<ChannelSubscriber> = group
+                .iter()
+                .map(|i| ChannelSubscriber {
+                    podcast_id: i.podcast_id,
+                    feed_cutoff: i.feed_cutoff.unwrap_or(30),
+                    filter: filters.remove(&i.podcast_id).unwrap_or_default(),
+                })
+                .collect();
+            match youtube::process_youtube_channel(state, &subscribers, &videos).await {
+                Ok(new_videos) => {
+                    if !new_videos.is_empty() {
+                        info!("YouTube channel {}: {} new videos", channel_id, new_videos.len());
+                    }
+                    let _ = state
+                        .db_pool
+                        .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref(), content_hash.as_deref())
+                        .await;
+                    mark_refreshed(state, &ids, youtube_schedule(state, rep.podcast_id).await).await;
+                    Ok(new_videos)
+                }
+                Err(e) => {
+                    warn!("Error refreshing YouTube channel {}: {}", channel_id, e);
+                    mark_failed(state, &ids, FeedErrorKind::of(&e), &e.to_string(), None).await;
+                    Err(e)
+                }
+            }
+        }
+        Ok(ChannelListing::Throttled { status, retry_after }) => {
+            let msg = format!("YouTube throttled refresh (HTTP {})", status);
+            mark_failed(state, &ids, FeedErrorKind::Throttled, &msg, retry_after).await;
+            Err(AppError::external_error(&msg))
         }
         Err(e) => {
-            warn!("Error refreshing YouTube channel {}: {}", item.podcast_id, e);
-            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
+            warn!("Error refreshing YouTube channel {}: {}", channel_id, e);
+            mark_failed(state, &ids, FeedErrorKind::of(&e), &e.to_string(), None).await;
+            Err(e)
         }
     }
 }
 
-// Background refresh function that matches Python refresh_pods exactly - NO WebSocket
-async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
-    info!("Running refresh");
-    
-    // Get ALL podcasts from ALL users - matches Python exactly
-    // Handle the different database types properly
-    let total_podcasts = match &state.db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            let count_row = sqlx::query(r#"SELECT COUNT(*) as total FROM "Podcasts""#)
-                .fetch_one(pool)
-                .await?;
-            count_row.try_get::<i64, _>("total")? as usize
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
-            let count_row = sqlx::query("SELECT COUNT(*) as total FROM Podcasts")
-                .fetch_one(pool)
-                .await?;
-            count_row.try_get::<i64, _>("total")? as usize
-        }
+/// The podcasts subscribed to this feed, with `item` among them.
+async fn feed_group(state: &AppState, feed_id: Option<i32>, item: PodcastRefreshItem) -> AppResult<Vec<PodcastRefreshItem>> {
+    let mut group = match feed_id {
+        Some(feed_id) => load_refresh_items(state, None, Some(&[feed_id]), true).await?,
+        None => Vec::new(),
     };
-    
-    // Collect podcast rows into owned structs, skipping feeds that are in failure backoff. The
-    // backoff window grows with the consecutive-failure count (linear, capped at 24h) and is
-    // computed in SQL so we don't have to read/normalize timestamps across Postgres/MySQL.
-    let mut refresh_items: Vec<PodcastRefreshItem> = Vec::with_capacity(total_podcasts);
+    if !group.iter().any(|i| i.podcast_id == item.podcast_id) {
+        group.insert(0, item);
+    }
+    Ok(group)
+}
+
+/// The podcast rows to refresh (all, or those of the `only` feeds), skipping feeds a host asked us
+/// to leave alone (Retry-After) and, unless `ignore_backoff`, feeds in failure backoff.
+async fn load_refresh_items(
+    state: &AppState,
+    only: Option<&[String]>,
+    feeds: Option<&[i32]>,
+    ignore_backoff: bool,
+) -> AppResult<Vec<PodcastRefreshItem>> {
+    use crate::services::scheduler::{BACKOFF_MAX_STEPS, BACKOFF_STEP_MINUTES};
+    let mut refresh_items: Vec<PodcastRefreshItem> = Vec::new();
 
     match &state.db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
-            let rows = sqlx::query(
-                r#"SELECT podcastid, feedurl, artworkurl, autodownload, autoqueue, username, password,
-                          isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified
+            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+                r#"SELECT podcastid, feedid, feedurl, artworkurl, autodownload, autoqueue, username, password,
+                          isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified, feedcontenthash,
+                          refreshintervalminutes
                    FROM "Podcasts"
                    WHERE COALESCE(refreshpodcast, TRUE) = TRUE
-                     AND (COALESCE(consecutivefailures, 0) = 0
+                     AND (refreshnotbefore IS NULL OR refreshnotbefore <= NOW())
+                     AND ($1 OR COALESCE(consecutivefailures, 0) = 0
                           OR lastrefreshattempt IS NULL
-                          OR lastrefreshattempt < NOW() - (INTERVAL '1 minute' * (30 * LEAST(COALESCE(consecutivefailures, 0), 48))))"#
-            )
+                          OR lastrefreshattempt < NOW() - (INTERVAL '1 minute' * ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(consecutivefailures, 0), {BACKOFF_MAX_STEPS}))))
+                     AND ($2::TEXT[] IS NULL OR feedurl = ANY($2))
+                     AND ($3::INT[] IS NULL OR feedid = ANY($3))"#
+            )))
+            .bind(ignore_backoff)
+            .bind(only)
+            .bind(feeds)
             .fetch_all(pool)
             .await?;
 
@@ -418,6 +636,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                 let podcast_id: i32 = result.try_get("podcastid")?;
                 refresh_items.push(PodcastRefreshItem {
                     podcast_id,
+                    feed_id: result.try_get("feedid")?,
                     feed_url: result.try_get("feedurl")?,
                     artwork_url: result.try_get("artworkurl").ok(),
                     auto_download: result.try_get("autodownload")?,
@@ -429,26 +648,45 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                     feed_cutoff: result.try_get("feedcutoffdays").ok(),
                     etag: result.try_get::<Option<String>, _>("feedetag").ok().flatten(),
                     last_modified: result.try_get::<Option<String>, _>("feedlastmodified").ok().flatten(),
+                    content_hash: result.try_get::<Option<String>, _>("feedcontenthash").ok().flatten(),
+                    refresh_interval: result.try_get::<Option<i32>, _>("refreshintervalminutes").ok().flatten(),
                 });
             }
         }
         crate::database::DatabasePool::MySQL(pool) => {
-            let rows = sqlx::query(
-                "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, AutoQueue, Username, Password,
-                        IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified
+            let in_list = |column: &str, n: Option<usize>| match n {
+                Some(n) if n > 0 => format!("AND {column} IN ({})", vec!["?"; n].join(", ")),
+                Some(_) => "AND FALSE".to_string(),
+                None => String::new(),
+            };
+            let urls = in_list("FeedURL", only.map(<[String]>::len));
+            let feed_ids = in_list("FeedID", feeds.map(<[i32]>::len));
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(format!(
+                "SELECT PodcastID, FeedID, FeedURL, ArtworkURL, AutoDownload, AutoQueue, Username, Password,
+                        IsYouTubeChannel, UserID, FeedCutoffDays, FeedETag, FeedLastModified, FeedContentHash,
+                        RefreshIntervalMinutes
                  FROM Podcasts
                  WHERE COALESCE(RefreshPodcast, 1) = 1
-                   AND (COALESCE(ConsecutiveFailures, 0) = 0
+                   AND (RefreshNotBefore IS NULL OR RefreshNotBefore <= NOW())
+                   AND (? OR COALESCE(ConsecutiveFailures, 0) = 0
                         OR LastRefreshAttempt IS NULL
-                        OR LastRefreshAttempt < NOW() - INTERVAL (30 * LEAST(COALESCE(ConsecutiveFailures, 0), 48)) MINUTE)"
-            )
-            .fetch_all(pool)
-            .await?;
+                        OR LastRefreshAttempt < NOW() - INTERVAL ({BACKOFF_STEP_MINUTES} * LEAST(COALESCE(ConsecutiveFailures, 0), {BACKOFF_MAX_STEPS})) MINUTE)
+                   {urls} {feed_ids}"
+            )))
+            .bind(ignore_backoff);
+            for url in only.unwrap_or_default() {
+                query = query.bind(url);
+            }
+            for id in feeds.unwrap_or_default() {
+                query = query.bind(id);
+            }
+            let rows = query.fetch_all(pool).await?;
 
             for result in rows {
                 let podcast_id: i32 = result.try_get("PodcastID")?;
                 refresh_items.push(PodcastRefreshItem {
                     podcast_id,
+                    feed_id: result.try_get("FeedID")?,
                     feed_url: result.try_get("FeedURL")?,
                     artwork_url: result.try_get("ArtworkURL").ok(),
                     auto_download: result.try_get("AutoDownload")?,
@@ -460,120 +698,144 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                     feed_cutoff: result.try_get("FeedCutoffDays").ok(),
                     etag: result.try_get::<Option<String>, _>("FeedETag").ok().flatten(),
                     last_modified: result.try_get::<Option<String>, _>("FeedLastModified").ok().flatten(),
+                    content_hash: result.try_get::<Option<String>, _>("FeedContentHash").ok().flatten(),
+                    refresh_interval: result.try_get::<Option<i32>, _>("RefreshIntervalMinutes").ok().flatten(),
                 });
             }
         }
     }
 
-    // Partition into YouTube items (refreshed per-podcast) and RSS feeds grouped by
-    // (feed_url, username, password) so a feed subscribed by many users is fetched + parsed ONCE.
-    use std::collections::HashMap;
-    let mut youtube_items: Vec<PodcastRefreshItem> = Vec::new();
-    let mut feed_groups: HashMap<(String, Option<String>, Option<String>), Vec<PodcastRefreshItem>> = HashMap::new();
 
+    Ok(refresh_items)
+}
+
+// Background refresh of every user's podcasts (no WebSocket), due or not.
+async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
+    info!("Running refresh");
+    let items = load_refresh_items(state, None, None, false).await?;
+    refresh_items(state, items).await;
+    info!("Refresh completed");
+    Ok(())
+}
+
+/// Refresh the feeds whose next refresh is due, the longest overdue first, at most
+/// `REFRESH_TICK_MAX_FEEDS` of them. Returns how many feeds were refreshed.
+pub async fn refresh_due_podcasts(state: &AppState) -> AppResult<usize> {
+    // Subscriptions added or moved since the last tick join their feed first.
+    if let Err(e) = state.db_pool.link_unlinked_feeds().await {
+        warn!("Linking podcasts to their feeds failed: {}", e);
+    }
+    let due = state.db_pool.due_refresh_feeds(REFRESH_TICK_MAX_FEEDS).await?;
+    if due.is_empty() {
+        return Ok(0);
+    }
+    let items = load_refresh_items(state, None, Some(&due), false).await?;
+    debug!("Refreshing {} due feeds", due.len());
+    Ok(refresh_items(state, items).await)
+}
+
+/// Refresh these feeds for every subscriber now (a Podping announced an update). Failure backoff
+/// is skipped: the host says there's something new. Returns how many feeds were refreshed.
+pub async fn refresh_feed_urls(state: &AppState, urls: &[String]) -> AppResult<usize> {
+    if urls.is_empty() {
+        return Ok(0);
+    }
+    let items = load_refresh_items(state, Some(urls), None, true).await?;
+    Ok(refresh_items(state, items).await)
+}
+
+/// Refresh podcast rows: RSS feeds once per (feed, credentials) and YouTube channels once per
+/// channel, for all their subscribers, then playlist counts of users with new episodes. Returns
+/// the number of feeds and channels refreshed.
+async fn refresh_items(state: &AppState, refresh_items: Vec<PodcastRefreshItem>) -> usize {
+    // Group by feed, so a feed or channel subscribed by many users is fetched + parsed ONCE. A row
+    // not linked to its feed yet groups by address and credentials, which is what a feed is.
+    use std::collections::HashMap;
+    #[derive(PartialEq, Eq, Hash)]
+    enum Group {
+        Feed(i32),
+        Unlinked(FeedKey),
+    }
+    let mut youtube_groups: HashMap<Group, Vec<PodcastRefreshItem>> = HashMap::new();
+    let mut feed_groups: HashMap<Group, Vec<PodcastRefreshItem>> = HashMap::new();
+
+    let owners: HashMap<i32, i32> = refresh_items.iter().map(|i| (i.podcast_id, i.user_id)).collect();
     for item in refresh_items {
         if item.feed_url.starts_with("local://") {
             debug!("Skipping local podcast {} - not an RSS feed", item.podcast_id);
             continue;
         }
-        if item.is_youtube {
-            youtube_items.push(item);
-        } else {
-            let key = (item.feed_url.clone(), item.username.clone(), item.password.clone());
-            feed_groups.entry(key).or_default().push(item);
-        }
+        let key = match item.feed_id {
+            Some(id) => Group::Feed(id),
+            None => Group::Unlinked(FeedLock::key(&item.feed_url, item.username.as_deref(), item.password.as_deref())),
+        };
+        let groups = if item.is_youtube { &mut youtube_groups } else { &mut feed_groups };
+        groups.entry(key).or_default().push(item);
     }
 
     use futures::stream::{self, StreamExt};
 
     // Refresh unique RSS feeds with bounded concurrency.
     let groups: Vec<Vec<PodcastRefreshItem>> = feed_groups.into_values().collect();
+    let channels: Vec<Vec<PodcastRefreshItem>> = youtube_groups.into_values().collect();
+    let feeds = groups.len() + channels.len();
     let subscription_count: usize = groups.iter().map(|g| g.len()).sum();
-    info!(
+    debug!(
         "Running refresh: {} unique RSS feeds ({} subscriptions), {} YouTube channels (concurrency={})",
         groups.len(),
         subscription_count,
-        youtube_items.len(),
+        channels.len(),
         REFRESH_CONCURRENCY
     );
+    // Users whose podcasts got new episodes, for their playlist counts.
+    let touched: std::sync::Mutex<HashSet<i32>> = Default::default();
     stream::iter(groups)
-        .for_each_concurrent(Some(REFRESH_CONCURRENCY), |group| async move {
-            refresh_feed_group(state, &group).await;
-        })
-        .await;
-
-    // Refresh YouTube channels with bounded concurrency.
-    stream::iter(youtube_items)
-        .for_each_concurrent(Some(REFRESH_CONCURRENCY), |item| async move {
-            refresh_youtube_item(state, &item).await;
-        })
-        .await;
-
-    // Run auto-complete check for all users with auto-complete enabled after episode refresh
-    info!("Running auto-complete threshold check for all users...");
-    match state.db_pool.get_users_with_auto_complete_enabled().await {
-        Ok(users_with_auto_complete) => {
-            let mut total_completed = 0;
-            for user_auto_complete in users_with_auto_complete {
-                match state.db_pool.auto_complete_user_episodes(
-                    user_auto_complete.user_id, 
-                    user_auto_complete.auto_complete_seconds
-                ).await {
-                    Ok(completed_count) => {
-                        if completed_count > 0 {
-                            info!("Auto-completed {} episodes for user {} (threshold: {}s)", 
-                                    completed_count, user_auto_complete.user_id, user_auto_complete.auto_complete_seconds);
-                        }
-                        total_completed += completed_count;
-                    }
-                    Err(e) => {
-                        warn!("Failed to run auto-complete for user {}: {}", user_auto_complete.user_id, e);
-                    }
+        .for_each_concurrent(Some(REFRESH_CONCURRENCY), |group| {
+            let (owners, touched) = (&owners, &touched);
+            async move {
+                let rep = &group[0];
+                let _lock = FeedLock::acquire(FeedLock::key(&rep.feed_url, rep.username.as_deref(), rep.password.as_deref())).await;
+                // Failures are recorded on the podcast rows and logged inside.
+                if let Ok(new_eps) = refresh_feed_group(state, &group).await {
+                    touched.lock().unwrap().extend(new_eps.iter().filter_map(|e| owners.get(&e.podcastid)));
                 }
             }
-            if total_completed > 0 {
-                info!("Auto-complete threshold check completed: {} total episodes marked complete", total_completed);
-            } else {
-                info!("Auto-complete threshold check completed: no episodes needed completion");
+        })
+        .await;
+
+    // Refresh YouTube channels with bounded concurrency (yt-dlp has its own, lower limit).
+    stream::iter(channels)
+        .for_each_concurrent(Some(REFRESH_CONCURRENCY), |group| {
+            let (owners, touched) = (&owners, &touched);
+            async move {
+                let _lock = FeedLock::acquire(FeedLock::key(&group[0].feed_url, None, None)).await;
+                if let Ok(new_videos) = refresh_youtube_group(state, &group).await {
+                    touched.lock().unwrap().extend(new_videos.iter().filter_map(|e| owners.get(&e.podcastid)));
+                }
             }
-        }
-        Err(e) => {
-            warn!("Failed to get users with auto-complete enabled: {}", e);
+        })
+        .await;
+
+    let touched = touched.into_inner().unwrap();
+    for user_id in &touched {
+        if let Err(e) = state.db_pool.update_user_playlist_counts(*user_id).await {
+            warn!("Updating playlist counts for user {} failed: {}", user_id, e);
         }
     }
-    
-    info!("Refresh completed");
-    Ok(())
+
+    feeds
 }
 
-// Helper function for admin gPodder sync
-async fn run_admin_gpodder_sync(state: &AppState, user_id: i32, sync_type: &str) -> AppResult<SyncResult> {
-    match sync_type {
-        "nextcloud" => {
-            match state.db_pool.sync_with_nextcloud_for_user(user_id).await {
-                Ok(success) => {
-                    if success {
-                        Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
-                    } else {
-                        Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
-                    }
-                }
-                Err(e) => Err(e)
-            }
-        }
-        "gpodder" | "external" | "both" => {
-            match state.db_pool.gpodder_sync(user_id).await {
-                Ok(sync_result) => {
-                    Ok(SyncResult {
-                        synced_podcasts: sync_result.synced_podcasts,
-                        synced_episodes: sync_result.synced_episodes,
-                    })
-                }
-                Err(e) => Err(e)
-            }
-        }
-        _ => Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
-    }
+// Sync one user with their external server through the sync engine. Users of the internal
+// server only have nothing to sync: it works on the same database.
+async fn run_admin_gpodder_sync(state: &AppState, user_id: i32) -> AppResult<SyncResult> {
+    let summary = engine::run_for_user(&state.db_pool, &state.task_spawner, user_id, RunMode::Incremental).await?;
+    Ok(summary
+        .map(|s| SyncResult {
+            synced_podcasts: (s.subscriptions_queued + s.subscriptions_removed) as i32,
+            synced_episodes: s.actions_applied as i32,
+        })
+        .unwrap_or(SyncResult { synced_podcasts: 0, synced_episodes: 0 }))
 }
 
 // User-specific refresh via WebSocket with real-time progress
@@ -711,7 +973,9 @@ async fn send_error_and_close(mut socket: WebSocket, error: &str) -> Result<(), 
     Ok(())
 }
 
-async fn run_refresh_process(
+/// A user's manual refresh (what the refresh websocket runs), streaming progress and new
+/// episodes into `tx`.
+pub async fn run_refresh_process(
     user_id: i32,
     nextcloud_refresh: bool,
     tx: tokio::sync::mpsc::Sender<RefreshMessage>,
@@ -719,66 +983,14 @@ async fn run_refresh_process(
 ) -> AppResult<()> {
     info!("Starting refresh process for user_id: {}, nextcloud_refresh: {}", user_id, nextcloud_refresh);
     
-    // PRE-REFRESH GPODDER SYNC - matches Python implementation exactly
-    if nextcloud_refresh {
-        info!("Pre-refresh gPodder sync requested for user {}", user_id);
-        
-        let _ = tx.send(RefreshMessage::Status(RefreshStatus {
-            progress: RefreshProgress {
-                current: 0,
-                total: 1,
-                current_podcast: "Checking gPodder sync settings...".to_string(),
-            },
-        })).await;
-
-        // Check if user has gPodder sync configured
-        let gpodder_status = state.db_pool.gpodder_get_status(user_id).await?;
-        
-        if gpodder_status.sync_type != "None" && !gpodder_status.sync_type.is_empty() {
-            info!("gPodder sync is enabled for user {}, sync_type: {}", user_id, gpodder_status.sync_type);
-            
-            let _ = tx.send(RefreshMessage::Status(RefreshStatus {
-                progress: RefreshProgress {
-                    current: 0,
-                    total: 1,
-                    current_podcast: format!("Syncing with gPodder ({})...", gpodder_status.sync_type),
-                },
-            })).await;
-
-            match handle_gpodder_sync(&state, user_id, &gpodder_status.sync_type).await {
-                Ok(sync_result) => {
-                    info!("gPodder sync successful for user {}: {} podcasts, {} episodes", 
-                        user_id, sync_result.synced_podcasts, sync_result.synced_episodes);
-                    
-                    let _ = tx.send(RefreshMessage::Status(RefreshStatus {
-                        progress: RefreshProgress {
-                            current: 0,
-                            total: 1,
-                            current_podcast: format!("gPodder sync completed: {} podcasts, {} episodes", 
-                                sync_result.synced_podcasts, sync_result.synced_episodes),
-                        },
-                    })).await;
-                }
-                Err(e) => {
-                    warn!("gPodder sync failed for user {}: {}", user_id, e);
-                    tracing::error!("gPodder sync failed for user {}: {}", user_id, e);
-                    
-                    let _ = tx.send(RefreshMessage::Status(RefreshStatus {
-                        progress: RefreshProgress {
-                            current: 0,
-                            total: 1,
-                            current_podcast: format!("gPodder sync failed: {}", e),
-                        },
-                    })).await;
-                    
-                    // Continue with regular refresh even if gPodder sync fails
-                }
-            }
-        } else {
-            info!("gPodder sync not enabled for user {} (enabled: {}, type: {})", 
-                user_id, gpodder_status.sync_type != "None" && !gpodder_status.sync_type.is_empty(), gpodder_status.sync_type);
-        }
-    }
+    // External sync runs alongside the refresh, so a slow sync server can't hold it up. Its
+    // result goes into the final message (clients stop reading there).
+    let sync = if nextcloud_refresh && state.db_pool.sync_targets_for_user(user_id).await?.iter().any(|t| t.enabled) {
+        let state = state.clone();
+        Some(tokio::spawn(async move { run_admin_gpodder_sync(&state, user_id).await }))
+    } else {
+        None
+    };
 
     // Get total podcast count for progress tracking
     let total_podcasts = state.db_pool.get_user_podcast_count(user_id).await?;
@@ -849,25 +1061,45 @@ async fn run_refresh_process(
     let failed_refreshes = outcomes.len() - successful_refreshes;
     let total_new_episodes: usize = outcomes.iter().map(|(_, n)| n).sum();
 
-    // Final completion summary - matches Python logging
-    warn!("Refresh completed for user {}: {}/{} podcasts successful, {} failed, {} total new episodes", 
+    info!("Refresh completed for user {}: {}/{} podcasts successful, {} failed, {} total new episodes", 
         user_id, successful_refreshes, total_podcasts, failed_refreshes, total_new_episodes);
 
+    if total_new_episodes > 0 {
+        if let Err(e) = state.db_pool.update_user_playlist_counts(user_id).await {
+            warn!("Updating playlist counts for user {} failed: {}", user_id, e);
+        }
+    }
+
+    let mut summary = format!(
+        "Refresh completed: {}/{} successful, {} new episodes",
+        successful_refreshes, total_podcasts, total_new_episodes
+    );
+    if let Some(mut sync) = sync {
+        summary.push_str(&match tokio::time::timeout(SYNC_REPORT_WAIT, &mut sync).await {
+            Ok(Ok(Ok(r))) => format!("; sync: {} podcasts, {} episodes", r.synced_podcasts, r.synced_episodes),
+            Ok(Ok(Err(e))) => format!("; sync failed: {}", e),
+            Ok(Err(_)) => "; sync failed".to_string(),
+            Err(_) => "; sync still running in the background".to_string(),
+        });
+    }
     let _ = tx.send(RefreshMessage::Status(RefreshStatus {
         progress: RefreshProgress {
             current: total_podcasts,
             total: total_podcasts,
-            current_podcast: format!("Refresh completed: {}/{} successful, {} new episodes", 
-                successful_refreshes, total_podcasts, total_new_episodes),
+            current_podcast: summary,
         },
     })).await;
 
     Ok(())
 }
 
+// How long the manual refresh waits, once done, for the sync it started to report.
+const SYNC_REPORT_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
 #[derive(Debug, Clone)]
 pub struct PodcastForRefresh {
     pub id: i32,
+    pub feed_id: Option<i32>,
     pub name: String,
     pub feed_url: String,
     pub artwork_url: Option<String>,
@@ -878,6 +1110,26 @@ pub struct PodcastForRefresh {
     pub password: Option<String>,
     pub feed_cutoff_days: Option<i32>,
     pub user_id: i32,
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
+    pub content_hash: Option<String>,
+    pub refresh_interval: Option<i32>,
+    /// The background refresh succeeded on this feed in the last 2 minutes.
+    pub recently_refreshed: bool,
+    /// The host's Retry-After hold hasn't expired yet.
+    pub throttled: bool,
+}
+
+/// Refresh one of the user's podcasts now (the feed problems list's "Refresh now"). Same path
+/// and skips as the manual refresh. `Ok(false)` when the user has no such podcast.
+pub async fn refresh_podcast_now(state: &AppState, user_id: i32, podcast_id: i32) -> AppResult<bool> {
+    let podcasts = state.db_pool.get_user_podcasts_for_refresh(user_id).await?;
+    let Some(podcast) = podcasts.iter().find(|p| p.id == podcast_id) else { return Ok(false) };
+    // A failure is recorded and shown with the feed; the caller reads the new state.
+    if let Err(e) = refresh_single_podcast(state, podcast, user_id, false).await {
+        debug!("Refreshing podcast {} now failed: {}", podcast_id, e);
+    }
+    Ok(true)
 }
 
 async fn refresh_single_podcast(
@@ -889,7 +1141,7 @@ async fn refresh_single_podcast(
     info!("Refreshing podcast: {} (ID: {})", podcast.name, podcast.id);
 
     if podcast.is_youtube {
-        refresh_youtube_channel(state, podcast).await
+        refresh_youtube_channel(state, podcast, user_id).await
     } else {
         refresh_rss_feed(state, podcast, user_id).await
     }
@@ -902,50 +1154,31 @@ async fn refresh_rss_feed(
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
     debug!("Refreshing RSS feed for podcast: {}", podcast.name);
 
-    let ids = [podcast.id];
-    let artwork = podcast.artwork_url.as_deref().unwrap_or("");
+    if podcast.feed_url.starts_with("local://") {
+        return Ok(Vec::new());
+    }
+    // Nothing can have changed since a refresh moments ago, and a throttled host asked us to
+    // wait; both count as checked.
+    if podcast.recently_refreshed || podcast.throttled {
+        debug!(
+            "Skipping manual refresh of podcast {} (recently refreshed: {}, throttled: {})",
+            podcast.id, podcast.recently_refreshed, podcast.throttled
+        );
+        return Ok(Vec::new());
+    }
 
-    // A user-initiated refresh always does a full fetch (no stored validators passed) — the user
-    // explicitly asked to check for new episodes — but we still capture fresh ETag/Last-Modified
-    // so the scheduled background refresh can revalidate cheaply afterwards. The whole feed is
-    // fetched + parsed once and applied through the shared dedup/insert path, with the podcast's
-    // FeedCutoffDays honored (previously ignored for RSS).
-    let new_episodes = match state
-        .db_pool
-        .fetch_feed_conditional(
-            &podcast.feed_url,
-            podcast.username.as_deref(),
-            podcast.password.as_deref(),
-            None,
-            None,
-        )
-        .await
-    {
-        Ok(crate::database::FeedFetch::NotModified) => {
-            let _ = state.db_pool.record_refresh_success(&ids).await;
-            Vec::new()
-        }
-        Ok(crate::database::FeedFetch::Fetched { body, etag, last_modified }) => {
-            let parsed = state.db_pool.parse_feed_body(&body, podcast.id, artwork).await?;
-            let new_eps = state
-                .db_pool
-                .apply_parsed_episodes(podcast.id, &parsed, artwork, podcast.feed_cutoff_days, true)
-                .await?;
-            let _ = state
-                .db_pool
-                .store_feed_cache_validators(&ids, etag.as_deref(), last_modified.as_deref())
-                .await;
-            let _ = state.db_pool.record_refresh_success(&ids).await;
-            new_eps
-        }
-        Err(e) => {
-            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
-            return Err(e);
-        }
+    // Same path as the scheduled refresh: conditional GET + body hash, the podcast's
+    // FeedCutoffDays, auto-download/queue/transcribe, failure and Retry-After tracking.
+    let item = rss_refresh_item(podcast, user_id);
+    let Some(_lock) = FeedLock::try_acquire(FeedLock::key(&item.feed_url, item.username.as_deref(), item.password.as_deref())) else {
+        debug!("Skipping manual refresh of podcast {}: it's being refreshed right now", podcast.id);
+        return Ok(Vec::new());
     };
-
-    queue_auto_downloads(state, user_id, podcast.auto_download, &new_episodes).await;
-    queue_auto_new_episodes(state, user_id, podcast.auto_queue, &new_episodes).await;
+    // The feed is refreshed for everyone subscribed to it: its schedule and validators are
+    // shared, so refreshing one subscription alone would leave the others behind.
+    let group = feed_group(state, podcast.feed_id, item).await?;
+    let mut new_episodes = refresh_feed_group(state, &group).await?;
+    new_episodes.retain(|e| e.podcastid == podcast.id);
 
     if !new_episodes.is_empty() {
         info!("Refreshed podcast '{}' for user {}: {} new episodes", podcast.name, user_id, new_episodes.len());
@@ -954,39 +1187,101 @@ async fn refresh_rss_feed(
     Ok(new_episodes)
 }
 
+/// Read one of the user's podcasts' feed in full now, even if it looks unchanged, so its details
+/// and episodes match the feed. `reset_edits` first hands the details the user edited back to the
+/// feed. `Ok(false)` when the user has no such podcast.
+pub async fn refresh_podcast_details(state: &AppState, user_id: i32, podcast_id: i32, reset_edits: bool) -> AppResult<bool> {
+    let podcasts = state.db_pool.get_user_podcasts_for_refresh(user_id).await?;
+    let Some(podcast) = podcasts.iter().find(|p| p.id == podcast_id) else { return Ok(false) };
+    if reset_edits {
+        state.db_pool.clear_metadata_edits(podcast_id, user_id).await?;
+    }
+    if podcast.is_youtube {
+        refresh_youtube_channel(state, podcast, user_id).await?;
+        return Ok(true);
+    }
+    if podcast.feed_url.starts_with("local://") {
+        return Ok(true);
+    }
+    if podcast.throttled {
+        return Err(AppError::external_error("The feed's host asked us to wait before reading it again"));
+    }
+    let item = rss_refresh_item(podcast, user_id);
+    let Some(_lock) = FeedLock::try_acquire(FeedLock::key(&item.feed_url, item.username.as_deref(), item.password.as_deref())) else {
+        // Being read right now; any reset edits come back from the feed on its next full read.
+        return Ok(true);
+    };
+    let mut group = feed_group(state, podcast.feed_id, item).await?;
+    // No validators: fetch and apply the whole feed.
+    for i in group.iter_mut() {
+        i.etag = None;
+        i.last_modified = None;
+        i.content_hash = None;
+    }
+    refresh_feed_group(state, &group).await?;
+    Ok(true)
+}
+
+fn rss_refresh_item(podcast: &PodcastForRefresh, user_id: i32) -> PodcastRefreshItem {
+    PodcastRefreshItem {
+        podcast_id: podcast.id,
+        feed_id: podcast.feed_id,
+        feed_url: podcast.feed_url.clone(),
+        artwork_url: podcast.artwork_url.clone(),
+        auto_download: podcast.auto_download,
+        auto_queue: podcast.auto_queue,
+        username: podcast.username.clone(),
+        password: podcast.password.clone(),
+        is_youtube: false,
+        user_id,
+        feed_cutoff: podcast.feed_cutoff_days,
+        etag: podcast.etag.clone(),
+        last_modified: podcast.last_modified.clone(),
+        content_hash: podcast.content_hash.clone(),
+        refresh_interval: podcast.refresh_interval,
+    }
+}
+
 async fn refresh_youtube_channel(
     state: &AppState,
     podcast: &PodcastForRefresh,
+    user_id: i32,
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
     debug!("Refreshing YouTube channel: {}", podcast.name);
 
-    let channel_id = if podcast.feed_url.contains("channel/") {
-        podcast.feed_url.split("channel/").nth(1).unwrap_or(&podcast.feed_url).split('/').next().unwrap_or(&podcast.feed_url).split('?').next().unwrap_or(&podcast.feed_url)
-    } else {
-        &podcast.feed_url
-    };
-
-    let ids = [podcast.id];
-    match crate::handlers::youtube::process_youtube_channel(
-        podcast.id,
-        channel_id,
-        podcast.feed_cutoff_days.unwrap_or(30),
-        state,
-    ).await {
-        Ok(_) => {
-            info!("Successfully refreshed YouTube channel: {}", podcast.name);
-            let _ = state.db_pool.record_refresh_success(&ids).await;
-            // YouTube new-episode surfacing over the websocket is not yet wired up
-            // (process_youtube_channel does not return the inserted rows); the channel is still
-            // refreshed and new videos appear on the next list load.
-            Ok(Vec::new())
-        }
-        Err(e) => {
-            warn!("Error refreshing YouTube channel {}: {}", podcast.name, e);
-            let _ = state.db_pool.record_refresh_failure(&ids, &e.to_string()).await;
-            Err(e)
-        }
+    if podcast.recently_refreshed || podcast.throttled {
+        debug!(
+            "Skipping manual refresh of channel {} (recently refreshed: {}, throttled: {})",
+            podcast.id, podcast.recently_refreshed, podcast.throttled
+        );
+        return Ok(Vec::new());
     }
+    let Some(_lock) = FeedLock::try_acquire(FeedLock::key(&podcast.feed_url, None, None)) else {
+        debug!("Skipping manual refresh of channel {}: it's being refreshed right now", podcast.id);
+        return Ok(Vec::new());
+    };
+    // Like a feed, the channel is refreshed for everyone subscribed to it.
+    let item = PodcastRefreshItem {
+        podcast_id: podcast.id,
+        feed_id: podcast.feed_id,
+        feed_url: podcast.feed_url.clone(),
+        artwork_url: podcast.artwork_url.clone(),
+        auto_download: podcast.auto_download,
+        auto_queue: podcast.auto_queue,
+        username: None,
+        password: None,
+        is_youtube: true,
+        user_id,
+        feed_cutoff: podcast.feed_cutoff_days,
+        etag: podcast.etag.clone(),
+        last_modified: podcast.last_modified.clone(),
+        content_hash: podcast.content_hash.clone(),
+        refresh_interval: podcast.refresh_interval,
+    };
+    let group = feed_group(state, podcast.feed_id, item).await?;
+    let mut new_videos = refresh_youtube_group(state, &group).await?;
+    new_videos.retain(|e| e.podcastid == podcast.id);
+    Ok(new_videos)
 }
 
 // Define sync result structure to match our database return type
@@ -996,103 +1291,9 @@ pub struct SyncResult {
     pub synced_episodes: i32,
 }
 
-async fn handle_gpodder_sync(state: &AppState, user_id: i32, sync_type: &str) -> AppResult<SyncResult> {
-    info!("Starting gPodder sync for user {}, sync_type: {}", user_id, sync_type);
-    
-    // Determine which sync function to call based on sync type - matches Python logic exactly
-    match sync_type {
-        "nextcloud" => {
-            info!("Performing Nextcloud gPodder sync for user {}", user_id);
-            
-            // Use the nextcloud sync functionality - this handles the /index.php/apps/gpoddersync endpoints
-            match state.db_pool.sync_with_nextcloud_for_user(user_id).await {
-                Ok(success) => {
-                    if success {
-                        info!("Nextcloud sync successful for user {}", user_id);
-                        Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
-                    } else {
-                        info!("Nextcloud sync returned false for user {}", user_id);
-                        Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
-                    }
-                }
-                Err(e) => {
-                    warn!("Nextcloud sync failed for user {}: {}", user_id, e);
-                    Err(e)
-                }
-            }
-        }
-        "gpodder" | "external" | "both" => {
-            info!("Performing standard gPodder sync for user {}, type: {}", user_id, sync_type);
-            
-            // Use the standard gPodder sync functionality
-            match state.db_pool.gpodder_sync(user_id).await {
-                Ok(sync_result) => {
-                    info!("Standard gPodder sync successful for user {}: {} podcasts, {} episodes", 
-                        user_id, sync_result.synced_podcasts, sync_result.synced_episodes);
-                    
-                    Ok(SyncResult {
-                        synced_podcasts: sync_result.synced_podcasts,
-                        synced_episodes: sync_result.synced_episodes,
-                    })
-                }
-                Err(e) => {
-                    warn!("Standard gPodder sync failed for user {}: {}", user_id, e);
-                    Err(e)
-                }
-            }
-        }
-        _ => {
-            debug!("Unknown sync type '{}' for user {}, skipping sync", sync_type, user_id);
-            Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
-        }
-    }
-}
-
-// Internal functions for scheduler (no HTTP context needed)
+/// Refresh every feed now, whether it's due or not.
 pub async fn refresh_pods_admin_internal(state: &AppState) -> AppResult<()> {
-    tracing::info!("Starting internal podcast refresh (scheduler)");
     refresh_all_podcasts_background(state).await
-}
-
-pub async fn refresh_gpodder_subscriptions_admin_internal(state: &AppState) -> AppResult<()> {
-    tracing::info!("Starting internal GPodder sync (scheduler)");
-    
-    // Wait for GPodder service to be ready (5 second delay on startup)
-    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-    tracing::info!("GPodder service startup delay completed");
-    
-    // Get all users who have gPodder sync enabled (internal, external, both - NOT nextcloud)
-    let gpodder_users = state.db_pool.get_all_users_with_gpodder_sync().await?;
-    tracing::info!("Found {} users with GPodder sync enabled", gpodder_users.len());
-    
-    let mut successful_syncs = 0;
-    let mut failed_syncs = 0;
-    
-    for user_id in gpodder_users.iter() {
-        tracing::info!("Running GPodder sync for user {}", user_id);
-        
-        // Get user's sync type
-        let gpodder_status = state.db_pool.gpodder_get_status(*user_id).await?;
-        
-        // Only sync GPodder types (internal, external, both) - NOT nextcloud
-        if gpodder_status.sync_type != "None" && gpodder_status.sync_type != "nextcloud" && !gpodder_status.sync_type.is_empty() {
-            match run_admin_gpodder_sync(state, *user_id, &gpodder_status.sync_type).await {
-                Ok(_) => {
-                    successful_syncs += 1;
-                    tracing::info!("GPodder sync successful for user {}", user_id);
-                }
-                Err(e) => {
-                    failed_syncs += 1;
-                    tracing::error!("GPodder sync failed for user {}: {}", user_id, e);
-                }
-            }
-        }
-    }
-    
-    tracing::info!("Internal GPodder sync completed: {}/{} users successful ({} failed)",
-        successful_syncs, gpodder_users.len(), failed_syncs);
-    
-    Ok(())
 }
 
 // Separate endpoint for actual Nextcloud refresh (different from GPodder)
@@ -1108,7 +1309,10 @@ pub async fn refresh_gpodder_subscriptions_admin_internal(state: &AppState) -> A
 )]
 pub async fn refresh_nextcloud_subscriptions_admin(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
+    // Server-wide fan-out over every user: admin (or background key) only.
+    crate::handlers::require_admin(&state, &headers).await?;
     info!("Starting admin Nextcloud sync process for all users");
     
     let state_clone = state.clone();
@@ -1119,8 +1323,8 @@ pub async fn refresh_nextcloud_subscriptions_admin(
             let state = state_clone;
             reporter.update_progress(10.0, Some("Starting Nextcloud sync for all users...".to_string())).await?;
             
-            // Get all users who have Nextcloud sync enabled
-            let nextcloud_users = state.db_pool.get_all_users_with_nextcloud_sync().await
+            // Every user syncing with Nextcloud
+            let nextcloud_users = state.db_pool.sync_target_users(Some(TargetKind::Nextcloud)).await
                 .map_err(|e| AppError::internal(&format!("Failed to get Nextcloud users: {}", e)))?;
             
             debug!("Found {} users with Nextcloud sync enabled", nextcloud_users.len());
@@ -1143,18 +1347,11 @@ pub async fn refresh_nextcloud_subscriptions_admin(
                 let progress = 10.0 + ((index as f64 / total_users as f64) * 80.0);
                 reporter.update_progress(progress, Some(format!("Running Nextcloud sync for user {}", user_id))).await?;
                 
-                match state.db_pool.sync_with_nextcloud_for_user(*user_id).await {
-                    Ok(true) => {
-                        successful_syncs += 1;
-                        info!("Nextcloud sync successful for user {}", user_id);
-                    }
-                    Ok(false) => {
-                        info!("Nextcloud sync for user {} - no changes", user_id);
-                        successful_syncs += 1; // Count as success
-                    }
+                match run_admin_gpodder_sync(&state, *user_id).await {
+                    Ok(_) => successful_syncs += 1,
                     Err(e) => {
                         failed_syncs += 1;
-                        warn!("Nextcloud sync failed for user {}: {}", user_id, e);
+                        debug!("Nextcloud sync failed for user {}: {}", user_id, e);
                     }
                 }
             }
@@ -1174,41 +1371,6 @@ pub async fn refresh_nextcloud_subscriptions_admin(
         "detail": "Nextcloud sync initiated",
         "task_id": task_id
     })))
-}
-
-pub async fn refresh_nextcloud_subscriptions_admin_internal(state: &AppState) -> AppResult<()> {
-    tracing::info!("Starting internal Nextcloud sync (scheduler)");
-    
-    // Get all users who have Nextcloud sync enabled
-    let nextcloud_users = state.db_pool.get_all_users_with_nextcloud_sync().await?;
-    tracing::info!("Found {} users with Nextcloud sync enabled", nextcloud_users.len());
-    
-    let mut successful_syncs = 0;
-    let mut failed_syncs = 0;
-    
-    for user_id in nextcloud_users.iter() {
-        tracing::info!("Running Nextcloud sync for user {}", user_id);
-        
-        match state.db_pool.sync_with_nextcloud_for_user(*user_id).await {
-            Ok(true) => {
-                successful_syncs += 1;
-                tracing::info!("Nextcloud sync successful for user {}", user_id);
-            }
-            Ok(false) => {
-                tracing::info!("Nextcloud sync for user {} - no changes", user_id);
-                successful_syncs += 1; // Count as success
-            }
-            Err(e) => {
-                failed_syncs += 1;
-                tracing::error!("Nextcloud sync failed for user {}: {}", user_id, e);
-            }
-        }
-    }
-    
-    tracing::info!("Internal Nextcloud sync completed: {}/{} users successful ({} failed)",
-        successful_syncs, nextcloud_users.len(), failed_syncs);
-    
-    Ok(())
 }
 
 

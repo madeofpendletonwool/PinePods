@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pinepods_mobile/services/logging/app_logger.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 
 class DebugLogsPage extends StatefulWidget {
   const DebugLogsPage({Key? key}) : super(key: key);
@@ -270,7 +271,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                 value: 'filter',
                 child: Row(
                   children: [
-                    Icon(Icons.filter_list),
+                    Icon(PhosphorIconsRegular.funnelSimple),
                     SizedBox(width: 8),
                     Text('Filter'),
                   ],
@@ -280,7 +281,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                 value: 'refresh',
                 child: Row(
                   children: [
-                    Icon(Icons.refresh),
+                    Icon(PhosphorIconsRegular.arrowClockwise),
                     SizedBox(width: 8),
                     Text('Refresh'),
                   ],
@@ -290,7 +291,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                 value: 'scroll_bottom',
                 child: Row(
                   children: [
-                    Icon(Icons.vertical_align_bottom),
+                    Icon(PhosphorIconsRegular.arrowLineDown),
                     SizedBox(width: 8),
                     Text('Scroll to Bottom'),
                   ],
@@ -300,7 +301,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                 value: 'clear',
                 child: Row(
                   children: [
-                    Icon(Icons.clear_all),
+                    Icon(PhosphorIconsRegular.broom),
                     SizedBox(width: 8),
                     Text('Clear Logs'),
                   ],
@@ -330,7 +331,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                       Chip(
                         label: Text(_selectedLevel!.name.toUpperCase()),
                         backgroundColor: _getLevelColor(_selectedLevel!).withOpacity(0.2),
-                        deleteIcon: const Icon(Icons.close, size: 16),
+                        deleteIcon: const Icon(PhosphorIconsRegular.x, size: 16),
                         onDeleted: () {
                           setState(() {
                             _selectedLevel = null;
@@ -346,7 +347,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: _copyCurrentSessionToClipboard,
-                        icon: const Icon(Icons.copy),
+                        icon: const Icon(PhosphorIconsRegular.copy),
                         label: const Text('Copy Current'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
@@ -358,7 +359,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: _openBugTracker,
-                        icon: const Icon(Icons.bug_report),
+                        icon: const Icon(PhosphorIconsRegular.bug),
                         label: const Text('Report Bug'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.orange,
@@ -377,16 +378,16 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
           if (_sessionFiles.isNotEmpty || _hasPreviousCrash)
             ExpansionTile(
               title: const Text('Session Files & Crash Logs'),
-              leading: const Icon(Icons.folder),
+              leading: const Icon(PhosphorIconsRegular.folder),
               initiallyExpanded: false,
               children: [
                 if (_hasPreviousCrash)
                   ListTile(
-                    leading: const Icon(Icons.warning, color: Colors.red),
+                    leading: const Icon(PhosphorIconsRegular.warning, color: Colors.red),
                     title: const Text('Previous Crash Log'),
                     subtitle: const Text('Tap to copy crash log to clipboard'),
                     trailing: IconButton(
-                      icon: const Icon(Icons.copy),
+                      icon: const Icon(PhosphorIconsRegular.copy),
                       onPressed: _copyCrashLogToClipboard,
                     ),
                     onTap: _copyCrashLogToClipboard,
@@ -397,7 +398,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                   
                   return ListTile(
                     leading: Icon(
-                      isCurrentSession ? Icons.play_circle : Icons.history,
+                      isCurrentSession ? PhosphorIconsFill.playCircle : PhosphorIconsRegular.clockCounterClockwise,
                       color: isCurrentSession ? Colors.green : Colors.grey,
                     ),
                     title: Text(fileName),
@@ -409,7 +410,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                       ),
                     ),
                     trailing: IconButton(
-                      icon: const Icon(Icons.copy),
+                      icon: const Icon(PhosphorIconsRegular.copy),
                       onPressed: () => _copySessionFileToClipboard(file),
                     ),
                     onTap: () => _copySessionFileToClipboard(file),
@@ -430,7 +431,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
           if (_showDeviceInfo && _logger.deviceInfo != null)
             ExpansionTile(
               title: const Text('Device Information'),
-              leading: const Icon(Icons.phone_android),
+              leading: const Icon(PhosphorIconsRegular.deviceMobile),
               initiallyExpanded: false,
               children: [
                 Padding(
@@ -459,7 +460,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.inbox_outlined, size: 64, color: Colors.grey),
+                        Icon(PhosphorIconsRegular.tray, size: 64, color: Colors.grey),
                         SizedBox(height: 16),
                         Text(
                           'No logs found',
@@ -488,7 +489,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
           ? FloatingActionButton(
               onPressed: _scrollToBottom,
               tooltip: 'Scroll to bottom',
-              child: const Icon(Icons.vertical_align_bottom),
+              child: const Icon(PhosphorIconsRegular.arrowLineDown),
             )
           : null,
     );
@@ -571,7 +572,7 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                               const SnackBar(content: Text('Log entry copied to clipboard')),
                             );
                           },
-                          icon: const Icon(Icons.copy, size: 16),
+                          icon: const Icon(PhosphorIconsRegular.copy, size: 16),
                           label: const Text('Copy'),
                         ),
                       ],

@@ -23,6 +23,18 @@ pub fn ytdlp_binary() -> String {
     std::env::var("YTDLP_PATH").unwrap_or_else(|_| "yt-dlp".to_string())
 }
 
+/// yt-dlp processes the feed refresh may run at once. Each one is heavy and talks to YouTube, so
+/// this is far below the refresh's feed concurrency.
+const REFRESH_PROCESSES: usize = 3;
+
+static REFRESH_PERMITS: std::sync::LazyLock<tokio::sync::Semaphore> =
+    std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(REFRESH_PROCESSES));
+
+/// Wait for a turn to run yt-dlp from the refresh.
+pub async fn refresh_permit() -> tokio::sync::SemaphorePermit<'static> {
+    REFRESH_PERMITS.acquire().await.expect("yt-dlp permits are never closed")
+}
+
 /// Normalize an arbitrary channel string to one yt-dlp accepts. Anything other than `nightly`
 /// falls back to `stable` so the UI can't persist a value that bricks updates.
 pub fn normalize_channel(channel: &str) -> &'static str {

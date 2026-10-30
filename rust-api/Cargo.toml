@@ -28,7 +28,7 @@ bigdecimal = "0.4.11"
 redis = { version = "1.7.1", features = ["aio", "tokio-comp", "connection-manager"] }
 
 # HTTP Client
-reqwest = { version = "0.13.5", features = ["json", "stream", "cookies", "query", "form"] }
+reqwest = { version = "0.13.5", features = ["json", "stream", "cookies", "query", "form", "gzip", "brotli", "deflate", "zstd"] }
 
 # Configuration and Environment
 config = "0.15.27"
@@ -68,6 +68,10 @@ regex = "1.13.1"
 id3 = "1.17.2"
 mp3-metadata = "0.4.0"
 quick-xml = "0.42.0"
+unicode-normalization = "0.1.26"
+sha2 = "0.10.9"
+hex = "0.4.3"
+pbkdf2 = { version = "0.12.2", default-features = false, features = ["hmac"] }
 
 # Email
 lettre = { version = "0.11.23", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
@@ -82,5 +86,13 @@ futures = "0.3.34"
 # File handling
 tokio-util = { version = "0.7.20", features = ["io"] }
 
+[features]
+# Test-only hooks (e.g. letting the SSRF guard reach the loopback fixture server).
+# Enabled automatically for `cargo test` via the self dev-dependency below.
+test-support = []
+
 [dev-dependencies]
 tower-test = "0.4"
+pinepods-api = { path = ".", features = ["test-support"] }
+# Integration harness (tests/integration). Same versions as the main dependency set.
+http-body-util = "0.1"

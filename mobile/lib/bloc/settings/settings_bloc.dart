@@ -39,8 +39,12 @@ class SettingsBloc extends Bloc {
   final BehaviorSubject<List<String>> _bottomBarOrder = BehaviorSubject<List<String>>();
   final BehaviorSubject<bool> _autoDownloadWifiOnly = BehaviorSubject<bool>();
   final BehaviorSubject<bool> _preferServerDownloadSource = BehaviorSubject<bool>();
+  final BehaviorSubject<bool> _pinepodsUseGravatar = BehaviorSubject<bool>();
   final BehaviorSubject<int> _autoDownloadQueueCount = BehaviorSubject<int>();
   final BehaviorSubject<bool> _mirrorServerDownloads = BehaviorSubject<bool>();
+  final BehaviorSubject<int> _deleteDownloadsAfterDays = BehaviorSubject<int>();
+  final BehaviorSubject<String> _playButtonStyle = BehaviorSubject<String>();
+  final BehaviorSubject<bool> _artworkAccentColors = BehaviorSubject<bool>();
   var _currentSettings = AppSettings.sensibleDefaults();
 
   SettingsBloc(this._settingsService) {
@@ -49,35 +53,29 @@ class SettingsBloc extends Bloc {
     _fetchUserDetailsIfNeeded();
   }
 
+  /// Refreshes the account details mirrored from the server: username and email when
+  /// missing, and the Gravatar setting every start so a change made elsewhere applies.
   Future<void> _fetchUserDetailsIfNeeded() async {
-    // Only fetch if we have server/api key but no username
-    if (_currentSettings.pinepodsServer != null && 
-        _currentSettings.pinepodsApiKey != null &&
-        (_currentSettings.pinepodsUsername == null || _currentSettings.pinepodsUsername!.isEmpty)) {
-      
-      try {
-        final pinepodsService = PinepodsService();
-        pinepodsService.setCredentials(_currentSettings.pinepodsServer!, _currentSettings.pinepodsApiKey!);
-        
-        // Use stored user ID if available, otherwise we need to get it somehow
-        final userId = _currentSettings.pinepodsUserId;
-        print('DEBUG: User ID from settings: $userId');
-        if (userId != null) {
-          final userDetails = await pinepodsService.getUserDetails(userId);
-          print('DEBUG: User details response: $userDetails');
-          if (userDetails != null) {
-            // Update settings with user details
-            final username = userDetails['Username'] ?? userDetails['username'] ?? '';
-            final email = userDetails['Email'] ?? userDetails['email'] ?? '';
-            print('DEBUG: Parsed username: "$username", email: "$email"');
-            setPinepodsUsername(username);
-            setPinepodsEmail(email);
-          }
-        }
-      } catch (e) {
-        // Silently fail - don't break the app if this fails
-        print('Failed to fetch user details on startup: $e');
+    final userId = _currentSettings.pinepodsUserId;
+    if (_currentSettings.pinepodsServer == null || _currentSettings.pinepodsApiKey == null || userId == null) {
+      return;
+    }
+
+    try {
+      final pinepodsService = PinepodsService();
+      pinepodsService.setCredentials(_currentSettings.pinepodsServer!, _currentSettings.pinepodsApiKey!);
+
+      final userDetails = await pinepodsService.getUserDetails(userId);
+      if (userDetails == null) return;
+
+      if (_currentSettings.pinepodsUsername == null || _currentSettings.pinepodsUsername!.isEmpty) {
+        setPinepodsUsername(userDetails['Username'] ?? userDetails['username'] ?? '');
+        setPinepodsEmail(userDetails['Email'] ?? userDetails['email'] ?? '');
       }
+      setPinepodsUseGravatar(userDetails['UseGravatar'] == true);
+    } catch (e) {
+      // Silently fail - don't break the app if this fails
+      print('Failed to fetch user details on startup: $e');
     }
   }
 
@@ -115,8 +113,12 @@ class SettingsBloc extends Bloc {
       bottomBarOrder: _settingsService.bottomBarOrder,
       autoDownloadWifiOnly: _settingsService.autoDownloadWifiOnly,
       preferServerDownloadSource: _settingsService.preferServerDownloadSource,
+      pinepodsUseGravatar: _settingsService.pinepodsUseGravatar,
       autoDownloadQueueCount: _settingsService.autoDownloadQueueCount,
       mirrorServerDownloads: _settingsService.mirrorServerDownloads,
+      deleteDownloadsAfterDays: _settingsService.deleteDownloadsAfterDays,
+      playButtonStyle: _settingsService.playButtonStyle,
+      artworkAccentColors: _settingsService.artworkAccentColors,
     );
 
     _settings.add(_currentSettings);
@@ -276,6 +278,12 @@ class SettingsBloc extends Bloc {
       _settingsService.preferServerDownloadSource = value;
     });
 
+    _pinepodsUseGravatar.listen((value) {
+      _currentSettings = _currentSettings.copyWith(pinepodsUseGravatar: value);
+      _settings.add(_currentSettings);
+      _settingsService.pinepodsUseGravatar = value;
+    });
+
     _autoDownloadQueueCount.listen((value) {
       _currentSettings = _currentSettings.copyWith(autoDownloadQueueCount: value);
       _settings.add(_currentSettings);
@@ -286,6 +294,24 @@ class SettingsBloc extends Bloc {
       _currentSettings = _currentSettings.copyWith(mirrorServerDownloads: value);
       _settings.add(_currentSettings);
       _settingsService.mirrorServerDownloads = value;
+    });
+
+    _deleteDownloadsAfterDays.listen((value) {
+      _currentSettings = _currentSettings.copyWith(deleteDownloadsAfterDays: value);
+      _settings.add(_currentSettings);
+      _settingsService.deleteDownloadsAfterDays = value;
+    });
+
+    _playButtonStyle.listen((value) {
+      _currentSettings = _currentSettings.copyWith(playButtonStyle: value);
+      _settings.add(_currentSettings);
+      _settingsService.playButtonStyle = value;
+    });
+
+    _artworkAccentColors.listen((value) {
+      _currentSettings = _currentSettings.copyWith(artworkAccentColors: value);
+      _settings.add(_currentSettings);
+      _settingsService.artworkAccentColors = value;
     });
   }
 
@@ -337,9 +363,17 @@ class SettingsBloc extends Bloc {
 
   void Function(bool) get setPreferServerDownloadSource => _preferServerDownloadSource.add;
 
+  void Function(bool) get setPinepodsUseGravatar => _pinepodsUseGravatar.add;
+
   void Function(int) get setAutoDownloadQueueCount => _autoDownloadQueueCount.add;
 
   void Function(bool) get setMirrorServerDownloads => _mirrorServerDownloads.add;
+
+  void Function(int) get setDeleteDownloadsAfterDays => _deleteDownloadsAfterDays.add;
+
+  void Function(String) get setPlayButtonStyle => _playButtonStyle.add;
+
+  void Function(bool) get setArtworkAccentColors => _artworkAccentColors.add;
 
   void Function(String) get setTheme => _theme.add;
 
@@ -421,8 +455,12 @@ class SettingsBloc extends Bloc {
     _bottomBarOrder.close();
     _autoDownloadWifiOnly.close();
     _preferServerDownloadSource.close();
+    _pinepodsUseGravatar.close();
     _autoDownloadQueueCount.close();
     _mirrorServerDownloads.close();
+    _deleteDownloadsAfterDays.close();
+    _playButtonStyle.close();
+    _artworkAccentColors.close();
     _settings.close();
   }
 }

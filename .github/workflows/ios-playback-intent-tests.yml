@@ -1,0 +1,13 @@
+name: iOS Playback Intent Tests
+permissions:
+  contents: read
+on:
+  pull_request:
+    paths: ["mobile/ios/**", ".github/workflows/ios-playback-intent-tests.yml"]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift test --package-path mobile/ios/PlaybackSupport

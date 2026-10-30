@@ -4,14 +4,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
-import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/bloc/ui/pager_bloc.dart';
 import 'package:pinepods_mobile/services/network/connectivity_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
-import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
@@ -34,9 +32,13 @@ import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/services/auto_download/auto_download_service.dart';
 import 'package:pinepods_mobile/services/auto_download/queue_download_service.dart';
 import 'package:pinepods_mobile/services/auto_download/mirror_download_service.dart';
-import 'package:pinepods_mobile/ui/utils/live_progress.dart';
+import 'package:pinepods_mobile/services/auto_download/download_cleanup_service.dart';
+import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
+import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
+import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
 
 class PinepodsHome extends StatefulWidget {
   const PinepodsHome({Key? key}) : super(key: key);
@@ -184,12 +186,21 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         userId: settings.pinepodsUserId!,
       );
 
-      // Mirror the server's downloaded episodes to this device (fire-and-forget)
-      MirrorDownloadService.syncMirror(
+      // Clean up finished/old device downloads, then mirror the server's
+      // downloads to this device (fire-and-forget)
+      final userId = settings.pinepodsUserId!;
+      DownloadCleanupService.run(
         context: context,
         pinepodsService: _pinepodsService,
-        userId: settings.pinepodsUserId!,
-      );
+        userId: userId,
+      ).then((_) {
+        if (!mounted) return;
+        MirrorDownloadService.syncMirror(
+          context: context,
+          pinepodsService: _pinepodsService,
+          userId: userId,
+        );
+      });
 
       // Load home data and playlists in parallel
       final futures = await Future.wait([
@@ -197,6 +208,13 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         _pinepodsService.getPlaylists(settings.pinepodsUserId!),
       ]);
 
+      // TEMP-SCREENSHOT-HOOK
+      final _tmp = (futures[0] as HomeOverview).inProgressEpisodes;
+      if (_tmp.isNotEmpty && const String.fromEnvironment('SHOT_EP').isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => Navigator.push(context, MaterialPageRoute(
+            builder: (context) => PinepodsEpisodeDetails(initialEpisode: _tmp[int.parse(const String.fromEnvironment('SHOT_EP'))].toPinepodsEpisode()))));
+      }
+      // END-TEMP-SCREENSHOT-HOOK
       setState(() {
         _homeData = futures[0] as HomeOverview;
         _playlistData = futures[1] as PlaylistResponse;
@@ -218,23 +236,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
       return;
     }
 
-    // Convert HomeEpisode to PinepodsEpisode
-    final episode = PinepodsEpisode(
-      podcastName: homeEpisode.podcastName,
-      episodeTitle: homeEpisode.episodeTitle,
-      episodePubDate: homeEpisode.episodePubDate,
-      episodeDescription: homeEpisode.episodeDescription ?? '',
-      episodeArtwork: homeEpisode.episodeArtwork,
-      episodeUrl: homeEpisode.episodeUrl,
-      episodeDuration: homeEpisode.episodeDuration,
-      listenDuration: homeEpisode.listenDuration,
-      episodeId: homeEpisode.episodeId,
-      completed: homeEpisode.completed,
-      saved: homeEpisode.saved,
-      queued: homeEpisode.queued,
-      downloaded: homeEpisode.downloaded,
-      isYoutube: homeEpisode.isYoutube,
-    );
+    final episode = homeEpisode.toPinepodsEpisode();
 
     try {
       await playPinepodsEpisodeWithOptionalFullScreen(
@@ -397,34 +399,8 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     final homeEpisode = episodes[episodeIndex];
     
     try {
-      // Convert HomeEpisode to Episode for local download
-      final localEpisode = Episode(
-        guid: 'pinepods_${homeEpisode.episodeId}_${DateTime.now().millisecondsSinceEpoch}',
-        pguid: 'pinepods_${homeEpisode.podcastName.replaceAll(' ', '_').toLowerCase()}',
-        podcast: homeEpisode.podcastName,
-        title: homeEpisode.episodeTitle,
-        description: homeEpisode.episodeDescription,
-        imageUrl: homeEpisode.episodeArtwork,
-        contentUrl: homeEpisode.episodeUrl,
-        duration: homeEpisode.episodeDuration,
-        publicationDate: DateTime.tryParse(homeEpisode.episodePubDate),
-        author: homeEpisode.podcastName,
-        season: 0,
-        episode: 0,
-        position: homeEpisode.listenDuration ?? 0,
-        played: homeEpisode.completed,
-        chapters: [],
-        transcriptUrls: [],
-      );
-      
-      final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
-      
-      // First save the episode to the repository so it can be tracked
-      await podcastBloc.podcastService.saveEpisode(localEpisode);
-      
-      // Use the download service from podcast bloc
-      final success = await podcastBloc.downloadService.downloadEpisode(localEpisode);
-      
+      final success = await LocalDownloadUtils.localDownloadEpisode(context, homeEpisode.toPinepodsEpisode());
+
       if (success) {
         _showSnackBar('Episode download started', Colors.green);
       } else {
@@ -693,12 +669,11 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.orange.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.orange.withOpacity(0.4)),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
               children: [
-                Icon(Icons.cloud_off, color: Colors.orange[800]),
+                Icon(PhosphorIconsRegular.cloudSlash, color: Colors.orange[800]),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -754,7 +729,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                   ...preview.map(
                     (e) => ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.download_done),
+                      leading: const Icon(PhosphorIconsRegular.checkCircle),
                       title: Text(
                         e.title ?? 'Untitled episode',
                         maxLines: 1,
@@ -767,7 +742,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                      trailing: const Icon(Icons.play_arrow),
+                      trailing: const Icon(PhosphorIconsFill.play),
                       onTap: () => _playLocalDownload(e),
                     ),
                   ),
@@ -778,7 +753,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: _goToDownloads,
-            icon: const Icon(Icons.download),
+            icon: const Icon(PhosphorIconsRegular.downloadSimple),
             label: const Text('Go to Downloads'),
           ),
           const SizedBox(height: 8),
@@ -787,7 +762,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
               ConnectivityService.instance.refresh();
               _loadHomeContent();
             },
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(PhosphorIconsRegular.arrowClockwise),
             label: const Text('Retry connection'),
           ),
         ],
@@ -884,16 +859,8 @@ class _PinepodsHomeState extends State<PinepodsHome> {
       delegate: SliverChildListDelegate([
         if (_isLoading)
           const Padding(
-            padding: EdgeInsets.all(32.0),
-            child: Center(
-              child: Column(
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Loading your podcasts...'),
-                ],
-              ),
-            ),
+            padding: EdgeInsets.all(48.0),
+            child: Center(child: CircularProgressIndicator()),
           )
         else if (_errorMessage.isNotEmpty)
           if (_errorMessage.isServerConnectionError ||
@@ -969,38 +936,32 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Your Library',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
+        const SoftSectionHeader(title: 'Your Library', padding: EdgeInsets.only(bottom: 10)),
         Row(
           children: [
             Expanded(
-              child: _StatCard(
+              child: _StatTile(
                 title: 'Saved',
-                count: _homeData!.savedCount,
-                icon: Icons.bookmark,
+                value: '${_homeData!.savedCount}',
+                icon: PhosphorIconsFill.bookmarkSimple,
                 color: Colors.orange,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _StatCard(
+              child: _StatTile(
                 title: 'Downloaded',
-                count: _homeData!.downloadedCount,
-                icon: Icons.download,
+                value: '${_homeData!.downloadedCount}',
+                icon: PhosphorIconsRegular.downloadSimple,
                 color: Colors.green,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _StatCard(
+              child: _StatTile(
                 title: 'Queue',
-                count: _homeData!.queueCount,
-                icon: Icons.queue_music,
+                value: '${_homeData!.queueCount}',
+                icon: PhosphorIconsRegular.queue,
                 color: Colors.blue,
               ),
             ),
@@ -1014,41 +975,19 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Continue Listening',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
+        const SoftSectionHeader(title: 'Continue Listening', padding: EdgeInsets.only(bottom: 10)),
         ...(_homeData!.inProgressEpisodes.take(3).map((episode) =>
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _EpisodeCard(
-              episode: episode,
+            child: PinepodsEpisodeCard(
+              episode: episode.toPinepodsEpisode(),
+              margin: EdgeInsets.zero,
               onTap: () {
-                // Convert HomeEpisode to PinepodsEpisode for navigation
-                final pinepodsEpisode = PinepodsEpisode(
-                  podcastName: episode.podcastName,
-                  episodeTitle: episode.episodeTitle,
-                  episodePubDate: episode.episodePubDate,
-                  episodeDescription: episode.episodeDescription ?? '',
-                  episodeArtwork: episode.episodeArtwork,
-                  episodeUrl: episode.episodeUrl,
-                  episodeDuration: episode.episodeDuration,
-                  listenDuration: episode.listenDuration,
-                  episodeId: episode.episodeId,
-                  completed: episode.completed,
-                  saved: episode.saved,
-                  queued: episode.queued,
-                  downloaded: episode.downloaded,
-                  isYoutube: episode.isYoutube,
-                );
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => PinepodsEpisodeDetails(
-                      initialEpisode: pinepodsEpisode,
+                      initialEpisode: episode.toPinepodsEpisode(),
                     ),
                   ),
                 ).then((_) => _refreshHomeContentSilently());
@@ -1066,13 +1005,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Top Podcasts',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
+        const SoftSectionHeader(title: 'Top Podcasts', padding: EdgeInsets.only(bottom: 10)),
         SizedBox(
           height: 180,
           child: ListView.builder(
@@ -1097,40 +1030,19 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Up Next',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
+        const SoftSectionHeader(title: 'Up Next', padding: EdgeInsets.only(bottom: 10)),
         ...(_homeData!.queuePreview.map((episode) =>
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _EpisodeCard(
-              episode: episode,
+            child: PinepodsEpisodeCard(
+              episode: episode.toPinepodsEpisode(),
+              margin: EdgeInsets.zero,
               onTap: () {
-                final pinepodsEpisode = PinepodsEpisode(
-                  podcastName: episode.podcastName,
-                  episodeTitle: episode.episodeTitle,
-                  episodePubDate: episode.episodePubDate,
-                  episodeDescription: episode.episodeDescription ?? '',
-                  episodeArtwork: episode.episodeArtwork,
-                  episodeUrl: episode.episodeUrl,
-                  episodeDuration: episode.episodeDuration,
-                  listenDuration: episode.listenDuration,
-                  episodeId: episode.episodeId,
-                  completed: episode.completed,
-                  saved: episode.saved,
-                  queued: episode.queued,
-                  downloaded: episode.downloaded,
-                  isYoutube: episode.isYoutube,
-                );
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => PinepodsEpisodeDetails(
-                      initialEpisode: pinepodsEpisode,
+                      initialEpisode: episode.toPinepodsEpisode(),
                     ),
                   ),
                 ).then((_) => _refreshHomeContentSilently());
@@ -1148,29 +1060,23 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'This Week',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
+        const SoftSectionHeader(title: 'This Week', padding: EdgeInsets.only(bottom: 10)),
         Row(
           children: [
             Expanded(
-              child: _WeeklyStatCard(
+              child: _StatTile(
                 title: 'Listened',
                 value: stats.formattedListened,
-                icon: Icons.headphones,
+                icon: PhosphorIconsRegular.headphones,
                 color: Colors.purple,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _WeeklyStatCard(
+              child: _StatTile(
                 title: 'Completed',
                 value: stats.episodesCompleted.toString(),
-                icon: Icons.check_circle,
+                icon: PhosphorIconsFill.checkCircle,
                 color: Colors.green,
               ),
             ),
@@ -1184,13 +1090,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Smart Playlists',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
+        const SoftSectionHeader(title: 'Smart Playlists', padding: EdgeInsets.only(bottom: 10)),
         SizedBox(
           height: 120,
           child: ListView.builder(
@@ -1215,41 +1115,19 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Recent Episodes',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
+        const SoftSectionHeader(title: 'Recent Episodes', padding: EdgeInsets.only(bottom: 10)),
         ...(_homeData!.recentEpisodes.take(5).map((episode) =>
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _EpisodeCard(
-              episode: episode,
+            child: PinepodsEpisodeCard(
+              episode: episode.toPinepodsEpisode(),
+              margin: EdgeInsets.zero,
               onTap: () {
-                // Convert HomeEpisode to PinepodsEpisode for navigation
-                final pinepodsEpisode = PinepodsEpisode(
-                  podcastName: episode.podcastName,
-                  episodeTitle: episode.episodeTitle,
-                  episodePubDate: episode.episodePubDate,
-                  episodeDescription: episode.episodeDescription ?? '',
-                  episodeArtwork: episode.episodeArtwork,
-                  episodeUrl: episode.episodeUrl,
-                  episodeDuration: episode.episodeDuration,
-                  listenDuration: episode.listenDuration,
-                  episodeId: episode.episodeId,
-                  completed: episode.completed,
-                  saved: episode.saved,
-                  queued: episode.queued,
-                  downloaded: episode.downloaded,
-                  isYoutube: episode.isYoutube,
-                );
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => PinepodsEpisodeDetails(
-                      initialEpisode: pinepodsEpisode,
+                      initialEpisode: episode.toPinepodsEpisode(),
                     ),
                   ),
                 ).then((_) => _refreshHomeContentSilently());
@@ -1264,132 +1142,21 @@ class _PinepodsHomeState extends State<PinepodsHome> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          children: [
-            Icon(
-              Icons.podcasts_outlined,
-              size: 64,
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Welcome to PinePods!',
-              style: Theme.of(context).textTheme.headlineSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Start by searching for podcasts to subscribe to.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _navigateToPage(String pageName) {
-    // This would be implemented to navigate to the appropriate page
-    // For now, we'll show a placeholder snackbar
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Navigate to $pageName')),
+    return const SoftEmptyState(
+      icon: PhosphorIconsRegular.microphoneStage,
+      title: 'Welcome to PinePods',
+      body: 'Search for podcasts to follow and they\'ll show up here.',
     );
   }
 }
 
-class _QuickLinkCard extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _QuickLinkCard({
-    required this.title,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: color, size: 32),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String title;
-  final int count;
-  final IconData icon;
-  final Color color;
-
-  const _StatCard({
-    required this.title,
-    required this.count,
-    required this.icon,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 8),
-            Text(
-              count.toString(),
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WeeklyStatCard extends StatelessWidget {
+class _StatTile extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
   final Color color;
 
-  const _WeeklyStatCard({
+  const _StatTile({
     required this.title,
     required this.value,
     required this.icon,
@@ -1398,322 +1165,28 @@ class _WeeklyStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      shape: RoundedRectangleBorder(
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          Text(title, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+        ],
       ),
     );
-  }
-}
-
-class _EpisodeCard extends StatefulWidget {
-  final HomeEpisode episode;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-  final VoidCallback? onPlayPressed;
-
-  const _EpisodeCard({
-    required this.episode,
-    this.onTap,
-    this.onLongPress,
-    this.onPlayPressed,
-  });
-
-  @override
-  State<_EpisodeCard> createState() => _EpisodeCardState();
-}
-
-class _EpisodeCardState extends State<_EpisodeCard> {
-  bool _isLoading = false;
-  AudioState _audioState = AudioState.none;
-  Episode? _nowPlaying;
-  PositionState? _positionState;
-  AudioBloc? _audioBloc;
-  StreamSubscription? _nowPlayingSub;
-  StreamSubscription? _audioStateSub;
-  StreamSubscription? _positionSub;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final bloc = Provider.of<AudioBloc>(context, listen: false);
-    if (_audioBloc != bloc) {
-      _nowPlayingSub?.cancel();
-      _audioStateSub?.cancel();
-      _positionSub?.cancel();
-      _audioBloc = bloc;
-
-      _nowPlayingSub = bloc.nowPlaying?.listen((ep) {
-        if (mounted) setState(() { _nowPlaying = ep; _isLoading = false; });
-      });
-      _audioStateSub = bloc.playingState?.listen((state) {
-        if (mounted) setState(() {
-          _audioState = state;
-          if (state == AudioState.error) _isLoading = false;
-        });
-      });
-      // Live position ticks for this card's progress bar while it's the
-      // episode currently playing - mirrors what mini_player.dart already
-      // does with the same stream. Without this the bar was frozen at
-      // whatever listenDuration Home's data snapshot had when it loaded.
-      // Ticks fire roughly once a second during playback, so only rebuild
-      // this card when it's the one actually playing - checking the guid
-      // before calling setState avoids every card on Home rebuilding on
-      // every tick.
-      _positionSub = bloc.playPosition?.listen((state) {
-        if (!mounted) return;
-        if (state.episode?.guid != widget.episode.episodeUrl) return;
-        setState(() => _positionState = state);
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _nowPlayingSub?.cancel();
-    _audioStateSub?.cancel();
-    _positionSub?.cancel();
-    super.dispose();
-  }
-
-  bool get _isCurrentEpisode =>
-      widget.episode.episodeUrl.isNotEmpty &&
-      _nowPlaying?.guid == widget.episode.episodeUrl;
-
-  /// Progress (0-100) to show on the bar: live position while this card is
-  /// the episode actually playing, otherwise the static value from Home's
-  /// last-loaded snapshot.
-  double get _displayProgressPercentage => LiveProgressResolver.percentage(
-        isCurrentEpisode: _isCurrentEpisode,
-        staticPercentage: widget.episode.progressPercentage,
-        livePercentage: _positionState?.percentage,
-      );
-
-  String? get _displayListenDurationText => LiveProgressResolver.elapsedText(
-        isCurrentEpisode: _isCurrentEpisode,
-        staticText: widget.episode.formattedListenDuration,
-        livePosition: _positionState?.position,
-      );
-
-  bool get _showProgressSection => LiveProgressResolver.shouldShowProgress(
-        isCurrentEpisode: _isCurrentEpisode,
-        hasStaticProgress: widget.episode.listenDuration != null && widget.episode.listenDuration! > 0,
-      );
-
-  bool get _isPlaying =>
-      _isCurrentEpisode &&
-      (_audioState == AudioState.playing ||
-          _audioState == AudioState.buffering ||
-          _audioState == AudioState.starting);
-
-  bool get _isPaused =>
-      _isCurrentEpisode && _audioState == AudioState.pausing;
-
-  void _onButtonTap() {
-    final bloc = _audioBloc;
-    if (bloc == null) return;
-    if (_isPlaying) {
-      bloc.transitionState(TransitionState.pause);
-    } else if (_isPaused) {
-      bloc.transitionState(TransitionState.play);
-    } else {
-      if (_isLoading) return;
-      setState(() => _isLoading = true);
-      widget.onPlayPressed?.call();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final showSpinner = _isLoading && !_isCurrentEpisode;
-    final IconData playIcon;
-    final Color iconColor;
-    if (_isPlaying) {
-      playIcon = Icons.pause_circle;
-      iconColor = Theme.of(context).primaryColor;
-    } else if (widget.episode.completed && !_isPaused) {
-      playIcon = Icons.check_circle;
-      iconColor = Colors.green;
-    } else if (widget.episode.listenDuration != null && widget.episode.listenDuration! > 0) {
-      playIcon = Icons.play_circle_filled;
-      iconColor = Theme.of(context).primaryColor;
-    } else {
-      playIcon = Icons.play_circle_outline;
-      iconColor = Theme.of(context).primaryColor;
-    }
-
-    // Status indicators shown inline with the duration so the right column can
-    // host a larger play button without growing the card.
-    final statusIcons = <Widget>[
-      if (widget.episode.saved)
-        Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: Icon(Icons.bookmark, size: 16, color: Colors.orange[600]),
-        ),
-      if (widget.episode.downloaded)
-        Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: Icon(Icons.download_done, size: 16, color: Colors.green[600]),
-        ),
-      if (widget.episode.queued)
-        Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: Icon(Icons.queue_music, size: 16, color: Colors.blue[600]),
-        ),
-    ];
-
-    return Card(
-      child: InkWell(
-        onTap: widget.onTap,
-        onLongPress: widget.onLongPress,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
-            children: [
-            // Episode artwork
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                widget.episode.episodeArtwork,
-                width: 60,
-                height: 60,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 60,
-                    height: 60,
-                    color: Theme.of(context).colorScheme.surfaceVariant,
-                    child: Icon(
-                      Icons.podcasts,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            // Episode info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.episode.episodeTitle,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.episode.podcastName,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  // Progress bar for in-progress episodes - also shown while
-                  // this card is actively playing even if Home's snapshot
-                  // hadn't recorded a listen position yet (e.g. just started
-                  // from 0 via auto-advance or this card's own play button).
-                  if (_showProgressSection) ...[
-                    LinearProgressIndicator(
-                      value: _displayProgressPercentage / 100,
-                      backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          _displayListenDurationText ?? '',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const Spacer(),
-                        Text(
-                          widget.episode.formattedDuration,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        ...statusIcons,
-                      ],
-                    ),
-                  ] else ...[
-                    Row(
-                      children: [
-                        Text(
-                          widget.episode.formattedDuration,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const Spacer(),
-                        ...statusIcons,
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            // Larger play button (status icons moved next to the duration).
-            if (widget.onPlayPressed != null) ...[
-              const SizedBox(width: 4),
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: showSpinner
-                      ? Padding(
-                          key: const ValueKey('loading'),
-                          padding: const EdgeInsets.all(8.0),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Theme.of(context).primaryColor,
-                            ),
-                          ),
-                        )
-                      : GestureDetector(
-                          key: ValueKey(playIcon),
-                          behavior: HitTestBehavior.opaque,
-                          onTap: _onButtonTap,
-                          child: Icon(playIcon, color: iconColor, size: 40),
-                        ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    ),
-      );
   }
 }
 
@@ -1760,29 +1233,11 @@ class _PodcastCard extends StatelessWidget {
         width: 140,
         child: Column(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                podcast.artworkUrl ?? '',
-                width: 140,
-                height: 140,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 140,
-                    height: 140,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.podcasts,
-                      size: 48,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  );
-                },
-              ),
+            LazyNetworkImage(
+              imageUrl: podcast.artworkUrl ?? '',
+              width: 140,
+              height: 140,
+              borderRadius: BorderRadius.circular(14),
             ),
             const SizedBox(height: 8),
             Flexible(
@@ -1812,10 +1267,9 @@ class _PlaylistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: 200,
-      child: Card(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+      child: Material(
+        color: softFill(Theme.of(context)),
+        borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: () => _openPlaylist(context),
           borderRadius: BorderRadius.circular(16),
@@ -1850,7 +1304,7 @@ class _PlaylistCard extends StatelessWidget {
                   Text(
                     '${playlist.episodeCount} episodes',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                      color: Theme.of(context).hintColor,
                     ),
                   ),
                 ],
@@ -1916,15 +1370,15 @@ class _PlaylistCard extends StatelessWidget {
   IconData _getIconFromName(String iconName) {
     switch (iconName) {
       case 'ph-music-notes':
-        return Icons.music_note;
+        return PhosphorIconsRegular.musicNote;
       case 'ph-star':
-        return Icons.star;
+        return PhosphorIconsFill.star;
       case 'ph-clock':
-        return Icons.access_time;
+        return PhosphorIconsRegular.clock;
       case 'ph-heart':
-        return Icons.favorite;
+        return PhosphorIconsFill.heart;
       default:
-        return Icons.playlist_play;
+        return PhosphorIconsRegular.playlist;
     }
   }
 }

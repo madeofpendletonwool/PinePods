@@ -8,7 +8,7 @@
 
 use crate::database::DatabasePool;
 use crate::services::ai_client::AiSegment;
-use crate::services::{ai_client, ai_settings, transcription};
+use crate::services::{ai_client, ai_settings, audio_processing, transcription};
 use serde::Serialize;
 use sqlx::Row;
 use std::collections::HashSet;
@@ -30,6 +30,28 @@ impl Drop for InFlightGuard {
             set.remove(&self.0);
         }
     }
+}
+
+/// (episode, user) pairs waiting for that user's server download to finish before ads are
+/// detected on it.
+fn detect_after_download() -> &'static Mutex<HashSet<(i32, i32)>> {
+    static S: OnceLock<Mutex<HashSet<(i32, i32)>>> = OnceLock::new();
+    S.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Detect ads on the user's server download of the episode once it finishes.
+pub fn request_detect_after_download(episode_id: i32, user_id: i32) {
+    if let Ok(mut set) = detect_after_download().lock() {
+        set.insert((episode_id, user_id));
+    }
+}
+
+/// Whether a detection was waiting on this download (and stop waiting).
+pub fn take_detect_after_download(episode_id: i32, user_id: i32) -> bool {
+    detect_after_download()
+        .lock()
+        .map(|mut set| set.remove(&(episode_id, user_id)))
+        .unwrap_or(false)
 }
 
 /// Source tag written to `EpisodeSkipSegments.Source` for AI-detected ads.
@@ -143,39 +165,105 @@ async fn store_ad_segments(
     Ok(segments.len())
 }
 
+/// Whether ad detection has run for the episode.
+pub async fn has_ad_segments(db_pool: &DatabasePool, episode_id: i32) -> bool {
+    already_detected(db_pool, episode_id).await
+}
+
+/// Drop the episode's detected ads and mark it not yet scanned. Returns whether it had been
+/// scanned, so the caller can scan again.
+pub async fn clear_ad_segments(db_pool: &DatabasePool, episode_id: i32) -> Result<bool, String> {
+    let was_detected = already_detected(db_pool, episode_id).await;
+    if !was_detected {
+        return Ok(false);
+    }
+    match db_pool {
+        DatabasePool::Postgres(pool) => {
+            sqlx::query(r#"DELETE FROM "EpisodeSkipSegments" WHERE episodeid = $1 AND source = $2"#)
+                .bind(episode_id)
+                .bind(SOURCE_AD)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+            sqlx::query(r#"UPDATE "Episodes" SET adsdetected = FALSE WHERE episodeid = $1"#)
+                .bind(episode_id)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        DatabasePool::MySQL(pool) => {
+            sqlx::query("DELETE FROM EpisodeSkipSegments WHERE EpisodeID = ? AND Source = ?")
+                .bind(episode_id)
+                .bind(SOURCE_AD)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+            sqlx::query("UPDATE Episodes SET AdsDetected = FALSE WHERE EpisodeID = ?")
+                .bind(episode_id)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(true)
+}
+
 /// Fetch the episode's stored generated transcript segments, transcribing first if none exist.
+/// When `user_id` has a server download that isn't the copy the transcript came from, the
+/// transcript is redone on that download, since that is what the user will play.
 async fn ensure_transcript_segments(
     db_pool: &DatabasePool,
     episode_id: i32,
+    user_id: Option<i32>,
 ) -> Result<Vec<AiSegment>, String> {
-    // Try the stored transcript first.
-    if let Some(t) = transcription::get_episode_transcript(db_pool, episode_id).await? {
-        if t.status == "complete" {
-            if let Some(seg_json) = t.segments {
-                let segs: Vec<AiSegment> =
-                    serde_json::from_str(&seg_json).map_err(|e| format!("bad transcript segments: {}", e))?;
-                if !segs.is_empty() {
-                    return Ok(segs);
-                }
+    let mut retranscribe = false;
+    if let (Some(uid), Some(copy)) = (user_id, transcription::analyzed_audio(db_pool, episode_id).await) {
+        let downloads = audio_processing::episode_downloads(db_pool, episode_id).await?;
+        if let Some(d) = downloads.iter().find(|d| d.user_id == uid) {
+            let fp = audio_processing::download_fingerprint(db_pool, d, episode_id).await;
+            if fp.is_some() && fp != copy.fingerprint {
+                debug!("Ad detection: episode {} transcript is from another copy; redoing it on user {}'s download", episode_id, uid);
+                retranscribe = true;
             }
         }
     }
-    // No usable transcript — generate one, then re-read.
-    debug!("Ad detection: episode {} has no transcript; transcribing first", episode_id);
-    transcription::transcribe_episode(db_pool, episode_id, false, |_| {}).await?;
+
+    if !retranscribe {
+        if let Some(t) = transcription::get_episode_transcript(db_pool, episode_id).await? {
+            if t.status == "complete" {
+                if let Some(seg_json) = t.segments {
+                    let segs: Vec<AiSegment> =
+                        serde_json::from_str(&seg_json).map_err(|e| format!("bad transcript segments: {}", e))?;
+                    if !segs.is_empty() {
+                        return Ok(segs);
+                    }
+                }
+            }
+        }
+        debug!("Ad detection: episode {} has no transcript; transcribing first", episode_id);
+    }
+    transcription::transcribe_episode(db_pool, episode_id, retranscribe, user_id, |_| {}).await?;
     let t = transcription::get_episode_transcript(db_pool, episode_id)
         .await?
         .ok_or_else(|| "transcript unavailable after transcription".to_string())?;
+    if t.status != "complete" {
+        return Err("the episode is still being transcribed; try again when it finishes".to_string());
+    }
     let seg_json = t.segments.ok_or_else(|| "transcript has no segments".to_string())?;
     serde_json::from_str(&seg_json).map_err(|e| format!("bad transcript segments: {}", e))
 }
 
+/// Ad spans covering more than this share of an episode are a misread, not an ad break.
+const MAX_AD_SHARE: f64 = 0.5;
+
 /// Detect ads for an episode: ensure a transcript exists, run the LLM, store the ad ranges.
+/// `user_id` is who asked (see [`ensure_transcript_segments`]); `None` for automatic runs.
 /// `on_progress` is called with 0.0–1.0 fractions as detection windows complete.
 pub async fn detect_episode_ads(
     db_pool: &DatabasePool,
     episode_id: i32,
     force: bool,
+    user_id: Option<i32>,
     on_progress: impl FnMut(f64),
 ) -> Result<usize, String> {
     if ai_client::ai_base_url().is_none() {
@@ -197,18 +285,31 @@ pub async fn detect_episode_ads(
     }
     let _guard = InFlightGuard(episode_id);
 
-    let segments = ensure_transcript_segments(db_pool, episode_id).await?;
+    let segments = ensure_transcript_segments(db_pool, episode_id, user_id).await?;
+    let length = segments.last().map(|s| s.end).unwrap_or(0.0);
     let llm = ai_settings::resolve_llm_spec(db_pool).await?;
     let result = ai_client::detect_ads(&segments, None, &llm, on_progress).await?;
-    let spans: Vec<(f64, f64)> = result.segments.iter().map(|s| (s.start, s.end)).collect();
+    let spans: Vec<(f64, f64)> = result
+        .segments
+        .iter()
+        .map(|s| (s.start.max(0.0), s.end))
+        .filter(|(start, end)| {
+            let keep = end > start && (length <= 0.0 || end - start <= length * MAX_AD_SHARE);
+            if !keep {
+                warn!("Ad detection: ignoring implausible span {:.0}-{:.0}s in episode {}", start, end, episode_id);
+            }
+            keep
+        })
+        .collect();
     let n = store_ad_segments(db_pool, episode_id, &spans).await?;
     debug!("Ad detection stored {} ad span(s) for episode {}", n, episode_id);
     Ok(n)
 }
 
 /// Chain hook run at the tail of a successful transcription: if any subscriber to the episode's
-/// feed opted into auto ad-detection, detect ads once (content-level). Detached; never blocks.
-pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32) {
+/// feed opted into auto ad-detection (or `redetect`, the episode had ads found on an earlier
+/// transcript), detect ads once (content-level). Detached; never blocks.
+pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32, redetect: bool) {
     if ai_client::ai_base_url().is_none() {
         return;
     }
@@ -216,7 +317,7 @@ pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32)
         let any_opted_in = match db_pool {
             DatabasePool::Postgres(ref pool) => sqlx::query(r#"
                 SELECT EXISTS(
-                    SELECT 1 FROM "Episodes" e JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    SELECT 1 FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
                     WHERE e.episodeid = $1 AND COALESCE(p.autoaddetect, FALSE) = TRUE
                 ) AS any_on
             "#)
@@ -229,7 +330,7 @@ pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32)
             .unwrap_or(false),
             DatabasePool::MySQL(ref pool) => sqlx::query("
                 SELECT EXISTS(
-                    SELECT 1 FROM Episodes e JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                    SELECT 1 FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
                     WHERE e.EpisodeID = ? AND COALESCE(p.AutoAdDetect, 0) = 1
                 ) AS any_on
             ")
@@ -243,8 +344,8 @@ pub fn maybe_detect_ads_after_transcript(db_pool: DatabasePool, episode_id: i32)
             .unwrap_or(false),
         };
 
-        if any_opted_in {
-            if let Err(e) = detect_episode_ads(&db_pool, episode_id, false, |_| {}).await {
+        if any_opted_in || redetect {
+            if let Err(e) = detect_episode_ads(&db_pool, episode_id, false, None, |_| {}).await {
                 warn!("Auto ad-detection failed for episode {}: {}", episode_id, e);
             }
         }
@@ -379,7 +480,7 @@ pub async fn get_episode_skip_segments_for_user(
             FROM "EpisodeSkipSegments" s
             LEFT JOIN "EpisodeAdSkipReview" r ON r.segmentid = s.segmentid AND r.userid = $2
             LEFT JOIN "Episodes" e ON e.episodeid = s.episodeid
-            LEFT JOIN "Podcasts" p ON p.podcastid = e.podcastid AND p.userid = $2
+            LEFT JOIN "Podcasts" p ON p.feedid = e.feedid AND p.userid = $2
             WHERE s.episodeid = $1
             ORDER BY s.starttime
         "#)
@@ -404,7 +505,7 @@ pub async fn get_episode_skip_segments_for_user(
             FROM EpisodeSkipSegments s
             LEFT JOIN EpisodeAdSkipReview r ON r.SegmentID = s.SegmentID AND r.UserID = ?
             LEFT JOIN Episodes e ON e.EpisodeID = s.EpisodeID
-            LEFT JOIN Podcasts p ON p.PodcastID = e.PodcastID AND p.UserID = ?
+            LEFT JOIN Podcasts p ON p.FeedID = e.FeedID AND p.UserID = ?
             WHERE s.EpisodeID = ?
             ORDER BY s.StartTime
         "#)
@@ -437,4 +538,34 @@ pub async fn get_episode_skip_segments_for_user(
             SkipSegmentView { segment_id, kind, start_time, end_time, source, status }
         })
         .collect())
+}
+
+/// How a user's playback copy relates to the copy ads were detected on.
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+pub struct AdAudioMatch {
+    /// The copy the ad times were found on; `None` before any transcript exists.
+    pub analyzed: Option<transcription::AudioCopy>,
+    /// `match`: the user's server download is that copy, so ad times are exact. `mismatch`: the
+    /// user's download is a different copy. `unknown`: the transcript predates recording copies.
+    /// `none`: no server download (the user streams, and dynamically inserted ads may sit
+    /// elsewhere).
+    pub download: String,
+}
+
+pub async fn ad_audio_match(db_pool: &DatabasePool, user_id: i32, episode_id: i32) -> AdAudioMatch {
+    let analyzed = transcription::analyzed_audio(db_pool, episode_id).await;
+    let downloads = audio_processing::episode_downloads(db_pool, episode_id).await.unwrap_or_default();
+    let download = match downloads.iter().find(|d| d.user_id == user_id) {
+        None => "none",
+        Some(d) => {
+            let fp = audio_processing::download_fingerprint(db_pool, d, episode_id).await;
+            match analyzed.as_ref().and_then(|a| a.fingerprint.as_ref()) {
+                Some(analyzed_fp) if fp.as_ref() == Some(analyzed_fp) => "match",
+                Some(_) => "mismatch",
+                // Transcripts made before copies were recorded.
+                None => "unknown",
+            }
+        }
+    };
+    AdAudioMatch { analyzed, download: download.to_string() }
 }

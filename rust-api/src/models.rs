@@ -31,8 +31,12 @@ pub struct CreatePlaylistRequest {
     pub play_progress_min: Option<f64>,
     pub play_progress_max: Option<f64>,
     pub time_filter_hours: Option<i32>,
+    /// Minimum episode length in **minutes** (stored, and returned by get_playlists, in seconds).
     pub min_duration: Option<i32>,
+    /// Maximum episode length in **minutes** (stored, and returned by get_playlists, in seconds).
     pub max_duration: Option<i32>,
+    /// One of date_asc, date_desc, duration_asc, duration_desc, listen_progress, completion.
+    #[schema(example = "date_desc")]
     pub sort_order: String,
     pub group_by_podcast: bool,
     pub max_episodes: Option<i32>,
@@ -69,8 +73,12 @@ pub struct UpdatePlaylistRequest {
     pub play_progress_min: Option<f64>,
     pub play_progress_max: Option<f64>,
     pub time_filter_hours: Option<i32>,
+    /// Minimum episode length in **minutes** (stored, and returned by get_playlists, in seconds).
     pub min_duration: Option<i32>,
+    /// Maximum episode length in **minutes** (stored, and returned by get_playlists, in seconds).
     pub max_duration: Option<i32>,
+    /// One of date_asc, date_desc, duration_asc, duration_desc, listen_progress, completion.
+    #[schema(example = "date_desc")]
     pub sort_order: String,
     pub group_by_podcast: bool,
     pub max_episodes: Option<i32>,
@@ -121,11 +129,14 @@ pub struct PodcastResponse {
     pub podcastindexid: Option<i64>,
     pub is_favorite: bool,
     pub is_video: bool,
+    pub oldest_episode_date: Option<String>,
+    pub newest_episode_date: Option<String>,
+    pub play_count: i64,
 }
 
 // Lean per-subscription inputs for the recommendation taste profile (#103). Deliberately
 // selects only columns that are guaranteed to exist on the Podcasts table, avoiding the
-// heavier return_pods_extra query (which references a non-existent p.isyoutube column).
+// heavier return_pods_extra query.
 #[derive(Debug, Clone)]
 pub struct RecommendationTasteInput {
     pub podcastname: String,
@@ -255,6 +266,10 @@ pub struct NowPlayingSnapshot {
     /// Unix seconds when this snapshot was last updated (server-stamped on write).
     #[serde(default)]
     pub updated_at: i64,
+    /// Actions the device says it applies (from its `capabilities` connect
+    /// parameter). Empty means it didn't say: assume the original action set.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
