@@ -44,9 +44,10 @@ pub fn app_drawer() -> Html {
     let i18n_pinepods = i18n.t("app_drawer.pinepods").to_string();
     let i18n_home = i18n.t("navigation.home").to_string();
     let i18n_feed = i18n.t("app_drawer.feed").to_string();
-    let i18n_search_podcasts = i18n.t("app_drawer.search_podcasts").to_string();
+    let i18n_search_podcasts = i18n.t("navigation.search").to_string();
     let i18n_collections = i18n.t("navigation.collections").to_string();
     let i18n_playlists = i18n.t("navigation.playlists").to_string();
+    let i18n_queue = i18n.t("navigation.queue").to_string();
     let i18n_history = i18n.t("navigation.history").to_string();
     let i18n_server_downloads = i18n.t("app_drawer.server_downloads").to_string();
     #[cfg(not(feature = "server_build"))]
@@ -74,6 +75,7 @@ pub fn app_drawer() -> Html {
         .as_ref()
         .map(|ud| ud.api_key.clone());
     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let use_gravatar = post_state.user_details.as_ref().map_or(false, |ud| ud.UseGravatar);
     let server_name = post_state
         .auth_details
         .as_ref()
@@ -242,7 +244,7 @@ pub fn app_drawer() -> Html {
                 <div onclick={toggle_drawer.clone()} style="padding: 0 8px 4px;">
                     <Link<Route> to={Route::UserStats} classes="sb-item">
                         <img
-                            src={prefs_state.gravatar_url.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
+                            src={prefs_state.gravatar_url.clone().filter(|_| use_gravatar).unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
                             class="sb-avatar"
                             alt="User avatar"
                         />
@@ -270,6 +272,12 @@ pub fn app_drawer() -> Html {
                         <Link<Route> to={Route::Search} classes="sb-item">
                             <i class="ph ph-magnifying-glass"></i>
                             <span>{&i18n_search_podcasts}</span>
+                        </Link<Route>>
+                    </div>
+                    <div onclick={toggle_drawer.clone()}>
+                        <Link<Route> to={Route::Queue} classes="sb-item">
+                            <i class="ph ph-queue"></i>
+                            <span>{&i18n_queue}</span>
                         </Link<Route>>
                     </div>
                     <div onclick={toggle_drawer.clone()}>

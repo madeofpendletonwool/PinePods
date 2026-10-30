@@ -80,6 +80,8 @@ pub struct UserDetails {
     pub Hashed_PW: Option<String>,
     /// Always null; kept for response compatibility.
     pub Salt: Option<String>,
+    /// Whether the clients show the user's Gravatar. Off by default.
+    pub UseGravatar: bool,
 }
 
 #[derive(Serialize, utoipa::ToSchema)]
@@ -442,7 +444,9 @@ pub async fn get_public_oidc_providers(
             button_color: p.button_color,
             button_text: p.button_text,
             button_text_color: p.button_text_color,
-            icon_svg: p.icon_svg,
+            // Env-configured providers store "" when OIDC_ICON_SVG is unset; an empty icon slot
+            // would push the button text off centre.
+            icon_svg: p.icon_svg.filter(|s| !s.trim().is_empty()),
         })
         .collect();
     
@@ -1081,6 +1085,7 @@ pub struct StoreStateRequest {
     pub client_id: String,
     pub origin_url: Option<String>, // URL user was on when they clicked OIDC login
     pub code_verifier: Option<String>, // PKCE code verifier for token exchange
+    pub redirect_uri: Option<String>, // Exact redirect_uri sent in the authorize request
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1088,6 +1093,8 @@ struct StoredOidcState {
     client_id: String,
     origin_url: Option<String>,
     code_verifier: Option<String>, // PKCE code verifier
+    #[serde(default)]
+    redirect_uri: Option<String>,
 }
 
 #[utoipa::path(
@@ -1107,10 +1114,17 @@ pub async fn store_oidc_state(
     // Store state in Redis with 10-minute expiration
     let state_key = format!("oidc_state:{}", request.state);
     
+    let redirect_uri = match request.redirect_uri.as_deref() {
+        Some(uri) => Some(crate::services::oidc::validate_redirect_uri(uri)
+            .ok_or_else(|| AppError::bad_request("redirect_uri must be an http(s) URL ending in /api/auth/callback"))?),
+        None => None,
+    };
+
     let stored_state = StoredOidcState {
         client_id: request.client_id,
         origin_url: request.origin_url,
         code_verifier: request.code_verifier,
+        redirect_uri,
     };
     
     let state_json = serde_json::to_string(&stored_state)
@@ -1253,15 +1267,15 @@ pub async fn oidc_callback(
     let state_param = query.state.ok_or_else(|| AppError::bad_request("Missing state parameter"))?;
 
     // Get client_id, origin_url, and code_verifier from state
-    let (client_id, stored_origin_url, code_verifier) = match state.redis_client.get_del(&format!("oidc_state:{}", state_param)).await {
+    let (client_id, stored_origin_url, code_verifier, stored_redirect_uri) = match state.redis_client.get_del(&format!("oidc_state:{}", state_param)).await {
         Ok(Some(state_json)) => {
             // Try to parse as new JSON format first
             if let Ok(stored_state) = serde_json::from_str::<StoredOidcState>(&state_json) {
                 tracing::info!("OIDC: Retrieved state for client_id={}", stored_state.client_id);
-                (stored_state.client_id, stored_state.origin_url, stored_state.code_verifier)
+                (stored_state.client_id, stored_state.origin_url, stored_state.code_verifier, stored_state.redirect_uri)
             } else {
                 // Fallback to old format (just client_id string) for backwards compatibility
-                (state_json, None, None)
+                (state_json, None, None, None)
             }
         },
         Ok(None) => {
@@ -1296,7 +1310,11 @@ pub async fn oidc_callback(
         default_frontend_base.clone()
     };
 
-    let registered_redirect_uri = format!("{}/api/auth/callback", base_url);
+    // The token request must repeat the authorize request's redirect_uri exactly (RFC 6749
+    // 4.1.3). Rebuilding it from request headers loses non-default ports behind some proxies, so
+    // use the client's own value and only derive one for clients that don't send it.
+    let registered_redirect_uri = stored_redirect_uri
+        .unwrap_or_else(|| format!("{}{}", base_url, crate::services::oidc::CALLBACK_PATH));
 
     // Get OIDC provider details - EXACT match to Python get_oidc_provider returning tuple
     let provider_tuple = match state.db_pool.get_oidc_provider(&client_id).await {
@@ -1948,7 +1966,7 @@ fn construct_base_url_from_request(headers: &HeaderMap) -> Result<String, AppErr
 
     let mut base_url = format!("{}://{}", scheme, host);
     
-    tracing::info!("OIDC Debug - Headers: Host={}, X-Forwarded-Proto={:?}, X-Forwarded-Host={:?}, X-Forwarded-Port={:?}, constructed base_url={}", 
+    tracing::debug!("OIDC Debug - Headers: Host={}, X-Forwarded-Proto={:?}, X-Forwarded-Host={:?}, X-Forwarded-Port={:?}, constructed base_url={}", 
         host, 
         headers.get("x-forwarded-proto").and_then(|v| v.to_str().ok()),
         headers.get("x-forwarded-host").and_then(|v| v.to_str().ok()),

@@ -267,6 +267,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
       if (userDetails.email != null) {
         settingsBloc.setPinepodsEmail(userDetails.email!);  
       }
+      settingsBloc.setPinepodsUseGravatar(userDetails.useGravatar);
 
       // Fetch theme from server
       try {

@@ -533,6 +533,8 @@ pub struct PodcastExtra {
     #[serde(default)]
     pub oldest_episode_date: Option<String>,
     #[serde(default)]
+    pub newest_episode_date: Option<String>,
+    #[serde(default)]
     pub is_youtube: bool,
     #[serde(default)]
     pub is_video: bool,
@@ -559,6 +561,7 @@ impl From<Podcast> for PodcastExtra {
             play_count: 0,
             episodes_played: 0,
             oldest_episode_date: None,
+            newest_episode_date: None,
             is_youtube,
             is_video: podcast.is_video,
             is_favorite: podcast.is_favorite,
@@ -5677,8 +5680,12 @@ pub async fn call_get_rss_key(
     server_name: &str,
     api_key: &Option<String>,
     user_id: i32,
+    podcast_id: Option<i32>,
 ) -> Result<String, anyhow::Error> {
-    let url = format!("{}/api/data/get_rss_key?user_id={}", server_name, user_id);
+    let mut url = format!("{}/api/data/get_rss_key?user_id={}", server_name, user_id);
+    if let Some(podcast_id) = podcast_id {
+        url.push_str(&format!("&podcast_id={}", podcast_id));
+    }
 
     let api_key_ref = api_key
         .as_deref()
@@ -6259,6 +6266,17 @@ pub async fn call_set_auto_delete_on_complete_user(
     enabled: bool,
 ) -> Result<(), Error> {
     let url = format!("{}/api/data/user/set_auto_delete_on_complete", server_name);
+    let body = serde_json::json!({ "user_id": user_id, "enabled": enabled });
+    post_json_ok(&url, api_key, &body).await.map(|_| ())
+}
+
+pub async fn call_set_use_gravatar(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    enabled: bool,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/user/set_use_gravatar", server_name);
     let body = serde_json::json!({ "user_id": user_id, "enabled": enabled });
     post_json_ok(&url, api_key, &body).await.map(|_| ())
 }

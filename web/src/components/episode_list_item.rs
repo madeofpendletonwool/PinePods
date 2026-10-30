@@ -474,6 +474,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                         } else {
                             props.episode.episodeartwork.clone()
                         }}
+                        fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                         alt={format!("Cover for {}", props.episode.episodetitle)}
                         class="ep-art-img"
                     />

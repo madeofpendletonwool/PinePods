@@ -370,6 +370,7 @@ pub fn queue_manage_modal(props: &QueueManageModalProps) -> Html {
                                     <span class="queue-manage-index">{ idx + 1 }</span>
                                     <FallbackImage
                                         src={ep.episodeartwork.clone()}
+                                        fallback={crate::components::gen_components::DEFAULT_EPISODE_ART}
                                         alt="Episode art"
                                         class="queue-manage-art"
                                     />

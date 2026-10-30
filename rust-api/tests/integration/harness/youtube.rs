@@ -2,8 +2,9 @@
 //! a stub script that answers from files and logs every call.
 //!
 //! The stub is installed once per test process (`YTDLP_PATH`). For each `watch?v=<id>` argument
-//! it prints `videos/<id>.json`, for a `/channel/<id>` argument `channels/<id>.jsonl`, and fails
-//! like yt-dlp for anything it has no file for. Tests isolate themselves by id (channel and video
+//! it prints `videos/<id>.json`, for a `/channel/<id>` argument `channels/<id>.jsonl` (or the
+//! channel page `channels/<id>.json` under `--dump-single-json`), and fails like yt-dlp for
+//! anything it has no file for. Tests isolate themselves by id (channel and video
 //! ids embed the test's tag).
 
 use std::path::{Path, PathBuf};
@@ -18,6 +19,8 @@ const STUB: &str = r#"#!/bin/sh
 dir="$(dirname "$0")"
 echo "$*" >> "$dir/calls.log"
 status=0
+single=0
+for a in "$@"; do [ "$a" = "--dump-single-json" ] && single=1; done
 for a in "$@"; do
   case "$a" in
     *watch\?v=*)
@@ -25,7 +28,8 @@ for a in "$@"; do
       if [ -f "$dir/videos/$id.json" ]; then cat "$dir/videos/$id.json"; echo; else echo "ERROR: [youtube] $id: Video unavailable" >&2; status=1; fi ;;
     */channel/*)
       ch="${a#*/channel/}"; ch="${ch%%/*}"
-      if [ -f "$dir/channels/$ch.jsonl" ]; then cat "$dir/channels/$ch.jsonl"; else echo "ERROR: [youtube:tab] $ch: channel unavailable" >&2; status=1; fi ;;
+      if [ $single = 1 ]; then file="$dir/channels/$ch.json"; else file="$dir/channels/$ch.jsonl"; fi
+      if [ -f "$file" ]; then cat "$file"; else echo "ERROR: [youtube:tab] $ch: This channel does not exist." >&2; status=1; fi ;;
   esac
 done
 exit $status
@@ -163,6 +167,17 @@ impl TestApp {
             listing.push('\n');
         }
         std::fs::write(dir.join("channels").join(format!("{}.jsonl", channel.id)), listing).unwrap();
+        let page = json!({
+            "id": channel.id,
+            "channel": channel.name,
+            "description": format!("About {}", channel.name),
+            "thumbnails": [
+                {"id": "banner_uncropped", "url": format!("https://yt3.example/{}/banner", channel.id)},
+                {"id": "avatar_uncropped", "url": format!("https://yt3.example/{}/avatar", channel.id)},
+            ],
+            "entries": [],
+        });
+        std::fs::write(dir.join("channels").join(format!("{}.json", channel.id)), page.to_string()).unwrap();
     }
 
     /// Make yt-dlp unable to read this video (members-only, removed, ...).

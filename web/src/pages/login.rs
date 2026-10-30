@@ -34,7 +34,7 @@ fn calculate_gravatar_hash(email: &String) -> String {
 
 #[allow(dead_code)]
 pub fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
-    let hash = calculate_gravatar_hash(&email.clone().unwrap());
+    let hash = calculate_gravatar_hash(&email.clone().unwrap_or_default());
     format!("https://gravatar.com/avatar/{}?s={}", hash, size)
 }
 
@@ -299,7 +299,7 @@ pub fn login() -> Html {
                                                                             let final_dispatch =
                                                                                 effect_displatch
                                                                                     .clone();
-                                                                            let gravatar_url = generate_gravatar_url(&Some(wasm_email.clone().unwrap()), 80);
+                                                                            let gravatar_url = generate_gravatar_url(&wasm_email, 80);
                                                                             // Auto login logic here
                                                                             final_dispatch.reduce_mut(move |state| {
                                                                             state.user_details = wasm_app_state.user_details;
@@ -1909,12 +1909,16 @@ pub fn login() -> Html {
                             if !oidc_providers.is_empty() {
                                 html! {
                                     <>
-                                        <div class="oidc-divider">
-                                            <div class="oidc-divider-line"></div>
-                                            <div class="relative flex justify-center">
-                                                <span class="oidc-divider-text item_container-text">{&i18n_or_continue_with}</span>
+                                        // The divider separates the OIDC buttons from the
+                                        // standard login form, so skip it when that form is hidden.
+                                        if !*disable_standard_login {
+                                            <div class="oidc-divider">
+                                                <div class="oidc-divider-line"></div>
+                                                <div class="relative flex justify-center">
+                                                    <span class="oidc-divider-text item_container-text">{&i18n_or_continue_with}</span>
+                                                </div>
                                             </div>
-                                        </div>
+                                        }
 
                                         <div class="flex flex-col space-y-2">
                                             {
@@ -1968,18 +1972,26 @@ pub fn login() -> Html {
 
                                                                     wasm_bindgen_futures::spawn_local(async move {
                                                                         let origin = window.location().origin().unwrap();
+                                                                        let redirect_uri = format!("{}/api/auth/callback", origin);
                                                                         match call_store_oidc_state(
                                                                             server_name_clone,
                                                                             state_clone.clone(),
                                                                             client_id_clone.clone(),
                                                                             Some(origin.clone()),
                                                                             Some(code_verifier.clone()),
+                                                                            Some(redirect_uri.clone()),
                                                                         ).await {
                                                                             Ok(_) => {
-                                                                                let redirect_uri = format!("{}/api/auth/callback", origin);
+                                                                                let separator = if auth_url_clone.contains('?') { '&' } else { '?' };
                                                                                 let auth_url = format!(
-                                                                                    "{}?client_id={}&redirect_uri={}&scope={}&response_type=code&state={}&code_challenge={}&code_challenge_method=S256",
-                                                                                    auth_url_clone, client_id_clone, redirect_uri, scope_clone, state_clone, code_challenge
+                                                                                    "{}{}client_id={}&redirect_uri={}&scope={}&response_type=code&state={}&code_challenge={}&code_challenge_method=S256",
+                                                                                    auth_url_clone,
+                                                                                    separator,
+                                                                                    urlencoding::encode(&client_id_clone),
+                                                                                    urlencoding::encode(&redirect_uri),
+                                                                                    urlencoding::encode(&scope_clone),
+                                                                                    state_clone,
+                                                                                    code_challenge
                                                                                 );
                                                                                 window.location().set_href(&auth_url).unwrap();
                                                                             },
@@ -2029,6 +2041,48 @@ pub fn login() -> Html {
         }
 }
 
+// Store a login that passed its second factor, load the user's theme and time settings, then
+// go to their start page.
+async fn finish_verified_login(
+    dispatch: &Dispatch<AppState>,
+    user_details: login_requests::GetUserDetails,
+    login_request: login_requests::LoginServerRequest,
+    server_details: login_requests::GetApiDetails,
+) {
+    let server_name = login_request.server_name.clone();
+    let api_key = login_request.api_key.clone().unwrap_or_default();
+    let user_id = user_details.UserID;
+    let gravatar_url = generate_gravatar_url(&user_details.Email, 80);
+    dispatch.reduce_mut(move |state| {
+        state.user_details = Some(user_details);
+        state.auth_details = Some(login_request);
+        state.server_details = Some(server_details);
+        state.store_app_state();
+    });
+    Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
+        state.gravatar_url = Some(gravatar_url);
+    });
+    let window = web_sys::window();
+    if let Some(storage) = window.as_ref().and_then(|w| w.session_storage().ok().flatten()) {
+        let _ = storage.set_item("isAuthenticated", "true");
+    }
+    if let Ok(theme) = call_get_theme(server_name.clone(), api_key.clone(), &user_id).await {
+        crate::components::setting_components::theme_options::changeTheme(&theme);
+        if let Some(storage) = window.as_ref().and_then(|w| w.local_storage().ok().flatten()) {
+            let _ = storage.set_item("selected_theme", &theme);
+        }
+    }
+    if let Ok(tz) = call_get_time_info(server_name.clone(), api_key.clone(), &user_id).await {
+        Dispatch::<UserPreferencesState>::global().reduce_mut(move |state| {
+            state.user_tz = Some(tz.timezone);
+            state.hour_preference = Some(tz.hour_pref);
+            state.date_format = Some(tz.date_format);
+        });
+    }
+    let start_page = call_get_startpage(&server_name, &api_key, &user_id).await.unwrap_or_default();
+    BrowserHistory::new().push(if start_page.is_empty() { "/home" } else { start_page.as_str() });
+}
+
 #[function_component(ChangeServer)]
 pub fn login() -> Html {
     let (i18n, _) = use_translation();
@@ -2071,6 +2125,8 @@ pub fn login() -> Html {
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
+    // Set when the server asks for a second factor before handing out an API key.
+    let mfa_session_token = use_state(|| "".to_string());
     let page_state = use_state(|| PageState::Default);
     let user_language = use_state(|| "en".to_string());
     let available_languages: UseStateHandle<Vec<AvailableLanguage>> = use_state(Vec::new);
@@ -2156,6 +2212,7 @@ pub fn login() -> Html {
     let call_api_key = temp_api_key.clone();
     let call_user_id = temp_user_id.clone();
     let submit_post_state = _app_dispatch.clone();
+    let submit_mfa_session_token = mfa_session_token.clone();
     let on_submit = {
         let submit_dispatch = dispatch.clone();
         let i18n_error_checking_mfa = (&i18n_error_checking_mfa).clone();
@@ -2175,18 +2232,30 @@ pub fn login() -> Html {
             let temp_server_name = call_server_name.clone();
             let temp_api_key = call_api_key.clone();
             let temp_user_id = call_user_id.clone();
+            let mfa_session_token = submit_mfa_session_token.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 // let server_name = location.href().expect("should have a href");
                 let server_name = server_name.clone();
                 let page_state = page_state.clone();
-                match login_requests::login_new_server(
+                match login_requests::login_new_server_secure(
                     server_name.to_string(),
                     username.to_string(),
                     password.to_string(),
                 )
                 .await
                 {
-                    Ok((user_details, login_request, server_details)) => {
+                    Ok(login_requests::LoginResult::MfaRequired {
+                        server_name: mfa_server,
+                        user_id: mfa_user_id,
+                        mfa_session_token: token,
+                        ..
+                    }) => {
+                        temp_server_name.set(mfa_server);
+                        temp_user_id.set(mfa_user_id);
+                        mfa_session_token.set(token);
+                        page_state.set(PageState::MFAPrompt);
+                    }
+                    Ok(login_requests::LoginResult::Success(user_details, login_request, server_details)) => {
                         // After user login, update the image URL with user's email from user_details
                         let gravatar_url = generate_gravatar_url(&user_details.Email, 80); // 80 is the image size
                         let key_copy = login_request.clone();
@@ -2725,6 +2794,8 @@ pub fn login() -> Html {
         // let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         let i18n_error_validating_mfa = i18n_error_validating_mfa.clone();
+        let mfa_session_token = mfa_session_token.clone();
+        let mfa_server_name = temp_server_name.clone();
         Callback::from(move |e: MouseEvent| {
             let i18n_error_validating_mfa = i18n_error_validating_mfa.clone();
             let _dispatch = dispatch_wasm.clone();
@@ -2737,6 +2808,29 @@ pub fn login() -> Html {
             let _post_state = post_state.clone();
             // let error_message_clone = error_message_create.clone();
             e.prevent_default();
+
+            if !mfa_session_token.is_empty() {
+                let dispatch = _dispatch.clone();
+                let server = (*mfa_server_name).clone();
+                let token = (*mfa_session_token).clone();
+                let code = (*mfa_code).clone();
+                let i18n_error_validating_mfa = i18n_error_validating_mfa.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    match login_requests::complete_mfa_login(server, "".to_string(), token, code).await {
+                        Ok((user_details, login_request, server_details)) => {
+                            page_state.set(PageState::Default);
+                            finish_verified_login(&dispatch, user_details, login_request, server_details).await;
+                        }
+                        Err(_) => {
+                            page_state.set(PageState::Default);
+                            Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                state.error_message = Option::from(i18n_error_validating_mfa)
+                            });
+                        }
+                    }
+                });
+                return;
+            }
 
             wasm_bindgen_futures::spawn_local(async move {
                 match call_verify_mfa(
@@ -2982,7 +3076,11 @@ pub fn logout() -> Html {
     // in-memory yewdux stores (AppState, PodcastFeedState, etc.) are wiped.
     // A client-side push leaves the previous user's data in WASM memory, which
     // leaks across user switches (e.g. a stale podcast list on /podcasts).
-    let _ = window.location().set_href("/");
+    // The desktop app's saved login goes first, or the next launch signs back in.
+    wasm_bindgen_futures::spawn_local(async move {
+        crate::components::context::AppState::clear_tauri_credentials().await;
+        let _ = window.location().set_href("/");
+    });
 
     html! {}
 }

@@ -141,9 +141,7 @@ class MobileDownloadService extends DownloadService {
             // it as-is rather than resolving/forcing https.
             url = episode.downloadUrl!;
           } else {
-            /// If we get a redirect to an http endpoint the download will fail. Let's fully resolve
-            /// the URL before calling download and ensure it is https.
-            url = await resolveUrl(episode.contentUrl!, forceHttps: true);
+            url = await resolveDownloadUrl(episode.contentUrl!);
           }
 
           final taskId = await downloadManager.enqueueTask(url, downloadPath, filename);

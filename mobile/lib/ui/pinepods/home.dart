@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
-import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/bloc/ui/pager_bloc.dart';
 import 'package:pinepods_mobile/services/network/connectivity_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
@@ -400,34 +399,8 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     final homeEpisode = episodes[episodeIndex];
     
     try {
-      // Convert HomeEpisode to Episode for local download
-      final localEpisode = Episode(
-        guid: 'pinepods_${homeEpisode.episodeId}_${DateTime.now().millisecondsSinceEpoch}',
-        pguid: 'pinepods_${homeEpisode.podcastName.replaceAll(' ', '_').toLowerCase()}',
-        podcast: homeEpisode.podcastName,
-        title: homeEpisode.episodeTitle,
-        description: homeEpisode.episodeDescription,
-        imageUrl: homeEpisode.episodeArtwork,
-        contentUrl: homeEpisode.episodeUrl,
-        duration: homeEpisode.episodeDuration,
-        publicationDate: DateTime.tryParse(homeEpisode.episodePubDate),
-        author: homeEpisode.podcastName,
-        season: 0,
-        episode: 0,
-        position: homeEpisode.listenDuration ?? 0,
-        played: homeEpisode.completed,
-        chapters: [],
-        transcriptUrls: [],
-      );
-      
-      final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
-      
-      // First save the episode to the repository so it can be tracked
-      await podcastBloc.podcastService.saveEpisode(localEpisode);
-      
-      // Use the download service from podcast bloc
-      final success = await podcastBloc.downloadService.downloadEpisode(localEpisode);
-      
+      final success = await LocalDownloadUtils.localDownloadEpisode(context, homeEpisode.toPinepodsEpisode());
+
       if (success) {
         _showSnackBar('Episode download started', Colors.green);
       } else {

@@ -47,7 +47,7 @@
   "settings_download_switch_internal": "Neue Downloads werden im internen Speicher gespeichert. Bestehende Downloads verbleiben auf der SD-Karte.",
   "settings_download_switch_label": "Speicherort ändern",
   "cancel_option_label": "Stirbuereb",
-  "settings_theme_switch_label": "Dark theme",
+  "settings_theme_switch_label": "Theme",
   "playback_speed_label": "Stellen Sie die Wiedergabegeschwindigkeit ein",
   "show_notes_label": "Notizen anzeigen",
   "search_provider_label": "Suchmaschine",

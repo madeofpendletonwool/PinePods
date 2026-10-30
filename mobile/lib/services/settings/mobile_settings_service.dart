@@ -310,6 +310,15 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  bool get pinepodsUseGravatar => _sharedPreferences.getBool('pinepods_use_gravatar') ?? false;
+
+  @override
+  set pinepodsUseGravatar(bool value) {
+    _sharedPreferences.setBool('pinepods_use_gravatar', value);
+    settingsNotifier.sink.add('pinepods_use_gravatar');
+  }
+
+  @override
   int get autoDownloadQueueCount => _sharedPreferences.getInt('autoDownloadQueueCount') ?? 0;
 
   @override

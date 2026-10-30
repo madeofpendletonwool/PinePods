@@ -47,7 +47,7 @@
   "settings_download_switch_internal": "I nuovi downloads saranno salvati nello storage interno. I downloads esistenti rimarranno nella card SD.",
   "settings_download_switch_label": "Cambia la posizione per lo storage",
   "cancel_option_label": "Annulla",
-  "settings_theme_switch_label": "Tema scuro",
+  "settings_theme_switch_label": "Tema",
   "playback_speed_label": "Velocità di riproduzione",
   "show_notes_label": "Visualizza le note",
   "search_provider_label": "Provider di ricerca",

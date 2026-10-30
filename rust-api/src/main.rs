@@ -57,7 +57,12 @@ async fn main() -> AppResult<()> {
     info!("Database pool initialized");
 
     // Initialize Redis client
-    let redis_client = RedisClient::new(&config).await?;
+    let redis_client = RedisClient::new(&config).await.inspect_err(|e| {
+        error!(
+            "Could not connect to Valkey/Redis at {}:{} ({}). PinePods requires Valkey: point VALKEY_URL or VALKEY_HOST/VALKEY_PORT at a running instance.",
+            config.redis.host, config.redis.port, e
+        );
+    })?;
     info!("Redis/Valkey client initialized");
 
     // Unique id for this API process — created before the task manager so it can

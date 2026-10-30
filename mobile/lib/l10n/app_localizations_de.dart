@@ -163,7 +163,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get cancel_option_label => 'Stirbuereb';
 
   @override
-  String get settings_theme_switch_label => 'Dark theme';
+  String get settings_theme_switch_label => 'Theme';
 
   @override
   String get playback_speed_label =>

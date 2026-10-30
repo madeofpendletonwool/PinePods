@@ -1,7 +1,7 @@
 use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
-    call_add_oidc_provider, call_list_oidc_providers, call_remove_oidc_provider,
+    call_add_oidc_provider, call_discover_oidc_provider, call_list_oidc_providers, call_remove_oidc_provider,
     call_update_oidc_provider, AddOIDCProviderRequest, OIDCProvider,
 };
 use gloo_events::EventListener;
@@ -396,6 +396,11 @@ pub fn oidc_settings() -> Html {
     let i18n_authorization_url = i18n.t("oidc.authorization_url").to_string();
     let i18n_token_url = i18n.t("oidc.token_url").to_string();
     let i18n_user_info_url = i18n.t("oidc.user_info_url").to_string();
+    let i18n_discovery_url = i18n.t("oidc.discovery_url").to_string();
+    let i18n_discovery_hint = i18n.t("oidc.discovery_hint").to_string();
+    let i18n_discover = i18n.t("oidc.discover").to_string();
+    let i18n_discovery_succeeded = i18n.t("oidc.discovery_succeeded").to_string();
+    let i18n_discovery_failed = i18n.t("oidc.discovery_failed").to_string();
     let i18n_submit = i18n.t("common.submit").to_string();
     let i18n_add = i18n.t("common.add").to_string();
     let i18n_update = i18n.t("common.update").to_string();
@@ -424,6 +429,8 @@ pub fn oidc_settings() -> Html {
     let auth_url = use_state(|| String::new());
     let token_url = use_state(|| String::new());
     let user_info_url = use_state(|| String::new());
+    let discovery_url = use_state(|| String::new());
+    let discovering = use_state(|| false);
     let button_text = use_state(|| String::new());
     let button_color = use_state(|| String::from("#000000"));
     let button_text_color = use_state(|| String::from("#000000"));
@@ -531,6 +538,7 @@ pub fn oidc_settings() -> Html {
         let auth_url = auth_url.clone();
         let token_url = token_url.clone();
         let user_info_url = user_info_url.clone();
+        let discovery_url = discovery_url.clone();
         let button_text = button_text.clone();
         let button_color = button_color.clone();
         let button_text_color = button_text_color.clone();
@@ -551,6 +559,7 @@ pub fn oidc_settings() -> Html {
             auth_url.set(String::new());
             token_url.set(String::new());
             user_info_url.set(String::new());
+            discovery_url.set(String::new());
             button_text.set(String::new());
             button_color.set(String::from("#000000"));
             button_text_color.set(String::from("#000000"));
@@ -726,6 +735,60 @@ pub fn oidc_settings() -> Html {
         Callback::from(move |e: InputEvent| {
             let target = e.target_unchecked_into::<HtmlInputElement>();
             client_secret.set(target.value());
+        })
+    };
+
+    let on_discovery_url_change = {
+        let discovery_url = discovery_url.clone();
+        Callback::from(move |e: InputEvent| {
+            let target = e.target_unchecked_into::<HtmlInputElement>();
+            discovery_url.set(target.value());
+        })
+    };
+
+    let on_discover = {
+        let discovery_url = discovery_url.clone();
+        let discovering = discovering.clone();
+        let auth_url = auth_url.clone();
+        let token_url = token_url.clone();
+        let user_info_url = user_info_url.clone();
+        let state = state.clone();
+        Callback::from(move |_: MouseEvent| {
+            let url = discovery_url.trim().to_string();
+            if url.is_empty() || *discovering {
+                return;
+            }
+            let (Some(server_name), Some(api_key)) = (
+                state.auth_details.as_ref().map(|ud| ud.server_name.clone()),
+                state.auth_details.as_ref().and_then(|ud| ud.api_key.clone()),
+            ) else {
+                return;
+            };
+            let discovering = discovering.clone();
+            let auth_url = auth_url.clone();
+            let token_url = token_url.clone();
+            let user_info_url = user_info_url.clone();
+            let succeeded = i18n_discovery_succeeded.clone();
+            let failed = i18n_discovery_failed.clone();
+            discovering.set(true);
+            wasm_bindgen_futures::spawn_local(async move {
+                match call_discover_oidc_provider(server_name, api_key, url).await {
+                    Ok(doc) => {
+                        auth_url.set(doc.authorization_endpoint);
+                        token_url.set(doc.token_endpoint);
+                        user_info_url.set(doc.userinfo_endpoint);
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                            state.info_message = Some(succeeded);
+                        });
+                    }
+                    Err(e) => {
+                        Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                            state.error_message = Some(format!("{}{}", failed, e));
+                        });
+                    }
+                }
+                discovering.set(false);
+            });
         })
     };
 
@@ -1070,6 +1133,33 @@ pub fn oidc_settings() -> Html {
                                         PageState::Hidden => false,
                                     }}
                                 />
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;grid-column:span 2;">
+                                <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_discovery_url}</label>
+                                <div style="display:flex;gap:8px;">
+                                    <input
+                                        type="url"
+                                        class="input"
+                                        style="flex:1;"
+                                        value={(*discovery_url).clone()}
+                                        oninput={on_discovery_url_change}
+                                        placeholder="https://auth.example.com/application/o/pinepods/"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="btn btn-secondary"
+                                        onclick={on_discover}
+                                        disabled={*discovering || discovery_url.trim().is_empty()}
+                                    >
+                                        if *discovering {
+                                            <i class="ph ph-spinner" style="animation: spin 1s linear infinite;"></i>
+                                        } else {
+                                            <i class="ph ph-magnifying-glass"></i>
+                                        }
+                                        <span>{&i18n_discover}</span>
+                                    </button>
+                                </div>
+                                <p style="font-size:11px;color:var(--text-secondary-color);">{&i18n_discovery_hint}</p>
                             </div>
                             <div style="display:flex;flex-direction:column;gap:4px;">
                                 <label style="font-size:12px;font-weight:500;color:var(--text-color);">{&i18n_authorization_url}</label>

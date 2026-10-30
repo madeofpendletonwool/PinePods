@@ -136,7 +136,7 @@ pub async fn get_user_feed(
     };
 
     Ok(Response::builder()
-        .header("content-type", "application/rss+xml")
+        .header("content-type", "application/rss+xml; charset=utf-8")
         .body(feed_content)
         .map_err(|e| AppError::internal(&format!("Failed to create response: {}", e)))?)
 }

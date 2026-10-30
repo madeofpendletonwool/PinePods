@@ -550,7 +550,8 @@ pub fn episode_layout() -> Html {
     let playback_speed_clone = playback_speed.clone();
     let playback_speed_customized_render = playback_speed_customized.clone();
     let auto_delete_customized_render = auto_delete_customized.clone();
-    let rss_key_state = use_state(|| None::<String>);
+    // (podcast id, key): the key only covers that podcast's feed.
+    let rss_key_state = use_state(|| None::<(i32, String)>);
 
     // Bulk selection state
     let selected_episodes = use_state(|| HashSet::<i32>::new());
@@ -2818,19 +2819,23 @@ pub fn episode_layout() -> Html {
             .map(|ud| ud.server_name.clone());
         let api_key = api_key.clone().flatten();
         let page_state_clone = page_state.clone();
+        let current_podcast_id = *podcast_id;
+        let have_key = rss_key_state
+            .as_ref()
+            .map_or(false, |(id, _)| *id == current_podcast_id);
 
         use_effect_with(
-            (page_state_clone.clone(), rss_key_state.is_none()),
-            move |(current_page_state, rss_key_is_none)| {
-                if matches!(**current_page_state, PageState::RSSFeed) && *rss_key_is_none {
+            (page_state_clone.clone(), have_key),
+            move |(current_page_state, have_key)| {
+                if matches!(**current_page_state, PageState::RSSFeed) && !*have_key {
                     if let (Some(server_name), Some(api_key), Some(user_id)) =
                         (server_name.clone(), api_key.clone(), user_id.clone())
                     {
                         let rss_key_state = rss_key_state.clone();
                         wasm_bindgen_futures::spawn_local(async move {
-                            match call_get_rss_key(&server_name, &Some(api_key), user_id).await {
+                            match call_get_rss_key(&server_name, &Some(api_key), user_id, Some(current_podcast_id)).await {
                                 Ok(rss_key) => {
-                                    rss_key_state.set(Some(rss_key));
+                                    rss_key_state.set(Some((current_podcast_id, rss_key)));
                                 }
                                 Err(e) => {
                                     web_sys::console::log_1(
@@ -2849,8 +2854,11 @@ pub fn episode_layout() -> Html {
     let rss_feed_modal = {
         let rss_key_state_clone = rss_key_state.clone();
 
-        let rss_url = match (*rss_key_state_clone).as_ref() {
-            Some(rss_key) => format!(
+        let rss_url = match (*rss_key_state_clone)
+            .as_ref()
+            .filter(|(id, _)| *id == *podcast_id)
+        {
+            Some((_, rss_key)) => format!(
                 "{}/{}?api_key={}&podcast_id={}",
                 get_rss_base_url(),
                 user_id.clone().unwrap_or_default(),
@@ -3405,7 +3413,7 @@ pub fn episode_layout() -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
-                            {&i18n.t("episodes_layout.verify_downloads")}
+                            {&i18n.t("episodes_layout.download_all_title")}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
@@ -5266,7 +5274,14 @@ pub fn episode_layout() -> Html {
                                 {
                                     if *is_selecting && !selected_episodes.is_empty() {
                                         let selected_count = selected_episodes.len();
-                                        let selected_ids: Vec<i32> = selected_episodes.iter().cloned().collect();
+                                        // In list order, so bulk-queued episodes keep the order they're shown in.
+                                        let mut selected_ids: Vec<i32> = filtered_episodes
+                                            .iter()
+                                            .map(|ep| ep.episodeid)
+                                            .filter(|id| selected_episodes.contains(id))
+                                            .collect();
+                                        let unlisted: Vec<i32> = selected_episodes.iter().filter(|id| !selected_ids.contains(id)).cloned().collect();
+                                        selected_ids.extend(unlisted);
                                         let user_id_value = user_id.unwrap_or(0);
 
                                         html! {

@@ -1,7 +1,7 @@
 use crate::components::context::{AppState, NotificationState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_get_startpage, call_set_startpage, call_set_global_podcast_cover_preference, call_get_podcast_cover_preference};
-use crate::requests::pod_req::{call_get_collection_add_ui, call_set_collection_add_ui};
+use crate::requests::pod_req::{call_get_collection_add_ui, call_set_collection_add_ui, call_set_use_gravatar};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{HtmlSelectElement, HtmlInputElement};
 use yew::prelude::*;
@@ -253,6 +253,40 @@ pub fn startpage() -> Html {
         })
     };
 
+    let use_gravatar = state.user_details.as_ref().map_or(false, |d| d.UseGravatar);
+    let on_gravatar_change = {
+        let state = state.clone();
+        let dispatch = _dispatch.clone();
+        Callback::from(move |e: Event| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                let enabled = input.checked();
+                let dispatch = dispatch.clone();
+                if let (Some(api_key), Some(user_id), Some(server_name)) = (
+                    state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
+                    state.user_details.as_ref().map(|d| d.UserID),
+                    state.auth_details.as_ref().map(|d| d.server_name.clone()),
+                ) {
+                    spawn_local(async move {
+                        match call_set_use_gravatar(&server_name, &Some(api_key), user_id, enabled).await {
+                            Ok(_) => dispatch.reduce_mut(|state| {
+                                if let Some(details) = state.user_details.as_mut() {
+                                    details.UseGravatar = enabled;
+                                }
+                                state.store_app_state();
+                            }),
+                            Err(e) => {
+                                let formatted_error = format_error_message(&e.to_string());
+                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                    state.error_message = Some(format!("Failed to update Gravatar setting: {}", formatted_error));
+                                });
+                            }
+                        }
+                    });
+                }
+            }
+        })
+    };
+
     let startpage_options = vec![
         ("Home", "home"),
         ("Feed", "feed"),
@@ -312,6 +346,22 @@ pub fn startpage() -> Html {
                             <span class="toggle-track"><span class="toggle-thumb"></span></span>
                         </label>
                     }
+                </div>
+            </div>
+
+            <div class="settings-subsection-title">{i18n.t("start_page_options.avatar")}</div>
+
+            <div class="settings-row">
+                <div><div class="settings-row-label">{i18n.t("start_page_options.use_gravatar")}</div></div>
+                <div class="settings-row-control">
+                    <label class="toggle">
+                        <input
+                            type="checkbox"
+                            checked={use_gravatar}
+                            onchange={on_gravatar_change}
+                        />
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    </label>
                 </div>
             </div>
 

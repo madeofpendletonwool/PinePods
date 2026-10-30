@@ -250,6 +250,7 @@ pub fn remote_devices_panel() -> Html {
             };
 
             let label = device_label(device);
+            let send_here_text = i18n_send_here.replace("{name}", &label);
             let on_send_here = {
                 let id = id.clone();
                 let np_dispatch = np_dispatch.clone();
@@ -312,8 +313,8 @@ pub fn remote_devices_panel() -> Html {
                         }
                         <div class="rd-actions">
                             if can_send_here {
-                                <button type="button" class="rd-play-here" title="Move what's playing here to this device" onclick={on_send_here}>
-                                    <i class="ph ph-arrow-square-out mr-1"></i>{ &i18n_send_here }
+                                <button type="button" class="rd-play-here" title="Move what's playing on this device over to that one" onclick={on_send_here}>
+                                    <i class="ph ph-arrow-square-out mr-1"></i>{ send_here_text }
                                 </button>
                             }
                             if !is_idle {

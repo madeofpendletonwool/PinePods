@@ -151,13 +151,7 @@ impl FixtureServer {
 
 // No keep-alive: the server's HTTP clients are process-wide statics, so a pooled connection could
 // be reused by another test after the test whose runtime drives it has ended.
-async fn serve(
-    state: State<Arc<Mutex<Inner>>>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
+async fn serve(state: State<Arc<Mutex<Inner>>>, method: Method, uri: Uri, headers: HeaderMap, body: Bytes) -> Response {
     let mut resp = respond(state, method, uri, headers, body).await;
     resp.headers_mut().insert("connection", HeaderValue::from_static("close"));
     resp

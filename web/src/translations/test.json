@@ -347,7 +347,6 @@
     "rss_feed_instruction": "ZZTEST-RSS-FEED-INSTRUCTION-ZZTEST",
     "rss_feed_note": "ZZTEST-RSS-FEED-NOTE-ZZTEST",
     "rss_feed_url": "ZZTEST-RSS-FEED-URL-ZZTEST",
-    "rss_feed_warning": "ZZTEST-RSS-FEED-WARNING-ZZTEST",
     "save": "ZZTEST-SAVE-ZZTEST",
     "save_changes": "ZZTEST-SAVE-CHANGES-ZZTEST",
     "save_episodes": "ZZTEST-SAVE-EPISODES-ZZTEST",
@@ -365,7 +364,6 @@
     "title_za": "ZZTEST-TITLE-ZA-ZZTEST",
     "username": "ZZTEST-USERNAME-ZZTEST",
     "username_placeholder": "ZZTEST-ENTER-USERNAME-FOR-PREMIUM-FEEDS-ZZTEST",
-    "verify_downloads": "ZZTEST-VERIFY-DOWNLOADS-ZZTEST",
     "visit_external_website": "ZZTEST-VISIT-EXTERNAL-WEBSITE-ZZTEST",
     "website_url": "ZZTEST-WEBSITE-URL-ZZTEST",
     "website_url_placeholder": "ZZTEST-ENTER-WEBSITE-URL-ZZTEST",
@@ -468,9 +466,7 @@
     "import_description": "ZZTEST-IMPORT-DESCRIPTION-ZZTEST",
     "import_options": "ZZTEST-IMPORT-OPTIONS-ZZTEST",
     "import_progress": "ZZTEST-IMPORT-PROGRESS-ZZTEST",
-    "import_tip": "ZZTEST-IMPORT-TIP-ZZTEST",
-    "import_verification_text": "ZZTEST-IMPORT-VERIFICATION-TEXT-ZZTEST",
-    "opml_import_completed": "ZZTEST-OPML-IMPORT-COMPLETED-ZZTEST"
+    "import_verification_text": "ZZTEST-IMPORT-VERIFICATION-TEXT-ZZTEST"
   },
   "login": {
     "account_created_successfully": "ZZTEST-ACCOUNT-CREATED-SUCCESSFULLY-ZZTEST",
@@ -544,8 +540,7 @@
     "podcasts": "ZZTEST-PODCASTS-ZZTEST",
     "queue": "ZZTEST-QUEUE-ZZTEST",
     "saved": "ZZTEST-SAVED-ZZTEST",
-    "search": "ZZTEST-SEARCH-ZZTEST",
-    "unmatched_podcasts_notification": "ZZTEST-UNMATCHED-PODCASTS-NOTIFICATION-ZZTEST"
+    "search": "ZZTEST-SEARCH-ZZTEST"
   },
   "nextcloud_options": {
     "gpodder_sync_description": "ZZTEST-GPODDER-SYNC-DESCRIPTION-ZZTEST"

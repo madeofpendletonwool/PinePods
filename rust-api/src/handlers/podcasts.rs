@@ -1351,27 +1351,37 @@ pub async fn delete_episode(
     require_episode_owner(&state, request.user_id, request.episode_id, request.is_youtube.unwrap_or(false)).await?;
 
     let is_youtube = request.is_youtube.unwrap_or(false);
+    delete_download(&state, request.user_id, request.episode_id, is_youtube).await?;
 
-    // Prevent deleting episodes from local podcasts — manage files on disk directly
-    if let Ok(Some(feed_url)) = state.db_pool.get_feed_url_for_episode(request.episode_id).await {
-        if feed_url.starts_with("local://") {
-            return Err(AppError::bad_request(
-                "Cannot delete local podcast episodes. Manage audio files directly on the server and use Refresh to sync.",
-            ));
+    let content_type = if is_youtube { "Video" } else { "Episode" };
+
+    Ok(Json(serde_json::json!({
+        "detail": format!("{} deleted successfully.", content_type)
+    })))
+}
+
+// Remove a user's download of an episode or video: the row, then the file. Returns whether a
+// download was removed. Local podcast files are managed on disk, so those are refused.
+pub(crate) async fn delete_download(state: &AppState, user_id: i32, episode_id: i32, is_youtube: bool) -> Result<bool, AppError> {
+    if !is_youtube {
+        if let Ok(Some(feed_url)) = state.db_pool.get_feed_url_for_episode(episode_id).await {
+            if feed_url.starts_with("local://") {
+                return Err(AppError::bad_request(
+                    "Cannot delete local podcast episodes. Manage audio files directly on the server and use Refresh to sync.",
+                ));
+            }
         }
     }
 
     // Capture the file path before removing the DB record
     let file_path = if is_youtube {
-        state.db_pool.get_video_download_location(request.user_id, request.episode_id).await.ok().flatten()
+        state.db_pool.get_video_download_location(user_id, episode_id).await.ok().flatten()
     } else {
-        state.db_pool.get_download_location(request.episode_id, request.user_id).await.ok().flatten()
+        state.db_pool.get_download_location(episode_id, user_id).await.ok().flatten()
     };
 
-    // Delete the DB record
-    state.db_pool.delete_episode(request.user_id, request.episode_id, is_youtube).await?;
+    let deleted = state.db_pool.delete_episode(user_id, episode_id, is_youtube).await?;
 
-    // Remove the file from disk if one was recorded
     if let Some(path) = file_path {
         if tokio::fs::metadata(&path).await.is_ok() {
             if let Err(e) = tokio::fs::remove_file(&path).await {
@@ -1380,11 +1390,7 @@ pub async fn delete_episode(
         }
     }
 
-    let content_type = if is_youtube { "Video" } else { "Episode" };
-
-    Ok(Json(serde_json::json!({
-        "detail": format!("{} deleted successfully.", content_type)
-    })))
+    Ok(deleted)
 }
 
 // Download all episodes of a podcast - matches Python download_all_podcast endpoint
@@ -3413,7 +3419,7 @@ pub async fn stream_episode(
     path = "/get_rss_key",
     tag = "podcasts",
     summary = "Get rss key",
-    params(UserIdQuery),
+    params(RssKeyQuery),
     security(("api_key" = [])),
     responses(
         (status = 200, description = "Success", body = serde_json::Value),
@@ -3423,7 +3429,7 @@ pub async fn stream_episode(
 pub async fn get_rss_key(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
-    Query(query): Query<UserIdQuery>,
+    Query(query): Query<RssKeyQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     require_valid_api_key(&state, &api_key).await?;
@@ -3436,8 +3442,16 @@ pub async fn get_rss_key(
         return Err(AppError::forbidden("You can only get your own RSS key"));
     }
 
-    // Get or create RSS key for the user
-    let rss_key = state.db_pool.get_or_create_user_rss_key(query.user_id).await?;
+    // With a podcast_id, a key that only reads that podcast's feed; otherwise the user's key.
+    let rss_key = match query.podcast_id {
+        Some(podcast_id) => {
+            if !state.db_pool.verify_podcast_belongs_to_user(podcast_id, query.user_id).await? {
+                return Err(AppError::not_found("Podcast not found"));
+            }
+            state.db_pool.get_or_create_podcast_rss_key(query.user_id, podcast_id).await?
+        }
+        None => state.db_pool.get_or_create_user_rss_key(query.user_id).await?,
+    };
 
     Ok(Json(serde_json::json!({
         "rss_key": rss_key
@@ -3445,8 +3459,10 @@ pub async fn get_rss_key(
 }
 
 #[derive(Deserialize, utoipa::IntoParams)]
-pub struct UserIdQuery {
+pub struct RssKeyQuery {
     pub user_id: i32,
+    /// Return a key that only covers this podcast's feed.
+    pub podcast_id: Option<i32>,
 }
 
 // Query struct for get_podcast_details_dynamic

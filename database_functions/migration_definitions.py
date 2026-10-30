@@ -921,7 +921,7 @@ def migration_007_queue_download_tables(conn, db_type: str):
                     UserID INT,
                     EpisodeID INT,
                     DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    DownloadedSize INT,
+                    DownloadedSize BIGINT,
                     DownloadedLocation VARCHAR(255),
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
                     FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
@@ -934,7 +934,7 @@ def migration_007_queue_download_tables(conn, db_type: str):
                     UserID INT,
                     VideoID INT,
                     DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    DownloadedSize INT,
+                    DownloadedSize BIGINT,
                     DownloadedLocation VARCHAR(255),
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
                     FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID)
@@ -985,7 +985,7 @@ def migration_007_queue_download_tables(conn, db_type: str):
                     UserID INT,
                     EpisodeID INT,
                     DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    DownloadedSize INT,
+                    DownloadedSize BIGINT,
                     DownloadedLocation VARCHAR(255),
                     FOREIGN KEY (UserID) REFERENCES Users(UserID),
                     FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
@@ -998,7 +998,7 @@ def migration_007_queue_download_tables(conn, db_type: str):
                     UserID INT,
                     VideoID INT,
                     DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    DownloadedSize INT,
+                    DownloadedSize BIGINT,
                     DownloadedLocation VARCHAR(255),
                     FOREIGN KEY (UserID) REFERENCES Users(UserID),
                     FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID)
@@ -7221,6 +7221,24 @@ def _refresh_interval_minutes(published, now) -> int:
     return int(min(max(median / 8 / 60, 15), 6 * 60))
 
 
+@register_migration("079", "downloaded_size_bigint", "DownloadedEpisodes/DownloadedVideos.DownloadedSize: BIGINT, so downloads over 2 GiB can be recorded", requires=["007"])
+def migration_079_downloaded_size_bigint(conn, db_type: str) -> None:
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    try:
+        for table in ("DownloadedEpisodes", "DownloadedVideos"):
+            if pg:
+                cursor.execute(f'ALTER TABLE "{table}" ALTER COLUMN DownloadedSize TYPE BIGINT')
+            else:
+                cursor.execute(f"ALTER TABLE {table} MODIFY DownloadedSize BIGINT")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("080", "create_feeds", "Feeds: one row per feed address and credentials, holding the refresh state its subscriptions share", requires=["044", "063", "071", "075"])
 def migration_080_create_feeds(conn, db_type: str) -> None:
     """Feeds: one row per feed, shared by every user subscribed to it, with the refresh state
@@ -7828,6 +7846,21 @@ def migration_085_podcast_edited_metadata(conn, db_type: str) -> None:
             cursor.execute(
                 f"UPDATE {table} SET FeedETag = NULL, FeedLastModified = NULL, FeedContentHash = NULL WHERE {not_youtube}"
             )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("086", "user_use_gravatar", "Users.UseGravatar: show the user's Gravatar, off unless they turn it on", requires=["001"])
+def migration_086_user_use_gravatar(conn, db_type: str) -> None:
+    cursor = conn.cursor()
+    users = '"Users"' if db_type == "postgresql" else "Users"
+    try:
+        if not _column_exists(cursor, db_type, "Users", "UseGravatar"):
+            cursor.execute(f"ALTER TABLE {users} ADD COLUMN UseGravatar BOOLEAN NOT NULL DEFAULT FALSE")
         conn.commit()
     except Exception:
         conn.rollback()

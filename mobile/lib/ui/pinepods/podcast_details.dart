@@ -12,6 +12,7 @@ import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/people.dart';
+import 'package:pinepods_mobile/entities/youtube_channel.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
@@ -116,6 +117,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
   // Tracks episode being loaded for ghost mini player
   PinepodsEpisode? _pendingEpisode;
+
+  bool get _isYoutube => isYoutubeChannelUrl(_podcast.url);
 
   @override
   void initState() {
@@ -261,7 +264,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         _resolveArtColor();
       }
       await _loadPodcastFeed();
-      messenger.showSnackBar(const SnackBar(content: Text('Podcast details refreshed from the feed')));
+      messenger.showSnackBar(SnackBar(
+          content: Text(_isYoutube ? 'Checked the channel for new videos' : 'Podcast details refreshed from the feed')));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text("Couldn't refresh from the feed: $e")));
     } finally {
@@ -713,6 +717,140 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     );
   }
 
+  /// Which videos a YouTube channel subscription keeps and adds.
+  Future<void> _showYouTubeSettingsSheet() async {
+    final podcastId = _podcast.id;
+    final userId = Provider.of<SettingsBloc>(context, listen: false).currentSettings.pinepodsUserId;
+    if (podcastId <= 0 || userId == null) return;
+
+    int? cutoff;
+    YouTubeVideoFilter filter = const YouTubeVideoFilter();
+    try {
+      final results = await Future.wait([
+        _pinepodsService.getFeedCutoffDays(podcastId, userId),
+        _pinepodsService.getYouTubeVideoFilter(podcastId, userId),
+      ]);
+      cutoff = results[0] as int?;
+      filter = results[1] as YouTubeVideoFilter;
+    } catch (e) {
+      _showSnackBar("Couldn't load video settings: $e", Colors.red);
+      return;
+    }
+    if (!mounted) return;
+
+    String text(int? v) => v == null || v == 0 ? '' : '$v';
+    final cutoffCtl = TextEditingController(text: text(cutoff));
+    final minCtl = TextEditingController(text: text(filter.minMinutes));
+    final maxCtl = TextEditingController(text: text(filter.maxMinutes));
+    final titleCtl = TextEditingController(text: filter.titleContains ?? '');
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        bool saving = false;
+        return StatefulBuilder(builder: (context, setSheetState) {
+          final theme = Theme.of(context);
+          InputDecoration deco(String label, {String? hint, String? suffix}) => InputDecoration(
+                labelText: label,
+                hintText: hint,
+                suffixText: suffix,
+                border: const OutlineInputBorder(),
+                isDense: true,
+              );
+
+          Future<void> save() async {
+            final messenger = ScaffoldMessenger.of(context);
+            final navigator = Navigator.of(sheetContext);
+            setSheetState(() => saving = true);
+            try {
+              await _pinepodsService.updateFeedCutoffDays(
+                  podcastId, userId, int.tryParse(cutoffCtl.text.trim()) ?? 0);
+              await _pinepodsService.updateYouTubeVideoFilter(
+                podcastId,
+                userId,
+                YouTubeVideoFilter(
+                  minMinutes: int.tryParse(minCtl.text.trim()),
+                  maxMinutes: int.tryParse(maxCtl.text.trim()),
+                  titleContains: titleCtl.text.trim().isEmpty ? null : titleCtl.text.trim(),
+                ),
+              );
+              navigator.pop();
+              messenger.showSnackBar(const SnackBar(content: Text('Video settings saved')));
+            } catch (e) {
+              setSheetState(() => saving = false);
+              messenger.showSnackBar(
+                  SnackBar(content: Text("Couldn't save: ${e.toString().replaceFirst('Exception: ', '')}")));
+            }
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Video settings',
+                      style: theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text(
+                      'Leave a field empty for no limit. Older videos are removed from your server; '
+                      'length and title limits apply to new videos.',
+                      style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: cutoffCtl,
+                    keyboardType: TextInputType.number,
+                    decoration: deco('Keep videos for', suffix: 'days'),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: minCtl,
+                          keyboardType: TextInputType.number,
+                          decoration: deco('Shortest', suffix: 'min'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: maxCtl,
+                          keyboardType: TextInputType.number,
+                          decoration: deco('Longest', suffix: 'min'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: titleCtl,
+                    maxLength: 255,
+                    decoration: deco('Title contains', hint: 'e.g. Full Episode'),
+                  ),
+                  const SizedBox(height: 4),
+                  FilledButton(
+                    onPressed: saving ? null : save,
+                    child: saving
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Save'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
+      },
+    );
+    cutoffCtl.dispose();
+    minCtl.dispose();
+    maxCtl.dispose();
+    titleCtl.dispose();
+  }
+
   Future<void> _saveSortPreference() async {
     final prefs = await SharedPreferences.getInstance();
     final key = 'episode_sort_${_podcast.url.hashCode}';
@@ -995,8 +1133,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             episodes = await _pinepodsService.getPodcastEpisodes(userId, podcastId);
             print('Loaded ${episodes.length} episodes from server for podcastId: $podcastId');
             
-            // If server has no episodes, this podcast may need episode sync
-            if (episodes.isEmpty) {
+            // If server has no episodes, this podcast may need episode sync.
+            // A new channel subscription is still adding its videos; there's no RSS to fall back to.
+            if (episodes.isEmpty && !_isYoutube) {
               print('Server has no episodes for subscribed podcast. This should not happen.');
               print('Podcast ID: $podcastId, Title: ${_podcast.title}');
               
@@ -1026,7 +1165,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           // Fall back to empty episodes list
           episodes = [];
         }
-      } else {
+      } else if (!_isYoutube) {
         try {
           print('Loading episodes from RSS feed for non-followed podcast: ${_podcast.url}');
           
@@ -1123,9 +1262,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         context: context,
         barrierDismissible: false, // Prevent dismissing by tapping outside
         builder: (context) => AlertDialog(
-          title: const Text('Unfollow Podcast'),
+          title: Text(_isYoutube ? 'Unsubscribe' : 'Unfollow Podcast'),
           content: Text(
-            'Are you sure you want to unfollow "${_podcast.title}"?\n\nThis will remove the podcast and all episode history from your library.',
+            _isYoutube
+                ? 'Unsubscribe from "${_podcast.title}"? Its videos and your history with them are removed.'
+                : 'Are you sure you want to unfollow "${_podcast.title}"?\n\nThis will remove the podcast and all episode history from your library.',
           ),
           actions: [
             TextButton(
@@ -1137,7 +1278,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
               style: TextButton.styleFrom(
                 foregroundColor: Colors.red,
               ),
-              child: const Text('Unfollow'),
+              child: Text(_isYoutube ? 'Unsubscribe' : 'Unfollow'),
             ),
           ],
         ),
@@ -1160,11 +1301,13 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
       if (oldFollowingState) {
         print('PinePods: Attempting to remove podcast');
-        success = await _pinepodsService.removePodcast(
-          _podcast.title,
-          _podcast.url,
-          userId,
-        );
+        success = _isYoutube
+            ? await _pinepodsService.removeYouTubeChannel(_podcast.title, _podcast.url, userId)
+            : await _pinepodsService.removePodcast(
+                _podcast.title,
+                _podcast.url,
+                userId,
+              );
         print('PinePods: Remove podcast result: $success');
         if (success) {
           setState(() {
@@ -1173,18 +1316,26 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             _peoplePodcastId = null;
           });
           widget.onFollowChanged?.call(false);
-          _showSnackBar('Podcast removed', Colors.orange);
+          _showSnackBar(_isYoutube ? 'Unsubscribed' : 'Podcast removed', Colors.orange);
         }
       } else {
         print('PinePods: Attempting to add podcast');
-        success = await _pinepodsService.addPodcast(_podcast, userId);
+        if (_isYoutube) {
+          final channelId = Uri.parse(_podcast.url).pathSegments.last;
+          final podcastId = await _pinepodsService.subscribeToYouTubeChannel(channelId, userId);
+          _podcast = _podcastWithId(podcastId);
+          success = true;
+        } else {
+          success = await _pinepodsService.addPodcast(_podcast, userId);
+        }
         print('PinePods: Add podcast result: $success');
         if (success) {
           setState(() {
             _isFollowing = true;
           });
           widget.onFollowChanged?.call(true);
-          _showSnackBar('Podcast added', Colors.green);
+          _showSnackBar(
+              _isYoutube ? 'Subscribed. Videos are being added in the background.' : 'Podcast added', Colors.green);
         }
       }
 
@@ -1212,6 +1363,27 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       }
       print('PinePods Follow button: Loading state reset to false');
     }
+  }
+
+  UnifiedPinepodsPodcast _podcastWithId(int id) {
+    final p = _podcast;
+    return UnifiedPinepodsPodcast(
+      id: id,
+      indexId: p.indexId,
+      title: p.title,
+      url: p.url,
+      originalUrl: p.originalUrl,
+      link: p.link,
+      description: p.description,
+      author: p.author,
+      ownerName: p.ownerName,
+      image: p.image,
+      artwork: p.artwork,
+      lastUpdateTime: p.lastUpdateTime,
+      categories: p.categories,
+      explicit: p.explicit,
+      episodeCount: p.episodeCount,
+    );
   }
 
   void _showSnackBar(String message, Color backgroundColor) {
@@ -1709,7 +1881,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final muted = theme.hintColor;
     final count = _episodes.isNotEmpty ? _episodes.length : _podcast.episodeCount;
     final meta = [
-      if (count > 0) '$count episode${count == 1 ? '' : 's'}',
+      if (count > 0) '$count ${_isYoutube ? 'video' : 'episode'}${count == 1 ? '' : 's'}',
       if (_podcast.explicit) 'Explicit',
     ].join('  ·  ');
 
@@ -1817,7 +1989,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         icon: _isFollowButtonLoading
             ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: onAccent))
             : const Icon(PhosphorIconsBold.plus, size: 18),
-        label: const Text('Follow'),
+        label: Text(_isYoutube ? 'Subscribe' : 'Follow'),
       );
     } else {
       final latest = _latestUnplayed;
@@ -1838,7 +2010,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         if (_isFollowing) ...[
           const SizedBox(width: 10),
           CircleAction(
-            tooltip: 'Unfollow',
+            tooltip: _isYoutube ? 'Unsubscribe' : 'Unfollow',
             icon: _isFollowButtonLoading
                 ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: accent))
                 : Icon(PhosphorIconsBold.check, color: accent, size: 20),
@@ -1886,6 +2058,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           case 'refresh_details':
             _refreshDetails();
             break;
+          case 'youtube':
+            _showYouTubeSettingsSheet();
+            break;
         }
       },
       itemBuilder: (context) => [
@@ -1911,13 +2086,22 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             checked: _isAutoPlayNextEnabled,
             child: const Text('Auto-play next'),
           ),
+          if (_isYoutube)
+            const PopupMenuItem<String>(
+              value: 'youtube',
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(PhosphorIconsRegular.slidersHorizontal),
+                title: Text('Video settings'),
+              ),
+            ),
           PopupMenuItem<String>(
             value: 'refresh_details',
             enabled: !_isRefreshingDetails,
-            child: const ListTile(
+            child: ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(PhosphorIconsRegular.arrowsClockwise),
-              title: Text('Refresh from feed'),
+              leading: const Icon(PhosphorIconsRegular.arrowsClockwise),
+              title: Text(_isYoutube ? 'Check for new videos' : 'Refresh from feed'),
             ),
           ),
           if (_aiAvailable)
@@ -1937,7 +2121,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(_isFollowing ? PhosphorIconsRegular.minusCircle : PhosphorIconsRegular.plusCircle),
-            title: Text(_isFollowing ? 'Unfollow' : 'Follow'),
+            title: Text(_isYoutube
+                ? (_isFollowing ? 'Unsubscribe' : 'Subscribe')
+                : (_isFollowing ? 'Unfollow' : 'Follow')),
           ),
         ),
       ],
@@ -1974,10 +2160,16 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       return [
         message(
           PhosphorIconsRegular.info,
-          _isFollowing ? 'No episodes found' : 'Episodes available after following',
-          _isFollowing
-              ? 'Episodes from your PinePods library will appear here'
-              : 'Follow this podcast to add it to your library and view episodes',
+          _isYoutube
+              ? (_isFollowing ? 'No videos yet' : 'Videos available after subscribing')
+              : (_isFollowing ? 'No episodes found' : 'Episodes available after following'),
+          _isYoutube
+              ? (_isFollowing
+                  ? 'Your server is still adding this channel\'s videos, or none match its video settings'
+                  : 'Subscribe to add this channel to your library and play its videos')
+              : _isFollowing
+                  ? 'Episodes from your PinePods library will appear here'
+                  : 'Follow this podcast to add it to your library and view episodes',
           action: _isFollowing ? FilledButton.tonal(onPressed: _loadPodcastFeed, child: const Text('Retry')) : null,
         ),
       ];

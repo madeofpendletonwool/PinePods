@@ -452,29 +452,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
 
   Future<void> _localDownloadServerEpisode(PinepodsEpisode episode) async {
     try {
-      final localEpisode = Episode(
-        guid: 'pinepods_${episode.episodeId}_${DateTime.now().millisecondsSinceEpoch}',
-        pguid: 'pinepods_${episode.podcastName.replaceAll(' ', '_').toLowerCase()}',
-        podcast: episode.podcastName,
-        title: episode.episodeTitle,
-        description: episode.episodeDescription,
-        imageUrl: episode.episodeArtwork,
-        contentUrl: episode.episodeUrl,
-        duration: episode.episodeDuration,
-        publicationDate: DateTime.tryParse(episode.episodePubDate),
-        author: episode.podcastName,
-        season: 0,
-        episode: 0,
-        // Episode.position is stored in milliseconds; listenDuration is seconds.
-        position: (episode.listenDuration ?? 0) * 1000,
-        played: episode.completed,
-        chapters: [],
-        transcriptUrls: [],
-      );
-
-      final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
-      await podcastBloc.podcastService.saveEpisode(localEpisode);
-      final success = await podcastBloc.downloadService.downloadEpisode(localEpisode);
+      final success = await LocalDownloadUtils.localDownloadEpisode(context, episode);
 
       if (success) {
         _showSnackBar('Episode download started', Colors.green);

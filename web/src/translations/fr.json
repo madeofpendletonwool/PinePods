@@ -353,7 +353,6 @@
     "rss_feed_instruction": "Utilisez cet URL de flux RSS dans votre application de podcast préférée pour s'abonner à ce podcast :",
     "rss_feed_note": "NOTE : Vous devez avoir les flux RSS activés dans vos paramètres pour que le lien ci-dessous fonctionne",
     "rss_feed_url": "URL du flux RSS",
-    "rss_feed_warning": "Cet URL inclut votre clé API, donc gardez-la privée. Cela devrait changer rapidement dans une version future pour une clé temporaire afin de pouvoir partager ces liens.",
     "save": "Sauvegarder",
     "save_changes": "Sauvegarder les changements",
     "save_episodes": "Sauvegarder",
@@ -371,7 +370,6 @@
     "title_za": "Titre Z-A",
     "username": "Nom d'utilisateur",
     "username_placeholder": "Entrez votre nom d'utilisateur pour les flux premium",
-    "verify_downloads": "Vérifier les téléchargements",
     "visit_external_website": "Visitez le site web du podcast",
     "website_url": "URL du site web",
     "website_url_placeholder": "Entrez l'URL du site web",
@@ -474,9 +472,7 @@
     "import_description": "Vous pouvez importer un fichier OPML de vos podcasts ici. Si vous migrez depuis une autre appli de podcast c'est probablement la meilleure option. La plupart des applis de podcast vous permettent d'exporter une sauvegarde de vos podcasts vers un fichier OPML et cette option permet de les importer facilement dans Pinepods. Notez que cela peut prendre un moment et vous pouvez quitter cette page lors de l'import. Si vous avez l'impression que ça n'avance pas, ce n'est probablement pas le cas.",
     "import_options": "Options d'importation :",
     "import_progress": "Progression de l'importation",
-    "import_tip": "💡Après importation, rendez vous dans la section Correspondance Podcast Index pour faire correspondre les podcasts avec leur entrée dans l'index. Cela permet l'intégration des hôtes et invités dans Pinepods.",
-    "import_verification_text": "Les podcasts suivants ont été trouvés. Merci de désélectionner les podcasts que vous ne voulez pas ajouter, puis appuyez sur le bouton ci-dessous. Un grand nombre de podcasts mettra un peu de temps pour récupérer tous les flux et les ajouter. L'animation de chargement disparaîtra lorsque ce sera terminé. Soyez patient !",
-    "opml_import_completed": "Import OPML terminé ! Après importation, rendez vous dans la section Correspondance Podcast Index pour faire correspondre les podcasts avec leur entrée dans l'index. Cela permet l'intégration des hôtes et invités dans Pinepods."
+    "import_verification_text": "Les podcasts suivants ont été trouvés. Merci de désélectionner les podcasts que vous ne voulez pas ajouter, puis appuyez sur le bouton ci-dessous. Un grand nombre de podcasts mettra un peu de temps pour récupérer tous les flux et les ajouter. L'animation de chargement disparaîtra lorsque ce sera terminé. Soyez patient !"
   },
   "login": {
     "account_created_successfully": "Compte créé avec succès ! Vous pouvez désormais vous connecter.",
@@ -550,8 +546,7 @@
     "podcasts": "Podcasts",
     "queue": "File d'attente",
     "saved": "Enregistrés",
-    "search": "Rechercher",
-    "unmatched_podcasts_notification": "📻 Vous avez {count} podcast(s) qui ne sont pas liés au Podcast Index. Rendez vous dans les paramètres de Correspondance Podcast Index pour activer les informations d'hôte et d'invité."
+    "search": "Rechercher"
   },
   "nextcloud_options": {
     "gpodder_sync_description": "La synchronisation GPodder vours permet de gérer vos abonnements de podcasts sur différents appareils. Vous pouvez gérer ici les appareils reliés à votre compte GPodder et contrôler la synchronisation."
