@@ -1,0 +1,122 @@
+name: Publish AI Multi-Architecture Image to DockerHub
+
+# Least-privilege default; the image-push jobs override this with their own
+# per-job permissions block below.
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'pinepods-ai/**'
+      - '.github/workflows/ai-docker-publish.yml'
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional version tag to publish alongside latest (e.g. 0.9.0)"
+        required: false
+        type: string
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: madeofpendletonwool/pinepods-ai
+jobs:
+  build-and-push-x86:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_KEY }}
+      - name: Build and push x86 image
+        run: |
+          cd pinepods-ai
+          VERSION="${{ github.event.release.tag_name || github.event.inputs.version }}"
+          docker build --platform linux/amd64 -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64 .
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64
+          if [ -n "$VERSION" ]; then
+            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-amd64
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-amd64
+          fi
+
+  build-and-push-arm64:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_KEY }}
+      - name: Build and push ARM64 image
+        run: |
+          cd pinepods-ai
+          VERSION="${{ github.event.release.tag_name || github.event.inputs.version }}"
+          docker build --platform linux/arm64 -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64 .
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
+          if [ -n "$VERSION" ]; then
+            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-arm64
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-arm64
+          fi
+
+  create-manifests:
+    needs: [build-and-push-x86, build-and-push-arm64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_KEY }}
+
+      - name: Create and push Docker manifest for the latest tag
+        run: |
+          sleep 10
+          # Pull the images first to ensure they're available
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
+
+          # Create and push manifest
+          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64 \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
+
+          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+          # If a version was supplied, publish a versioned manifest too
+          VERSION="${{ github.event.release.tag_name || github.event.inputs.version }}"
+          if [ -n "$VERSION" ]; then
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-amd64
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-arm64
+            docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION} \
+              --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-amd64 \
+              --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}-arm64
+            docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
+          fi
