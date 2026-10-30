@@ -34,3 +34,21 @@ spec:
   storageClassName: {{ .Values.persistence.backups.storageClass }}
   {{- end }}
 {{- end }}
+{{- if and .Values.persistence.localMedia.enabled (not .Values.persistence.localMedia.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pinepods.fullname" . }}-local-media
+  labels:
+    {{- include "pinepods.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.localMedia.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.localMedia.size }}
+  {{- if .Values.persistence.localMedia.storageClass }}
+  storageClassName: {{ .Values.persistence.localMedia.storageClass }}
+  {{- end }}
+{{- end }}

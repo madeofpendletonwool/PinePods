@@ -74,6 +74,17 @@ persistence:
     size: 2Gi
     # -- Use existing PVC for backups
     existingClaim: ""
+  localMedia:
+    # -- Mount a volume of audio files at /opt/pinepods/local-media for the Add Local
+    # Podcast feature. Usually an existing PVC that already holds your media. Must be
+    # writable: uploaded local-podcast artwork is saved inside it.
+    enabled: false
+    # -- Use existing PVC for local media
+    existingClaim: ""
+    # -- Storage class, access mode and size, used only when a new PVC is created
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 10Gi
 
 ## PostgreSQL configuration
 postgresql:
