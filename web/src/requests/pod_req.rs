@@ -5680,8 +5680,12 @@ pub async fn call_get_rss_key(
     server_name: &str,
     api_key: &Option<String>,
     user_id: i32,
+    podcast_id: Option<i32>,
 ) -> Result<String, anyhow::Error> {
-    let url = format!("{}/api/data/get_rss_key?user_id={}", server_name, user_id);
+    let mut url = format!("{}/api/data/get_rss_key?user_id={}", server_name, user_id);
+    if let Some(podcast_id) = podcast_id {
+        url.push_str(&format!("&podcast_id={}", podcast_id));
+    }
 
     let api_key_ref = api_key
         .as_deref()

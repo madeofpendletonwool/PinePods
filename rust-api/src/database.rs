@@ -14021,6 +14021,40 @@ impl DatabasePool {
         Ok(rss_key)
     }
 
+    /// The user's RSS key covering only `podcast_id`, created on first use. Single-podcast feed
+    /// links use it, so sharing one podcast's feed doesn't expose the user's other feeds.
+    pub async fn get_or_create_podcast_rss_key(&self, user_id: i32, podcast_id: i32) -> AppResult<String> {
+        let existing: Option<String> = match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(
+                r#"SELECT k.rsskey FROM "RssKeys" k
+                   WHERE k.userid = $1
+                     AND EXISTS (SELECT 1 FROM "RssKeyMap" m WHERE m.rsskeyid = k.rsskeyid AND m.podcastid = $2)
+                     AND NOT EXISTS (SELECT 1 FROM "RssKeyMap" m WHERE m.rsskeyid = k.rsskeyid AND m.podcastid <> $2)
+                   ORDER BY k.rsskeyid LIMIT 1"#,
+            )
+            .bind(user_id)
+            .bind(podcast_id)
+            .fetch_optional(pool)
+            .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_scalar(
+                "SELECT k.RssKey FROM RssKeys k
+                 WHERE k.UserID = ?
+                   AND EXISTS (SELECT 1 FROM RssKeyMap m WHERE m.RssKeyID = k.RssKeyID AND m.PodcastID = ?)
+                   AND NOT EXISTS (SELECT 1 FROM RssKeyMap m WHERE m.RssKeyID = k.RssKeyID AND m.PodcastID <> ?)
+                 ORDER BY k.RssKeyID LIMIT 1",
+            )
+            .bind(user_id)
+            .bind(podcast_id)
+            .bind(podcast_id)
+            .fetch_optional(pool)
+            .await?,
+        };
+        match existing {
+            Some(key) => Ok(key),
+            None => self.create_rss_key(user_id, Some(vec![podcast_id])).await,
+        }
+    }
+
     // Count user API keys excluding a specific one - safety check for final API key
     pub async fn count_user_api_keys_excluding(&self, user_id: i32, exclude_api_id: i32) -> AppResult<i32> {
         match self {
