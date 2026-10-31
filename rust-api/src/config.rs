@@ -79,6 +79,8 @@ pub enum Listen {
     Tcp(SocketAddr),
     #[cfg(unix)]
     Unix(PathBuf),
+    #[cfg(target_os = "linux")]
+    Systemd,
 }
 
 impl FromStr for Listen {
@@ -86,6 +88,12 @@ impl FromStr for Listen {
 
     fn from_str(s: &str) -> AppResult<Self> {
         match s {
+            "systemd" => cfg_select! {
+                target_os = "linux" => Ok(Listen::Systemd),
+                _ => Err(AppError::Config(format!(
+                    "PINEPODS_LISTEN '{s}': systemd socket activation is not supported on this platform"
+                ))),
+            },
             _ if let Ok(addr) = s.parse::<SocketAddr>() => Ok(Listen::Tcp(addr)),
             _ if Path::new(s).is_absolute() => cfg_select! {
                 unix => Ok(Listen::Unix(PathBuf::from(s))),
@@ -94,7 +102,7 @@ impl FromStr for Listen {
                 ))),
             },
             _ => Err(AppError::Config(format!(
-                "Invalid PINEPODS_LISTEN '{s}': expected IP:PORT, [IPv6]:PORT, or an absolute unix socket path"
+                "Invalid PINEPODS_LISTEN '{s}': expected IP:PORT, [IPv6]:PORT, an absolute unix socket path, or systemd"
             ))),
         }
     }
@@ -489,6 +497,12 @@ mod tests {
             parse_listen(Ok("/run/pinepods/api.sock".to_string())).unwrap(),
             Listen::Unix(PathBuf::from("/run/pinepods/api.sock")),
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn listen_accepts_systemd() {
+        assert_eq!(parse_listen(Ok("systemd".to_string())).unwrap(), Listen::Systemd);
     }
 
     #[test]
