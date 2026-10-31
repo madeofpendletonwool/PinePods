@@ -29,6 +29,8 @@ pub mod openapi;
 pub mod redis_client;
 pub mod redis_manager;
 pub mod services;
+#[cfg(target_os = "linux")]
+pub mod systemd;
 
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};

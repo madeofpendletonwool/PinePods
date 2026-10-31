@@ -1,17 +1,23 @@
 use std::future::Future;
 use std::io;
+#[cfg(target_os = "linux")]
+use std::os::fd::OwnedFd;
 #[cfg(unix)]
 use std::os::unix::fs::FileTypeExt;
 #[cfg(unix)]
 use std::path::{Path, PathBuf};
 
 use axum::Router;
+#[cfg(target_os = "linux")]
+use socket2::{Domain, SockRef, Type};
 use tokio::net::TcpListener;
 #[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::config::Listen;
 use crate::error::{AppError, AppResult};
+#[cfg(target_os = "linux")]
+use crate::systemd;
 
 pub enum Listener {
     Tcp(TcpListener),
@@ -34,6 +40,42 @@ impl Listener {
                     created: Some(path.clone()),
                 })
             }
+            #[cfg(target_os = "linux")]
+            Listen::Systemd => Self::inherited(),
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn inherited() -> AppResult<Self> {
+        match <[OwnedFd; 1]>::try_from(systemd::take_listen_fds()?) {
+            Ok([fd]) => Self::from_fd(fd),
+            Err(fds) => Err(AppError::Config(format!(
+                "PINEPODS_LISTEN is systemd, but systemd passed {} sockets; PinePods listens on exactly one",
+                fds.len()
+            ))),
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn from_fd(fd: OwnedFd) -> AppResult<Self> {
+        let socket = SockRef::from(&fd);
+        match (socket.r#type()?, socket.is_listener()?, socket.local_addr()?.domain()) {
+            (Type::STREAM, true, Domain::IPV4 | Domain::IPV6) => {
+                let listener = std::net::TcpListener::from(fd);
+                listener.set_nonblocking(true)?;
+                Ok(Self::Tcp(TcpListener::from_std(listener)?))
+            }
+            (Type::STREAM, true, Domain::UNIX) => {
+                let listener = std::os::unix::net::UnixListener::from(fd);
+                listener.set_nonblocking(true)?;
+                Ok(Self::Unix {
+                    listener: UnixListener::from_std(listener)?,
+                    created: None,
+                })
+            }
+            _ => Err(AppError::Config(
+                "The socket systemd passed is not a listening TCP or unix stream socket; use ListenStream= with Accept=no".to_string(),
+            )),
         }
     }
 
@@ -90,6 +132,8 @@ async fn remove_stale_socket(path: &Path) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use socket2::{SockAddr, Socket};
     use std::net::Ipv4Addr;
 
     #[cfg(unix)]
@@ -156,5 +200,56 @@ mod tests {
         let listener = Listener::acquire(&Listen::Unix(path.0.clone())).await.unwrap();
         listener.serve(Router::new(), async {}).await.unwrap();
         assert!(!path.0.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn inherits_a_tcp_listener() {
+        let inherited = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = inherited.local_addr().unwrap();
+        assert!(matches!(
+            Listener::from_fd(OwnedFd::from(inherited)),
+            Ok(Listener::Tcp(listener)) if listener.local_addr().unwrap() == addr,
+        ));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn inherits_a_unix_listener() {
+        let path = SocketPath::new();
+        let fd = OwnedFd::from(std::os::unix::net::UnixListener::bind(&path.0).unwrap());
+        assert!(matches!(
+            Listener::from_fd(fd),
+            Ok(Listener::Unix { listener, created: None })
+                if listener.local_addr().unwrap().as_pathname() == Some(path.0.as_path()),
+        ));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn leaves_an_inherited_socket_in_place() {
+        let path = SocketPath::new();
+        let fd = OwnedFd::from(std::os::unix::net::UnixListener::bind(&path.0).unwrap());
+        let listener = Listener::from_fd(fd).unwrap();
+        listener.serve(Router::new(), async {}).await.unwrap();
+        assert!(path.0.exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn refuses_a_sequential_packet_socket() {
+        let path = SocketPath::new();
+        let socket = Socket::new(Domain::UNIX, Type::SEQPACKET, None).unwrap();
+        socket.bind(&SockAddr::unix(&path.0).unwrap()).unwrap();
+        socket.listen(1).unwrap();
+        assert!(matches!(Listener::from_fd(OwnedFd::from(socket)), Err(AppError::Config(_))));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn refuses_a_socket_that_is_not_listening() {
+        let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
+        socket.bind(&std::net::SocketAddr::from((Ipv4Addr::LOCALHOST, 0)).into()).unwrap();
+        assert!(matches!(Listener::from_fd(OwnedFd::from(socket)), Err(AppError::Config(_))));
     }
 }

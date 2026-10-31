@@ -86,6 +86,10 @@ futures = "0.3.34"
 # File handling
 tokio-util = { version = "0.7.20", features = ["io"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+sd-notify = "0.5.0"
+socket2 = { version = "0.6.5", features = ["all"] }
+
 [features]
 # Test-only hooks (e.g. letting the SSRF guard reach the loopback fixture server).
 # Enabled automatically for `cargo test` via the self dev-dependency below.
