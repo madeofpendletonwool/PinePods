@@ -15,6 +15,8 @@ use pinepods_api::{
     AppState,
 };
 use handlers::websocket::WebSocketManager;
+#[cfg(target_os = "linux")]
+use pinepods_api::systemd;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -147,6 +149,8 @@ async fn main() -> AppResult<()> {
 
     // The startup refresh runs in the background once requests are accepted.
     tokio::spawn(BackgroundScheduler::run_startup_refresh(scheduler_state.clone()));
+    #[cfg(target_os = "linux")]
+    systemd::ready(&endpoint);
     listener.serve(app, shutdown_signal()).await?;
 
     Ok(())
@@ -178,4 +182,7 @@ async fn shutdown_signal() {
             warn!("Received SIGTERM, shutting down gracefully");
         },
     }
+
+    #[cfg(target_os = "linux")]
+    systemd::stopping();
 }
