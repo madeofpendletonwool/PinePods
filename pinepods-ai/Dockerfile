@@ -2,17 +2,22 @@
 # Build/run only if you want the AI-based features.
 FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
-FROM python:3.14-slim
+FROM debian:trixie-slim
 
+# ca-certificates: trust store for Hugging Face model downloads.
 # ffmpeg: required by faster-whisper to decode audio.
 # build-essential + cmake: required to build llama-cpp-python (local LLM backend) from source.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg curl build-essential cmake \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg curl build-essential cmake \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+ENV UV_PYTHON_INSTALL_DIR=/python UV_PYTHON_PREFERENCE=only-managed
 
-COPY .python-version pyproject.toml uv.lock ./
+COPY .python-version ./
+RUN --mount=from=uv,source=/uv,target=/bin/uv uv python install
+
+COPY pyproject.toml uv.lock ./
 RUN --mount=from=uv,source=/uv,target=/bin/uv \
     uv sync --locked --no-cache
 ENV PATH="/app/.venv/bin:$PATH"
