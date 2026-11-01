@@ -5,7 +5,7 @@ one), then run this inside it, pointing at the SQLite server's database file or 
 backups:
 
     pinepods-db-setup --import-sqlite /opt/pinepods/data/pinepods.db     (in the container)
-    python -m database_functions.sqlite_import pinepods.db                (from the repo)
+    uv run --extra mysql -m database_functions.sqlite_import pinepods.db  (from the repo)
 
 Everything in the new server's database is replaced by the SQLite server's data. Login
 sessions aren't copied, so everyone signs in again.
@@ -204,7 +204,7 @@ def import_sqlite(src: sqlite3.Connection, conn, db_type: str, replace: bool = F
 def main(argv) -> int:
     args = [a for a in argv if a != "--replace"]
     if len(args) != 1:
-        print("usage: python -m database_functions.sqlite_import <SQLite database or backup> [--replace]", file=sys.stderr)
+        print("usage: uv run --extra mysql -m database_functions.sqlite_import <SQLite database or backup> [--replace]", file=sys.stderr)
         return 2
     from database_functions.migrations import get_migration_manager
 

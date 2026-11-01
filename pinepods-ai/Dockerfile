@@ -1,5 +1,7 @@
 # Optional PinePods AI sidecar (transcription #726 + ad detection #790).
 # Build/run only if you want the AI-based features.
+FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
+
 FROM python:3.14-slim
 
 # ffmpeg: required by faster-whisper to decode audio.
@@ -10,8 +12,10 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY .python-version pyproject.toml uv.lock ./
+RUN --mount=from=uv,source=/uv,target=/bin/uv \
+    uv sync --locked --no-cache
+ENV PATH="/app/.venv/bin:$PATH"
 
 COPY main.py .
 

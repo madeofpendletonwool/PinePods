@@ -5,7 +5,7 @@ server uses), start a new SQLite server on the same Pinepods version, and restor
 there from Settings > Restore Server.
 
     pinepods-db-setup --export-sqlite /opt/pinepods/backups/sqlite_export.sql     (in the container)
-    python -m database_functions.sqlite_export sqlite_export.sql                   (from the repo)
+    uv run --extra mysql -m database_functions.sqlite_export sqlite_export.sql     (from the repo)
 
 The file has the format the SQLite server writes for its own backups: the SQLite schema (from
 the baseline), then every row, with values in the form the SQLite server stores them. Login
@@ -164,7 +164,7 @@ def export(conn, db_type: str, out_path: str) -> dict:
 
 def main(argv) -> int:
     if len(argv) != 1:
-        print("usage: python -m database_functions.sqlite_export <output file>", file=sys.stderr)
+        print("usage: uv run --extra mysql -m database_functions.sqlite_export <output file>", file=sys.stderr)
         return 2
     from database_functions.migrations import get_migration_manager
 

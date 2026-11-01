@@ -17,9 +17,10 @@ scripts/integration-tests.sh --gpodder mock -- gpodder # gpodder protocol tests 
 ```
 
 The script starts Postgres, MariaDB and Valkey from `tests/docker-compose.yml` (off-default
-ports, tmpfs storage) and builds a Python venv under `target/` for the migration runner. CI
-(`.github/workflows/rust-api-tests.yml`) runs the same thing as a matrix over the three databases,
-using service containers (`PINEPODS_TEST_EXTERNAL_SERVICES=1`).
+ports, tmpfs storage) and builds a Python venv under `target/` for the migration runner, which
+needs [uv](https://docs.astral.sh/uv/). CI (`.github/workflows/rust-api-tests.yml`) runs the
+same thing as a matrix over the three databases, using service containers
+(`PINEPODS_TEST_EXTERNAL_SERVICES=1`).
 
 Useful environment variables:
 
@@ -46,7 +47,7 @@ Useful environment variables:
   `--db sqlite` to check it translates. Tests that replay old migrations skip SQLite
   (`app.upgrade_tests_unsupported()`): new SQLite databases start from a schema baseline.
   `schema_baseline.rs` fails (on Postgres) when the migrations no longer match that baseline;
-  regenerate it with `python -m database_functions.sqlite_baseline <dsn of a freshly migrated
+  regenerate it with `uv run -m database_functions.sqlite_baseline <dsn of a freshly migrated
   Postgres database>`.
 - **Isolation.** Tests run in parallel. Each gets its own database, a unique tag used in
   usernames and fixture paths, and an ID range (sequences / `AUTO_INCREMENT` offset per test) so
