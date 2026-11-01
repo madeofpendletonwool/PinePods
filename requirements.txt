@@ -1,4 +1,0 @@
-argon2_cffi
-cryptography
-mariadb
-psycopg[binary]

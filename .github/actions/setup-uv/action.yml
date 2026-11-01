@@ -1,0 +1,13 @@
+name: Set up uv
+description: Install the uv version locked in uv.lock.
+inputs:
+  enable-cache:
+    description: Passed to astral-sh/setup-uv.
+    default: "auto"
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v10.3.3
+      with:
+        version-file: uv.lock
+        enable-cache: ${{ inputs.enable-cache }}

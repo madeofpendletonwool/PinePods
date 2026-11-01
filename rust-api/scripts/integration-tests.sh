@@ -49,17 +49,12 @@ if [[ -z "${PINEPODS_TEST_EXTERNAL_SERVICES:-}" ]]; then
   "${COMPOSE[@]}" up -d --wait
 fi
 
-# Python venv for the migration runner, rebuilt only when requirements change.
+# Python venv for the migration runner. Production uses the `mariadb` connector; the pure-Python
+# mysql connector is the portable fallback migrations.py already supports, so local runs don't
+# need MariaDB Connector/C installed.
 if [[ -z "${PINEPODS_TEST_PYTHON:-}" ]]; then
   VENV="$API_DIR/target/integration-venv"
-  STAMP="$VENV/.requirements.sha"
-  WANT="$(shasum "$API_DIR/tests/requirements.txt" | cut -d' ' -f1)"
-  if [[ ! -x "$VENV/bin/python" || "$(cat "$STAMP" 2>/dev/null)" != "$WANT" ]]; then
-    python3 -m venv "$VENV"
-    "$VENV/bin/pip" install -q --upgrade pip
-    "$VENV/bin/pip" install -q -r "$API_DIR/tests/requirements.txt"
-    echo "$WANT" > "$STAMP"
-  fi
+  UV_PROJECT_ENVIRONMENT="$VENV" uv sync --quiet --locked --project "$API_DIR/.." --extra mysql
   export PINEPODS_TEST_PYTHON="$VENV/bin/python"
 fi
 
