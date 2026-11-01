@@ -4,6 +4,14 @@
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
+
+# One pull request bumps uv in pyproject.toml and uv.lock together with the
+# ghcr.io/astral-sh/uv tags in the Dockerfiles.
+multi-ecosystem-groups:
+  uv:
+    schedule:
+      interval: "weekly"
+
 updates:
   - package-ecosystem: "cargo" # See documentation for possible values
     directory: "/web" # Location of package manifests
@@ -12,10 +20,17 @@ updates:
 
   - package-ecosystem: "uv" # See documentation for possible values
     directory: "/" # Location of package manifests
-    schedule:
-      interval: "weekly"
+    patterns: ["*"]
+    multi-ecosystem-group: "uv"
 
   - package-ecosystem: "uv" # See documentation for possible values
     directory: "/pinepods-ai" # Location of package manifests
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: "docker" # See documentation for possible values
+    directories: # Locations of package manifests
+      - "/"
+      - "/pinepods-ai"
+    patterns: ["astral-sh/uv"]
+    multi-ecosystem-group: "uv"
