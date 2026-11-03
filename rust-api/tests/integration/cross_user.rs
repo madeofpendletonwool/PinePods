@@ -129,3 +129,42 @@ async fn another_users_podcast_reads_like_a_missing_one() {
         assert_eq!(resp.status.as_u16(), 404, "{path}: {}", resp.text());
     }
 }
+
+/// The transcript proxy fetches a caller-supplied URL and returns the body.
+#[tokio::test(flavor = "multi_thread")]
+async fn transcript_proxy_stays_off_internal_hosts_and_other_users_episodes() {
+    let app = TestApp::new().await;
+    let (alice, bob) = (app.user("alice").await, app.user("bob").await);
+    let url = app.feed("private.xml", &Feed::with_episodes("Private Show", 1));
+    let pod = app.subscribe(&alice, &url, 1).await;
+    let eps = app.episodes(&alice, pod).await;
+    let ep = eps[0]["episodeid"].as_i64().or(eps[0]["Episodeid"].as_i64()).expect("episode id");
+
+    let fetch = |as_user: &TestUser, url: String| {
+        app.post("/api/data/fetch_transcript").key(as_user).json(&json!({ "url": url }))
+    };
+
+    for internal in ["http://169.254.169.254/latest/meta-data/", "http://10.0.0.5/", "file:///etc/passwd"] {
+        fetch(&bob, internal.to_string()).send().await.assert_status(400);
+    }
+
+    let ai = format!("pinepods-internal://transcript/{ep}");
+    fetch(&alice, ai.clone()).send().await.assert_ok();
+    fetch(&bob, ai).send().await.assert_status(404);
+}
+
+/// Downloads go out with the podcast's stored feed credentials, so only the owner may ask.
+#[tokio::test(flavor = "multi_thread")]
+async fn another_users_episode_download_reads_like_a_missing_one() {
+    let app = TestApp::new().await;
+    let (alice, bob) = (app.user("alice").await, app.user("bob").await);
+    let url = app.feed("private.xml", &Feed::with_episodes("Private Show", 1));
+    let pod = app.subscribe(&alice, &url, 1).await;
+    let eps = app.episodes(&alice, pod).await;
+    let ep = eps[0]["episodeid"].as_i64().or(eps[0]["Episodeid"].as_i64()).expect("episode id");
+
+    let resp = app.get(&format!("/api/episodes/{ep}/download")).key(&bob).send().await;
+    assert_eq!(resp.status.as_u16(), 404, "{}", resp.text());
+    let own = app.get(&format!("/api/episodes/{ep}/download")).key(&alice).send().await;
+    assert_ne!(own.status.as_u16(), 404, "{}", own.text());
+}

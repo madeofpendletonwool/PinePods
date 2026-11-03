@@ -2661,6 +2661,8 @@ pub async fn fetch_transcript(
     // the same transcript UI as feed transcripts. URL form: pinepods-internal://transcript/<id>
     if let Some(rest) = request.url.strip_prefix("pinepods-internal://transcript/") {
         if let Ok(episode_id) = rest.parse::<i32>() {
+            let user_id = _state.db_pool.get_user_id_from_api_key(&api_key).await?;
+            require_episode_owner(&_state, user_id, episode_id, false).await?;
             return match crate::services::transcription::get_episode_transcript_srt(&_state.db_pool, episode_id).await {
                 Ok(Some(srt)) => Ok(Json(serde_json::json!({ "success": true, "content": srt }))),
                 Ok(None) => Ok(Json(serde_json::json!({ "success": false, "error": "No transcript available" }))),
@@ -2670,9 +2672,13 @@ pub async fn fetch_transcript(
         return Ok(Json(serde_json::json!({ "success": false, "error": "Invalid internal transcript URL" })));
     }
 
-    // Fetch the transcript content from the external URL
-    let client = reqwest::Client::new();
-    match client.get(&request.url).send().await {
+    // The URL is caller-supplied and the body is returned, so keep it off internal hosts.
+    if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(&request.url).await {
+        warn!("Refusing to fetch transcript from unsafe URL {}: {}", request.url, reason);
+        return Err(AppError::bad_request("Transcript URL is not allowed"));
+    }
+
+    match crate::services::http::feed_client().get(&request.url).send().await {
         Ok(response) => {
             match response.text().await {
                 Ok(content) => {
