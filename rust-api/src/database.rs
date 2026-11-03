@@ -2056,6 +2056,20 @@ impl DatabasePool {
     }
 
     // Get merged podcast IDs for a primary podcast
+    /// The user a podcast row belongs to, or `None` if there's no such podcast.
+    pub async fn podcast_owner(&self, podcast_id: i32) -> AppResult<Option<i32>> {
+        Ok(match self {
+            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT userid FROM "Podcasts" WHERE podcastid = $1"#)
+                .bind(podcast_id)
+                .fetch_optional(pool)
+                .await?,
+            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT UserID FROM Podcasts WHERE PodcastID = ?")
+                .bind(podcast_id)
+                .fetch_optional(pool)
+                .await?,
+        })
+    }
+
     pub async fn get_merged_podcast_ids(&self, podcast_id: i32) -> AppResult<Vec<i32>> {
         match self {
             DatabasePool::Postgres(pool) => {
@@ -25041,16 +25055,11 @@ impl DatabasePool {
             "Turkey" => "Europe/Istanbul".to_string(),
             "W-SU" => "Europe/Moscow".to_string(),
 
-            // If it's already a valid IANA timezone name or unknown, pass through
-            _ => {
-                // For unknown timezones, fall back to UTC to prevent errors
-                if user_timezone.is_empty() {
-                    "UTC".to_string()
-                } else {
-                    // Most chrono-tz names are already IANA compliant, so try the original first
-                    user_timezone.to_string()
-                }
-            }
+            // The result is formatted into SQL, so only known tz names pass through
+            _ => match user_timezone.parse::<Tz>() {
+                Ok(tz) => tz.name().to_string(),
+                Err(_) => "UTC".to_string(),
+            },
         }
     }
 
@@ -26324,3 +26333,20 @@ mod totp_tests {
     }
 }
 
+#[cfg(test)]
+mod timezone_mapping_tests {
+    use super::DatabasePool;
+
+    #[test]
+    fn known_and_iana_names_pass_through() {
+        assert_eq!(DatabasePool::map_timezone_for_postgres("US/Eastern"), "America/New_York");
+        assert_eq!(DatabasePool::map_timezone_for_postgres("Europe/Berlin"), "Europe/Berlin");
+    }
+
+    #[test]
+    fn unknown_or_hostile_values_become_utc() {
+        for tz in ["", "UTC'", "Z','D')||(SELECT current_user)||('", "Not/AZone"] {
+            assert_eq!(DatabasePool::map_timezone_for_postgres(tz), "UTC");
+        }
+    }
+}

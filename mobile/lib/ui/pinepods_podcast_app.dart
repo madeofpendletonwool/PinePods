@@ -364,7 +364,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
     try {
       final initialUri = await appLinks.getInitialLink();
       if (initialUri != null) {
-        print('Deep Link: App launched with initial link: $initialUri');
+        print('Deep Link: App launched with initial link: ${initialUri.scheme}://${initialUri.host}${initialUri.path}');
         _handleLinkEvent(initialUri);
       } else {
         print('Deep Link: No initial link found');
@@ -377,7 +377,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
     print('Deep Link: Setting up stream listener...');
     deepLinkSubscription = appLinks.uriLinkStream.listen(
       (uri) {
-        print('Deep Link: App received link while running: $uri');
+        print('Deep Link: App received link while running: ${uri.scheme}://${uri.host}${uri.path}');
         _handleLinkEvent(uri);
       },
       onError: (err) {
@@ -391,10 +391,9 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
   /// This method handles the actual link supplied from [uni_links], either
   /// at app startup or during running.
   void _handleLinkEvent(Uri uri) async {
-    print('Deep Link: Received link: $uri');
+    print('Deep Link: Received link: ${uri.scheme}://${uri.host}${uri.path}');
+    // Not the query: an auth callback carries an API key.
     print('Deep Link: Scheme: ${uri.scheme}, Host: ${uri.host}, Path: ${uri.path}');
-    print('Deep Link: Query: ${uri.query}');
-    print('Deep Link: QueryParameters: ${uri.queryParameters}');
 
     // Handle OIDC authentication callback - be more flexible with path matching
     if (uri.scheme == 'pinepods' && uri.host == 'auth') {
@@ -446,10 +445,15 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
   /// Handle OIDC authentication callback
   Future<void> _handleOidcCallback(Uri uri) async {
     try {
-      print('OIDC Callback: Received callback URL: $uri');
-
       // Parse the callback result
       final callbackResult = OidcService.parseCallback(uri.toString());
+
+      // Only finish a login this app started: a link carrying someone else's key would sign
+      // the app into their account. The auth session normally handles the callback itself.
+      if (!OidcService.takePendingState(callbackResult.state)) {
+        print('OIDC Callback: ignoring a callback for no login in progress');
+        return;
+      }
 
       if (!callbackResult.isSuccess) {
         print('OIDC Callback: Authentication failed: ${callbackResult.error}');
@@ -606,7 +610,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage> with WidgetsBinding
           final appLinks = AppLinks();
           final initialUri = await appLinks.getInitialLink();
           if (initialUri != null) {
-            print('Deep Link: Found pending link on resume: $initialUri');
+            print('Deep Link: Found pending link on resume: ${initialUri.scheme}://${initialUri.host}${initialUri.path}');
             _handleLinkEvent(initialUri);
           }
         } catch (e) {

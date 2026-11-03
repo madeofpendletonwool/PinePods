@@ -197,6 +197,16 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
       );
 
       final callback = OidcService.parseCallback(result);
+      OidcService.clearPendingState();
+      // Servers before 0.9.1 don't send the state back; this auth session only ever returns its
+      // own redirect, so only a state that is present and different is refused.
+      if (callback.state != null && callback.state != state) {
+        setState(() {
+          _errorMessage = 'Authentication failed: login state mismatch';
+          _isLoading = false;
+        });
+        return;
+      }
       if (callback.isSuccess && callback.hasApiKey) {
         await _completeOidcLogin(callback.apiKey!, serverUrl);
       } else {

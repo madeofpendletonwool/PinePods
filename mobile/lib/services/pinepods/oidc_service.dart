@@ -45,6 +45,21 @@ class OidcService {
     );
   }
   
+  /// State of the login this app started and hasn't finished. A callback link carrying any other
+  /// state (or arriving with no login in progress) must not sign the app in.
+  static String? _pendingState;
+
+  /// Whether [state] belongs to the login in progress. Clears it either way.
+  static bool takePendingState(String? state) {
+    final expected = _pendingState;
+    _pendingState = null;
+    return expected != null && state == expected;
+  }
+
+  static void rememberPendingState(String state) => _pendingState = state;
+
+  static void clearPendingState() => _pendingState = null;
+
   /// Generate random state parameter
   static String generateState() {
     final random = Random.secure();
@@ -115,6 +130,7 @@ class OidcService {
       if (!stateStored) {
         return null;
       }
+      rememberPendingState(state);
       
       // Build authorization URL
       final authUri = Uri.parse(provider.authorizationUrl);

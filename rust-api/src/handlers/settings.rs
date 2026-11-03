@@ -4040,6 +4040,7 @@ pub async fn get_auto_transcribe(
         return Err(AppError::forbidden("You can only view your own podcasts."));
     }
 
+    crate::handlers::require_podcast_owner(&state, query.user_id, query.podcast_id).await?;
     let enabled = crate::services::transcription::get_auto_transcribe(&state.db_pool, query.podcast_id)
         .await
         .map_err(|e| AppError::internal(&e))?;
@@ -4130,6 +4131,7 @@ pub async fn get_silence_trim(
         return Err(AppError::forbidden("You can only view your own podcasts."));
     }
 
+    crate::handlers::require_podcast_owner(&state, query.user_id, query.podcast_id).await?;
     let (enabled, threshold) =
         crate::services::audio_processing::get_trim_silence(&state.db_pool, query.podcast_id)
             .await
@@ -4424,6 +4426,7 @@ pub async fn get_auto_ad_detect(
         return Err(AppError::forbidden("You can only view your own podcasts."));
     }
 
+    crate::handlers::require_podcast_owner(&state, query.user_id, query.podcast_id).await?;
     let enabled = crate::services::ad_detection::get_auto_ad_detect(&state.db_pool, query.podcast_id)
         .await
         .map_err(|e| AppError::internal(&e))?;
@@ -4507,6 +4510,7 @@ pub async fn get_ad_skip_auto_activate(
         return Err(AppError::forbidden("You can only view your own podcasts."));
     }
 
+    crate::handlers::require_podcast_owner(&state, query.user_id, query.podcast_id).await?;
     let enabled = crate::services::ad_detection::get_ad_skip_auto_activate(&state.db_pool, query.podcast_id)
         .await
         .map_err(|e| AppError::internal(&e))?;

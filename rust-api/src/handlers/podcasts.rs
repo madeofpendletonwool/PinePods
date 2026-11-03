@@ -2661,6 +2661,8 @@ pub async fn fetch_transcript(
     // the same transcript UI as feed transcripts. URL form: pinepods-internal://transcript/<id>
     if let Some(rest) = request.url.strip_prefix("pinepods-internal://transcript/") {
         if let Ok(episode_id) = rest.parse::<i32>() {
+            let user_id = _state.db_pool.get_user_id_from_api_key(&api_key).await?;
+            require_episode_owner(&_state, user_id, episode_id, false).await?;
             return match crate::services::transcription::get_episode_transcript_srt(&_state.db_pool, episode_id).await {
                 Ok(Some(srt)) => Ok(Json(serde_json::json!({ "success": true, "content": srt }))),
                 Ok(None) => Ok(Json(serde_json::json!({ "success": false, "error": "No transcript available" }))),
@@ -2670,9 +2672,13 @@ pub async fn fetch_transcript(
         return Ok(Json(serde_json::json!({ "success": false, "error": "Invalid internal transcript URL" })));
     }
 
-    // Fetch the transcript content from the external URL
-    let client = reqwest::Client::new();
-    match client.get(&request.url).send().await {
+    // The URL is caller-supplied and the body is returned, so keep it off internal hosts.
+    if let Err(reason) = crate::services::url_guard::ensure_safe_public_url_async(&request.url).await {
+        warn!("Refusing to fetch transcript from unsafe URL {}: {}", request.url, reason);
+        return Err(AppError::bad_request("Transcript URL is not allowed"));
+    }
+
+    match crate::services::http::feed_client().get(&request.url).send().await {
         Ok(response) => {
             match response.text().await {
                 Ok(content) => {
@@ -3350,8 +3356,8 @@ pub async fn stream_episode(
     // If not a valid RSS key, try regular API key validation
     if !is_valid {
         match validate_api_key(&state, api_key).await {
-            Ok(_) => {
-                info!("Valid API key");
+            Ok(false) => debug!("Not a valid API key either"),
+            Ok(true) => {
                 // Try to get user_id, but don't fail if it errors (might be cached RSS key)
                 match state.db_pool.get_user_id_from_api_key(api_key).await {
                     Ok(user_id) => {
@@ -3513,6 +3519,10 @@ pub async fn get_podcast_details_dynamic(
 ) -> Result<Json<ClickedFeedURLResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
     require_valid_api_key(&state, &api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != query.user_id {
+        return Err(AppError::forbidden("You can only view your own podcast details!"));
+    }
 
     if query.added {
         // Get podcast from database if already added
@@ -4022,10 +4032,7 @@ pub async fn get_merged_podcasts(
     // Get user ID from API key
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
-    // Check if user owns the podcast
-    if !check_user_access(&state, &api_key, user_id).await? {
-        return Err(AppError::forbidden("You can only access your own podcasts"));
-    }
+    crate::handlers::require_podcast_owner(&state, user_id, podcast_id).await?;
 
     // Get merged podcast IDs
     let merged_ids = state.db_pool.get_merged_podcast_ids(podcast_id).await?;

@@ -81,6 +81,28 @@ async fn time_and_date_preferences_round_trip() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn timezones_must_be_real_zone_names() {
+    let app = TestApp::new().await;
+    let user = app.user("clock").await;
+
+    for tz in ["UTC'", "Z','D')||(SELECT current_user)||('", "Not/AZone"] {
+        app.put("/api/data/update_timezone")
+            .key(&user)
+            .json(&json!({ "user_id": user.id, "timezone": tz }))
+            .send()
+            .await
+            .assert_status(400);
+        app.post("/api/data/setup_time_info")
+            .key(&user)
+            .json(&json!({ "user_id": user.id, "timezone": tz, "hour_pref": 24, "date_format": "DMY" }))
+            .send()
+            .await
+            .assert_status(400);
+    }
+    assert_ne!(time_info(&app, &user).await["timezone"], "UTC'");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn language_preference_round_trips() {
     let app = TestApp::new().await;
     let user = app.user("polyglot").await;

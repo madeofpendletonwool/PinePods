@@ -69,6 +69,7 @@ async fn token_exchange_repeats_the_clients_redirect_uri() {
     let location = resp.headers.get("location").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
     assert!(location.contains("api_key="), "{} {location} {}", resp.status, resp.text());
     assert!(location.starts_with("https://pods.example.test:12345/oauth/callback"), "{location}");
+    assert!(location.ends_with(&format!("&state={state}")), "the client checks the login is its own: {location}");
 
     let hits = app.fixtures().hits("idp/token");
     assert_eq!(hits.len(), 1);
@@ -100,6 +101,31 @@ async fn token_exchange_falls_back_to_request_host_for_old_clients() {
         form_field(&hits[0].body, "redirect_uri").as_deref(),
         Some("https://pods.example.test/api/auth/callback")
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_api_key_never_goes_to_a_foreign_origin() {
+    let app = TestApp::new().await;
+    let client_id = add_provider(&app, "oidc-victim@example.test").await;
+    let state = format!("state-{}", app.fixtures().namespace);
+    // Anyone can store a state; this one names an origin that isn't the server.
+    app.post("/api/auth/store_state")
+        .json(&json!({ "state": state, "client_id": client_id, "origin_url": "https://attacker.example.test" }))
+        .send()
+        .await
+        .assert_ok();
+
+    let resp = app
+        .get("/api/auth/callback")
+        .header("host", "pods.example.test")
+        .header("x-forwarded-proto", "https")
+        .query("code", "fixture-code")
+        .query("state", &state)
+        .send()
+        .await;
+    let location = resp.headers.get("location").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
+    assert!(location.starts_with("https://pods.example.test/oauth/callback?"), "{} {location}", resp.status);
+    assert!(!location.contains("attacker"), "{location}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

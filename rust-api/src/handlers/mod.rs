@@ -36,6 +36,7 @@ pub fn extract_api_key(headers: &HeaderMap) -> AppResult<String> {
         .or_else(|| headers.get("api-key"))
         .or_else(|| headers.get("X-API-Key"))
         .and_then(|header| header.to_str().ok())
+        .filter(|s| !s.trim().is_empty())
         .map(|s| s.to_string())
         .ok_or_else(|| AppError::unauthorized("Missing API key"))
 }
@@ -115,6 +116,14 @@ pub async fn check_user_access(state: &AppState, api_key: &str, target_user_id: 
     
     // Allow if user is accessing their own data or if they are user ID 1 (admin/web key)
     Ok(requesting_user_id == target_user_id || requesting_user_id == 1)
+}
+
+/// 404 unless `podcast_id` is one of `user_id`'s podcasts, so someone else's podcast looks missing.
+pub async fn require_podcast_owner(state: &AppState, user_id: i32, podcast_id: i32) -> AppResult<()> {
+    match state.db_pool.podcast_owner(podcast_id).await? {
+        Some(owner) if owner == user_id => Ok(()),
+        _ => Err(AppError::not_found("Podcast not found")),
+    }
 }
 
 // Check if user has permission (either owns the resource, has web key access, or is admin)

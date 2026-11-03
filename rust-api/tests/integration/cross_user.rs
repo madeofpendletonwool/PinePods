@@ -94,3 +94,77 @@ async fn users_cannot_act_on_each_others_accounts() {
         failures.iter().map(|(k, v)| format!("  {k}: {v}")).collect::<Vec<_>>().join("\n")
     );
 }
+
+/// The probe above fills parameters with placeholders, so it can't tell when a lookup by a real
+/// podcast leaks: these name one, as the user and as someone else.
+#[tokio::test(flavor = "multi_thread")]
+async fn another_users_podcast_reads_like_a_missing_one() {
+    let app = TestApp::new().await;
+    let (alice, bob) = (app.user("alice").await, app.user("bob").await);
+    let url = app.feed("private.xml", &Feed::with_episodes("Private Show", 1));
+    let pod = app.subscribe(&alice, &url, 1).await;
+
+    let details = |as_user: &TestUser, user_id: i32| {
+        app.get("/api/data/get_podcast_details_dynamic")
+            .key(as_user)
+            .query("user_id", user_id)
+            .query("podcast_title", "Private Show")
+            .query("podcast_url", url.clone())
+            .query("podcast_index_id", 0)
+            .query("added", true)
+    };
+    details(&alice, alice.id).send().await.assert_ok();
+    details(&bob, alice.id).send().await.assert_status(403);
+
+    let merged = format!("/api/data/{pod}/merged");
+    app.get(&merged).key(&alice).send().await.assert_ok();
+    app.get(&merged).key(&bob).send().await.assert_status(404);
+
+    for path in ["get_auto_transcribe", "get_silence_trim", "get_auto_ad_detect", "get_ad_skip_auto_activate"] {
+        let setting = |as_user: &TestUser| {
+            app.get(&format!("/api/data/{path}")).key(as_user).query("user_id", as_user.id).query("podcast_id", pod)
+        };
+        setting(&alice).send().await.assert_ok();
+        let resp = setting(&bob).send().await;
+        assert_eq!(resp.status.as_u16(), 404, "{path}: {}", resp.text());
+    }
+}
+
+/// The transcript proxy fetches a caller-supplied URL and returns the body.
+#[tokio::test(flavor = "multi_thread")]
+async fn transcript_proxy_stays_off_internal_hosts_and_other_users_episodes() {
+    let app = TestApp::new().await;
+    let (alice, bob) = (app.user("alice").await, app.user("bob").await);
+    let url = app.feed("private.xml", &Feed::with_episodes("Private Show", 1));
+    let pod = app.subscribe(&alice, &url, 1).await;
+    let eps = app.episodes(&alice, pod).await;
+    let ep = eps[0]["episodeid"].as_i64().or(eps[0]["Episodeid"].as_i64()).expect("episode id");
+
+    let fetch = |as_user: &TestUser, url: String| {
+        app.post("/api/data/fetch_transcript").key(as_user).json(&json!({ "url": url }))
+    };
+
+    for internal in ["http://169.254.169.254/latest/meta-data/", "http://10.0.0.5/", "file:///etc/passwd"] {
+        fetch(&bob, internal.to_string()).send().await.assert_status(400);
+    }
+
+    let ai = format!("pinepods-internal://transcript/{ep}");
+    fetch(&alice, ai.clone()).send().await.assert_ok();
+    fetch(&bob, ai).send().await.assert_status(404);
+}
+
+/// Downloads go out with the podcast's stored feed credentials, so only the owner may ask.
+#[tokio::test(flavor = "multi_thread")]
+async fn another_users_episode_download_reads_like_a_missing_one() {
+    let app = TestApp::new().await;
+    let (alice, bob) = (app.user("alice").await, app.user("bob").await);
+    let url = app.feed("private.xml", &Feed::with_episodes("Private Show", 1));
+    let pod = app.subscribe(&alice, &url, 1).await;
+    let eps = app.episodes(&alice, pod).await;
+    let ep = eps[0]["episodeid"].as_i64().or(eps[0]["Episodeid"].as_i64()).expect("episode id");
+
+    let resp = app.get(&format!("/api/episodes/{ep}/download")).key(&bob).send().await;
+    assert_eq!(resp.status.as_u16(), 404, "{}", resp.text());
+    let own = app.get(&format!("/api/episodes/{ep}/download")).key(&alice).send().await;
+    assert_ne!(own.status.as_u16(), 404, "{}", own.text());
+}
