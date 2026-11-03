@@ -7,8 +7,7 @@ RUN apk update && apk upgrade && \
 RUN ARCH=$(uname -m) && \
     curl -sSL "https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-${ARCH}-unknown-linux-musl.tar.gz" \
     | tar -xz -C /usr/local/bin && \
-    rustup target add wasm32-unknown-unknown && \
-    cargo install horust --version 0.1.13 --locked
+    rustup target add wasm32-unknown-unknown
 # Copy Cargo.lock early so we can read the wasm-bindgen version before the full build
 COPY ./web/Cargo.lock /app/Cargo.lock
 # Pre-populate trunk's wasm-bindgen cache with the musl binary matching Cargo.lock.
@@ -98,8 +97,12 @@ RUN addgroup -g 911 pinepods && \
 RUN wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_musllinux_aarch64" && \
     chmod +x /usr/local/bin/yt-dlp
 
-# Copy Horust binary from builder stage
-COPY --from=builder /usr/local/cargo/bin/horust /usr/local/bin/
+# Download and install Horust (aarch64)
+RUN wget -O /tmp/horust.tar.gz "https://github.com/FedericoPonzi/Horust/releases/download/v0.1.14/horust-aarch64-unknown-linux-musl.tar.gz" && \
+    cd /tmp && tar -xzf horust.tar.gz && \
+    mv horust /usr/local/bin/ && \
+    chmod +x /usr/local/bin/horust && \
+    rm -f /tmp/horust.tar.gz
 
 ENV TZ=UTC
 # Copy compiled database setup binary (replaces Python dependency)
