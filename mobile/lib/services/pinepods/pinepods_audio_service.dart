@@ -774,6 +774,39 @@ class PinepodsAudioService {
     }
   }
 
+  /// Mark the episode that just finished as completed on the server (which
+  /// also drops it from the queue). On natural completion nothing else records
+  /// the final state (periodic sync can be up to 15s stale). Fire-and-forget;
+  /// returns false when there is no tracked episode or no server credentials.
+  bool markCurrentEpisodeCompleted() {
+    final episodeId = _currentEpisodeId;
+    final userId = _currentUserId;
+    if (episodeId == null || userId == null) {
+      log.warning('Cannot mark completed - missing episode/user id');
+      return false;
+    }
+
+    // Ensure the shared service has credentials (it may have been used by
+    // other screens since playback started).
+    final settings = _settingsBloc.currentSettings;
+    if (settings.pinepodsServer == null || settings.pinepodsApiKey == null) {
+      log.warning('Cannot mark completed - missing server credentials');
+      return false;
+    }
+    _pinepodsService.setCredentials(
+      settings.pinepodsServer!,
+      settings.pinepodsApiKey!,
+    );
+
+    unawaited(
+      _pinepodsService.markEpisodeCompleted(episodeId, userId, _isYoutube).catchError((e) {
+        log.fine('Could not mark episode completed (continuing): $e');
+        return false;
+      }),
+    );
+    return true;
+  }
+
   /// Handle natural end-of-episode: advance to the next thing to play.
   ///
   /// Mirrors the web frontend's `onended` handler
@@ -791,33 +824,9 @@ class PinepodsAudioService {
   Future<bool> handleEpisodeCompleted() async {
     final episodeId = _currentEpisodeId;
     final userId = _currentUserId;
-    if (episodeId == null || userId == null) {
-      log.warning('Cannot advance on completion - missing episode/user id');
+    if (!markCurrentEpisodeCompleted() || episodeId == null || userId == null) {
       return false;
     }
-
-    // Ensure the shared service has credentials (it may have been used by
-    // other screens since playback started).
-    final settings = _settingsBloc.currentSettings;
-    if (settings.pinepodsServer == null || settings.pinepodsApiKey == null) {
-      log.warning('Cannot advance on completion - missing server credentials');
-      return false;
-    }
-    _pinepodsService.setCredentials(
-      settings.pinepodsServer!,
-      settings.pinepodsApiKey!,
-    );
-
-    // Mark the finished episode completed on the server (which also drops it
-    // from the queue). On natural completion nothing else records the final
-    // state (periodic sync can be up to 15s stale), so do it explicitly.
-    // Fire-and-forget — it doesn't influence which episode plays next.
-    unawaited(
-      _pinepodsService.markEpisodeCompleted(episodeId, userId, _isYoutube).catchError((e) {
-        log.fine('Could not mark episode completed (continuing): $e');
-        return false;
-      }),
-    );
 
     final prefetch = _prefetch;
     _prefetch = null;
