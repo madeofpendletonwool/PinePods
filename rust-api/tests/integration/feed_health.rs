@@ -100,6 +100,16 @@ async fn wait_for_failure(app: &TestApp, user: &TestUser, url: &str, attempts: i
     .await
 }
 
+/// Retry once the failed import has fully finished: the failure is recorded just before the
+/// import lets go of the feed, and a retry in between is (rightly) taken as already importing.
+async fn retry_import(app: &TestApp, user: &TestUser, url: &str, id: i64) {
+    eventually(&format!("import of {url} finished"), || async {
+        (!pinepods_api::services::sync::apply::in_flight_adds(user.id).iter().any(|u| u == url)).then_some(())
+    })
+    .await;
+    app.post(&format!("/api/data/feed_problems/imports/{id}/retry")).key(user).send().await.ok_json();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_feed_an_app_subscribed_to_that_fails_is_retried_and_imports_when_it_works() {
     let s = GpodderScene::start().await;
@@ -115,7 +125,7 @@ async fn a_feed_an_app_subscribed_to_that_fails_is_retried_and_imports_when_it_w
     // The feed appears; retrying now imports it and clears the failure.
     s.app.feed("not-yet.xml", &Feed::with_episodes("Late", 1));
     let id = f["id"].as_i64().unwrap();
-    s.app.post(&format!("/api/data/feed_problems/imports/{id}/retry")).key(&s.user).send().await.ok_json();
+    retry_import(&s.app, &s.user, &url, id).await;
     eventually("the retried import cleared the failure", || async { import_failures(&s.app, &s.user).await.is_empty().then_some(()) }).await;
     let imported = int(&s.app, &format!(r#"SELECT COUNT(*) FROM "Podcasts" WHERE UserID = {} AND FeedURL = '{url}'"#, s.user.id)).await;
     assert_eq!(imported, Some(1));
@@ -131,7 +141,7 @@ async fn a_failed_import_gives_up_after_its_retries_and_tells_the_user() {
     let id = f["id"].as_i64().unwrap();
 
     exec(&s.app, &format!(r#"UPDATE "SyncImportFailures" SET Attempts = 9 WHERE FailureID = {id}"#)).await;
-    s.app.post(&format!("/api/data/feed_problems/imports/{id}/retry")).key(&s.user).send().await.ok_json();
+    retry_import(&s.app, &s.user, &url, id).await;
     let f = wait_for_failure(&s.app, &s.user, &url, 10).await;
     assert_eq!(f["next_attempt_at"], Value::Null, "given up: {f}");
     // The message is sent after the failure is recorded.
