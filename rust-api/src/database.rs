@@ -25055,16 +25055,11 @@ impl DatabasePool {
             "Turkey" => "Europe/Istanbul".to_string(),
             "W-SU" => "Europe/Moscow".to_string(),
 
-            // If it's already a valid IANA timezone name or unknown, pass through
-            _ => {
-                // For unknown timezones, fall back to UTC to prevent errors
-                if user_timezone.is_empty() {
-                    "UTC".to_string()
-                } else {
-                    // Most chrono-tz names are already IANA compliant, so try the original first
-                    user_timezone.to_string()
-                }
-            }
+            // The result is formatted into SQL, so only known tz names pass through
+            _ => match user_timezone.parse::<Tz>() {
+                Ok(tz) => tz.name().to_string(),
+                Err(_) => "UTC".to_string(),
+            },
         }
     }
 
@@ -26338,3 +26333,20 @@ mod totp_tests {
     }
 }
 
+#[cfg(test)]
+mod timezone_mapping_tests {
+    use super::DatabasePool;
+
+    #[test]
+    fn known_and_iana_names_pass_through() {
+        assert_eq!(DatabasePool::map_timezone_for_postgres("US/Eastern"), "America/New_York");
+        assert_eq!(DatabasePool::map_timezone_for_postgres("Europe/Berlin"), "Europe/Berlin");
+    }
+
+    #[test]
+    fn unknown_or_hostile_values_become_utc() {
+        for tz in ["", "UTC'", "Z','D')||(SELECT current_user)||('", "Not/AZone"] {
+            assert_eq!(DatabasePool::map_timezone_for_postgres(tz), "UTC");
+        }
+    }
+}

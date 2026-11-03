@@ -796,6 +796,10 @@ pub async fn setup_time_info(
         return Err(AppError::forbidden("You are not authorized to access these user details"));
     }
     
+    if data.timezone.parse::<chrono_tz::Tz>().is_err() {
+        return Err(AppError::bad_request("Invalid timezone"));
+    }
+
     let success = state.db_pool.setup_timezone_info(
         data.user_id,
         &data.timezone,
@@ -1676,6 +1680,10 @@ pub async fn update_timezone(
         return Err(AppError::forbidden("You are not authorized to update timezone for other users"));
     }
     
+    if data.timezone.parse::<chrono_tz::Tz>().is_err() {
+        return Err(AppError::bad_request("Invalid timezone"));
+    }
+
     let success = state.db_pool.update_user_timezone(data.user_id, &data.timezone).await?;
     
     if success {
