@@ -74,6 +74,15 @@ class PinepodsMediaService : MediaLibraryService() {
     // it begins rather than up to a poll interval later.
     private val exactAdSkipRunnable = Runnable { applyAdSkipIfNeeded() }
 
+    // Logs the player state a few seconds after an ad-skip seek if playback
+    // hasn't resumed, to diagnose playback stalling at the end of a skipped ad.
+    private val adSkipStallCheck = Runnable {
+        val p = player ?: return@Runnable
+        if (!p.isPlaying) {
+            logPlayer("Ad-skip: not playing 5s after seek - ${describePlayer(p)}")
+        }
+    }
+
     inner class LocalBinder : Binder() {
         fun getService(): PinepodsMediaService = this@PinepodsMediaService
     }
@@ -250,7 +259,7 @@ class PinepodsMediaService : MediaLibraryService() {
         // Listen to player events
         player?.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                Log.d(TAG, "Playback state changed: $playbackState")
+                player?.let { logPlayer("Playback state changed - ${describePlayer(it)}") }
                 sendPlaybackStateEvent()
 
                 // Handle completion
@@ -262,7 +271,7 @@ class PinepodsMediaService : MediaLibraryService() {
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                Log.d(TAG, "Is playing changed: $isPlaying")
+                logPlayer("Is playing changed: $isPlaying")
                 sendPlaybackStateEvent()
 
                 // Start/stop position updates and foreground service
@@ -274,8 +283,20 @@ class PinepodsMediaService : MediaLibraryService() {
                 }
             }
 
+            // Pauses that don't come from our own controls (audio focus loss,
+            // headphones unplugged, a media controller) are otherwise invisible.
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                logPlayer("playWhenReady=$playWhenReady (reason ${playWhenReadyReason(reason)})")
+            }
+
+            override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                logPlayer("Playback suppression reason: $playbackSuppressionReason")
+            }
+
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 Log.e(TAG, "Player error", error)
+                AudioPlayerPlugin.logToFlutter("ERROR", TAG,
+                    "Player error ${error.errorCodeName}: ${error.message}; cause: ${error.cause}")
                 sendEvent(mapOf(
                     "type" to "error",
                     "code" to error.errorCode,
@@ -635,6 +656,21 @@ class PinepodsMediaService : MediaLibraryService() {
      */
     private fun createSeekOnlyPlayer(base: Player): Player {
         return object : ForwardingPlayer(base) {
+            // Only controllers (system UI, Android Auto, bluetooth) stop through
+            // here; the app's own stop goes to the ExoPlayer directly. Some
+            // bluetooth/car devices send a STOP key in reaction to the brief
+            // buffer of an ad-skip seek, so ignore those, and otherwise pause
+            // rather than unload the episode.
+            override fun stop() {
+                val sinceAdSkip = SystemClock.elapsedRealtime() - lastAdSkipAt
+                if (sinceAdSkip < 3000) {
+                    logPlayer("Ignoring controller stop ${sinceAdSkip}ms after ad skip - ${describePlayer(base)}")
+                    return
+                }
+                logPlayer("Stop requested by a media controller; pausing - ${describePlayer(base)}")
+                pause()
+            }
+
             override fun getAvailableCommands(): Player.Commands {
                 return super.getAvailableCommands().buildUpon()
                     .remove(Player.COMMAND_SEEK_TO_NEXT)
@@ -680,6 +716,7 @@ class PinepodsMediaService : MediaLibraryService() {
 
     private fun resetAdSkips(segments: List<Pair<Double, Double>>) {
         handler.removeCallbacks(exactAdSkipRunnable)
+        handler.removeCallbacks(adSkipStallCheck)
         adSkipSegments = segments
         lastAdSkipIndex = -1
         abandonedAdSkips.clear()
@@ -724,17 +761,47 @@ class PinepodsMediaService : MediaLibraryService() {
                 // the user went back to hear it). Leave it alone rather than loop.
                 val now = SystemClock.elapsedRealtime()
                 if (index == lastAdSkipIndex && now - lastAdSkipAt < 5000) {
-                    Log.d(TAG, "Ad-skip: back inside range $index after skipping it; leaving it")
+                    logPlayer("Ad-skip: back inside range $index after skipping it; leaving it")
                     abandonedAdSkips.add(index)
                     return
                 }
                 lastAdSkipIndex = index
                 lastAdSkipAt = now
-                Log.d(TAG, "Ad-skip: seeking from ${posMs}ms past ad ending ${endMs}ms")
+                logPlayer("Ad-skip: range $index, seeking from ${posMs}ms to ${endMs}ms - ${describePlayer(p)}")
                 p.seekTo(endMs)
+                handler.removeCallbacks(adSkipStallCheck)
+                handler.postDelayed(adSkipStallCheck, 5000)
                 break
             }
         }
+    }
+
+    // Native player events go to the app log too, so exported logs show them.
+    private fun logPlayer(message: String) {
+        Log.d(TAG, message)
+        AudioPlayerPlugin.logToFlutter("INFO", TAG, message)
+    }
+
+    private fun describePlayer(p: Player): String {
+        val state = when (p.playbackState) {
+            Player.STATE_IDLE -> "IDLE"
+            Player.STATE_BUFFERING -> "BUFFERING"
+            Player.STATE_READY -> "READY"
+            Player.STATE_ENDED -> "ENDED"
+            else -> p.playbackState.toString()
+        }
+        return "state=$state playWhenReady=${p.playWhenReady} isPlaying=${p.isPlaying} " +
+            "suppression=${p.playbackSuppressionReason} isLoading=${p.isLoading} " +
+            "pos=${p.currentPosition}ms buffered=${p.bufferedPosition}ms duration=${p.duration}ms"
+    }
+
+    private fun playWhenReadyReason(reason: Int): String = when (reason) {
+        Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "user request"
+        Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> "audio focus loss"
+        Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> "audio becoming noisy"
+        Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE -> "remote"
+        Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM -> "end of media item"
+        else -> reason.toString()
     }
 
     // Player output volume (0-1), used to fade out at the end of a sleep timer.

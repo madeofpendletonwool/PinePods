@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -298,6 +299,36 @@ class PinepodsLibrarySessionCallback(
         }
 
         return super.onAddMediaItems(mediaSession, controller, mediaItems)
+    }
+
+    // Records which controller pauses or stops playback, since those otherwise
+    // leave no trace in the app log.
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onPlayerCommandRequest(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        playerCommand: Int
+    ): Int {
+        if (playerCommand == Player.COMMAND_STOP || playerCommand == Player.COMMAND_PLAY_PAUSE) {
+            AudioPlayerPlugin.logToFlutter("INFO", TAG,
+                "Player command $playerCommand from ${controller.packageName}")
+        }
+        return super.onPlayerCommandRequest(session, controller, playerCommand)
+    }
+
+    // Media3 attributes external media keys to its notification controller (our
+    // own package), so log the key and real sender here.
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    override fun onMediaButtonEvent(
+        session: MediaSession,
+        controllerInfo: MediaSession.ControllerInfo,
+        intent: android.content.Intent
+    ): Boolean {
+        val key = intent.getParcelableExtra<android.view.KeyEvent>(android.content.Intent.EXTRA_KEY_EVENT)
+        AudioPlayerPlugin.logToFlutter("INFO", TAG,
+            "Media button ${key?.let { android.view.KeyEvent.keyCodeToString(it.keyCode) }} " +
+                "action=${key?.action} from ${controllerInfo.packageName}")
+        return super.onMediaButtonEvent(session, controllerInfo, intent)
     }
 
     override fun onCustomCommand(
