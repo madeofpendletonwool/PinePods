@@ -147,6 +147,16 @@ impl BackgroundScheduler {
             })
         })?;
 
+        // Mark episodes finished for users with an auto-complete threshold, hourly so it
+        // follows listening closely.
+        let auto_complete_state = app_state.clone();
+        let auto_complete_job = Job::new_async("0 45 * * * *", move |_uuid, _l| {
+            let state = auto_complete_state.clone();
+            Box::pin(async move {
+                guarded(JobKind::Cleanup, tasks::auto_complete_episodes_internal(&state)).await;
+            })
+        })?;
+
         // Evaluate user-configured scheduled backups every minute. A poll-and-evaluate job is
         // used (rather than dynamically registering per-user cron jobs) so it survives restarts
         // and automatically picks up schedule/enable changes within a minute.
@@ -179,6 +189,7 @@ impl BackgroundScheduler {
         self.scheduler.add(nightly_job).await?;
         self.scheduler.add(cleanup_job).await?;
         self.scheduler.add(finished_job).await?;
+        self.scheduler.add(auto_complete_job).await?;
         self.scheduler.add(backup_job).await?;
         self.scheduler.add(ytdlp_job).await?;
 
@@ -195,10 +206,6 @@ impl BackgroundScheduler {
             warn!("⚠️ People sync failed during nightly tasks: {}", e);
         }
         
-        if let Err(e) = tasks::auto_complete_episodes_internal(&state).await {
-            warn!("⚠️ Auto complete episodes failed during nightly tasks: {}", e);
-        }
-
         if let Err(e) = crate::services::sync::compact::run(&state.db_pool).await {
             warn!("⚠️ Sync log compaction failed during nightly tasks: {}", e);
         }

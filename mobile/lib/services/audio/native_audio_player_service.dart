@@ -369,6 +369,8 @@ class NativeAudioPlayerService extends AudioPlayerService {
         _sleepEpisodesRemaining--;
         if (_sleepEpisodesRemaining <= 0) {
           log.info('Sleep timer triggered - episode count reached');
+          // The episode did finish, so record it before stopping.
+          _pinepodsAudioService?.markCurrentEpisodeCompleted();
           _sleep = Sleep(type: SleepType.none);
           _sleepState.add(_sleep);
           // Don't suppress the stop that follows — we intend to hide the player.

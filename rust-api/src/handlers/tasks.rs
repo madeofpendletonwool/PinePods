@@ -303,8 +303,8 @@ pub async fn refresh_hosts_internal(state: &AppState) -> AppResult<()> {
 }
 
 pub async fn auto_complete_episodes_internal(state: &AppState) -> AppResult<()> {
-    tracing::info!("Starting internal auto-complete episodes (scheduler)");
-    
+    tracing::debug!("Starting internal auto-complete episodes (scheduler)");
+
     // Get all users who have auto_complete_seconds > 0
     let users_with_auto_complete = state.db_pool.get_users_with_auto_complete_enabled().await?;
     let mut total_completed = 0;
@@ -314,6 +314,8 @@ pub async fn auto_complete_episodes_internal(state: &AppState) -> AppResult<()> 
         total_completed += completed_count;
     }
     
-    tracing::info!("Auto-complete task completed: {} episodes completed", total_completed);
+    if total_completed > 0 {
+        tracing::info!("Auto-complete task completed: {} episodes completed", total_completed);
+    }
     Ok(())
 }
