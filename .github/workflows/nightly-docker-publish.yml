@@ -92,7 +92,6 @@ jobs:
 
       - name: Create and push Docker manifest for the nightly tag
         run: |
-          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.NIGHTLY_TAG }} \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.NIGHTLY_TAG }}-amd64 \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.NIGHTLY_TAG }}-arm64
-          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.NIGHTLY_TAG }}
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.NIGHTLY_TAG }} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.NIGHTLY_TAG }}-amd64 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.NIGHTLY_TAG }}-arm64

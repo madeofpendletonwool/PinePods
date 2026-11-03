@@ -111,16 +111,13 @@ jobs:
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set-env.outputs.IMAGE_TAG }}-arm64
 
           # Create and push manifest
-          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set-env.outputs.IMAGE_TAG }} \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set-env.outputs.IMAGE_TAG }}-amd64 \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set-env.outputs.IMAGE_TAG }}-arm64
-
-          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set-env.outputs.IMAGE_TAG }}
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set-env.outputs.IMAGE_TAG }} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set-env.outputs.IMAGE_TAG }}-amd64 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set-env.outputs.IMAGE_TAG }}-arm64
 
       - name: Create and push Docker manifest for the latest tag
         if: needs.set-env.outputs.CREATE_LATEST == 'true'
         run: |
-          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64 \
-            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
-          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
