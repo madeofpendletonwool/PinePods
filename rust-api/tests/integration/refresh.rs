@@ -454,3 +454,45 @@ async fn a_new_episode_posts_an_http_notification() {
     app.refresh().await;
     assert_eq!(app.fixtures().hits("hook").len(), 2, "a disabled HTTP channel does not send");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_nested_media_player_never_becomes_the_episode_url() {
+    let app = TestApp::new().await;
+    let user = app.user("listener").await;
+    let audio = "https://example.invalid/audio.mp3";
+    let player = format!(
+        r#"<media:content xmlns:media="http://search.yahoo.com/mrss/" url="{audio}" type="audio/mpeg"><media:player url="https://example.invalid/embed?media=Audio" /></media:content>"#
+    );
+    let feed = Feed::new("Player Show").episode(Episode::new(1).enclosure(audio).extra(&player));
+    let url = app.fixtures().serve("player.xml", Fixture::new("application/rss+xml", feed.to_xml()).etag("\"v1\""));
+    let pod = app.subscribe(&user, &url, 1).await;
+    app.refresh().await; // learns the ETag
+
+    let stored_url = || async {
+        let episodes = app.episodes(&user, pod).await;
+        episodes[0]["Episodeurl"].as_str().unwrap().to_string()
+    };
+    assert_eq!(stored_url().await, audio);
+
+    // A URL stored by an older release, on a feed that hasn't changed since.
+    exec(&app, r#"UPDATE "Episodes" SET EpisodeURL = 'https://example.invalid/embed?media=Audio'"#).await;
+    app.refresh().await;
+    assert_ne!(stored_url().await, audio, "a 304 doesn't reapply");
+
+    rerun_migrations(&app, &["087"]).await;
+    app.refresh().await;
+    assert_eq!(stored_url().await, audio);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_image_media_content_does_not_lose_the_enclosure() {
+    let app = TestApp::new().await;
+    let user = app.user("listener").await;
+    let audio = "https://example.invalid/audio.mp3";
+    let image = r#"<media:content xmlns:media="http://search.yahoo.com/mrss/" url="https://example.invalid/art.jpg" type="image/jpeg"/>"#;
+    let feed = Feed::new("Media Show").episode(Episode::new(1).enclosure(audio).extra(image));
+    let url = app.feed("media.xml", &feed);
+    let pod = app.subscribe(&user, &url, 1).await;
+
+    assert_eq!(app.episodes(&user, pod).await[0]["Episodeurl"], audio);
+}

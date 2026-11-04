@@ -8,6 +8,7 @@ import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/entities/search_providers.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/ui/themes.dart';
 import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -89,7 +90,7 @@ class SettingsBloc extends Bloc {
     }
 
     _currentSettings = AppSettings(
-      theme: _settingsService.theme,
+      theme: ThemeRegistry.normalizeKey(_settingsService.theme),
       markDeletedEpisodesAsPlayed: _settingsService.markDeletedEpisodesAsPlayed,
       deleteDownloadedPlayedEpisodes: _settingsService.deleteDownloadedPlayedEpisodes,
       storeDownloadsSDCard: _settingsService.storeDownloadsSDCard,
@@ -416,9 +417,10 @@ class SettingsBloc extends Bloc {
         
         final serverTheme = await pinepodsService.getUserTheme(_currentSettings.pinepodsUserId!);
         if (serverTheme != null && serverTheme.isNotEmpty) {
+          final theme = ThemeRegistry.normalizeKey(serverTheme);
           // Update local theme without syncing back to server
-          _settingsService.theme = serverTheme;
-          _currentSettings = _currentSettings.copyWith(theme: serverTheme);
+          _settingsService.theme = theme;
+          _currentSettings = _currentSettings.copyWith(theme: theme);
           _settings.add(_currentSettings);
           log.info('Theme fetched from server: $serverTheme');
         }

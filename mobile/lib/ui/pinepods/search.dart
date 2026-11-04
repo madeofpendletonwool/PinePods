@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/core/html_text.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/youtube_channel.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
@@ -407,7 +408,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                     if (podcast.description.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
-                        podcast.description,
+                        htmlToPlainText(podcast.description),
                         style: TextStyle(fontSize: 12.5, color: theme.hintColor, height: 1.3),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,

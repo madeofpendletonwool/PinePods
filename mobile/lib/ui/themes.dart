@@ -230,10 +230,22 @@ class ThemeRegistry {
   static List<String> get themeKeys => _themes.keys.toList();
   static List<ThemeDefinition> get themeList => _themes.values.toList();
   
-  static ThemeDefinition getTheme(String key) {
-    return _themes[key] ?? _themes['Dark']!;
+  /// Maps a stored or server-provided theme name to a registry key. Names can
+  /// differ in case or be unknown here (e.g. web custom themes); unknown names
+  /// fall back to Dark.
+  static String normalizeKey(String key) {
+    if (_themes.containsKey(key)) return key;
+    final lower = key.toLowerCase();
+    for (final candidate in _themes.keys) {
+      if (candidate.toLowerCase() == lower) return candidate;
+    }
+    return 'Dark';
   }
-  
+
+  static ThemeDefinition getTheme(String key) {
+    return _themes[normalizeKey(key)]!;
+  }
+
   static final Map<String, ThemeData> _polished = {};
 
   static ThemeData getThemeData(String key) {

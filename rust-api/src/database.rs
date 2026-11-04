@@ -8670,7 +8670,7 @@ impl DatabasePool {
         let feed = parser::Builder::new()
             .id_generator(|_links, _title, _uri| String::new())
             .build()
-            .parse(content.as_bytes())
+            .parse(crate::services::feed_metadata::strip_media_player(content).as_bytes())
             .map_err(|e| AppError::Internal(format!("RSS parsing error: {}", e)))?;
         
         let mut episodes = Vec::new();
@@ -13194,7 +13194,7 @@ impl DatabasePool {
                 // Add user settings like Python version
                 sqlx::query(r#"INSERT INTO "UserSettings" (userid, theme) VALUES ($1, $2)"#)
                     .bind(user_id)
-                    .bind("light")
+                    .bind("Nordic")
                     .execute(pool)
                     .await?;
 
@@ -13228,7 +13228,7 @@ impl DatabasePool {
                 // Add user settings like Python version
                 sqlx::query("INSERT INTO UserSettings (UserID, Theme) VALUES (?, ?)")
                     .bind(user_id)
-                    .bind("light")
+                    .bind("Nordic")
                     .execute(pool)
                     .await?;
 
@@ -15378,11 +15378,11 @@ impl DatabasePool {
         }
         
         let content = response.text().await?;
-        
+
         // Parse RSS feed using feed-rs
-        let feed = parser::parse(content.as_bytes())
+        let feed = parser::parse(crate::services::feed_metadata::strip_media_player(&content).as_bytes())
             .map_err(|e| AppError::external_error(&format!("Failed to parse RSS feed: {}", e)))?;
-        
+
         // Extract podcast-level artwork as fallback
         let podcast_artwork = feed.logo.as_ref().map(|l| l.uri.clone())
             .or_else(|| feed.icon.as_ref().map(|i| i.uri.clone()))

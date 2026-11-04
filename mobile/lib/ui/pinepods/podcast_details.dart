@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/core/download_cleanup.dart';
+import 'package:pinepods_mobile/core/html_text.dart';
 import 'package:pinepods_mobile/services/auto_download/download_cleanup_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
@@ -2340,7 +2341,7 @@ class _ExpandableDescriptionState extends State<_ExpandableDescription> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.description,
+              htmlToPlainText(widget.description),
               style: theme.textTheme.bodyMedium!.copyWith(height: 1.4, color: softNeutral(theme).withOpacity(0.85)),
               maxLines: _expanded ? null : 2,
               overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
