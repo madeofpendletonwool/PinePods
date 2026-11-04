@@ -7435,12 +7435,14 @@ impl DatabasePool {
         let guids: Vec<String> = candidates.iter().filter_map(|ep| ep.guid.clone()).collect();
         let url_bases: Vec<String> = candidates
             .iter()
-            .filter(|ep| !ep.url.is_empty())
-            .map(|ep| ep.url.split('?').next().unwrap_or(&ep.url).to_string())
+            .flat_map(|ep| [Some(ep.url.as_str()), ep.player_url.as_deref()])
+            .flatten()
+            .filter(|url| !url.is_empty())
+            .map(|url| url.split('?').next().unwrap_or(url).to_string())
             .collect();
         let titles_no_url: Vec<String> = candidates
             .iter()
-            .filter(|ep| ep.url.is_empty())
+            .filter(|ep| ep.url.is_empty() || ep.guid.is_none())
             .map(|ep| ep.title.clone())
             .collect();
 
@@ -7458,8 +7460,15 @@ impl DatabasePool {
                     if ep.url.is_empty() {
                         existing.title_to_id.get(&ep.title).copied()
                     } else {
-                        let base = ep.url.split('?').next().unwrap_or(&ep.url);
-                        existing.url_to_id.get(base).copied()
+                        let base = |url: &str| url.split('?').next().unwrap_or(url).to_string();
+                        existing.url_to_id.get(&base(&ep.url)).copied()
+                            // Rows 0.9.1 stored with the player page or no URL at all.
+                            .or_else(|| ep.player_url.as_deref().and_then(|p| existing.url_to_id.get(&base(p)).copied()))
+                            .or_else(|| {
+                                existing.title_to_id.get(&ep.title).copied().filter(|id| {
+                                    existing.by_id.get(id).is_some_and(|row| row.url.is_empty() && row.guid.is_none())
+                                })
+                            })
                     }
                 });
 
@@ -8691,6 +8700,7 @@ impl DatabasePool {
                 pub_date: Utc::now(),
                 duration: 0,
                 is_video: false,
+                player_url: None,
                 // Real <guid> only (empty id_generator above); None when the feed has no guid.
                 guid: if entry.id.trim().is_empty() {
                     None
@@ -8793,6 +8803,7 @@ impl DatabasePool {
             ) {
                 episode_data.insert("episode_artwork_href".to_string(), image.to_string());
             }
+            episode.player_url = entry.title.as_ref().and_then(|t| item_images.player(&t.content)).map(str::to_string);
 
             // Apply all the Python-style parsing logic with ALL fallbacks
             self.apply_python_style_parsing(&mut episode, &episode_data, artwork_url, estimate_missing_durations);
@@ -14200,6 +14211,9 @@ pub struct EpisodeData {
     /// guid (we deliberately do NOT use feed-rs's synthesized id, which can be a random UUID and
     /// would break dedup). Dedup falls back to URL/title when this is None.
     pub guid: Option<String>,
+    /// The item's `<media:player>` URL, which 0.9.1 stored as the episode URL. Only used to find
+    /// those rows.
+    pub player_url: Option<String>,
 }
 
 /// A parsed episode about to be inserted, with the artwork and duration it will be stored with.

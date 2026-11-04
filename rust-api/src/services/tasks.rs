@@ -123,6 +123,7 @@ async fn download_episode_and_wait(
         if !response.status().is_success() {
             return Err(crate::error::AppError::Internal(format!("Server returned error: {}", response.status())));
         }
+        ensure_not_web_page(&response)?;
     
         let mut file = std::fs::File::create(&file_path)
             .map_err(|e| crate::error::AppError::Internal(format!("Failed to create file: {}", e)))?;
@@ -470,6 +471,7 @@ impl TaskSpawner {
                     if !response.status().is_success() {
                         return Err(crate::error::AppError::internal(&format!("Server returned error: {}", response.status())));
                     }
+                    ensure_not_web_page(&response)?;
 
                     let total_size = response.content_length().unwrap_or(0);
                     let mut downloaded = 0;
@@ -1318,5 +1320,34 @@ impl TaskSpawner {
             })
         })
         .await
+    }
+}
+
+fn is_web_page(content_type: &str) -> bool {
+    let media_type = content_type.split(';').next().unwrap_or_default().trim();
+    media_type.eq_ignore_ascii_case("text/html") || media_type.eq_ignore_ascii_case("application/xhtml+xml")
+}
+
+/// A web page is never an episode, however the feed labels it.
+fn ensure_not_web_page(response: &reqwest::Response) -> Result<(), crate::error::AppError> {
+    let content_type = response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok());
+    if content_type.is_some_and(is_web_page) {
+        return Err(crate::error::AppError::Internal(format!("Episode URL returned a web page: {}", response.url())));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod web_page_tests {
+    use super::is_web_page;
+
+    #[test]
+    fn recognises_web_pages_only() {
+        assert!(is_web_page("text/html; charset=utf-8"));
+        assert!(is_web_page("TEXT/HTML"));
+        assert!(is_web_page("application/xhtml+xml"));
+        assert!(!is_web_page("audio/mpeg"));
+        assert!(!is_web_page("application/octet-stream"));
+        assert!(!is_web_page("text/plain"));
     }
 }

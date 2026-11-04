@@ -133,9 +133,16 @@ pub struct ItemImages {
     by_guid: std::collections::HashMap<String, String>,
     by_enclosure: std::collections::HashMap<String, String>,
     by_title: std::collections::HashMap<String, String>,
+    player_by_title: std::collections::HashMap<String, String>,
 }
 
 impl ItemImages {
+    /// The `<media:player>` URL of the episode with this title. 0.9.1 stored it as the episode URL,
+    /// so it identifies those rows when the feed has no GUIDs.
+    pub fn player(&self, title: &str) -> Option<&str> {
+        self.player_by_title.get(title.trim()).map(String::as_str)
+    }
+
     /// The image of the episode with this GUID, else this enclosure URL, else this title.
     pub fn find(&self, guid: Option<&str>, enclosure: Option<&str>, title: Option<&str>) -> Option<&str> {
         guid.and_then(|g| self.by_guid.get(g.trim()))
@@ -151,6 +158,7 @@ struct Item {
     enclosure: Option<String>,
     title: Option<String>,
     image: Option<String>,
+    player: Option<String>,
 }
 
 fn attr(e: &BytesStart, key: &str) -> Option<String> {
@@ -163,6 +171,10 @@ fn attr(e: &BytesStart, key: &str) -> Option<String> {
 
 /// An item's direct child carrying an attribute we keep.
 fn read_item_tag(e: &BytesStart, depth: usize, item: &mut Item) {
+    // Nested inside <media:content>, unlike the rest.
+    if e.name().as_ref() == "media:player" {
+        item.player = item.player.take().or_else(|| attr(e, "url"));
+    }
     if depth != 1 {
         return;
     }
@@ -226,6 +238,9 @@ pub fn item_images(body: &str) -> ItemImages {
                 if depth == 0 {
                     if e.name().as_ref() == "item" {
                         let it = item.take().unwrap();
+                        if let (Some(p), Some(t)) = (it.player, it.title.as_ref()) {
+                            images.player_by_title.entry(t.clone()).or_insert(p);
+                        }
                         if let Some(image) = it.image {
                             if let Some(g) = it.guid {
                                 images.by_guid.entry(g).or_insert_with(|| image.clone());
