@@ -2297,7 +2297,7 @@ checksum = "9ab365ce29ba0232367502b2894556ae77a9c214d33dbf453fdba7f586905918"
 
 [[package]]
 name = "web"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "ammonia",
  "anyhow",
