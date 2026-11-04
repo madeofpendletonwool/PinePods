@@ -49,6 +49,12 @@ jobs:
           cd mobile
           flutter pub get
 
+      # libdartjni.so otherwise embeds a build ID, which fails IzzyOnDroid's reproducible build check.
+      - name: Remove build ID from jni
+        run: |
+          sed -i -e 's/-Wl,/-Wl,--build-id=none,/' "${PUB_CACHE:-$HOME/.pub-cache}"/hosted/*/jni-*/src/CMakeLists.txt
+          grep -q -- '--build-id=none' "${PUB_CACHE:-$HOME/.pub-cache}"/hosted/*/jni-*/src/CMakeLists.txt
+
       - name: Setup Android signing
         run: |
           cd mobile/android
