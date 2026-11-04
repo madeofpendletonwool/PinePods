@@ -50,7 +50,7 @@ jobs:
         if: matrix.language == 'java-kotlin'
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.5"
+          flutter-version: "3.47.9"
           channel: "stable"
           cache: true
 
