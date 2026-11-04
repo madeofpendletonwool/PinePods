@@ -271,6 +271,9 @@ class PinepodsAudioPlayer: NSObject {
 
             NSLog("[PinepodsAudioPlayer] Player item failed: \(errorMessage)")
             loadInFlight = false
+            // A failed item left at rate 1 keeps reporting "buffering", which would
+            // replace the error state and spin forever.
+            player?.pause()
             sendError(code: errorCode, message: "Playback failed: \(errorMessage)")
         case .unknown:
             NSLog("[PinepodsAudioPlayer] Player item status unknown")

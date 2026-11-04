@@ -14,9 +14,9 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/flutter_downloader/ios"
 
 SPEC CHECKSUMS:
-  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
   flutter_downloader: 78da0da1084e709cbfd3b723c7ea349c71681f09
 
-PODFILE CHECKSUM: 1a9f7ffa1bf69c91d3779fff98c69958379e046b
+PODFILE CHECKSUM: 1c6f527b4a00792023f503650ca083c87651f2b3
 
 COCOAPODS: 1.17.0

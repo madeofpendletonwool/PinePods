@@ -45,6 +45,7 @@ pub fn login() -> Html {
     // Pre-capture translation strings for use in closures and async blocks
     let i18n_error_checking_status = i18n.t("login.error_checking_status").to_string();
     let i18n_error_fetching_oidc = i18n.t("login.error_fetching_oidc_providers").to_string();
+    let i18n_oidc_login_failed = i18n.t("login.oidc_login_failed").to_string();
     let _i18n_error_fetching_languages = i18n.t("login.error_fetching_languages").to_string();
     let i18n_account_created_success = i18n.t("login.account_created_successfully").to_string();
     let i18n_error_creating_account = i18n.t("login.error_creating_account").to_string();
@@ -1938,6 +1939,7 @@ pub fn login() -> Html {
                                                             style={button_style}
                                                             onclick={
                                                                 let auth_url = provider.authorization_url.clone();
+                                                                let i18n_oidc_login_failed = i18n_oidc_login_failed.clone();
                                                                 let client_id = provider.client_id.clone();
                                                                 let scope = provider.scope.clone();
                                                                 // let server_name = server_name.clone();
@@ -1974,6 +1976,7 @@ pub fn login() -> Html {
                                                                     let scope_clone = scope.clone();
                                                                     let state_clone = state.clone();
                                                                     let server_name_clone = server_name.clone();
+                                                                    let i18n_oidc_login_failed = i18n_oidc_login_failed.clone();
 
                                                                     wasm_bindgen_futures::spawn_local(async move {
                                                                         let origin = window.location().origin().unwrap();
@@ -2002,6 +2005,9 @@ pub fn login() -> Html {
                                                                             },
                                                                             Err(e) => {
                                                                                 web_sys::console::log_1(&format!("Failed to store state: {:?}", e).into());
+                                                                                Dispatch::<NotificationState>::global().reduce_mut(|state| {
+                                                                                    state.error_message = Some(format!("{}: {}", i18n_oidc_login_failed, e));
+                                                                                });
                                                                             }
                                                                         }
                                                                     });

@@ -733,6 +733,7 @@
     "error_creating_account": "Error creating account",
     "error_fetching_languages": "Error fetching available languages",
     "error_fetching_oidc_providers": "Error fetching OIDC providers",
+    "oidc_login_failed": "Could not start the OIDC login",
     "error_parsing_time": "Error parsing time preference",
     "error_setting_timezone": "Error Setting up Time Zone",
     "error_setting_timezone_details": "Error setting up time zone",

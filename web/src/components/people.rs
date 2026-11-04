@@ -386,10 +386,11 @@ fn split_names(text: &str, all: bool) -> (Vec<String>, String) {
             normalized = normalized.replace(sep, ",");
         }
     }
-    let mut parts: Vec<String> = normalized.split(',').map(|s| s.trim().to_string()).collect();
-    let remainder = if all { String::new() } else { parts.pop().unwrap_or_default() };
-    parts.retain(|s| !s.is_empty());
-    (parts, if all { String::new() } else { remainder.trim_start().to_string() })
+    let mut parts: Vec<&str> = normalized.split(',').collect();
+    // The text still being typed keeps its trailing space, or "Alice " could never become "Alice B".
+    let remainder = if all { "" } else { parts.pop().unwrap_or_default().trim_start() };
+    let names = parts.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    (names, remainder.to_string())
 }
 
 fn push_unique(list: &mut Vec<Pending>, item: Pending) {
@@ -858,5 +859,15 @@ mod tests {
         let (names, rest) = split_names("Alice", false);
         assert!(names.is_empty());
         assert_eq!(rest, "Alice");
+    }
+
+    #[test]
+    fn typing_keeps_a_space_in_the_unfinished_name() {
+        let (names, rest) = split_names("Alice ", false);
+        assert!(names.is_empty());
+        assert_eq!(rest, "Alice ");
+        let (names, rest) = split_names("Alice B , Bob ", false);
+        assert_eq!(names, vec!["Alice B"]);
+        assert_eq!(rest, "Bob ");
     }
 }

@@ -60,7 +60,8 @@ qrcode = "0.14.1"
 fernet = "0.2.2"
 
 # RSS/Feed Processing
-feed-rs = "3.0.0"
+# Pinned: 3.0.0 drops an item's <enclosure> whenever it also has <media:content>, losing the audio URL.
+feed-rs = "=2.3.1"
 url = "2.5.8"
 regex = "1.13.1"
 

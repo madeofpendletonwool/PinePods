@@ -7869,6 +7869,28 @@ def migration_086_user_use_gravatar(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("087", "reread_feeds_for_episode_urls", "Every feed is read in full once, replacing episode URLs that pointed at a web player instead of audio", requires=["085"])
+def migration_087_reread_feeds_for_episode_urls(conn, db_type: str) -> None:
+    """Episodes of feeds with a nested <media:player> were stored with the player page as their URL.
+    Unchanged feeds skip parsing, so the validators and hashes are cleared for the next refresh to
+    correct them.
+    """
+    cursor = conn.cursor()
+    pg = db_type == "postgresql"
+    not_youtube = "COALESCE(IsYouTubeChannel, FALSE) = FALSE"
+    try:
+        for table in ('"Podcasts"', '"Feeds"') if pg else ("Podcasts", "Feeds"):
+            cursor.execute(
+                f"UPDATE {table} SET FeedETag = NULL, FeedLastModified = NULL, FeedContentHash = NULL WHERE {not_youtube}"
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("118", "gpodder_actions_follow_merged_episodes", "Episode actions point at the shared episode their merged copy became; the copies are deleted", requires=["082", "111"])
 def migration_118_gpodder_actions_follow_merged_episodes(conn, db_type: str) -> None:
     """GpodderSyncEpisodeActions.EpisodeID of actions on an episode copy merged by 082 now points

@@ -60,7 +60,8 @@ pub fn parse(body: &str) -> Option<FeedMetadata> {
     Some(FeedMetadata {
         name: non_empty(feed.title.map(|t| t.content)),
         description: non_empty(feed.description.map(|d| d.content)),
-        author: non_empty(feed.authors.first().and_then(|a| a.name.clone())),
+        // feed-rs names an Atom author without a <name> "unknown".
+        author: non_empty(feed.authors.first().map(|a| a.name.clone()).filter(|n| n != "unknown")),
         artwork: non_empty(artwork),
         website: non_empty(website),
     })
@@ -88,6 +89,43 @@ fn channel_itunes_image(body: &str) -> Option<String> {
     }
 }
 
+/// Removes `<media:player>` elements from a feed. feed-rs replaces a `<media:content>` URL with its
+/// nested player's URL, a web page rather than audio, and then discards the item's `<enclosure>`.
+pub fn strip_media_player(body: &str) -> std::borrow::Cow<'_, str> {
+    const OPEN: &str = "<media:player";
+    const CLOSE: &str = "</media:player>";
+    let mut out = String::new();
+    let mut rest = body;
+    while let Some(start) = rest.find(OPEN) {
+        let after_name = &rest[start + OPEN.len()..];
+        let is_element = after_name.starts_with(|c: char| c.is_ascii_whitespace() || c == '/' || c == '>');
+        let tag_end = after_name.find('>').filter(|_| is_element);
+        let element_len = tag_end.and_then(|end| {
+            if after_name[..end].ends_with('/') {
+                Some(end + 1)
+            } else {
+                after_name[end..].find(CLOSE).map(|close| end + close + CLOSE.len())
+            }
+        });
+        let keep_to = start + OPEN.len();
+        match element_len {
+            Some(len) => {
+                out.push_str(&rest[..start]);
+                rest = &after_name[len..];
+            }
+            None => {
+                out.push_str(&rest[..keep_to]);
+                rest = after_name;
+            }
+        }
+    }
+    if out.is_empty() {
+        return std::borrow::Cow::Borrowed(rest);
+    }
+    out.push_str(rest);
+    std::borrow::Cow::Owned(out)
+}
+
 /// Each episode's own `<itunes:image>`. feed-rs drops an item's iTunes tags unless it also has an
 /// iTunes title or summary, so these are read from the XML directly.
 #[derive(Debug, Default)]
@@ -95,9 +133,16 @@ pub struct ItemImages {
     by_guid: std::collections::HashMap<String, String>,
     by_enclosure: std::collections::HashMap<String, String>,
     by_title: std::collections::HashMap<String, String>,
+    player_by_title: std::collections::HashMap<String, String>,
 }
 
 impl ItemImages {
+    /// The `<media:player>` URL of the episode with this title. 0.9.1 stored it as the episode URL,
+    /// so it identifies those rows when the feed has no GUIDs.
+    pub fn player(&self, title: &str) -> Option<&str> {
+        self.player_by_title.get(title.trim()).map(String::as_str)
+    }
+
     /// The image of the episode with this GUID, else this enclosure URL, else this title.
     pub fn find(&self, guid: Option<&str>, enclosure: Option<&str>, title: Option<&str>) -> Option<&str> {
         guid.and_then(|g| self.by_guid.get(g.trim()))
@@ -113,6 +158,7 @@ struct Item {
     enclosure: Option<String>,
     title: Option<String>,
     image: Option<String>,
+    player: Option<String>,
 }
 
 fn attr(e: &BytesStart, key: &str) -> Option<String> {
@@ -125,6 +171,10 @@ fn attr(e: &BytesStart, key: &str) -> Option<String> {
 
 /// An item's direct child carrying an attribute we keep.
 fn read_item_tag(e: &BytesStart, depth: usize, item: &mut Item) {
+    // Nested inside <media:content>, unlike the rest.
+    if e.name().as_ref() == "media:player" {
+        item.player = item.player.take().or_else(|| attr(e, "url"));
+    }
     if depth != 1 {
         return;
     }
@@ -188,6 +238,9 @@ pub fn item_images(body: &str) -> ItemImages {
                 if depth == 0 {
                     if e.name().as_ref() == "item" {
                         let it = item.take().unwrap();
+                        if let (Some(p), Some(t)) = (it.player, it.title.as_ref()) {
+                            images.player_by_title.entry(t.clone()).or_insert(p);
+                        }
                         if let Some(image) = it.image {
                             if let Some(g) = it.guid {
                                 images.by_guid.entry(g).or_insert_with(|| image.clone());
@@ -429,6 +482,53 @@ impl DatabasePool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const AUDIO_URL: &str = "https://cdn.example/audio.mp3";
+
+    fn audio_urls(body: &str) -> std::collections::BTreeSet<String> {
+        let feed = feed_rs::parser::parse(strip_media_player(body).as_bytes()).unwrap();
+        feed.entries[0]
+            .media
+            .iter()
+            .flat_map(|m| &m.content)
+            .filter(|c| c.content_type.as_ref().is_some_and(|t| t.to_string().starts_with("audio/")))
+            .filter_map(|c| c.url.as_ref().map(|u| u.to_string()))
+            .collect()
+    }
+
+    fn item_feed(item: &str) -> String {
+        format!(
+            r#"<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>S</title>
+            <item><title>E</title>{item}</item></channel></rss>"#
+        )
+    }
+
+    #[test]
+    fn a_nested_player_does_not_replace_the_audio_url() {
+        let body = item_feed(&format!(
+            r#"<media:content url="{AUDIO_URL}" type="audio/mpeg"><media:player url="https://host.example/embed?media=Audio" /></media:content>
+            <enclosure url="{AUDIO_URL}" length="1" type="audio/mpeg"/>"#
+        ));
+        assert_eq!(audio_urls(&body), [AUDIO_URL.to_string()].into());
+    }
+
+    #[test]
+    fn a_content_with_only_a_player_falls_back_to_the_enclosure() {
+        let body = item_feed(&format!(
+            r#"<media:content type="audio/mpeg"><media:player url="https://host.example/embed"></media:player></media:content>
+            <enclosure url="{AUDIO_URL}" length="1" type="audio/mpeg"/>"#
+        ));
+        assert_eq!(audio_urls(&body), [AUDIO_URL.to_string()].into());
+    }
+
+    #[test]
+    fn stripping_leaves_everything_else_alone() {
+        let plain = "<item><title>a &lt; b</title></item>";
+        assert!(matches!(strip_media_player(plain), std::borrow::Cow::Borrowed(_)));
+        assert_eq!(strip_media_player("<media:playerish/>"), "<media:playerish/>");
+        assert_eq!(strip_media_player("a<media:player url=\"x\"/>b<media:player>y</media:player>c"), "abc");
+        assert_eq!(strip_media_player("a<media:player url=\"x\">b"), "a<media:player url=\"x\">b");
+    }
 
     const FEED: &str = r#"<?xml version="1.0"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom">

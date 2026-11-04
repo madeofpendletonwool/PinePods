@@ -41,13 +41,19 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.5"
+          flutter-version: "3.47.9"
           channel: "stable"
 
       - name: Install dependencies
         run: |
           cd mobile
           flutter pub get
+
+      # libdartjni.so otherwise embeds a build ID, which fails IzzyOnDroid's reproducible build check.
+      - name: Remove build ID from jni
+        run: |
+          sed -i -e 's/-Wl,/-Wl,--build-id=none,/' "${PUB_CACHE:-$HOME/.pub-cache}"/hosted/*/jni-*/src/CMakeLists.txt
+          grep -q -- '--build-id=none' "${PUB_CACHE:-$HOME/.pub-cache}"/hosted/*/jni-*/src/CMakeLists.txt
 
       - name: Setup Android signing
         run: |

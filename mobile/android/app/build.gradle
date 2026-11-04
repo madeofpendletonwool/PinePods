@@ -29,7 +29,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    compileSdk 36
+    compileSdk 37
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -75,7 +75,7 @@ android {
         release {
             signingConfig signingConfigs.release
             shrinkResources false
-            proguardFiles getDefaultProguardFile('proguard-android.txt')
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 

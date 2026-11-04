@@ -454,3 +454,94 @@ async fn a_new_episode_posts_an_http_notification() {
     app.refresh().await;
     assert_eq!(app.fixtures().hits("hook").len(), 2, "a disabled HTTP channel does not send");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_nested_media_player_never_becomes_the_episode_url() {
+    let app = TestApp::new().await;
+    let user = app.user("listener").await;
+    let audio = "https://example.invalid/audio.mp3";
+    let player = format!(
+        r#"<media:content xmlns:media="http://search.yahoo.com/mrss/" url="{audio}" type="audio/mpeg"><media:player url="https://example.invalid/embed?media=Audio" /></media:content>"#
+    );
+    let feed = Feed::new("Player Show").episode(Episode::new(1).enclosure(audio).extra(&player));
+    let url = app.fixtures().serve("player.xml", Fixture::new("application/rss+xml", feed.to_xml()).etag("\"v1\""));
+    let pod = app.subscribe(&user, &url, 1).await;
+    app.refresh().await; // learns the ETag
+
+    let stored_url = || async {
+        let episodes = app.episodes(&user, pod).await;
+        episodes[0]["Episodeurl"].as_str().unwrap().to_string()
+    };
+    assert_eq!(stored_url().await, audio);
+
+    // A URL stored by an older release, on a feed that hasn't changed since.
+    exec(&app, r#"UPDATE "Episodes" SET EpisodeURL = 'https://example.invalid/embed?media=Audio'"#).await;
+    app.refresh().await;
+    assert_ne!(stored_url().await, audio, "a 304 doesn't reapply");
+
+    rerun_migrations(&app, &["087"]).await;
+    app.refresh().await;
+    assert_eq!(stored_url().await, audio);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_image_media_content_does_not_lose_the_enclosure() {
+    let app = TestApp::new().await;
+    let user = app.user("listener").await;
+    let audio = "https://example.invalid/audio.mp3";
+    let image = r#"<media:content xmlns:media="http://search.yahoo.com/mrss/" url="https://example.invalid/art.jpg" type="image/jpeg"/>"#;
+    let feed = Feed::new("Media Show").episode(Episode::new(1).enclosure(audio).extra(image));
+    let url = app.feed("media.xml", &feed);
+    let pod = app.subscribe(&user, &url, 1).await;
+
+    assert_eq!(app.episodes(&user, pod).await[0]["Episodeurl"], audio);
+}
+
+async fn guidless_episodes(app: &TestApp, user: &TestUser, pod: i32) -> Vec<String> {
+    let episodes = app.episodes(user, pod).await;
+    episodes.iter().map(|e| e["Episodeurl"].as_str().unwrap().to_string()).collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn repairing_a_url_does_not_duplicate_a_guidless_episode() {
+    let app = TestApp::new().await;
+    let user = app.user("listener").await;
+    let audio = "https://example.invalid/audio.mp3";
+    let player_url = "https://example.invalid/embed?media=Audio";
+    let player = format!(
+        r#"<media:content xmlns:media="http://search.yahoo.com/mrss/" url="{audio}" type="audio/mpeg"><media:player url="{player_url}" /></media:content>"#
+    );
+    let feed = Feed::new("No Guid").episode(Episode::new(1).guid(None).enclosure(audio).extra(&player));
+    let url = app.feed("noguid.xml", &feed);
+    let pod = app.subscribe(&user, &url, 1).await;
+
+    // The player page, as 0.9.1 stored it.
+    exec(&app, &format!(r#"UPDATE "Episodes" SET EpisodeURL = '{player_url}' WHERE PodcastID = {pod}"#)).await;
+    rerun_migrations(&app, &["087"]).await;
+    app.refresh().await;
+    assert_eq!(guidless_episodes(&app, &user, pod).await, [audio]);
+
+    // No URL at all, as 0.9.1 stored it beside an image media:content.
+    exec(&app, &format!(r#"UPDATE "Episodes" SET EpisodeURL = '' WHERE PodcastID = {pod}"#)).await;
+    rerun_migrations(&app, &["087"]).await;
+    app.refresh().await;
+    assert_eq!(guidless_episodes(&app, &user, pod).await, [audio]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_guidless_episode_with_a_reused_title_stays_separate() {
+    let app = TestApp::new().await;
+    let user = app.user("listener").await;
+    let first = Episode::new(1).guid(None).title("Bonus").enclosure("https://example.invalid/one.mp3");
+    let feed = Feed::new("Reused Titles").episode(first);
+    let url = app.feed("reused.xml", &feed);
+    let pod = app.subscribe(&user, &url, 1).await;
+
+    let second = Episode::new(2).guid(None).title("Bonus").enclosure("https://example.invalid/two.mp3");
+    app.feed("reused.xml", &feed.episode(second));
+    app.refresh().await;
+
+    let mut urls = guidless_episodes(&app, &user, pod).await;
+    urls.sort();
+    assert_eq!(urls, ["https://example.invalid/one.mp3", "https://example.invalid/two.mp3"]);
+}
