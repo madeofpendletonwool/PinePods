@@ -30,20 +30,30 @@ WORKDIR /app
 # Build the Yew application in release mode
 RUN RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" trunk build --features server_build --release
 
+# uv, mounted into the Python builder stage
+FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
+
 # Python builder stage for database setup
-FROM python:3.14-alpine AS python-builder
+FROM alpine AS python-builder
 WORKDIR /build
+ENV UV_PYTHON_INSTALL_DIR=/python UV_PYTHON_PREFERENCE=only-managed
 
 # Install build dependencies for PyInstaller and MariaDB connector
 RUN apk add --no-cache gcc musl-dev libffi-dev openssl-dev mariadb-connector-c-dev
 
+# Install Python
+COPY ./.python-version ./
+RUN --mount=from=uv,source=/uv,target=/bin/uv uv python install
+
+# Install Python dependencies including PyInstaller
+COPY ./pyproject.toml ./uv.lock ./
+RUN --mount=from=uv,source=/uv,target=/bin/uv \
+    uv sync --locked --no-cache --extra mariadb --group build
+ENV PATH="/build/.venv/bin:$PATH"
+
 # Copy Python source files
 COPY ./database_functions ./database_functions
 COPY ./startup/setup_database_new.py ./startup/setup_database_new.py
-COPY ./requirements.txt ./requirements.txt
-
-# Install Python dependencies including PyInstaller
-RUN pip install --no-cache-dir -r requirements.txt pyinstaller
 
 # Build standalone database setup binary
 RUN pyinstaller --onefile \

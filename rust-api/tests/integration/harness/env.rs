@@ -252,8 +252,8 @@ pub fn run_migrations(env: &TestEnv, db_name: &str) {
         .output()
         .unwrap_or_else(|e| {
             panic!(
-                "could not run {python} for migrations ({e}). Set PINEPODS_TEST_PYTHON to a python \
-                 with rust-api/tests/requirements.txt installed, or use scripts/integration-tests.sh"
+                "could not run {python} for migrations ({e}). Set PINEPODS_TEST_PYTHON to the python \
+                 of an environment from `uv sync --extra mysql`, or use scripts/integration-tests.sh"
             )
         });
     if !out.status.success() {
