@@ -1022,14 +1022,15 @@ fn store_state_error(status: u16, body: &str) -> String {
 #[cfg(test)]
 mod store_state_error_tests {
     use super::store_state_error;
+    use wasm_bindgen_test::wasm_bindgen_test;
 
-    #[test]
+    #[wasm_bindgen_test]
     fn shows_the_servers_message() {
         let body = r#"{"error":"Internal server error","message":"Failed to store OIDC state: READONLY","status_code":500}"#;
         assert_eq!(store_state_error(500, body), "Failed to store OIDC state: READONLY");
     }
 
-    #[test]
+    #[wasm_bindgen_test]
     fn falls_back_to_the_status_for_other_bodies() {
         let fallback = "Failed to store OIDC state: HTTP 502";
         assert_eq!(store_state_error(502, ""), fallback);

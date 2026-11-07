@@ -75,7 +75,7 @@ async fn download_episode_and_wait(
         .trim()
         .to_string();
     
-    let download_dir = std::path::Path::new("/opt/pinepods/downloads").join(&safe_podcast_name);
+    let download_dir = std::path::Path::new(&crate::paths::downloads_dir()).join(&safe_podcast_name);
     if !download_dir.exists() {
         std::fs::create_dir_all(&download_dir)
             .map_err(|e| crate::error::AppError::Internal(format!("Failed to create download directory: {}", e)))?;
@@ -407,7 +407,7 @@ impl TaskSpawner {
                     .to_string();
                 
                 // Create podcast-specific directory (like Python version)
-                let download_dir = std::path::Path::new("/opt/pinepods/downloads").join(&safe_podcast_name);
+                let download_dir = std::path::Path::new(&crate::paths::downloads_dir()).join(&safe_podcast_name);
                 if !download_dir.exists() {
                     std::fs::create_dir_all(&download_dir)
                         .map_err(|e| crate::error::AppError::internal(&format!("Failed to create download directory: {}", e)))?;
@@ -918,7 +918,7 @@ impl TaskSpawner {
                 
                 task_manager.set_task_metadata(&task_id, Some(video_title.clone()), Some("YouTube".to_string())).await?;
 
-                let output_path = format!("/opt/pinepods/downloads/youtube/{}.mp3", youtube_video_id);
+                let output_path = format!("{}/{}.mp3", crate::paths::youtube_downloads_dir(), youtube_video_id);
 
                 // Check if file already exists
                 if tokio::fs::metadata(&output_path).await.is_ok() {
@@ -1158,7 +1158,7 @@ impl TaskSpawner {
                 
                 for (index, (youtube_video_id, video_title)) in videos_data.iter().enumerate() {
                     
-                    let output_path = format!("/opt/pinepods/downloads/youtube/{}.mp3", youtube_video_id);
+                    let output_path = format!("{}/{}.mp3", crate::paths::youtube_downloads_dir(), youtube_video_id);
                     
                     // Update progress
                     let progress = (index as f64 / total_videos as f64) * 100.0;

@@ -841,8 +841,9 @@ pub fn add_people_sheet(props: &AddPeopleSheetProps) -> Html {
 #[cfg(test)]
 mod tests {
     use super::split_names;
+    use wasm_bindgen_test::wasm_bindgen_test;
 
-    #[test]
+    #[wasm_bindgen_test]
     fn splits_pasted_lists() {
         let (names, rest) = split_names("Alice, Bob and Carol", true);
         assert_eq!(names, vec!["Alice", "Bob", "Carol"]);
@@ -851,7 +852,7 @@ mod tests {
         assert_eq!(names, vec!["Tom", "Jerry", "Spike", "Tyke"]);
     }
 
-    #[test]
+    #[wasm_bindgen_test]
     fn typing_keeps_the_unfinished_name() {
         let (names, rest) = split_names("Alice, Bob and Ca", false);
         assert_eq!(names, vec!["Alice"]);
@@ -861,7 +862,7 @@ mod tests {
         assert_eq!(rest, "Alice");
     }
 
-    #[test]
+    #[wasm_bindgen_test]
     fn typing_keeps_a_space_in_the_unfinished_name() {
         let (names, rest) = split_names("Alice ", false);
         assert!(names.is_empty());

@@ -244,6 +244,163 @@ async fn http_notifications_announce_new_episodes() {
     assert!(message.contains("Hooked Show") && message.contains("Fresh hooked episode"), "{body}");
 }
 
+/// Notification settings for one platform, plus notifications on for the podcast at `pod`.
+async fn notify_on(app: &TestApp, user: &TestUser, pod: i32, settings: Value) {
+    let mut body = settings;
+    body["user_id"] = json!(user.id);
+    body["enabled"] = json!(true);
+    app.put("/api/data/user/notification_settings").key(user).json(&body).send().await.assert_ok();
+    app.put("/api/data/podcast/toggle_notifications")
+        .key(user)
+        .json(&json!({ "user_id": user.id, "podcast_id": pod, "enabled": true }))
+        .send()
+        .await
+        .assert_ok();
+}
+
+async fn send_test_notification(app: &TestApp, user: &TestUser, platform: &str) -> u16 {
+    app.post("/api/data/user/test_notification")
+        .key(user)
+        .json(&json!({ "user_id": user.id, "platform": platform }))
+        .send()
+        .await
+        .status
+        .as_u16()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ntfy_announces_new_episodes_with_the_access_token() {
+    let app = TestApp::new().await;
+    let user = app.user("ntfy").await;
+    let feed = Feed::with_episodes("Ntfy Show", 1);
+    let url = app.feed("show.xml", &feed);
+    let pod = app.subscribe(&user, &url, 1).await;
+    app.fixtures().serve("ntfy/alerts", Fixture::new("application/json", "{}"));
+    notify_on(&app, &user, pod, json!({
+        "platform": "ntfy",
+        "ntfy_topic": "alerts",
+        "ntfy_server_url": app.fixtures().url("ntfy"),
+        "ntfy_access_token": "ntfy-token",
+    }))
+    .await;
+
+    app.feed("show.xml", &feed.episode(Episode::new(2).title("Fresh ntfy episode")));
+    app.refresh().await;
+
+    let hits = app.fixtures().hits("ntfy/alerts");
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    assert_eq!(hits[0].headers.get("authorization").map(String::as_str), Some("Bearer ntfy-token"));
+    let message = String::from_utf8_lossy(&hits[0].body);
+    assert!(message.contains("Ntfy Show") && message.contains("Fresh ntfy episode"), "{message}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ntfy_can_sign_in_with_a_username_and_password() {
+    let app = TestApp::new().await;
+    let user = app.user("ntfy").await;
+    let pod = app.subscribe(&user, &app.feed("show.xml", &Feed::with_episodes("Show", 1)), 1).await;
+    app.fixtures().serve("ntfy/alerts", Fixture::new("application/json", "{}"));
+    notify_on(&app, &user, pod, json!({
+        "platform": "ntfy",
+        "ntfy_topic": "alerts",
+        "ntfy_server_url": app.fixtures().url("ntfy"),
+        "ntfy_username": "listener",
+        "ntfy_password": "ntfy-pass",
+    }))
+    .await;
+
+    assert_eq!(send_test_notification(&app, &user, "ntfy").await, 200);
+
+    let hits = app.fixtures().hits("ntfy/alerts");
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    let expected = pinepods_basic("listener", "ntfy-pass");
+    assert_eq!(hits[0].headers.get("authorization"), Some(&expected));
+    assert_eq!(String::from_utf8_lossy(&hits[0].body), "Test notification from PinePods");
+}
+
+fn pinepods_basic(user: &str, password: &str) -> String {
+    crate::harness::app::basic(user, password)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn gotify_announces_new_episodes_and_sends_test_messages() {
+    let app = TestApp::new().await;
+    let user = app.user("gotify").await;
+    let feed = Feed::with_episodes("Gotify Show", 1);
+    let url = app.feed("show.xml", &feed);
+    let pod = app.subscribe(&user, &url, 1).await;
+    app.fixtures().serve("gotify/message", Fixture::new("application/json", "{}"));
+    notify_on(&app, &user, pod, json!({
+        "platform": "gotify",
+        "gotify_url": app.fixtures().url("gotify"),
+        "gotify_token": "gotify-token",
+    }))
+    .await;
+
+    assert_eq!(send_test_notification(&app, &user, "gotify").await, 200);
+    app.feed("show.xml", &feed.episode(Episode::new(2).title("Fresh gotify episode")));
+    app.refresh().await;
+
+    let hits = app.fixtures().hits("gotify/message");
+    assert_eq!(hits.len(), 2, "{hits:?}");
+    for hit in &hits {
+        assert!(hit.query.as_deref().is_some_and(|q| q.contains("token=gotify-token")), "{hit:?}");
+    }
+    let test: Value = serde_json::from_slice(&hits[0].body).expect("json body");
+    assert_eq!(test["title"], "PinePods Test");
+    let announced: Value = serde_json::from_slice(&hits[1].body).expect("json body");
+    let message = announced["message"].as_str().unwrap_or_default();
+    assert!(message.contains("Fresh gotify episode"), "{announced}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failing_notification_service_is_reported_and_does_not_stop_the_refresh() {
+    let app = TestApp::new().await;
+    let user = app.user("unlucky").await;
+    let feed = Feed::with_episodes("Show", 1);
+    let url = app.feed("show.xml", &feed);
+    let pod = app.subscribe(&user, &url, 1).await;
+    app.fixtures().serve("ntfy/alerts", Fixture::new("text/plain", "nope").status(500));
+    notify_on(&app, &user, pod, json!({
+        "platform": "ntfy",
+        "ntfy_topic": "alerts",
+        "ntfy_server_url": app.fixtures().url("ntfy"),
+    }))
+    .await;
+
+    assert_eq!(send_test_notification(&app, &user, "ntfy").await, 400);
+    app.feed("show.xml", &feed.episode(Episode::new(2)));
+    app.refresh().await;
+    assert_eq!(app.episodes(&user, pod).await.len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn notifications_stay_quiet_for_podcasts_that_did_not_ask() {
+    let app = TestApp::new().await;
+    let user = app.user("quiet").await;
+    let feed = Feed::with_episodes("Quiet Show", 1);
+    let url = app.feed("show.xml", &feed);
+    app.subscribe(&user, &url, 1).await;
+    app.fixtures().serve("ntfy/alerts", Fixture::new("application/json", "{}"));
+    app.put("/api/data/user/notification_settings")
+        .key(&user)
+        .json(&json!({
+            "user_id": user.id,
+            "platform": "ntfy",
+            "enabled": true,
+            "ntfy_topic": "alerts",
+            "ntfy_server_url": app.fixtures().url("ntfy"),
+        }))
+        .send()
+        .await
+        .assert_ok();
+
+    app.feed("show.xml", &feed.episode(Episode::new(2)));
+    app.refresh().await;
+
+    assert!(app.fixtures().hits("ntfy/alerts").is_empty());
+}
+
 fn theme_body(user_id: i32, name: &str) -> Value {
     let mut body = json!({ "user_id": user_id, "name": name });
     for field in [

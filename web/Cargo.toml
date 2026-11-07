@@ -98,6 +98,8 @@ wasm-bindgen-test = "0.3.80"
 [features]
 default = []
 server_build = []
+# Tests that mount pages, for `wasm-pack test --headless --chrome`.
+browser_tests = []
 
 [profile.release]
 lto = true

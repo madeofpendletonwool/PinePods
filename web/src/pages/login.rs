@@ -141,8 +141,8 @@ pub fn login() -> Html {
             let window = web_sys::window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location
-                .href()
-                .expect("should have a href")
+                .origin()
+                .expect("should have an origin")
                 .trim_end_matches('/')
                 .to_string();
 
@@ -172,8 +172,8 @@ pub fn login() -> Html {
             let window = web_sys::window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location
-                .href()
-                .expect("should have a href")
+                .origin()
+                .expect("should have an origin")
                 .trim_end_matches('/')
                 .to_string();
 
@@ -200,8 +200,8 @@ pub fn login() -> Html {
             let window = web_sys::window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location
-                .href()
-                .expect("should have a href")
+                .origin()
+                .expect("should have an origin")
                 .trim_end_matches('/')
                 .to_string();
             match call_get_available_languages(server_name).await {
@@ -511,7 +511,7 @@ pub fn login() -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 let window = window().expect("no global `window` exists");
                 let location = window.location();
-                let server_name = location.href().expect("should have a href");
+                let server_name = location.origin().expect("should have an origin");
                 let server_name = server_name.trim_end_matches('/').to_string();
                 let page_state = page_state.clone();
                 match login_requests::login_new_server_secure(
@@ -832,7 +832,7 @@ pub fn login() -> Html {
             let _create_state = create_state.clone();
             let window = window().expect("no global `window` exists");
             let location = window.location();
-            let server_name = location.href().expect("should have a href");
+            let server_name = location.origin().expect("should have an origin");
             let server_name = server_name.trim_end_matches('/').to_string();
             let new_username = new_username.clone();
             let new_password = new_password.clone();
@@ -998,7 +998,7 @@ pub fn login() -> Html {
             e.prevent_default();
             let window = window().expect("no global `window` exists");
             let location = window.location();
-            let server_name = location.href().expect("should have a href");
+            let server_name = location.origin().expect("should have an origin");
             let server_name = server_name.trim_end_matches('/').to_string();
             let page_state = page_state.clone();
 
@@ -1138,7 +1138,7 @@ pub fn login() -> Html {
 
             let window = window().expect("no global `window` exists");
             let location = window.location();
-            let server_name = location.href().expect("should have a href");
+            let server_name = location.origin().expect("should have an origin");
             let server_name = server_name.trim_end_matches('/').to_string();
 
             match encode_password(&reset_password) {
@@ -1738,8 +1738,8 @@ pub fn login() -> Html {
             let window = web_sys::window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location
-                .href()
-                .expect("should have a href")
+                .origin()
+                .expect("should have an origin")
                 .trim_end_matches('/')
                 .to_string();
 
@@ -1946,8 +1946,8 @@ pub fn login() -> Html {
                                                                 let window = web_sys::window().expect("no global `window` exists");
                                                                 let location = window.location();
                                                                 let server_name = location
-                                                                    .href()
-                                                                    .expect("should have a href")
+                                                                    .origin()
+                                                                    .expect("should have an origin")
                                                                     .trim_end_matches('/')
                                                                     .to_string();
 
@@ -2168,8 +2168,8 @@ pub fn login() -> Html {
             let window = web_sys::window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location
-                .href()
-                .expect("should have a href")
+                .origin()
+                .expect("should have an origin")
                 .trim_end_matches('/')
                 .to_string();
             match call_get_available_languages(server_name).await {
@@ -2245,7 +2245,7 @@ pub fn login() -> Html {
             let temp_user_id = call_user_id.clone();
             let mfa_session_token = submit_mfa_session_token.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                // let server_name = location.href().expect("should have a href");
+                // let server_name = location.origin().expect("should have an origin");
                 let server_name = server_name.clone();
                 let page_state = page_state.clone();
                 match login_requests::login_new_server_secure(
