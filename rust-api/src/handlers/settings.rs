@@ -5136,8 +5136,15 @@ pub async fn list_backup_files(
         }
     };
 
+    // SQLite backups need no database password, so the settings page can leave it out.
+    let database_type = match &state.db_pool {
+        crate::database::DatabasePool::Postgres(_) => "postgresql",
+        crate::database::DatabasePool::MySQL(_) => "mysql",
+        crate::database::DatabasePool::Sqlite(_) => "sqlite",
+    };
     Ok(Json(serde_json::json!({
-        "backup_files": backup_files
+        "backup_files": backup_files,
+        "database_type": database_type
     })))
 }
 

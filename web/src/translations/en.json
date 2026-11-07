@@ -103,6 +103,7 @@
   },
   "backup_server": {
     "authenticate": "Authenticate",
+    "download": "Download",
     "backing_up_database": "Backing up database...",
     "backup_error": "Error backing up server - Maybe wrong password?: ",
     "backup_loading_message": "This may take a few minutes for large databases. Please don't close this window.",

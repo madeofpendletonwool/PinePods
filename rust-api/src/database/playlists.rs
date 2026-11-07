@@ -55,19 +55,27 @@ impl PlaylistConfig {
             }
         };
         
+        // Decoded as Option: SQLite's driver reads NULL as 0 / "" / false otherwise.
+        fn opt<'r, R: sqlx::Row, T>(row: &'r R, col: &str) -> Option<T>
+        where
+            for<'c> &'c str: sqlx::ColumnIndex<R>,
+            T: sqlx::Decode<'r, R::Database> + sqlx::Type<R::Database>,
+        {
+            row.try_get::<Option<T>, _>(col).ok().flatten()
+        }
         Ok(PlaylistConfig {
             podcast_ids,
-            include_unplayed: row.try_get("includeunplayed").unwrap_or(true),
-            include_partially_played: row.try_get("includepartiallyplayed").unwrap_or(true),
-            include_played: row.try_get("includeplayed").unwrap_or(false),
-            play_progress_min: row.try_get("playprogressmin").ok(),
-            play_progress_max: row.try_get("playprogressmax").ok(),
-            time_filter_hours: row.try_get("timefilterhours").ok(),
-            min_duration: row.try_get("minduration").ok(),
-            max_duration: row.try_get("maxduration").ok(),
-            sort_order: row.try_get("sortorder").unwrap_or_else(|_| "date_desc".to_string()),
-            group_by_podcast: row.try_get("groupbypodcast").unwrap_or(false),
-            max_episodes: row.try_get("maxepisodes").ok(),
+            include_unplayed: opt(row, "includeunplayed").unwrap_or(true),
+            include_partially_played: opt(row, "includepartiallyplayed").unwrap_or(true),
+            include_played: opt(row, "includeplayed").unwrap_or(false),
+            play_progress_min: opt(row, "playprogressmin"),
+            play_progress_max: opt(row, "playprogressmax"),
+            time_filter_hours: opt(row, "timefilterhours"),
+            min_duration: opt(row, "minduration"),
+            max_duration: opt(row, "maxduration"),
+            sort_order: opt(row, "sortorder").unwrap_or_else(|| "date_desc".to_string()),
+            group_by_podcast: opt(row, "groupbypodcast").unwrap_or(false),
+            max_episodes: opt(row, "maxepisodes"),
         })
     }
     

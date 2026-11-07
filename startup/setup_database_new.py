@@ -272,5 +272,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # `--export-sqlite <file>`: write this database out as a SQLite server backup instead.
+    if len(sys.argv) >= 2 and sys.argv[1] == "--export-sqlite":
+        from database_functions import sqlite_export
+        sys.exit(sqlite_export.main(sys.argv[2:]))
     success = main()
     sys.exit(0 if success else 1)

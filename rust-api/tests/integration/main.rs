@@ -35,6 +35,7 @@ mod settings;
 mod shared_episodes;
 mod shared_feeds;
 mod smoke;
+mod sqlite_export;
 mod sync_core;
 mod sync_engine;
 mod sync_migrations;
