@@ -14,6 +14,7 @@ mod feeds;
 mod foreign_resources;
 mod gpodder;
 mod gpodder_server;
+mod in_app_notifications;
 mod library;
 mod moved_feeds;
 mod oidc;

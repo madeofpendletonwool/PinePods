@@ -149,30 +149,23 @@ pub struct RssKeyInfo {
 }
 
 fn extract_domain_from_request(request: &Request<axum::body::Body>) -> String {
-    // Check SERVER_URL environment variable first (includes scheme and port)
-    // Note: We use SERVER_URL instead of HOSTNAME because Docker automatically sets HOSTNAME to the container ID
-    // The startup script saves the user's HOSTNAME value to SERVER_URL before Docker overwrites it
-    if let Ok(server_url) = std::env::var("SERVER_URL") {
-        tracing::info!("Using SERVER_URL env var: {}", server_url);
-        return server_url;
+    // SERVER_URL holds the HOSTNAME the user set (Docker replaces HOSTNAME itself with the
+    // container id). Unset, startup copies that container id in, so only a URL counts.
+    if let Some(server_url) = crate::config::env_value("SERVER_URL")
+        .filter(|u| u.starts_with("http://") || u.starts_with("https://"))
+    {
+        return server_url.trim_end_matches('/').to_string();
     }
 
-    // Try to get domain from Host header
-    if let Some(host) = request.headers().get("host") {
-        if let Ok(host_str) = host.to_str() {
-            // Determine scheme - check for X-Forwarded-Proto or assume http
-            let scheme = request.headers()
-                .get("x-forwarded-proto")
-                .and_then(|h| h.to_str().ok())
-                .unwrap_or("http");
-
-            let domain = format!("{}://{}", scheme, host_str);
-            tracing::info!("Using Host header: {}", domain);
-            return domain;
+    // Otherwise the address this request came in on.
+    let header = |name: &str| {
+        request.headers().get(name).and_then(|h| h.to_str().ok()).and_then(|h| h.split(',').next()).map(str::trim).filter(|h| !h.is_empty())
+    };
+    match header("x-forwarded-host").or_else(|| header("host")) {
+        Some(host) => {
+            let scheme = header("x-forwarded-proto").unwrap_or("http");
+            format!("{}://{}", scheme, host)
         }
+        None => "http://localhost:8040".to_string(),
     }
-
-    // Fallback
-    tracing::info!("Using fallback domain");
-    "http://localhost:8041".to_string()
 }

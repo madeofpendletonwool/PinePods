@@ -35,6 +35,8 @@ mod collections;
 mod refresh;
 mod feed_parsing;
 mod notifications;
+mod in_app_notifications;
+pub use in_app_notifications::StoredInAppNotification;
 mod downloads;
 mod youtube;
 mod rss;

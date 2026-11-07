@@ -87,14 +87,15 @@ impl TestApp {
                 max_connections: 8,
                 min_connections: 0,
             },
-            redis: RedisConfig {
+            // SQLite installs default to the in-memory store; the others use Valkey.
+            redis: (env.backend != Backend::Sqlite).then(|| RedisConfig {
                 host: env.valkey_host.clone(),
                 port: env.valkey_port,
                 max_connections: 4,
                 password: None,
                 username: None,
                 database: None,
-            },
+            }),
             server: ServerConfig { port: 0, host: "127.0.0.1".into() },
             security: SecurityConfig {
                 api_key_header: "pinepods_api".into(),
@@ -138,10 +139,11 @@ impl TestApp {
         tweak(&mut config);
 
         let db_pool = DatabasePool::new(&config).await.expect("connect test database");
-        let redis_client = RedisClient::new(&config).await.expect("connect test valkey");
+        let redis_client = RedisClient::new(&config).await.expect("connect test valkey (or the in-memory store)");
         let instance_id: Arc<str> = Arc::from(format!("test-{tag}").as_str());
         let task_manager = Arc::new(pinepods_api::services::task_manager::TaskManager::new(
             redis_client.clone(),
+            db_pool.clone(),
             instance_id.clone(),
         ));
         let task_spawner = Arc::new(pinepods_api::services::tasks::TaskSpawner::new(

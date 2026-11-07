@@ -505,16 +505,21 @@ class DatabaseMigrationManager:
 _migration_manager: Optional[DatabaseMigrationManager] = None
 
 
+def default_db_type() -> str:
+    """DB_TYPE, or SQLite when no database server is configured (same rule as the API)."""
+    return (os.environ.get("DB_TYPE") or "").strip() or ("postgresql" if (os.environ.get("DB_HOST") or "").strip() else "sqlite")
+
+
 def get_migration_manager() -> DatabaseMigrationManager:
     """Get the global migration manager instance"""
     global _migration_manager
     
     if _migration_manager is None:
         # Get database configuration from environment
-        db_type = os.environ.get("DB_TYPE", "postgresql")
+        db_type = default_db_type()
         
         if db_type.lower() == 'sqlite':
-            connection_params = {'path': os.environ.get("DB_PATH", "/opt/pinepods/data/pinepods.db")}
+            connection_params = {'path': os.environ.get("DB_PATH") or "/opt/pinepods/data/pinepods.db"}
         elif db_type.lower() in ['postgresql', 'postgres']:
             connection_params = {
                 'host': os.environ.get("DB_HOST", "127.0.0.1"),

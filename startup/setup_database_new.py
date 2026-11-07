@@ -134,7 +134,8 @@ def wait_for_mysql_ready():
 
 def create_database_if_not_exists():
     """Create the database if it doesn't exist and wait for database to be ready"""
-    db_type = os.environ.get("DB_TYPE", "postgresql").lower()
+    from database_functions.migrations import default_db_type
+    db_type = default_db_type().lower()
 
     if db_type == 'sqlite':
         return  # the migration runner creates the file

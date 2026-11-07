@@ -1,5 +1,4 @@
 use crate::{error::AppResult, redis_client::RedisClient};
-use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -207,6 +206,8 @@ pub type TaskProgressReceiver = broadcast::Receiver<TaskUpdate>;
 #[derive(Clone)]
 pub struct TaskManager {
     redis: RedisClient,
+    /// Where in-app notifications are kept.
+    db: crate::database::DatabasePool,
     progress_sender: TaskProgressSender,
     notification_sender: broadcast::Sender<InAppNotification>,
     /// This process's id, stamped on bridge packets so we ignore our own.
@@ -214,12 +215,13 @@ pub struct TaskManager {
 }
 
 impl TaskManager {
-    pub fn new(redis: RedisClient, instance_id: Arc<str>) -> Self {
+    pub fn new(redis: RedisClient, db: crate::database::DatabasePool, instance_id: Arc<str>) -> Self {
         let (progress_sender, _) = broadcast::channel(1000);
         let (notification_sender, _) = broadcast::channel(1000);
 
         Self {
             redis,
+            db,
             progress_sender,
             notification_sender,
             instance_id,
@@ -528,8 +530,11 @@ impl TaskManager {
 
     pub async fn get_task(&self, task_id: &str) -> AppResult<TaskInfo> {
         let key = format!("task:{}", task_id);
-        let mut conn = self.redis.get_connection().await?;
-        let task_json: String = conn.get(&key).await?;
+        let task_json: String = self
+            .redis
+            .get(&key)
+            .await?
+            .ok_or_else(|| crate::error::AppError::not_found("Task not found"))?;
         let task: TaskInfo = serde_json::from_str(&task_json)?;
         Ok(task)
     }
@@ -545,23 +550,18 @@ impl TaskManager {
     /// pruning any index members whose task key has expired. Most-recent first.
     pub async fn get_user_tasks(&self, user_id: i32) -> AppResult<Vec<TaskInfo>> {
         let index = Self::task_index_key(user_id);
-        let mut conn = self.redis.get_connection().await?;
-        let ids: Vec<String> = conn.smembers(&index).await?;
+        let ids = self.redis.smembers(&index).await?;
 
         let mut user_tasks = Vec::with_capacity(ids.len());
         for id in ids {
             let key = Self::task_key(&id);
-            match conn.get::<_, Option<String>>(&key).await {
+            match self.redis.get::<String>(&key).await {
                 Ok(Some(json)) => match serde_json::from_str::<TaskInfo>(&json) {
                     Ok(task) => user_tasks.push(task),
-                    Err(_) => {
-                        let _: () = conn.srem(&index, &id).await?;
-                    }
+                    Err(_) => self.redis.srem(&index, &id).await?,
                 },
                 // Task key expired: drop the stale index member.
-                Ok(None) => {
-                    let _: () = conn.srem(&index, &id).await?;
-                }
+                Ok(None) => self.redis.srem(&index, &id).await?,
                 Err(_) => {}
             }
         }
@@ -574,13 +574,11 @@ impl TaskManager {
         let key = Self::task_key(&task.id);
         let index = Self::task_index_key(task.user_id);
         let task_json = serde_json::to_string(task)?;
-        let mut conn = self.redis.get_connection().await?;
-
-        conn.set_ex::<_, _, ()>(&key, &task_json, 86400 * 7).await?; // 7 days TTL
-        let _: () = conn.sadd(&index, &task.id).await?;
+        self.redis.set_ex(&key, task_json, 86400 * 7).await?; // 7 days TTL
+        self.redis.sadd(&index, &task.id).await?;
         // Keep the index alive a bit past a single task so a quiet user's set isn't
         // dropped mid-run; stale members are pruned lazily on read.
-        let _: () = conn.expire(&index, 86400 * 8).await?;
+        self.redis.expire(&index, 86400 * 8).await?;
         Ok(())
     }
 
@@ -592,13 +590,6 @@ impl TaskManager {
     }
 
     // ===================== Durable notifications (messages) =====================
-
-    fn notif_key(user_id: i32, id: &str) -> String {
-        format!("notif:{}:{}", user_id, id)
-    }
-    fn notif_index_key(user_id: i32) -> String {
-        format!("notif:index:{}", user_id)
-    }
 
     fn notif_ttl_secs(severity: MsgSeverity) -> i64 {
         match severity {
@@ -640,98 +631,56 @@ impl TaskManager {
             expires_at: now + chrono::Duration::seconds(ttl),
         };
 
-        self.save_notification(&notif, ttl as u64).await?;
+        self.save_notification(&notif).await?;
         let _ = self.notification_sender.send(notif.clone());
         self.publish_bridge(BridgeEvent::Notification(notif.clone())).await;
         Ok(notif)
     }
 
-    async fn save_notification(&self, notif: &InAppNotification, ttl_secs: u64) -> AppResult<()> {
-        let key = Self::notif_key(notif.user_id, &notif.id);
-        let index = Self::notif_index_key(notif.user_id);
-        let json = serde_json::to_string(notif)?;
-        let mut conn = self.redis.get_connection().await?;
-        conn.set_ex::<_, _, ()>(&key, &json, ttl_secs).await?;
-        let _: () = conn.sadd(&index, &notif.id).await?;
-        let _: () = conn.expire(&index, NOTIF_TTL_STICKY_SECS + 86400).await?;
-        Ok(())
+    async fn save_notification(&self, notif: &InAppNotification) -> AppResult<()> {
+        let payload = serde_json::to_string(notif)?;
+        self.db
+            .save_in_app_notification(&crate::database::StoredInAppNotification {
+                id: &notif.id,
+                user_id: notif.user_id,
+                payload: &payload,
+                read: notif.read,
+                created_at: notif.created_at.naive_utc(),
+                expires_at: notif.expires_at.naive_utc(),
+            })
+            .await
     }
 
-    /// List a user's live notifications (drops any past `expires_at`, pruning the
-    /// index). Most-recent first.
+    /// List a user's live notifications, most recent first.
     pub async fn list_notifications(&self, user_id: i32) -> AppResult<Vec<InAppNotification>> {
-        let index = Self::notif_index_key(user_id);
-        let mut conn = self.redis.get_connection().await?;
-        let ids: Vec<String> = conn.smembers(&index).await?;
-        let now = chrono::Utc::now();
-
-        let mut out = Vec::with_capacity(ids.len());
-        for id in ids {
-            let key = Self::notif_key(user_id, &id);
-            match conn.get::<_, Option<String>>(&key).await {
-                Ok(Some(json)) => match serde_json::from_str::<InAppNotification>(&json) {
-                    Ok(n) if n.expires_at > now => out.push(n),
-                    _ => {
-                        let _: () = conn.del(&key).await?;
-                        let _: () = conn.srem(&index, &id).await?;
-                    }
-                },
-                Ok(None) => {
-                    let _: () = conn.srem(&index, &id).await?;
-                }
-                Err(_) => {}
-            }
-        }
-
+        let mut out: Vec<InAppNotification> = self
+            .db
+            .list_in_app_notifications(user_id)
+            .await?
+            .iter()
+            .filter_map(|json| serde_json::from_str(json).ok())
+            .collect();
         out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         Ok(out)
     }
 
     pub async fn mark_notification_read(&self, user_id: i32, id: &str) -> AppResult<()> {
-        let key = Self::notif_key(user_id, id);
-        let mut conn = self.redis.get_connection().await?;
-        if let Ok(Some(json)) = conn.get::<_, Option<String>>(&key).await {
+        if let Some(json) = self.db.get_in_app_notification(user_id, id).await? {
             if let Ok(mut n) = serde_json::from_str::<InAppNotification>(&json) {
                 n.read = true;
-                let ttl = Self::notif_ttl_secs(n.severity).max(60) as u64;
-                self.save_notification(&n, ttl).await?;
+                self.save_notification(&n).await?;
             }
         }
         Ok(())
     }
 
     pub async fn dismiss_notification(&self, user_id: i32, id: &str) -> AppResult<()> {
-        let key = Self::notif_key(user_id, id);
-        let index = Self::notif_index_key(user_id);
-        let mut conn = self.redis.get_connection().await?;
-        let _: () = conn.del(&key).await?;
-        let _: () = conn.srem(&index, id).await?;
-        Ok(())
+        self.db.delete_in_app_notification(user_id, id).await
     }
 
     /// Clear notifications for a user. `read_only` clears just already-read ones;
     /// otherwise all of them.
     pub async fn clear_notifications(&self, user_id: i32, read_only: bool) -> AppResult<()> {
-        let index = Self::notif_index_key(user_id);
-        let mut conn = self.redis.get_connection().await?;
-        let ids: Vec<String> = conn.smembers(&index).await?;
-        for id in ids {
-            let key = Self::notif_key(user_id, &id);
-            let should_remove = if read_only {
-                match conn.get::<_, Option<String>>(&key).await {
-                    Ok(Some(json)) => serde_json::from_str::<InAppNotification>(&json)
-                        .map(|n| n.read)
-                        .unwrap_or(true),
-                    _ => true,
-                }
-            } else {
-                true
-            };
-            if should_remove {
-                let _: () = conn.del(&key).await?;
-                let _: () = conn.srem(&index, &id).await?;
-            }
-        }
-        Ok(())
+        self.db.clear_in_app_notifications(user_id, read_only).await
     }
 }

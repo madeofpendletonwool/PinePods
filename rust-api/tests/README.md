@@ -1,7 +1,8 @@
 # rust-api integration tests
 
 Every test boots the real axum router (`pinepods_api::create_app`) against its **own freshly
-migrated database** (Postgres, MariaDB or SQLite) plus Valkey, and drives it over HTTP exactly as the
+migrated database** (Postgres, MariaDB or SQLite) plus Valkey (SQLite runs use the in-memory
+store instead, as a SQLite install does by default), and drives it over HTTP exactly as the
 web and mobile clients do. Nothing is mocked except the outside internet.
 
 ## Running
