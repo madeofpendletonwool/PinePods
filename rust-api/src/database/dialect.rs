@@ -411,15 +411,20 @@ pub mod lite {
     /// none fails upgrading from reading to writing. A transaction opened while this task
     /// already holds the lock goes ahead after a while instead of waiting forever.
     pub async fn begin(pool: &Pool) -> Result<Tx<'static>, sqlx::Error> {
+        let writer = lock_writer(pool).await;
+        Ok(LiteTx { tx: pool.begin_with("BEGIN IMMEDIATE").await?, _writer: writer })
+    }
+
+    /// Wait for the database's writer lock, for work that manages its own transaction.
+    pub async fn lock_writer(pool: &Pool) -> Option<tokio::sync::OwnedMutexGuard<()>> {
         let lock = writer_lock(pool);
-        let writer = match tokio::time::timeout(std::time::Duration::from_secs(30), lock.lock_owned()).await {
+        match tokio::time::timeout(std::time::Duration::from_secs(30), lock.lock_owned()).await {
             Ok(guard) => Some(guard),
             Err(_) => {
                 tracing::warn!("SQLite writer lock still held after 30s; starting the transaction anyway");
                 None
             }
-        };
-        Ok(LiteTx { tx: pool.begin_with("BEGIN IMMEDIATE").await?, _writer: writer })
+        }
     }
 
     /// The driver's own row, for helpers generic over `sqlx::Row` (they decode NULL the

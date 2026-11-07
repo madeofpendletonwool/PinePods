@@ -161,14 +161,12 @@ where
 }
 
 impl DatabasePool {
-    /// Server backups and restores shell out to pg_dump / mysqldump and psql / mysql, which
-    /// have no SQLite counterpart here yet; on SQLite, copy the database file instead.
-    pub fn ensure_server_backups_supported(&self) -> AppResult<()> {
+    /// Write a SQLite server backup to `path`; `None` when this isn't a SQLite database
+    /// (the others are backed up with pg_dump / mysqldump).
+    pub async fn sqlite_backup_to(&self, path: &std::path::Path) -> Option<AppResult<()>> {
         match self {
-            DatabasePool::Sqlite(_) => Err(AppError::bad_request(
-                "Server backups aren't available on SQLite yet. Stop Pinepods and copy the database file instead.",
-            )),
-            _ => Ok(()),
+            DatabasePool::Sqlite(pool) => Some(super::sqlite_backup::dump(pool, path).await),
+            _ => None,
         }
     }
 
@@ -260,7 +258,20 @@ impl DatabasePool {
     // appears empty mid-restore (which previously triggered the "create first user" flow
     // and a write race that corrupted the restore).
     pub async fn restore_server_data_from_path(&self, path: &std::path::Path) -> AppResult<()> {
-        self.ensure_server_backups_supported()?;
+        // A SQLite backup only restores on SQLite, and SQLite only restores its own backups.
+        let sqlite_file = super::sqlite_backup::is_sqlite_backup(path).await?;
+        if let DatabasePool::Sqlite(pool) = self {
+            if !sqlite_file {
+                return Err(AppError::bad_request(
+                    "This backup came from a PostgreSQL or MySQL server. A SQLite server can only restore its own backups.",
+                ));
+            }
+            return super::sqlite_backup::restore(pool, path).await;
+        }
+        if sqlite_file {
+            return Err(AppError::bad_request("This is a SQLite backup and can only be restored on a SQLite server."));
+        }
+
         // Transient auth tables that hold only disposable login tokens. They are never worth
         // restoring, and historically their schema has drifted (e.g. an upgraded instance can
         // still carry the legacy `Sessions(sessionid, userid, value, expire)` layout while a
@@ -711,7 +722,6 @@ impl DatabasePool {
 
     // Execute backup to file (called by scheduler)
     pub async fn execute_scheduled_backup(&self, _user_id: i32) -> AppResult<String> {
-        self.ensure_server_backups_supported()?;
         use tokio::process::Command;
         use chrono::Utc;
 
@@ -723,6 +733,10 @@ impl DatabasePool {
         // Ensure backup directory exists (matches manual_backup_to_directory)
         if let Err(e) = std::fs::create_dir_all("/opt/pinepods/backups") {
             return Err(AppError::internal(&format!("Failed to create backup directory: {}", e)));
+        }
+
+        if let Some(result) = self.sqlite_backup_to(std::path::Path::new(&backup_path)).await {
+            return result.map(|_| backup_filename);
         }
 
         // Get database password from environment

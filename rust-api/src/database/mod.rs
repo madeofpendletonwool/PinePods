@@ -40,6 +40,7 @@ mod youtube;
 mod rss;
 mod gpodder;
 mod backup;
+mod sqlite_backup;
 mod shared_episodes;
 mod recommendations;
 mod local_podcasts;

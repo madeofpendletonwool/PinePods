@@ -18,6 +18,8 @@ export DB_HOST=$DB_HOST
 export DB_NAME=$DB_NAME
 export DB_PORT=$DB_PORT
 export DB_TYPE=$DB_TYPE
+# SQLite database file (DB_TYPE=sqlite); its directory should be a mounted volume.
+export DB_PATH=${DB_PATH:-/opt/pinepods/data/pinepods.db}
 export FULLNAME=${FULLNAME}
 export USERNAME=${USERNAME}
 export EMAIL=${EMAIL}
@@ -144,6 +146,9 @@ mkdir -p /pinepods/cache
 mkdir -p /opt/pinepods/backups
 mkdir -p /opt/pinepods/downloads
 mkdir -p /opt/pinepods/certs
+if [[ "$DB_TYPE" == "sqlite" ]]; then
+    mkdir -p "$(dirname "$DB_PATH")"
+fi
 mkdir -p /opt/pinepods/local-media  # User-mounted media library; app writes artwork here
 mkdir -p /var/log/pinepods  # Make sure log directory exists
 
@@ -248,6 +253,10 @@ if [[ -n "$PUID" && -n "$PGID" ]]; then
                             /opt/pinepods/downloads /opt/pinepods/backups \
                             /opt/pinepods/local-media \
                             /var/run/horust 2>/dev/null || true
+    # The database setup above ran as root; the SQLite files must belong to the app.
+    if [[ "$DB_TYPE" == "sqlite" ]]; then
+        chown "${PUID}:${PGID}" "$(dirname "$DB_PATH")" "$DB_PATH" "$DB_PATH-wal" "$DB_PATH-shm" 2>/dev/null || true
+    fi
 
     # One-time recursive migration of pre-existing root-owned content, gated by a marker
     # on the persisted downloads volume. Non-fatal so an NFS/read-only mount can't block startup.

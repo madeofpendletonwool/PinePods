@@ -120,12 +120,14 @@ accounts there are wiped periodically, so run your own server for real use.
 
 ## Quick Start :rocket:
 
-PinePods requires a database (PostgreSQL or MySQL/MariaDB) and a reachable Valkey
-or Redis server. The API connects to Valkey/Redis before it starts listening.
+PinePods needs a database (PostgreSQL, MySQL/MariaDB, or a SQLite file) and a reachable
+Valkey or Redis server. The API connects to Valkey/Redis before it starts listening.
 Keep the `valkey` service below unless you configure an external server.
 
-The fastest way to run PinePods is Docker Compose with PostgreSQL. Create a
-`docker-compose.yml`:
+The fastest way to run PinePods is Docker Compose with PostgreSQL. To skip the database
+server, use SQLite instead: see
+[docker-compose-sqlite](deployment/docker/compose-files/docker-compose-sqlite/docker-compose.yml).
+Create a `docker-compose.yml`:
 
 ```yaml
 services:

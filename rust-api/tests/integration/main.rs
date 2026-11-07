@@ -28,6 +28,8 @@ mod queue;
 mod refresh;
 mod refresh_schedule;
 mod scheduling;
+mod server_backup;
+mod schema_baseline;
 mod settings;
 mod shared_episodes;
 mod shared_feeds;

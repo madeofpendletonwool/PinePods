@@ -50,6 +50,7 @@ RUN pyinstaller --onefile \
     --name pinepods-db-setup \
     --hidden-import psycopg \
     --hidden-import mysql.connector \
+    --hidden-import sqlite3 \
     --hidden-import cryptography \
     --hidden-import cryptography.fernet \
     --hidden-import argon2 \
