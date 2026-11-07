@@ -20662,8 +20662,8 @@ impl DatabasePool {
 
         debug!("Found YouTube ID: {}", youtube_id);
 
-        let file_path = format!("/opt/pinepods/downloads/youtube/{}.mp3", youtube_id);
-        let file_path_double = format!("/opt/pinepods/downloads/youtube/{}.mp3.mp3", youtube_id);
+        let file_path = format!("{}/{}.mp3", crate::paths::youtube_downloads_dir(), youtube_id);
+        let file_path_double = format!("{}/{}.mp3.mp3", crate::paths::youtube_downloads_dir(), youtube_id);
 
         debug!("Checking paths: {} and {}", file_path, file_path_double);
 
@@ -22196,8 +22196,8 @@ impl DatabasePool {
         // Delete the MP3 files for each video
         for video_id in &video_ids {
             let file_paths = vec![
-                format!("/opt/pinepods/downloads/youtube/{}.mp3", video_id),
-                format!("/opt/pinepods/downloads/youtube/{}.mp3.mp3", video_id), // In case of double extension
+                format!("{}/{}.mp3", crate::paths::youtube_downloads_dir(), video_id),
+                format!("{}/{}.mp3.mp3", crate::paths::youtube_downloads_dir(), video_id), // In case of double extension
             ];
 
             for file_path in file_paths {
@@ -23569,10 +23569,10 @@ impl DatabasePool {
         // Generate backup filename with timestamp
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
         let backup_filename = format!("scheduled_backup_{}.sql", timestamp);
-        let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
+        let backup_path = format!("{}/{}", crate::paths::backups_dir(), backup_filename);
 
         // Ensure backup directory exists (matches manual_backup_to_directory)
-        if let Err(e) = std::fs::create_dir_all("/opt/pinepods/backups") {
+        if let Err(e) = std::fs::create_dir_all(crate::paths::backups_dir()) {
             return Err(AppError::internal(&format!("Failed to create backup directory: {}", e)));
         }
 

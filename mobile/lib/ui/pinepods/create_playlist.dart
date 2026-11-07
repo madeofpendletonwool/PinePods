@@ -4,6 +4,14 @@ import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:provider/provider.dart';
 
+/// The sort orders the server accepts, with their labels.
+const playlistSortOptions = {
+  'date_desc': 'Newest First',
+  'date_asc': 'Oldest First',
+  'duration_asc': 'Shortest First',
+  'duration_desc': 'Longest First',
+};
+
 class CreatePlaylistPage extends StatefulWidget {
   const CreatePlaylistPage({Key? key}) : super(key: key);
 
@@ -24,7 +32,7 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
   bool _includePlayed = false;
   String _minDuration = '';
   String _maxDuration = '';
-  String _sortOrder = 'newest_first';
+  String _sortOrder = 'date_desc';
   bool _groupByPodcast = false;
   String _maxEpisodes = '';
 
@@ -334,11 +342,9 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage> {
               decoration: const InputDecoration(
                 labelText: 'Sort Order',
               ),
-              items: const [
-                DropdownMenuItem(value: 'newest_first', child: Text('Newest First')),
-                DropdownMenuItem(value: 'oldest_first', child: Text('Oldest First')),
-                DropdownMenuItem(value: 'shortest_first', child: Text('Shortest First')),
-                DropdownMenuItem(value: 'longest_first', child: Text('Longest First')),
+              items: [
+                for (final option in playlistSortOptions.entries)
+                  DropdownMenuItem(value: option.key, child: Text(option.value)),
               ],
               onChanged: (value) {
                 setState(() {

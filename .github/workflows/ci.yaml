@@ -48,6 +48,11 @@ jobs:
         run: |
           RUSTFLAGS="--cfg=web_sys_unstable_apis" wasm-pack test --node -- --features server_build
 
+      - name: Run page tests in Chrome
+        working-directory: ./web
+        run: |
+          RUSTFLAGS="--cfg=web_sys_unstable_apis" wasm-pack test --headless --chrome -- --features server_build,browser_tests
+
   # docker-build:
   #   runs-on: ubuntu-latest
   #   needs: [backend-tests, frontend-tests]
