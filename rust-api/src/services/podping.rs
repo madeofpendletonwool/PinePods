@@ -13,6 +13,7 @@ use tracing::{debug, info, warn};
 use crate::database::DatabasePool;
 use crate::error::AppResult;
 use crate::AppState;
+use crate::database::dialect::dialect_match;
 
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
 /// A feed announced again this soon after a Podping refresh waits until the time is up.
@@ -226,31 +227,31 @@ pub fn url_variants(url: &str) -> Vec<String> {
 
 impl DatabasePool {
     pub async fn podping_enabled(&self) -> AppResult<bool> {
-        Ok(match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query_scalar::<_, bool>(r#"SELECT podpingenabled FROM "AppSettings" ORDER BY appsettingsid LIMIT 1"#)
+        Ok(dialect_match!(self, {
+            pg(pool) => {
+                q::query_scalar::<bool>(r#"SELECT podpingenabled FROM "AppSettings" ORDER BY appsettingsid LIMIT 1"#)
                     .fetch_optional(pool)
                     .await?
                     .unwrap_or(false)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query_scalar::<_, i8>("SELECT PodpingEnabled FROM AppSettings ORDER BY AppSettingsID LIMIT 1")
                     .fetch_optional(pool)
                     .await?
                     .is_some_and(|v| v != 0)
-            }
-        })
+            },
+        }))
     }
 
     pub async fn set_podping_enabled(&self, enabled: bool) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "AppSettings" SET podpingenabled = $1"#).bind(enabled).execute(pool).await?;
-            }
-            DatabasePool::MySQL(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "AppSettings" SET podpingenabled = $1"#).bind(enabled).execute(pool).await?;
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE AppSettings SET PodpingEnabled = ?").bind(enabled).execute(pool).await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -260,20 +261,20 @@ impl DatabasePool {
         let wanted: Vec<String> = urls.iter().flat_map(|u| url_variants(u)).collect::<HashSet<_>>().into_iter().collect();
         let mut found = HashSet::new();
         for chunk in wanted.chunks(500) {
-            let rows: Vec<String> = match self {
-                DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT DISTINCT feedurl FROM "Podcasts" WHERE feedurl = ANY($1)"#)
+            let rows: Vec<String> = dialect_match!(self, {
+                pg(pool) => q::query_scalar(r#"SELECT DISTINCT feedurl FROM "Podcasts" WHERE feedurl = ANY($1)"#)
                     .bind(chunk)
                     .fetch_all(pool)
                     .await?,
-                DatabasePool::MySQL(pool) => {
+                mysql(pool) => {
                     let sql = format!("SELECT DISTINCT FeedURL FROM Podcasts WHERE FeedURL IN ({})", vec!["?"; chunk.len()].join(", "));
                     let mut q = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()));
                     for u in chunk {
                         q = q.bind(u);
                     }
                     q.fetch_all(pool).await?
-                }
-            };
+                },
+            });
             found.extend(rows);
         }
         Ok(found.into_iter().collect())

@@ -9,6 +9,7 @@ use sqlx::{Connection, Row};
 use super::model::{ActionKind, EpisodeAction};
 use crate::database::DatabasePool;
 use crate::error::{AppError, AppResult};
+use crate::database::dialect::dialect_match;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetKind {
@@ -168,126 +169,126 @@ fn verified_cursor(old: i64, sent: &[(i64, String)], current: &[(i64, String)]) 
 
 impl DatabasePool {
     pub async fn sync_target(&self, target_id: i32) -> AppResult<Option<SyncTargetRow>> {
-        let row = match self {
-            DatabasePool::Postgres(pool) => sqlx::query(sqlx::AssertSqlSafe(format!(r#"SELECT {TARGET_COLUMNS} FROM "SyncTargets" WHERE targetid = $1"#)))
+        let row = dialect_match!(self, {
+            pg(pool) => q::query(sqlx::AssertSqlSafe(format!(r#"SELECT {TARGET_COLUMNS} FROM "SyncTargets" WHERE targetid = $1"#)))
+                .bind(target_id)
+                .fetch_optional(pool)
+                .await?
+                .map(|r| target_row(q::raw(&r)))
+                .transpose()?,
+            mysql(pool) => sqlx::query(sqlx::AssertSqlSafe(format!("SELECT {TARGET_COLUMNS} FROM SyncTargets WHERE TargetID = ?")))
                 .bind(target_id)
                 .fetch_optional(pool)
                 .await?
                 .map(|r| target_row(&r))
                 .transpose()?,
-            DatabasePool::MySQL(pool) => sqlx::query(sqlx::AssertSqlSafe(format!("SELECT {TARGET_COLUMNS} FROM SyncTargets WHERE TargetID = ?")))
-                .bind(target_id)
-                .fetch_optional(pool)
-                .await?
-                .map(|r| target_row(&r))
-                .transpose()?,
-        };
+        });
         Ok(row)
     }
 
     /// The user's targets, enabled or not.
     pub async fn sync_targets_for_user(&self, user_id: i32) -> AppResult<Vec<SyncTargetRow>> {
-        match self {
-            DatabasePool::Postgres(pool) => sqlx::query(sqlx::AssertSqlSafe(format!(
+        dialect_match!(self, {
+            pg(pool) => q::query(sqlx::AssertSqlSafe(format!(
                 r#"SELECT {TARGET_COLUMNS} FROM "SyncTargets" WHERE userid = $1 ORDER BY targetid"#
             )))
             .bind(user_id)
             .fetch_all(pool)
             .await?
             .iter()
-            .map(target_row)
+            .map(|r| target_row(q::raw(r)))
             .collect(),
-            DatabasePool::MySQL(pool) => sqlx::query(sqlx::AssertSqlSafe(format!("SELECT {TARGET_COLUMNS} FROM SyncTargets WHERE UserID = ? ORDER BY TargetID")))
+            mysql(pool) => sqlx::query(sqlx::AssertSqlSafe(format!("SELECT {TARGET_COLUMNS} FROM SyncTargets WHERE UserID = ? ORDER BY TargetID")))
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?
                 .iter()
                 .map(target_row)
                 .collect(),
-        }
+        })
     }
 
     /// Every enabled target, all users.
     pub async fn sync_enabled_targets(&self) -> AppResult<Vec<SyncTargetRow>> {
-        match self {
-            DatabasePool::Postgres(pool) => sqlx::query(sqlx::AssertSqlSafe(format!(
+        dialect_match!(self, {
+            pg(pool) => q::query(sqlx::AssertSqlSafe(format!(
                 r#"SELECT {TARGET_COLUMNS} FROM "SyncTargets" WHERE enabled ORDER BY userid, targetid"#
             )))
             .fetch_all(pool)
             .await?
             .iter()
-            .map(target_row)
+            .map(|r| target_row(q::raw(r)))
             .collect(),
-            DatabasePool::MySQL(pool) => {
+            mysql(pool) => {
                 sqlx::query(sqlx::AssertSqlSafe(format!("SELECT {TARGET_COLUMNS} FROM SyncTargets WHERE Enabled ORDER BY UserID, TargetID")))
                     .fetch_all(pool)
                     .await?
                     .iter()
                     .map(target_row)
                     .collect()
-            }
-        }
+            },
+        })
     }
 
     /// Users with an enabled target, optionally of one kind.
     pub async fn sync_target_users(&self, kind: Option<TargetKind>) -> AppResult<Vec<i32>> {
         let kind = kind.map(TargetKind::as_str);
-        let users: Vec<i32> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query_scalar(
+        let users: Vec<i32> = dialect_match!(self, {
+            pg(pool) => q::query_scalar(
                 r#"SELECT DISTINCT userid FROM "SyncTargets" WHERE enabled AND ($1::text IS NULL OR kind = $1) ORDER BY userid"#,
             )
             .bind(kind)
             .fetch_all(pool)
             .await?,
-            DatabasePool::MySQL(pool) => sqlx::query_scalar(
+            mysql(pool) => sqlx::query_scalar(
                 "SELECT DISTINCT UserID FROM SyncTargets WHERE Enabled AND (? IS NULL OR Kind = ?) ORDER BY UserID",
             )
             .bind(kind)
             .bind(kind)
             .fetch_all(pool)
             .await?,
-        };
+        });
         Ok(users)
     }
 
     pub async fn sync_target_set_device(&self, target_id: i32, device_name: &str) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "SyncTargets" SET devicename = $1 WHERE targetid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "SyncTargets" SET devicename = $1 WHERE targetid = $2"#)
                     .bind(device_name)
                     .bind(target_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE SyncTargets SET DeviceName = ? WHERE TargetID = ?")
                     .bind(device_name)
                     .bind(target_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     pub async fn sync_target_record_attempt(&self, target_id: i32) -> AppResult<()> {
         let now = Utc::now().naive_utc();
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "SyncTargets" SET lastattemptat = $1 WHERE targetid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "SyncTargets" SET lastattemptat = $1 WHERE targetid = $2"#)
                     .bind(now)
                     .bind(target_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE SyncTargets SET LastAttemptAt = ? WHERE TargetID = ?")
                     .bind(now)
                     .bind(target_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -295,9 +296,9 @@ impl DatabasePool {
     /// this was the full sync.
     pub async fn sync_target_record_success(&self, target_id: i32, subs_pull: i64, actions_pull: i64, was_full: bool) -> AppResult<()> {
         let now = Utc::now().naive_utc();
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(
                     r#"UPDATE "SyncTargets"
                        SET subspullcursor = $1, actionspullcursor = $2, lastsuccessat = $3, lasterror = NULL,
                            consecutivefailures = 0, needsfullsync = needsfullsync AND NOT $4
@@ -310,8 +311,8 @@ impl DatabasePool {
                 .bind(target_id)
                 .execute(pool)
                 .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query(
                     "UPDATE SyncTargets
                      SET SubsPullCursor = ?, ActionsPullCursor = ?, LastSuccessAt = ?, LastError = NULL,
@@ -325,35 +326,35 @@ impl DatabasePool {
                 .bind(target_id)
                 .execute(pool)
                 .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     pub async fn sync_target_record_failure(&self, target_id: i32, error: &str) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "SyncTargets" SET lasterror = $1, consecutivefailures = consecutivefailures + 1 WHERE targetid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "SyncTargets" SET lasterror = $1, consecutivefailures = consecutivefailures + 1 WHERE targetid = $2"#)
                     .bind(error)
                     .bind(target_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE SyncTargets SET LastError = ?, ConsecutiveFailures = ConsecutiveFailures + 1 WHERE TargetID = ?")
                     .bind(error)
                     .bind(target_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     /// Subscription log rows after `after` that didn't come from `origin`, oldest first.
     pub async fn sync_pending_subscriptions(&self, user_id: i32, origin: &str, after: i64) -> AppResult<Vec<PendingSubscription>> {
-        let rows: Vec<(i32, String, String)> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query_as(
+        let rows: Vec<(i32, String, String)> = dialect_match!(self, {
+            pg(pool) => q::query_as(
                 r#"SELECT subscriptionid, podcasturl, action FROM "GpodderSyncSubscriptions"
                    WHERE userid = $1 AND subscriptionid > $2 AND origin <> $3 ORDER BY subscriptionid"#,
             )
@@ -362,7 +363,7 @@ impl DatabasePool {
             .bind(origin)
             .fetch_all(pool)
             .await?,
-            DatabasePool::MySQL(pool) => sqlx::query_as(
+            mysql(pool) => sqlx::query_as(
                 "SELECT SubscriptionID, PodcastURL, Action FROM GpodderSyncSubscriptions
                  WHERE UserID = ? AND SubscriptionID > ? AND Origin <> ? ORDER BY SubscriptionID",
             )
@@ -371,7 +372,7 @@ impl DatabasePool {
             .bind(origin)
             .fetch_all(pool)
             .await?,
-        };
+        });
         Ok(rows
             .into_iter()
             .map(|(id, url, action)| PendingSubscription {
@@ -387,8 +388,8 @@ impl DatabasePool {
     /// first, with the episode's duration and GUID when the row is matched.
     pub async fn sync_pending_actions(&self, user_id: i32, origin: &str, after: i64, limit: usize) -> AppResult<Vec<PendingAction>> {
         let limit = limit as i64;
-        let rows = match self {
-            DatabasePool::Postgres(pool) => sqlx::query(
+        let rows = dialect_match!(self, {
+            pg(pool) => q::query(
                 r#"SELECT a.actionid AS id, a.podcasturl AS purl, a.episodeurl AS eurl, a.action, a.timestamp AS ts,
                           a.started, a.position, a.total, COALESCE(NULLIF(a.guid, ''), NULLIF(e.episodeguid, '')) AS guid,
                           e.episodeduration AS duration
@@ -403,9 +404,9 @@ impl DatabasePool {
             .fetch_all(pool)
             .await?
             .iter()
-            .map(pending_action)
+            .map(|r| pending_action(q::raw(r)))
             .collect::<AppResult<Vec<_>>>()?,
-            DatabasePool::MySQL(pool) => sqlx::query(
+            mysql(pool) => sqlx::query(
                 "SELECT a.ActionID AS id, a.PodcastURL AS purl, a.EpisodeURL AS eurl, a.Action AS action, a.Timestamp AS ts,
                         a.Started AS started, a.Position AS position, a.Total AS total,
                         COALESCE(NULLIF(a.Guid, ''), NULLIF(e.EpisodeGUID, '')) AS guid, e.EpisodeDuration AS duration
@@ -422,7 +423,7 @@ impl DatabasePool {
             .iter()
             .map(pending_action)
             .collect::<AppResult<Vec<_>>>()?,
-        };
+        });
         Ok(rows)
     }
 
@@ -432,15 +433,15 @@ impl DatabasePool {
     /// below any row that wasn't sent or has changed since. Returns the new cursor.
     pub async fn sync_advance_push_cursor(&self, target_id: i32, user_id: i32, outbox: Outbox, origin: &str, old: i64, sent: &[(i64, String)]) -> AppResult<i64> {
         let Some(max_sent) = sent.iter().map(|(id, _)| *id).max() else { return Ok(old) };
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
-                sqlx::query(r#"SELECT targetid FROM "SyncTargets" WHERE targetid = $1 FOR UPDATE"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
+                q::query(r#"SELECT targetid FROM "SyncTargets" WHERE targetid = $1 FOR UPDATE"#)
                     .bind(target_id)
                     .fetch_optional(&mut *tx)
                     .await?;
                 let current: Vec<(i64, String)> = match outbox {
-                    Outbox::Subscriptions => sqlx::query_as::<_, (i32, String, String)>(
+                    Outbox::Subscriptions => q::query_as::<(i32, String, String)>(
                         r#"SELECT subscriptionid, podcasturl, action FROM "GpodderSyncSubscriptions"
                            WHERE userid = $1 AND subscriptionid > $2 AND subscriptionid <= $3 AND origin <> $4"#,
                     )
@@ -453,7 +454,7 @@ impl DatabasePool {
                     .into_iter()
                     .map(|(id, url, action)| (i64::from(id), subscription_fingerprint(&url, &action)))
                     .collect(),
-                    Outbox::Actions => sqlx::query_as::<_, (i32, String, String, String, i64, Option<i32>, Option<i32>, Option<i32>)>(
+                    Outbox::Actions => q::query_as::<(i32, String, String, String, i64, Option<i32>, Option<i32>, Option<i32>)>(
                         r#"SELECT actionid, podcasturl, episodeurl, action, timestamp, started, position, total
                            FROM "GpodderSyncEpisodeActions"
                            WHERE userid = $1 AND actionid > $2 AND actionid <= $3 AND origin <> $4"#,
@@ -473,15 +474,15 @@ impl DatabasePool {
                     Outbox::Subscriptions => "subspushcursor",
                     Outbox::Actions => "actionspushcursor",
                 };
-                sqlx::query(sqlx::AssertSqlSafe(format!(r#"UPDATE "SyncTargets" SET {column} = $1 WHERE targetid = $2"#)))
+                q::query(sqlx::AssertSqlSafe(format!(r#"UPDATE "SyncTargets" SET {column} = $1 WHERE targetid = $2"#)))
                     .bind(cursor)
                     .bind(target_id)
                     .execute(&mut *tx)
                     .await?;
                 tx.commit().await?;
                 Ok(cursor)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // READ COMMITTED, so the re-read sees rows committed while we waited for the lock.
                 let mut conn = pool.acquire().await?;
                 sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED").execute(&mut *conn).await?;
@@ -531,30 +532,30 @@ impl DatabasePool {
                     .await?;
                 tx.commit().await?;
                 Ok(cursor)
-            }
-        }
+            },
+        })
     }
 
     /// Move both push cursors to the end of the log (a full sync pushes the current state
     /// instead). Under the same exclusive lock as an advance, so a writer either committed before
     /// (its change is in the state read next) or sees the new cursor and starts a new row.
     pub async fn sync_reset_push_cursors(&self, target_id: i32, user_id: i32) -> AppResult<(i64, i64)> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
-                sqlx::query(r#"SELECT targetid FROM "SyncTargets" WHERE targetid = $1 FOR UPDATE"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
+                q::query(r#"SELECT targetid FROM "SyncTargets" WHERE targetid = $1 FOR UPDATE"#)
                     .bind(target_id)
                     .fetch_optional(&mut *tx)
                     .await?;
-                let subs: i64 = sqlx::query_scalar(r#"SELECT COALESCE(MAX(subscriptionid), 0)::BIGINT FROM "GpodderSyncSubscriptions" WHERE userid = $1"#)
+                let subs: i64 = q::query_scalar(r#"SELECT COALESCE(MAX(subscriptionid), 0)::BIGINT FROM "GpodderSyncSubscriptions" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(&mut *tx)
                     .await?;
-                let actions: i64 = sqlx::query_scalar(r#"SELECT COALESCE(MAX(actionid), 0)::BIGINT FROM "GpodderSyncEpisodeActions" WHERE userid = $1"#)
+                let actions: i64 = q::query_scalar(r#"SELECT COALESCE(MAX(actionid), 0)::BIGINT FROM "GpodderSyncEpisodeActions" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(&mut *tx)
                     .await?;
-                sqlx::query(r#"UPDATE "SyncTargets" SET subspushcursor = $1, actionspushcursor = $2 WHERE targetid = $3"#)
+                q::query(r#"UPDATE "SyncTargets" SET subspushcursor = $1, actionspushcursor = $2 WHERE targetid = $3"#)
                     .bind(subs)
                     .bind(actions)
                     .bind(target_id)
@@ -562,8 +563,8 @@ impl DatabasePool {
                     .await?;
                 tx.commit().await?;
                 Ok((subs, actions))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut conn = pool.acquire().await?;
                 sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED").execute(&mut *conn).await?;
                 let mut tx = conn.begin().await?;
@@ -587,8 +588,8 @@ impl DatabasePool {
                     .await?;
                 tx.commit().await?;
                 Ok((subs, actions))
-            }
-        }
+            },
+        })
     }
 
     /// For each action, whether the user's log already holds the same action (episode URL,
@@ -601,8 +602,8 @@ impl DatabasePool {
         stamps.dedup();
         let mut known: HashSet<Key> = HashSet::new();
         for chunk in stamps.chunks(1000) {
-            let rows: Vec<(String, String, i64, Option<i32>)> = match self {
-                DatabasePool::Postgres(pool) => sqlx::query_as(
+            let rows: Vec<(String, String, i64, Option<i32>)> = dialect_match!(self, {
+                pg(pool) => q::query_as(
                     r#"SELECT episodeurl, action, timestamp, position FROM "GpodderSyncEpisodeActions"
                        WHERE userid = $1 AND timestamp = ANY($2)"#,
                 )
@@ -610,7 +611,7 @@ impl DatabasePool {
                 .bind(chunk)
                 .fetch_all(pool)
                 .await?,
-                DatabasePool::MySQL(pool) => {
+                mysql(pool) => {
                     let marks = vec!["?"; chunk.len()].join(",");
                     let sql = format!(
                         "SELECT EpisodeURL, Action, Timestamp, Position FROM GpodderSyncEpisodeActions WHERE UserID = ? AND Timestamp IN ({marks})"
@@ -620,8 +621,8 @@ impl DatabasePool {
                         q = q.bind(t);
                     }
                     q.fetch_all(pool).await?
-                }
-            };
+                },
+            });
             known.extend(rows);
         }
         Ok(actions
@@ -635,20 +636,20 @@ impl DatabasePool {
 
     /// The user's shareable feeds (what other devices may see).
     pub async fn sync_shareable_feed_urls(&self, user_id: i32) -> AppResult<Vec<String>> {
-        let rows: Vec<(Option<String>, Option<String>, Option<String>, Option<bool>)> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query_as(
+        let rows: Vec<(Option<String>, Option<String>, Option<String>, Option<bool>)> = dialect_match!(self, {
+            pg(pool) => q::query_as(
                 r#"SELECT feedurl, username, password, isyoutubechannel FROM "Podcasts" WHERE userid = $1 ORDER BY podcastid"#,
             )
             .bind(user_id)
             .fetch_all(pool)
             .await?,
-            DatabasePool::MySQL(pool) => sqlx::query_as(
+            mysql(pool) => sqlx::query_as(
                 "SELECT FeedURL, Username, Password, IsYouTubeChannel FROM Podcasts WHERE UserID = ? ORDER BY PodcastID",
             )
             .bind(user_id)
             .fetch_all(pool)
             .await?,
-        };
+        });
         Ok(rows
             .into_iter()
             .filter_map(|(url, user, pass, yt)| {
@@ -662,8 +663,8 @@ impl DatabasePool {
     /// completed), with the episode's duration, for a full sync. Shareable feeds only.
     pub async fn sync_episode_states(&self, user_id: i32) -> AppResult<Vec<(EpisodeAction, Option<i32>)>> {
         type StateRow = (String, String, Option<String>, Option<i32>, i64, Option<i64>);
-        let rows: Vec<StateRow> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query_as(
+        let rows: Vec<StateRow> = dialect_match!(self, {
+            pg(pool) => q::query_as(
                 r#"SELECT p.feedurl, e.episodeurl, NULLIF(e.episodeguid, ''), e.episodeduration,
                           CASE WHEN COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) AND COALESCE(e.episodeduration, 0) > 0
                                THEN e.episodeduration ELSE COALESCE(h.listenduration, 0) END::BIGINT,
@@ -681,7 +682,7 @@ impl DatabasePool {
             .bind(user_id)
             .fetch_all(pool)
             .await?,
-            DatabasePool::MySQL(pool) => sqlx::query_as(
+            mysql(pool) => sqlx::query_as(
                 "SELECT p.FeedURL, e.EpisodeURL, NULLIF(e.EpisodeGUID, ''), e.EpisodeDuration,
                         CAST(CASE WHEN COALESCE((SELECT ues.Completed FROM UserEpisodeState ues WHERE ues.EpisodeID = e.EpisodeID AND ues.UserID = p.UserID), 0) AND COALESCE(e.EpisodeDuration, 0) > 0
                              THEN e.EpisodeDuration ELSE COALESCE(h.ListenDuration, 0) END AS SIGNED),
@@ -700,7 +701,7 @@ impl DatabasePool {
             .bind(user_id)
             .fetch_all(pool)
             .await?,
-        };
+        });
         Ok(rows
             .into_iter()
             .map(|(feed, episode, guid, duration, position, at)| {
@@ -734,11 +735,11 @@ impl DatabasePool {
             .iter()
             .find(|t| t.kind == kind && t.url.trim_end_matches('/') == url && t.username == username)
             .and_then(|t| t.device_name.clone());
-        let target_id = match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
-                sqlx::query(r#"DELETE FROM "SyncTargets" WHERE userid = $1"#).bind(user_id).execute(&mut *tx).await?;
-                let id: i32 = sqlx::query_scalar(
+        let target_id = dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
+                q::query(r#"DELETE FROM "SyncTargets" WHERE userid = $1"#).bind(user_id).execute(&mut *tx).await?;
+                let id: i32 = q::query_scalar(
                     r#"INSERT INTO "SyncTargets" (userid, kind, url, username, encryptedsecret, devicename, enabled, needsfullsync)
                        VALUES ($1, $2, $3, $4, $5, $6, TRUE, TRUE) RETURNING targetid"#,
                 )
@@ -750,11 +751,11 @@ impl DatabasePool {
                 .bind(&device_name)
                 .fetch_one(&mut *tx)
                 .await?;
-                sqlx::query(r#"UPDATE "Users" SET syncnotice = NULL WHERE userid = $1"#).bind(user_id).execute(&mut *tx).await?;
+                q::query(r#"UPDATE "Users" SET syncnotice = NULL WHERE userid = $1"#).bind(user_id).execute(&mut *tx).await?;
                 tx.commit().await?;
                 id
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut tx = pool.begin().await?;
                 sqlx::query("DELETE FROM SyncTargets WHERE UserID = ?").bind(user_id).execute(&mut *tx).await?;
                 let id = sqlx::query(
@@ -773,8 +774,8 @@ impl DatabasePool {
                 sqlx::query("UPDATE Users SET SyncNotice = NULL WHERE UserID = ?").bind(user_id).execute(&mut *tx).await?;
                 tx.commit().await?;
                 id
-            }
-        };
+            },
+        });
         self.sync_mirror_sync_type(user_id).await?;
         super::invalidate_sync_enabled(user_id);
         Ok(target_id)
@@ -782,14 +783,14 @@ impl DatabasePool {
 
     /// Remove the user's external server(s).
     pub async fn sync_target_delete(&self, user_id: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"DELETE FROM "SyncTargets" WHERE userid = $1"#).bind(user_id).execute(pool).await?;
-            }
-            DatabasePool::MySQL(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"DELETE FROM "SyncTargets" WHERE userid = $1"#).bind(user_id).execute(pool).await?;
+            },
+            mysql(pool) => {
                 sqlx::query("DELETE FROM SyncTargets WHERE UserID = ?").bind(user_id).execute(pool).await?;
-            }
-        }
+            },
+        });
         self.sync_mirror_sync_type(user_id).await?;
         super::invalidate_sync_enabled(user_id);
         Ok(())
@@ -817,9 +818,9 @@ impl DatabasePool {
             (None, false) => (None, None, None),
         };
         let own_login = target.is_none() && internal;
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(
                     r#"UPDATE "Users" SET pod_sync_type = $1, gpodderurl = $2,
                            gpodderloginname = CASE WHEN $3 THEN username ELSE $4 END, gpoddertoken = $5
                        WHERE userid = $6"#,
@@ -832,8 +833,8 @@ impl DatabasePool {
                 .bind(user_id)
                 .execute(pool)
                 .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query(
                     "UPDATE Users SET Pod_Sync_Type = ?, GpodderUrl = ?,
                          GpodderLoginName = CASE WHEN ? THEN Username ELSE ? END, GpodderToken = ?
@@ -847,61 +848,61 @@ impl DatabasePool {
                 .bind(user_id)
                 .execute(pool)
                 .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     /// Users.GpodderServerEnabled.
     pub async fn sync_server_enabled(&self, user_id: i32) -> AppResult<bool> {
-        Ok(match self {
-            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT gpodderserverenabled FROM "Users" WHERE userid = $1"#)
+        Ok(dialect_match!(self, {
+            pg(pool) => q::query_scalar(r#"SELECT gpodderserverenabled FROM "Users" WHERE userid = $1"#)
                 .bind(user_id)
                 .fetch_optional(pool)
                 .await?
                 .unwrap_or(false),
-            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT GpodderServerEnabled FROM Users WHERE UserID = ?")
+            mysql(pool) => sqlx::query_scalar("SELECT GpodderServerEnabled FROM Users WHERE UserID = ?")
                 .bind(user_id)
                 .fetch_optional(pool)
                 .await?
                 .unwrap_or(false),
-        })
+        }))
     }
 
     /// Users.SyncNotice (e.g. 'reenter_external': the external server must be entered again).
     pub async fn sync_notice(&self, user_id: i32) -> AppResult<Option<String>> {
-        Ok(match self {
-            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT syncnotice FROM "Users" WHERE userid = $1"#)
+        Ok(dialect_match!(self, {
+            pg(pool) => q::query_scalar(r#"SELECT syncnotice FROM "Users" WHERE userid = $1"#)
                 .bind(user_id)
                 .fetch_optional(pool)
                 .await?
                 .flatten(),
-            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT SyncNotice FROM Users WHERE UserID = ?")
+            mysql(pool) => sqlx::query_scalar("SELECT SyncNotice FROM Users WHERE UserID = ?")
                 .bind(user_id)
                 .fetch_optional(pool)
                 .await?
                 .flatten(),
-        })
+        }))
     }
 
     pub async fn sync_clear_notice(&self, user_id: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET syncnotice = NULL WHERE userid = $1"#).bind(user_id).execute(pool).await?;
-            }
-            DatabasePool::MySQL(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET syncnotice = NULL WHERE userid = $1"#).bind(user_id).execute(pool).await?;
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET SyncNotice = NULL WHERE UserID = ?").bind(user_id).execute(pool).await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     /// Log rows a target hasn't been sent yet: `(subscription changes, episode actions)`.
     pub async fn sync_pending_counts(&self, t: &SyncTargetRow) -> AppResult<(i64, i64)> {
         let origin = super::SyncOrigin::Target(t.target_id).log_value().unwrap_or_default();
-        Ok(match self {
-            DatabasePool::Postgres(pool) => (
-                sqlx::query_scalar(
+        Ok(dialect_match!(self, {
+            pg(pool) => (
+                q::query_scalar(
                     r#"SELECT COUNT(*) FROM "GpodderSyncSubscriptions" WHERE userid = $1 AND subscriptionid > $2 AND origin <> $3"#,
                 )
                 .bind(t.user_id)
@@ -909,7 +910,7 @@ impl DatabasePool {
                 .bind(&origin)
                 .fetch_one(pool)
                 .await?,
-                sqlx::query_scalar(
+                q::query_scalar(
                     r#"SELECT COUNT(*) FROM "GpodderSyncEpisodeActions" WHERE userid = $1 AND actionid > $2 AND origin <> $3"#,
                 )
                 .bind(t.user_id)
@@ -918,7 +919,7 @@ impl DatabasePool {
                 .fetch_one(pool)
                 .await?,
             ),
-            DatabasePool::MySQL(pool) => (
+            mysql(pool) => (
                 sqlx::query_scalar("SELECT COUNT(*) FROM GpodderSyncSubscriptions WHERE UserID = ? AND SubscriptionID > ? AND Origin <> ?")
                     .bind(t.user_id)
                     .bind(t.subs_push_cursor)
@@ -932,7 +933,7 @@ impl DatabasePool {
                     .fetch_one(pool)
                     .await?,
             ),
-        })
+        }))
     }
 }
 

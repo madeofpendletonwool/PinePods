@@ -7,32 +7,32 @@ impl DatabasePool {
     pub async fn cleanup_expired_shared_episodes(&self) -> AppResult<()> {
         let now = chrono::Utc::now();
         
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"DELETE FROM "SharedEpisodes" WHERE expirationdate < $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"DELETE FROM "SharedEpisodes" WHERE expirationdate < $1"#)
                     .bind(now)
                     .execute(pool)
                     .await?;
                 
                 tracing::info!("Cleaned up {} expired SharedEpisodes records", result.rows_affected());
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("DELETE FROM SharedEpisodes WHERE ExpirationDate < ?")
                     .bind(now)
                     .execute(pool)
                     .await?;
                 
                 tracing::info!("Cleaned up {} expired SharedEpisodes records", result.rows_affected());
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Add shared episode - uses current database schema with ShareCode
     pub async fn add_shared_episode(&self, episode_id: i32, shared_by: i32, share_code: &str, expiration_date: chrono::DateTime<chrono::Utc>) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"
                     INSERT INTO "SharedEpisodes" (episodeid, sharedby, sharecode, expirationdate)
                     VALUES ($1, $2, $3, $4)
                 "#)
@@ -50,8 +50,8 @@ impl DatabasePool {
                         Ok(false)
                     }
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query(
                     "INSERT INTO SharedEpisodes (EpisodeID, SharedBy, ShareCode, ExpirationDate) VALUES (?, ?, ?, ?)"
                 )
@@ -69,15 +69,15 @@ impl DatabasePool {
                         Ok(false)
                     }
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get episode ID by share code (for shared episode access)
     pub async fn get_episode_id_by_share_code(&self, share_code: &str) -> AppResult<Option<i32>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query_as::<_, (i32,)>(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query_as::<(i32,)>(r#"
                     SELECT episodeid FROM "SharedEpisodes" 
                     WHERE sharecode = $1 AND expirationdate > NOW()
                 "#)
@@ -86,8 +86,8 @@ impl DatabasePool {
                 .await?;
                 
                 Ok(result.map(|row| row.0))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query_as::<_, (i32,)>(
                     "SELECT EpisodeID FROM SharedEpisodes 
                      WHERE ShareCode = ? AND ExpirationDate > NOW()"
@@ -97,16 +97,16 @@ impl DatabasePool {
                 .await?;
                 
                 Ok(result.map(|row| row.0))
-            }
-        }
+            },
+        })
     }
 
     // Get shared episode metadata - bypasses user restrictions for public access
     pub async fn get_shared_episode_metadata(&self, episode_id: i32) -> AppResult<serde_json::Value> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // First try regular episodes
-                let row = sqlx::query(
+                let row = q::query(
                     r#"SELECT 
                         "Podcasts".podcastid, 
                         "Podcasts".feedurl,
@@ -153,7 +153,7 @@ impl DatabasePool {
                     }))
                 } else {
                     // Try YouTube videos
-                    let row = sqlx::query(
+                    let row = q::query(
                         r#"SELECT 
                             "Podcasts".podcastid, 
                             "Podcasts".feedurl,
@@ -202,8 +202,8 @@ impl DatabasePool {
                         Err(AppError::not_found("Episode not found"))
                     }
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // First try regular episodes
                 let row = sqlx::query(
                     "SELECT 
@@ -301,15 +301,15 @@ impl DatabasePool {
                         Err(AppError::not_found("Episode not found"))
                     }
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get all shared episodes for a user
     pub async fn get_user_shared_episodes(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(r#"
                     SELECT
                         se.sharecode,
                         se.expirationdate,
@@ -340,8 +340,8 @@ impl DatabasePool {
                     })
                 }).collect();
                 Ok(result)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT
                         se.ShareCode AS sharecode,
@@ -373,37 +373,37 @@ impl DatabasePool {
                     })
                 }).collect();
                 Ok(result)
-            }
-        }
+            },
+        })
     }
 
     // Delete a shared episode by share code (user must own it)
     pub async fn delete_user_shared_episode(&self, share_code: &str, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"DELETE FROM "SharedEpisodes" WHERE sharecode = $1 AND sharedby = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"DELETE FROM "SharedEpisodes" WHERE sharecode = $1 AND sharedby = $2"#)
                     .bind(share_code)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 Ok(result.rows_affected() > 0)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("DELETE FROM SharedEpisodes WHERE ShareCode = ? AND SharedBy = ?")
                     .bind(share_code)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 Ok(result.rows_affected() > 0)
-            }
-        }
+            },
+        })
     }
 
     // Extend expiration of a shared episode by N days (user must own it)
     pub async fn extend_user_shared_episode(&self, share_code: &str, user_id: i32, days: i64) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let current: Option<chrono::NaiveDateTime> = sqlx::query_scalar(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let current: Option<chrono::NaiveDateTime> = q::query_scalar(r#"
                     SELECT expirationdate FROM "SharedEpisodes" WHERE sharecode = $1 AND sharedby = $2
                 "#)
                 .bind(share_code)
@@ -415,7 +415,7 @@ impl DatabasePool {
                 let new_expiry = current + chrono::Duration::days(days);
                 tracing::info!("Extending {} from {} to {} (+{} days)", share_code, current, new_expiry, days);
 
-                sqlx::query(r#"
+                q::query(r#"
                     UPDATE "SharedEpisodes"
                     SET expirationdate = $1
                     WHERE sharecode = $2 AND sharedby = $3
@@ -426,8 +426,8 @@ impl DatabasePool {
                 .execute(pool)
                 .await?;
                 Ok(true)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query(
                     "UPDATE SharedEpisodes SET ExpirationDate = DATE_ADD(ExpirationDate, INTERVAL ? DAY) WHERE ShareCode = ? AND SharedBy = ?"
                 )
@@ -437,7 +437,7 @@ impl DatabasePool {
                 .execute(pool)
                 .await?;
                 Ok(result.rows_affected() > 0)
-            }
-        }
+            },
+        })
     }
 }

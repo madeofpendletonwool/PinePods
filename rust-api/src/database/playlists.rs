@@ -26,12 +26,17 @@ pub struct PlaylistConfig {
 }
 
 impl PlaylistConfig {
-    // Create from PostgreSQL row - matches Python playlist dictionary extraction
-    pub fn from_postgres_row(row: &sqlx::postgres::PgRow) -> AppResult<Self> {
-        use sqlx::Row;
-        
-        // Parse podcast IDs from PostgreSQL int4 array - can be NULL or {29,57} format
-        let podcast_ids = match row.try_get::<Option<Vec<i32>>, _>("podcastids") {
+    /// From a PostgreSQL or SQLite row; `podcast_ids` is its decoded `podcastids` array.
+    pub fn from_row<R: sqlx::Row>(row: &R, podcast_ids: Result<Option<Vec<i32>>, sqlx::Error>) -> AppResult<Self>
+    where
+        for<'c> &'c str: sqlx::ColumnIndex<R>,
+        for<'r> bool: sqlx::Decode<'r, R::Database> + sqlx::Type<R::Database>,
+        for<'r> i32: sqlx::Decode<'r, R::Database> + sqlx::Type<R::Database>,
+        for<'r> f64: sqlx::Decode<'r, R::Database> + sqlx::Type<R::Database>,
+        for<'r> String: sqlx::Decode<'r, R::Database> + sqlx::Type<R::Database>,
+    {
+        // Parse podcast IDs from the int4 array - can be NULL or {29,57} format
+        let podcast_ids = match podcast_ids {
             Ok(Some(ids)) => {
                 info!("PostgreSQL got podcastids array: {:?}", ids);
                 if ids.is_empty() {
@@ -199,8 +204,8 @@ impl DatabasePool {
                 warn!("Updating playlist counts for user {} failed: {}", user_id, e);
             }
         }
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let query = r#"
                     SELECT
                         p.playlistid,
@@ -226,7 +231,7 @@ impl DatabasePool {
                     ORDER BY p.issystemplaylist DESC, p.name ASC
                 "#;
 
-                let rows = sqlx::query(query)
+                let rows = q::query(query)
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?;
@@ -247,7 +252,7 @@ impl DatabasePool {
                         LIMIT 3
                     "#;
 
-                    let preview_rows = sqlx::query(preview_query)
+                    let preview_rows = q::query(preview_query)
                         .bind(playlist_id)
                         .bind(user_id)
                         .fetch_all(pool)
@@ -262,7 +267,7 @@ impl DatabasePool {
                     }
 
                     // Process podcast_ids - in PostgreSQL it's stored as an array
-                    let podcast_ids: Option<Vec<i32>> = row.try_get("podcastids").ok();
+                    let podcast_ids: Option<Vec<i32>> = q::int_array(&row, "podcastids").ok().flatten();
 
                     let playlist = serde_json::json!({
                         "playlist_id": playlist_id,
@@ -290,8 +295,8 @@ impl DatabasePool {
                 }
 
                 Ok(playlists)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let query = r#"
                     SELECT
                         p.PlaylistID,
@@ -414,8 +419,8 @@ impl DatabasePool {
                 }
 
                 Ok(playlists)
-            }
-        }
+            },
+        })
     }
 
     // Create playlist - matches Python create_playlist function exactly
@@ -423,15 +428,15 @@ impl DatabasePool {
         let min_duration = playlist_data.min_duration.map(|d| d * 60);
         let max_duration = playlist_data.max_duration.map(|d| d * 60);
         
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let podcast_ids_array = if let Some(ref ids) = playlist_data.podcast_ids {
                     ids.clone()
                 } else {
                     vec![]
                 };
 
-                let result = sqlx::query(r#"
+                let result = q::query(r#"
                     INSERT INTO "Playlists" (
                         userid,
                         name,
@@ -479,8 +484,8 @@ impl DatabasePool {
                 self.update_playlist_contents(playlist_id).await?;
                 
                 Ok(playlist_id)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let podcast_ids_json = if let Some(ref ids) = playlist_data.podcast_ids {
                     serde_json::to_string(ids)?
                 } else {
@@ -535,8 +540,8 @@ impl DatabasePool {
                 self.update_playlist_contents(playlist_id).await?;
                 
                 Ok(playlist_id)
-            }
-        }
+            },
+        })
     }
 
     pub async fn get_next_playlist_episode(&self, episode_id: i32, playlist_id: i32, user_id: i32) -> AppResult<Option<crate::models::QueuedEpisode>> {
@@ -601,9 +606,9 @@ impl DatabasePool {
         tracing::debug!("=================== PLAYLIST UPDATE STARTING ===================");
         tracing::info!("Starting to fetch all playlists");
         
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let playlists = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let playlists = q::query(r#"
                     SELECT playlistid, name, userid, podcastids, includeunplayed, 
                            includepartiallyplayed, includeplayed, playprogressmin, playprogressmax, 
                            timefilterhours, minduration, maxduration, sortorder, 
@@ -632,8 +637,8 @@ impl DatabasePool {
                         }
                     }
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let playlists = sqlx::query("
                     SELECT PlaylistID, Name, UserID, PodcastIds, IncludeUnplayed, 
                            IncludePartiallyPlayed, IncludePlayed, PlayProgressMin, PlayProgressMax, 
@@ -663,8 +668,8 @@ impl DatabasePool {
                         }
                     }
                 }
-            }
-        }
+            },
+        });
         
         tracing::debug!("=================== PLAYLIST UPDATE COMPLETED ===================");
         Ok(())
@@ -674,10 +679,10 @@ impl DatabasePool {
     pub async fn update_playlist_contents(&self, playlist_id: i32) -> AppResult<i32> {
         tracing::debug!("======= UPDATE PLAYLIST ID: {} =======", playlist_id);
         
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Get playlist configuration first  
-                let playlist = sqlx::query(r#"
+                let playlist = q::query(r#"
                     SELECT playlistid, name, userid, podcastids, includeunplayed, 
                            includepartiallyplayed, includeplayed, playprogressmin, playprogressmax, 
                            timefilterhours, minduration, maxduration, sortorder, 
@@ -689,7 +694,7 @@ impl DatabasePool {
                     .await?;
                 
                 // Clear existing contents
-                sqlx::query(r#"DELETE FROM "PlaylistContents" WHERE playlistid = $1"#)
+                q::query(r#"DELETE FROM "PlaylistContents" WHERE playlistid = $1"#)
                     .bind(playlist_id)
                     .execute(pool)
                     .await?;
@@ -700,30 +705,30 @@ impl DatabasePool {
                 
                 let episode_count = if playlist_name == "Fresh Releases" && is_system_playlist {
                     // Special handling for Fresh Releases
-                    self.update_fresh_releases_playlist_postgres(pool, playlist_id).await?
+                    q::pick(Self::update_fresh_releases_playlist_postgres, Self::update_fresh_releases_playlist_lite)(self, pool, playlist_id).await?
                 } else if playlist_name == "Currently Listening" && is_system_playlist {
                     // Special handling for Currently Listening
-                    self.update_currently_listening_playlist_postgres(pool, playlist_id).await?
+                    q::pick(Self::update_currently_listening_playlist_postgres, Self::update_currently_listening_playlist_lite)(self, pool, playlist_id).await?
                 } else if playlist_name == "Almost Done" && is_system_playlist {
                     // Special handling for Almost Done  
-                    self.update_almost_done_playlist_postgres(pool, playlist_id).await?
+                    q::pick(Self::update_almost_done_playlist_postgres, Self::update_almost_done_playlist_lite)(self, pool, playlist_id).await?
                 } else if playlist_name == "Quick Listens" && is_system_playlist {
                     // Special handling for Quick Listens
-                    self.update_quick_listens_playlist_postgres(pool, playlist_id).await?
+                    q::pick(Self::update_quick_listens_playlist_postgres, Self::update_quick_listens_playlist_lite)(self, pool, playlist_id).await?
                 } else {
                     // Standard playlist query building
-                    self.build_and_execute_playlist_query_postgres(pool, &playlist).await?
+                    q::pick(Self::build_and_execute_playlist_query_postgres, Self::build_and_execute_playlist_query_lite)(self, pool, &playlist).await?
                 };
                 
                 // Update timestamp
-                sqlx::query(r#"UPDATE "Playlists" SET lastupdated = CURRENT_TIMESTAMP WHERE playlistid = $1"#)
+                q::query(r#"UPDATE "Playlists" SET lastupdated = CURRENT_TIMESTAMP WHERE playlistid = $1"#)
                     .bind(playlist_id)
                     .execute(pool)
                     .await?;
                 
                 Ok(episode_count)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Get playlist configuration first
                 let playlist = sqlx::query("
                     SELECT PlaylistID, Name, UserID, PodcastIDs, IncludeUnplayed, 
@@ -770,8 +775,8 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(episode_count)
-            }
-        }
+            },
+        })
     }
 
     // Helper function to normalize timezone names for database compatibility
@@ -790,213 +795,9 @@ impl DatabasePool {
     // COMPLETE PLAYLIST SYSTEM IMPLEMENTATION - matches Python functionality exactly
 
     // Update Fresh Releases playlist with timezone-aware logic - matches Python update_fresh_releases_playlist
-    pub(super) async fn update_fresh_releases_playlist_postgres(&self, pool: &Pool<Postgres>, playlist_id: i32) -> AppResult<i32> {
-        tracing::info!("Updating Fresh Releases playlist with timezone logic");
-        
-        // Get all users with their timezones
-        let users = sqlx::query(r#"SELECT userid, timezone FROM "Users" WHERE userid = (SELECT userid FROM "Playlists" WHERE playlistid = $1)"#)
-            .bind(playlist_id)
-            .fetch_all(pool)
-            .await?;
-        
-        let mut added_episodes: std::collections::HashSet<i32> = std::collections::HashSet::new();
-        let mut position = 1;
-        
-        for user in users {
-            let user_id: i32 = user.try_get("userid")?;
-            let timezone: Option<String> = user.try_get("timezone").ok();
-            let raw_tz = timezone.as_deref()
-                .filter(|s| !s.is_empty()) // Filter out empty strings
-                .unwrap_or("UTC");
-            
-            let normalized_tz = Self::normalize_timezone(raw_tz);
-            
-            tracing::info!("Processing Fresh Releases for user {} with timezone {} (normalized: {})", user_id, raw_tz, normalized_tz);
-            
-            // Get episodes from last 24 hours in user's timezone
-            let episodes = sqlx::query(r#"
-                SELECT e.episodeid
-                FROM "Episodes" e
-                JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = $2
-                WHERE e.episodepubdate AT TIME ZONE 'UTC' AT TIME ZONE $1 >
-                      (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' AT TIME ZONE $1 - INTERVAL '24 hours')
-                ORDER BY e.episodepubdate DESC
-            "#)
-                .bind(&normalized_tz)
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
-            
-            // Add unique episodes to playlist
-            for episode in episodes {
-                let episode_id: i32 = episode.try_get("episodeid")?;
-                if !added_episodes.contains(&episode_id) {
-                    sqlx::query(r#"
-                        INSERT INTO "PlaylistContents" (playlistid, episodeid, position)
-                        VALUES ($1, $2, $3)
-                    "#)
-                        .bind(playlist_id)
-                        .bind(episode_id)
-                        .bind(position)
-                        .execute(pool)
-                        .await?;
-                    
-                    added_episodes.insert(episode_id);
-                    position += 1;
-                }
-            }
-        }
-        
-        tracing::info!("Fresh Releases playlist updated with {} episodes", added_episodes.len());
-        Ok(added_episodes.len() as i32)
-    }
-
     // Update Currently Listening playlist - episodes that users have started but not finished
-    pub(super) async fn update_currently_listening_playlist_postgres(&self, pool: &Pool<Postgres>, playlist_id: i32) -> AppResult<i32> {
-        tracing::info!("Updating Currently Listening playlist");
-        
-        // Get all users and their currently listening episodes
-        let users = sqlx::query(r#"SELECT userid FROM "Users" WHERE userid = (SELECT userid FROM "Playlists" WHERE playlistid = $1)"#)
-            .bind(playlist_id)
-            .fetch_all(pool)
-            .await?;
-        
-        let mut added_episodes: std::collections::HashSet<i32> = std::collections::HashSet::new();
-        let mut position = 1;
-        
-        for user in users {
-            let user_id: i32 = user.try_get("userid")?;
-            
-            tracing::info!("Processing Currently Listening for user {}", user_id);
-            
-            // Get episodes user has started but not finished
-            let episodes = sqlx::query(r#"
-                SELECT e.episodeid
-                FROM "Episodes" e
-                JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
-                WHERE h.userid = $1
-                AND h.listenduration > 0
-                AND h.listenduration < e.episodeduration
-                ORDER BY h.listendate DESC
-            "#)
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
-            
-            // Add unique episodes to playlist
-            for episode in episodes {
-                let episode_id: i32 = episode.try_get("episodeid")?;
-                if !added_episodes.contains(&episode_id) {
-                    sqlx::query(r#"INSERT INTO "PlaylistContents" (playlistid, episodeid, position) VALUES ($1, $2, $3)"#)
-                        .bind(playlist_id)
-                        .bind(episode_id)
-                        .bind(position)
-                        .execute(pool)
-                        .await?;
-                    
-                    added_episodes.insert(episode_id);
-                    position += 1;
-                }
-            }
-        }
-        
-        tracing::info!("Currently Listening playlist updated with {} episodes", added_episodes.len());
-        Ok(added_episodes.len() as i32)
-    }
-
     // Update Almost Done playlist - episodes that users are 75%+ through
-    pub(super) async fn update_almost_done_playlist_postgres(&self, pool: &Pool<Postgres>, playlist_id: i32) -> AppResult<i32> {
-        tracing::info!("Updating Almost Done playlist");
-        
-        // Get all users and their almost done episodes
-        let users = sqlx::query(r#"SELECT userid FROM "Users" WHERE userid = (SELECT userid FROM "Playlists" WHERE playlistid = $1)"#)
-            .bind(playlist_id)
-            .fetch_all(pool)
-            .await?;
-        
-        let mut added_episodes: std::collections::HashSet<i32> = std::collections::HashSet::new();
-        let mut position = 1;
-        
-        for user in users {
-            let user_id: i32 = user.try_get("userid")?;
-            
-            tracing::info!("Processing Almost Done for user {}", user_id);
-            
-            // Get episodes user is 75%+ through but not completed
-            let episodes = sqlx::query(r#"
-                SELECT e.episodeid
-                FROM "Episodes" e
-                JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
-                WHERE h.userid = $1
-                AND h.listenduration > 0
-                AND h.listenduration < e.episodeduration
-                AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) >= 0.75
-                ORDER BY h.listendate DESC
-            "#)
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
-            
-            // Add unique episodes to playlist
-            for episode in episodes {
-                let episode_id: i32 = episode.try_get("episodeid")?;
-                if !added_episodes.contains(&episode_id) {
-                    sqlx::query(r#"INSERT INTO "PlaylistContents" (playlistid, episodeid, position) VALUES ($1, $2, $3)"#)
-                        .bind(playlist_id)
-                        .bind(episode_id)
-                        .bind(position)
-                        .execute(pool)
-                        .await?;
-                    
-                    added_episodes.insert(episode_id);
-                    position += 1;
-                }
-            }
-        }
-        
-        tracing::info!("Almost Done playlist updated with {} episodes", added_episodes.len());
-        Ok(added_episodes.len() as i32)
-    }
-
     // Update Quick Listens playlist - episodes under 15 minutes from ALL users' podcasts
-    pub(super) async fn update_quick_listens_playlist_postgres(&self, pool: &Pool<Postgres>, playlist_id: i32) -> AppResult<i32> {
-        tracing::info!("Updating Quick Listens playlist");
-        
-        // Get shortest 1000 episodes under 15 minutes (900 seconds) and over 1 second from ALL podcasts
-        let episodes = sqlx::query(r#"
-            SELECT e.episodeid
-            FROM "Episodes" e
-            JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = (SELECT userid FROM "Playlists" WHERE playlistid = $1)
-            WHERE e.episodeduration >= 1
-            AND e.episodeduration <= 900
-            AND COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) = FALSE
-            ORDER BY e.episodeduration ASC
-            LIMIT 1000
-        "#)
-            .bind(playlist_id)
-            .fetch_all(pool)
-            .await?;
-        
-        let mut position = 1;
-        
-        // Add episodes to playlist
-        for episode in episodes {
-            let episode_id: i32 = episode.try_get("episodeid")?;
-            sqlx::query(r#"INSERT INTO "PlaylistContents" (playlistid, episodeid, position) VALUES ($1, $2, $3)"#)
-                .bind(playlist_id)
-                .bind(episode_id)
-                .bind(position)
-                .execute(pool)
-                .await?;
-            
-            position += 1;
-        }
-        
-        let episode_count = position - 1;
-        tracing::info!("Quick Listens playlist updated with {} episodes", episode_count);
-        Ok(episode_count)
-    }
-
     pub(super) async fn update_quick_listens_playlist_mysql(&self, pool: &Pool<MySql>, playlist_id: i32) -> AppResult<i32> {
         tracing::info!("Updating Quick Listens playlist");
         
@@ -1220,70 +1021,6 @@ impl DatabasePool {
     }
 
     // Build and execute playlist query for PostgreSQL - matches Python build_playlist_query exactly
-    pub(super) async fn build_and_execute_playlist_query_postgres(&self, pool: &Pool<Postgres>, playlist: &sqlx::postgres::PgRow) -> AppResult<i32> {
-        let playlist_id: i32 = playlist.try_get("playlistid")?;
-        let user_id: i32 = playlist.try_get("userid")?;
-        let playlist_name: String = playlist.try_get("name")?;
-        let is_system_playlist: bool = playlist.try_get("issystemplaylist").unwrap_or(false);
-        
-        // Parse playlist configuration
-        let config = PlaylistConfig::from_postgres_row(playlist)?;
-        
-        // Determine if this playlist needs user history filtering
-        let needs_user_history = playlist_name == "Currently Listening" || 
-                                  playlist_name == "Almost Done" || 
-                                  !is_system_playlist;
-        
-        // Check for special optimized queries for partially played
-        if config.include_partially_played && !config.include_unplayed && !config.include_played {
-            return self.execute_partially_played_query_postgres(pool, playlist_id, user_id, &config).await;
-        }
-        
-        // Build the appropriate base query - FIXED PARAMETER INDEXING
-        let (base_query, params) = if is_system_playlist {
-            if needs_user_history {
-                // System playlist with user history filtering
-                (r#"
-                    SELECT e.episodeid, p.podcastid, u.timezone
-                    FROM "Episodes" e
-                    JOIN "Podcasts" p ON e.feedid = p.feedid
-                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
-                    JOIN "Users" u ON u.userid = $3
-                    WHERE p.userid = u.userid
-                "#.to_string(), vec![user_id, user_id])
-            } else {
-                // System playlist without user history filtering (Fresh Releases, etc.)  
-                // But still need user context for history when needed
-                (r#"
-                    SELECT e.episodeid, p.podcastid, u.timezone
-                    FROM "Episodes" e
-                    JOIN "Podcasts" p ON e.feedid = p.feedid
-                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
-                    JOIN "Users" u ON u.userid = $3
-                    WHERE p.userid = u.userid
-                "#.to_string(), vec![user_id, user_id])
-            }
-        } else {
-            // User-specific playlist
-            (r#"
-                SELECT e.episodeid, p.podcastid, u.timezone
-                FROM "Episodes" e
-                JOIN "Podcasts" p ON e.feedid = p.feedid
-                LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
-                JOIN "Users" u ON u.userid = $3
-                WHERE p.userid = $4
-            "#.to_string(), vec![user_id, user_id, user_id])
-        };
-        
-        // Build the complete query with all filters
-        let (complete_query, all_params) = self.build_complete_postgres_query(
-            base_query, params, &config, playlist_id
-        )?;
-        
-        // Execute the query and insert episodes
-        self.execute_playlist_query_postgres(pool, &complete_query, &all_params, playlist_id).await
-    }
-
     // Build and execute playlist query for MySQL - matches Python build_playlist_query exactly  
     pub(super) async fn build_and_execute_playlist_query_mysql(&self, pool: &Pool<MySql>, playlist: &sqlx::mysql::MySqlRow) -> AppResult<i32> {
         let playlist_id: i32 = playlist.try_get("PlaylistID")?;
@@ -1350,53 +1087,6 @@ impl DatabasePool {
     }
 
     // Execute optimized partially played query for PostgreSQL - FIXED VERSION
-    pub(super) async fn execute_partially_played_query_postgres(&self, pool: &Pool<Postgres>, playlist_id: i32, user_id: i32, config: &PlaylistConfig) -> AppResult<i32> {
-        // Use direct INSERT without subquery for this optimized case - no alias scoping issues
-        let sort_order = config.get_postgres_sort_order().replace("ORDER BY ", "");
-        
-        // Build base query
-        let mut query = format!(r#"
-            INSERT INTO "PlaylistContents" (playlistid, episodeid, position)
-            SELECT $1, e.episodeid, ROW_NUMBER() OVER (ORDER BY {}) as position
-            FROM "Episodes" e
-            JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
-            JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = h.userid
-            WHERE h.listenduration > 0
-            AND h.listenduration < e.episodeduration
-            AND COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) = FALSE
-            AND e.episodeduration > 0
-            AND h.userid = $2
-        "#, sort_order);
-        
-        let params = vec![playlist_id, user_id];
-        
-        // Add progress filters using hardcoded values instead of parameters to avoid type issues
-        if let Some(min_progress) = config.play_progress_min {
-            query.push_str(&format!(" AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) >= {}", min_progress / 100.0));
-        }
-        
-        if let Some(max_progress) = config.play_progress_max {
-            query.push_str(&format!(" AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) <= {}", max_progress / 100.0));
-        }
-        
-        // Add limit
-        if let Some(max_episodes) = config.max_episodes {
-            query.push_str(&format!(" LIMIT {}", max_episodes));
-        }
-        
-        tracing::info!("Executing partially played query with {} parameters", params.len());
-        tracing::debug!("Query: {}", query);
-        
-        // Execute with proper parameter binding
-        let mut sqlx_query = sqlx::query(sqlx::AssertSqlSafe(query.as_str()));
-        for param in &params {
-            sqlx_query = sqlx_query.bind(*param);
-        }
-        
-        let result = sqlx_query.execute(pool).await?;
-        Ok(result.rows_affected() as i32)
-    }
-
     // Execute optimized partially played query for MySQL
     pub(super) async fn execute_partially_played_query_mysql(&self, pool: &Pool<MySql>, playlist_id: i32, user_id: i32, config: &PlaylistConfig) -> AppResult<i32> {
         // Use direct INSERT without subquery for this optimized case - no alias scoping issues
@@ -1705,23 +1395,6 @@ impl DatabasePool {
     }
 
     // Execute the final playlist query for PostgreSQL - FIXED VERSION
-    pub(super) async fn execute_playlist_query_postgres(&self, pool: &Pool<Postgres>, query: &str, params: &[i32], _playlist_id: i32) -> AppResult<i32> {
-        info!("PostgreSQL executing playlist query with {} parameters", params.len());
-        info!("PostgreSQL Query: {}", query);
-        info!("PostgreSQL Params: {:?}", params);
-        
-        // Build query with proper parameter binding
-        let query_owned = query.to_owned();
-        let mut sqlx_query = sqlx::query(sqlx::AssertSqlSafe(query_owned.as_str()));
-        for param in params {
-            sqlx_query = sqlx_query.bind(*param);
-        }
-
-        let result = sqlx_query.execute(pool).await?;
-        info!("PostgreSQL playlist query affected {} rows", result.rows_affected());
-        Ok(result.rows_affected() as i32)
-    }
-
     // Execute the final playlist query for MySQL
     pub(super) async fn execute_playlist_query_mysql(&self, pool: &Pool<MySql>, query: &str, params: &[i32], _playlist_id: i32) -> AppResult<i32> {
         tracing::info!("Executing MySQL playlist query with {} parameters", params.len());
@@ -1743,10 +1416,10 @@ impl DatabasePool {
 
     // Get playlist episodes - matches Python get_playlist_episodes function exactly
     pub async fn get_playlist_episodes(&self, user_id: i32, playlist_id: i32) -> AppResult<serde_json::Value> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Get playlist info with episode count - matches Python exactly
-                let playlist_row = sqlx::query(r#"
+                let playlist_row = q::query(r#"
                     SELECT
                         p.name,
                         p.description,
@@ -1788,7 +1461,7 @@ impl DatabasePool {
                     self.update_playlist_contents(playlist_id).await?;
                     
                     // Same query as user playlists but with additional filter for user's podcasts
-                    sqlx::query(r#"
+                    q::query(r#"
                         SELECT DISTINCT
                             "Episodes".episodeid,
                             "Episodes".episodetitle,
@@ -1833,7 +1506,7 @@ impl DatabasePool {
                         .await?
                 } else {
                     // For user playlists, use existing PlaylistContents logic
-                    sqlx::query(r#"
+                    q::query(r#"
                         SELECT DISTINCT
                             "Episodes".episodeid,
                             "Episodes".episodetitle,
@@ -1930,8 +1603,8 @@ impl DatabasePool {
                     "playlist_info": playlist_info,
                     "episodes": episodes
                 }))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Get playlist info with episode count - matches Python exactly
                 let playlist_row = sqlx::query(
                     "SELECT
@@ -2114,15 +1787,15 @@ impl DatabasePool {
                     "playlist_info": playlist_info,
                     "episodes": episodes
                 }))
-            }
-        }
+            },
+        })
     }
 
     pub async fn delete_playlist(&self, user_id: i32, playlist_id: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Check if playlist exists and belongs to user
-                let playlist = sqlx::query(
+                let playlist = q::query(
                     r#"SELECT issystemplaylist, userid FROM "Playlists" WHERE playlistid = $1"#
                 )
                 .bind(playlist_id)
@@ -2143,14 +1816,14 @@ impl DatabasePool {
                 }
 
                 // Delete the playlist
-                sqlx::query(r#"DELETE FROM "Playlists" WHERE playlistid = $1"#)
+                q::query(r#"DELETE FROM "Playlists" WHERE playlistid = $1"#)
                     .bind(playlist_id)
                     .execute(pool)
                     .await?;
 
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Check if playlist exists and belongs to user
                 let playlist = sqlx::query("SELECT IsSystemPlaylist, UserID FROM Playlists WHERE PlaylistID = ?")
                     .bind(playlist_id)
@@ -2177,18 +1850,18 @@ impl DatabasePool {
                     .await?;
 
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     pub async fn update_playlist(&self, _config: &crate::config::Config, playlist_data: &crate::models::UpdatePlaylistRequest) -> AppResult<()> {
         let min_duration = playlist_data.min_duration.map(|d| d * 60);
         let max_duration = playlist_data.max_duration.map(|d| d * 60);
 
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Verify ownership and not a system playlist
-                let row = sqlx::query(
+                let row = q::query(
                     r#"SELECT issystemplaylist, userid FROM "Playlists" WHERE playlistid = $1"#
                 )
                 .bind(playlist_data.playlist_id)
@@ -2205,7 +1878,7 @@ impl DatabasePool {
 
                 let podcast_ids_array = playlist_data.podcast_ids.clone().unwrap_or_default();
 
-                sqlx::query(r#"
+                q::query(r#"
                     UPDATE "Playlists" SET
                         name = $1,
                         description = $2,
@@ -2245,8 +1918,8 @@ impl DatabasePool {
 
                 self.update_playlist_contents(playlist_data.playlist_id).await?;
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT IsSystemPlaylist, UserID FROM Playlists WHERE PlaylistID = ?"
                 )
@@ -2307,8 +1980,8 @@ impl DatabasePool {
 
                 self.update_playlist_contents(playlist_data.playlist_id).await?;
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     // Create missing default playlists for existing users
@@ -2326,10 +1999,10 @@ impl DatabasePool {
             ("Commuter Mix", "Perfect-length episodes (15-45 minutes) for your daily commute", Some(900), Some(2700), "date_desc", true, true, true, None, false, Some(1000), "ph-car-simple"),
         ];
         
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Get all existing users (excluding background user if present)
-                let user_rows = sqlx::query(r#"SELECT userid FROM "Users" WHERE userid > 1"#)
+                let user_rows = q::query(r#"SELECT userid FROM "Users" WHERE userid > 1"#)
                     .fetch_all(pool)
                     .await?;
                 
@@ -2340,13 +2013,13 @@ impl DatabasePool {
                     
                     for (name, description, min_duration, max_duration, sort_order, include_unplayed, include_partially_played, include_played, time_filter_hours, group_by_podcast, max_episodes, icon_name) in &default_playlists {
                         // Check if this playlist already exists for this user
-                        let exists: bool = sqlx::query_scalar(
+                        let exists: bool = q::query_scalar(
                             r#"SELECT EXISTS(SELECT 1 FROM "Playlists" WHERE userid = $1 AND name = $2)"#
                         ).bind(user_id).bind(name).fetch_one(pool).await?;
                         
                         if !exists {
                             // Create the playlist for this user
-                            match sqlx::query(r#"
+                            match q::query(r#"
                                 INSERT INTO "Playlists" (
                                     userid, name, description, issystemplaylist, minduration, maxduration, sortorder,
                                     includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
@@ -2366,8 +2039,8 @@ impl DatabasePool {
                         }
                     }
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Get all existing users (excluding background user if present)
                 let user_rows = sqlx::query("SELECT UserID FROM Users WHERE UserID > 1")
                     .fetch_all(pool)
@@ -2408,8 +2081,8 @@ impl DatabasePool {
                         }
                     }
                 }
-            }
-        }
+            },
+        });
         
         info!("✅ Finished checking for missing default playlists");
         Ok(())
@@ -2428,17 +2101,17 @@ impl DatabasePool {
             ("Commuter Mix", "Perfect-length episodes (15-45 minutes) for your daily commute", Some(900), Some(2700), "date_desc", true, true, true, None, false, Some(1000), "ph-car-simple"),
         ];
         
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 for (name, description, min_duration, max_duration, sort_order, include_unplayed, include_partially_played, include_played, time_filter_hours, group_by_podcast, max_episodes, icon_name) in &default_playlists {
                     // Check if this playlist already exists for this user
-                    let exists: bool = sqlx::query_scalar(
+                    let exists: bool = q::query_scalar(
                         r#"SELECT EXISTS(SELECT 1 FROM "Playlists" WHERE userid = $1 AND name = $2)"#
                     ).bind(user_id).bind(name).fetch_one(pool).await?;
                     
                     if !exists {
                         // Create the playlist for this user
-                        match sqlx::query(r#"
+                        match q::query(r#"
                             INSERT INTO "Playlists" (
                                 userid, name, description, issystemplaylist, minduration, maxduration, sortorder,
                                 includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
@@ -2457,8 +2130,8 @@ impl DatabasePool {
                         }
                     }
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 for (name, description, min_duration, max_duration, sort_order, include_unplayed, include_partially_played, include_played, time_filter_hours, group_by_podcast, max_episodes, icon_name) in &default_playlists {
                     // Check if this playlist already exists for this user
                     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM Playlists WHERE UserID = ? AND Name = ?")
@@ -2488,8 +2161,8 @@ impl DatabasePool {
                         }
                     }
                 }
-            }
-        }
+            },
+        });
         
         Ok(())
     }
@@ -2499,16 +2172,16 @@ impl DatabasePool {
     /// `PLAYLIST_COUNTS_MAX_AGE` (listening and time filters change them too).
     pub async fn update_user_playlist_counts(&self, user_id: i32) -> AppResult<()> {
         PLAYLIST_COUNTS_AT.lock().unwrap().insert((self.instance_key(), user_id), std::time::Instant::now());
-        let playlists: Vec<i32> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query_scalar(r#"SELECT playlistid FROM "Playlists" WHERE userid = $1"#)
+        let playlists: Vec<i32> = dialect_match!(self, {
+            pg(pool) => q::query_scalar(r#"SELECT playlistid FROM "Playlists" WHERE userid = $1"#)
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?,
-            DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT PlaylistID FROM Playlists WHERE UserID = ?")
+            mysql(pool) => sqlx::query_scalar("SELECT PlaylistID FROM Playlists WHERE UserID = ?")
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?,
-        };
+        });
         for playlist_id in playlists {
             let count = match self.count_playlist_episodes_dynamic(playlist_id, user_id).await {
                 Ok(count) => count,
@@ -2517,20 +2190,20 @@ impl DatabasePool {
                     continue;
                 }
             };
-            let updated = match self {
-                DatabasePool::Postgres(pool) => sqlx::query(r#"UPDATE "Playlists" SET episodecount = $1 WHERE playlistid = $2"#)
+            let updated = dialect_match!(self, {
+                pg(pool) => q::query(r#"UPDATE "Playlists" SET episodecount = $1 WHERE playlistid = $2"#)
                     .bind(count)
                     .bind(playlist_id)
                     .execute(pool)
                     .await
                     .map(|_| ()),
-                DatabasePool::MySQL(pool) => sqlx::query("UPDATE Playlists SET EpisodeCount = ? WHERE PlaylistID = ?")
+                mysql(pool) => sqlx::query("UPDATE Playlists SET EpisodeCount = ? WHERE PlaylistID = ?")
                     .bind(count)
                     .bind(playlist_id)
                     .execute(pool)
                     .await
                     .map(|_| ()),
-            };
+            });
             if let Err(e) = updated {
                 warn!("Failed to update the count of playlist {}: {}", playlist_id, e);
             }
@@ -2549,17 +2222,17 @@ impl DatabasePool {
     // Count episodes for a playlist using the same dynamic logic (without pagination)
     pub(super) async fn count_playlist_episodes_dynamic(&self, playlist_id: i32, user_id: i32) -> AppResult<i32> {
         
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Get user timezone for proper date calculations
-                let raw_user_timezone: String = sqlx::query_scalar(
+                let raw_user_timezone: String = q::query_scalar(
                     r#"SELECT timezone FROM "Users" WHERE userid = $1"#
                 ).bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
                 let raw_timezone = if raw_user_timezone.is_empty() { "UTC".to_string() } else { raw_user_timezone };
                 let user_timezone = Self::map_timezone_for_postgres(&raw_timezone);
                 
                 // Get playlist configuration
-                let playlist_row = sqlx::query(
+                let playlist_row = q::query(
                     r#"SELECT userid, name, minduration, maxduration, sortorder, 
                        includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
                        groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids
@@ -2598,7 +2271,7 @@ impl DatabasePool {
                 }
                 
                 // Handle PostgreSQL array type for podcast IDs
-                if let Some(podcast_ids) = playlist.try_get::<Option<Vec<i32>>, _>("podcastids")? {
+                if let Some(podcast_ids) = q::int_array(&playlist, "podcastids")? {
                     if !podcast_ids.is_empty() && !podcast_ids.contains(&-1) {
                         let podcast_ids_str = podcast_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
                         where_conditions.push(format!("p.podcastid IN ({})", podcast_ids_str));
@@ -2649,7 +2322,7 @@ impl DatabasePool {
                 
                 let final_query = format!("{}{}", query_parts.join(" "), where_clause);
                 
-                let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(final_query.as_str()))
+                let count: i64 = q::query_scalar(sqlx::AssertSqlSafe(final_query.as_str()))
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
@@ -2666,8 +2339,8 @@ impl DatabasePool {
                 };
                 
                 Ok(final_count)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Similar implementation for MySQL with adjusted syntax
                 let raw_user_timezone: String = sqlx::query_scalar("SELECT TimeZone FROM Users WHERE UserID = ?")
                     .bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
@@ -2793,8 +2466,8 @@ impl DatabasePool {
                 };
                 
                 Ok(final_count)
-            }
-        }
+            },
+        })
     }
 
     /// Convert chrono-tz timezone names to PostgreSQL-compatible timezone names
@@ -2913,10 +2586,10 @@ impl DatabasePool {
         
         debug!("🎵 Getting dynamic playlist episodes for playlist {} user {}", playlist_id, user_id);
         
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Get user timezone for proper date calculations
-                let raw_user_timezone: String = sqlx::query_scalar(
+                let raw_user_timezone: String = q::query_scalar(
                     r#"SELECT timezone FROM "Users" WHERE userid = $1"#
                 ).bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
                 let raw_timezone = if raw_user_timezone.is_empty() { "UTC".to_string() } else { raw_user_timezone };
@@ -2925,7 +2598,7 @@ impl DatabasePool {
                 debug!("User {} timezone: {} -> {}", user_id, raw_timezone, user_timezone);
                 
                 // Get playlist configuration with ALL fields
-                let playlist_row = sqlx::query(
+                let playlist_row = q::query(
                     r#"SELECT userid, name, description, minduration, maxduration, sortorder, 
                        includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
                        groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids,
@@ -3011,7 +2684,7 @@ impl DatabasePool {
                 }
                 
                 // 3. PODCAST FILTER - handle PostgreSQL array of podcast IDs
-                if let Some(podcast_ids) = playlist.try_get::<Option<Vec<i32>>, _>("podcastids")? {
+                if let Some(podcast_ids) = q::int_array(&playlist, "podcastids")? {
                     if !podcast_ids.is_empty() && !podcast_ids.contains(&-1) {
                         let podcast_ids_str = podcast_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
                         where_conditions.push(format!("p.podcastid IN ({})", podcast_ids_str));
@@ -3117,7 +2790,7 @@ impl DatabasePool {
                     LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}{}"#,
                     user_id, user_id, where_clause
                 );
-                let raw_total: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(count_query.as_str()))
+                let raw_total: i64 = q::query_scalar(sqlx::AssertSqlSafe(count_query.as_str()))
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
@@ -3146,7 +2819,7 @@ impl DatabasePool {
                 debug!("🔍 Final dynamic playlist query: {}", final_query);
 
                 // Execute the main query
-                let rows = sqlx::query(sqlx::AssertSqlSafe(final_query.as_str()))
+                let rows = q::query(sqlx::AssertSqlSafe(final_query.as_str()))
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?;
@@ -3179,7 +2852,7 @@ impl DatabasePool {
                 // Create playlist info from the playlist row we already have
                 let min_dur_secs: Option<i32> = playlist.try_get("minduration")?;
                 let max_dur_secs: Option<i32> = playlist.try_get("maxduration")?;
-                let podcast_ids: Option<Vec<i32>> = playlist.try_get("podcastids").ok();
+                let podcast_ids: Option<Vec<i32>> = q::int_array(&playlist, "podcastids").ok().flatten();
                 let playlist_info = crate::models::PlaylistInfo {
                     name: playlist.try_get::<String, _>("name")?,
                     description: playlist.try_get::<Option<String>, _>("description")?.unwrap_or_default(),
@@ -3205,8 +2878,8 @@ impl DatabasePool {
                     playlist_info,
                     total: total_count,
                 })
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // FULL MySQL implementation with exact same logic but MySQL syntax
                 let raw_user_timezone: String = sqlx::query_scalar("SELECT TimeZone FROM Users WHERE UserID = ?").bind(user_id)
                     .fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
@@ -3508,8 +3181,8 @@ impl DatabasePool {
                     playlist_info,
                     total: total_count,
                 })
-            }
-        }
+            },
+        })
     }
 }
 
@@ -3530,3 +3203,342 @@ mod timezone_mapping_tests {
         }
     }
 }
+
+dialect_method!([update_fresh_releases_playlist_postgres, update_fresh_releases_playlist_lite]
+    pub(super) async fn(&self, pool: &q::Pool, playlist_id: i32) -> AppResult<i32> {
+    tracing::info!("Updating Fresh Releases playlist with timezone logic");
+    
+    // Get all users with their timezones
+    let users = q::query(r#"SELECT userid, timezone FROM "Users" WHERE userid = (SELECT userid FROM "Playlists" WHERE playlistid = $1)"#)
+        .bind(playlist_id)
+        .fetch_all(pool)
+        .await?;
+    
+    let mut added_episodes: std::collections::HashSet<i32> = std::collections::HashSet::new();
+    let mut position = 1;
+    
+    for user in users {
+        let user_id: i32 = user.try_get("userid")?;
+        let timezone: Option<String> = user.try_get("timezone").ok();
+        let raw_tz = timezone.as_deref()
+            .filter(|s| !s.is_empty()) // Filter out empty strings
+            .unwrap_or("UTC");
+        
+        let normalized_tz = Self::normalize_timezone(raw_tz);
+        
+        tracing::info!("Processing Fresh Releases for user {} with timezone {} (normalized: {})", user_id, raw_tz, normalized_tz);
+        
+        // Get episodes from last 24 hours in user's timezone
+        let episodes = q::query(r#"
+            SELECT e.episodeid
+            FROM "Episodes" e
+            JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = $2
+            WHERE e.episodepubdate AT TIME ZONE 'UTC' AT TIME ZONE $1 >
+                  (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' AT TIME ZONE $1 - INTERVAL '24 hours')
+            ORDER BY e.episodepubdate DESC
+        "#)
+            .bind(&normalized_tz)
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?;
+        
+        // Add unique episodes to playlist
+        for episode in episodes {
+            let episode_id: i32 = episode.try_get("episodeid")?;
+            if !added_episodes.contains(&episode_id) {
+                q::query(r#"
+                    INSERT INTO "PlaylistContents" (playlistid, episodeid, position)
+                    VALUES ($1, $2, $3)
+                "#)
+                    .bind(playlist_id)
+                    .bind(episode_id)
+                    .bind(position)
+                    .execute(pool)
+                    .await?;
+                
+                added_episodes.insert(episode_id);
+                position += 1;
+            }
+        }
+    }
+    
+    tracing::info!("Fresh Releases playlist updated with {} episodes", added_episodes.len());
+    Ok(added_episodes.len() as i32)
+});
+
+dialect_method!([update_currently_listening_playlist_postgres, update_currently_listening_playlist_lite]
+    pub(super) async fn(&self, pool: &q::Pool, playlist_id: i32) -> AppResult<i32> {
+    tracing::info!("Updating Currently Listening playlist");
+    
+    // Get all users and their currently listening episodes
+    let users = q::query(r#"SELECT userid FROM "Users" WHERE userid = (SELECT userid FROM "Playlists" WHERE playlistid = $1)"#)
+        .bind(playlist_id)
+        .fetch_all(pool)
+        .await?;
+    
+    let mut added_episodes: std::collections::HashSet<i32> = std::collections::HashSet::new();
+    let mut position = 1;
+    
+    for user in users {
+        let user_id: i32 = user.try_get("userid")?;
+        
+        tracing::info!("Processing Currently Listening for user {}", user_id);
+        
+        // Get episodes user has started but not finished
+        let episodes = q::query(r#"
+            SELECT e.episodeid
+            FROM "Episodes" e
+            JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
+            WHERE h.userid = $1
+            AND h.listenduration > 0
+            AND h.listenduration < e.episodeduration
+            ORDER BY h.listendate DESC
+        "#)
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?;
+        
+        // Add unique episodes to playlist
+        for episode in episodes {
+            let episode_id: i32 = episode.try_get("episodeid")?;
+            if !added_episodes.contains(&episode_id) {
+                q::query(r#"INSERT INTO "PlaylistContents" (playlistid, episodeid, position) VALUES ($1, $2, $3)"#)
+                    .bind(playlist_id)
+                    .bind(episode_id)
+                    .bind(position)
+                    .execute(pool)
+                    .await?;
+                
+                added_episodes.insert(episode_id);
+                position += 1;
+            }
+        }
+    }
+    
+    tracing::info!("Currently Listening playlist updated with {} episodes", added_episodes.len());
+    Ok(added_episodes.len() as i32)
+});
+
+dialect_method!([update_almost_done_playlist_postgres, update_almost_done_playlist_lite]
+    pub(super) async fn(&self, pool: &q::Pool, playlist_id: i32) -> AppResult<i32> {
+    tracing::info!("Updating Almost Done playlist");
+    
+    // Get all users and their almost done episodes
+    let users = q::query(r#"SELECT userid FROM "Users" WHERE userid = (SELECT userid FROM "Playlists" WHERE playlistid = $1)"#)
+        .bind(playlist_id)
+        .fetch_all(pool)
+        .await?;
+    
+    let mut added_episodes: std::collections::HashSet<i32> = std::collections::HashSet::new();
+    let mut position = 1;
+    
+    for user in users {
+        let user_id: i32 = user.try_get("userid")?;
+        
+        tracing::info!("Processing Almost Done for user {}", user_id);
+        
+        // Get episodes user is 75%+ through but not completed
+        let episodes = q::query(r#"
+            SELECT e.episodeid
+            FROM "Episodes" e
+            JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
+            WHERE h.userid = $1
+            AND h.listenduration > 0
+            AND h.listenduration < e.episodeduration
+            AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) >= 0.75
+            ORDER BY h.listendate DESC
+        "#)
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?;
+        
+        // Add unique episodes to playlist
+        for episode in episodes {
+            let episode_id: i32 = episode.try_get("episodeid")?;
+            if !added_episodes.contains(&episode_id) {
+                q::query(r#"INSERT INTO "PlaylistContents" (playlistid, episodeid, position) VALUES ($1, $2, $3)"#)
+                    .bind(playlist_id)
+                    .bind(episode_id)
+                    .bind(position)
+                    .execute(pool)
+                    .await?;
+                
+                added_episodes.insert(episode_id);
+                position += 1;
+            }
+        }
+    }
+    
+    tracing::info!("Almost Done playlist updated with {} episodes", added_episodes.len());
+    Ok(added_episodes.len() as i32)
+});
+
+dialect_method!([update_quick_listens_playlist_postgres, update_quick_listens_playlist_lite]
+    pub(super) async fn(&self, pool: &q::Pool, playlist_id: i32) -> AppResult<i32> {
+    tracing::info!("Updating Quick Listens playlist");
+    
+    // Get shortest 1000 episodes under 15 minutes (900 seconds) and over 1 second from ALL podcasts
+    let episodes = q::query(r#"
+        SELECT e.episodeid
+        FROM "Episodes" e
+        JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = (SELECT userid FROM "Playlists" WHERE playlistid = $1)
+        WHERE e.episodeduration >= 1
+        AND e.episodeduration <= 900
+        AND COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) = FALSE
+        ORDER BY e.episodeduration ASC
+        LIMIT 1000
+    "#)
+        .bind(playlist_id)
+        .fetch_all(pool)
+        .await?;
+    
+    let mut position = 1;
+    
+    // Add episodes to playlist
+    for episode in episodes {
+        let episode_id: i32 = episode.try_get("episodeid")?;
+        q::query(r#"INSERT INTO "PlaylistContents" (playlistid, episodeid, position) VALUES ($1, $2, $3)"#)
+            .bind(playlist_id)
+            .bind(episode_id)
+            .bind(position)
+            .execute(pool)
+            .await?;
+        
+        position += 1;
+    }
+    
+    let episode_count = position - 1;
+    tracing::info!("Quick Listens playlist updated with {} episodes", episode_count);
+    Ok(episode_count)
+});
+
+dialect_method!([build_and_execute_playlist_query_postgres, build_and_execute_playlist_query_lite]
+    pub(super) async fn(&self, pool: &q::Pool, playlist: &q::Row) -> AppResult<i32> {
+    let playlist_id: i32 = playlist.try_get("playlistid")?;
+    let user_id: i32 = playlist.try_get("userid")?;
+    let playlist_name: String = playlist.try_get("name")?;
+    let is_system_playlist: bool = playlist.try_get("issystemplaylist").unwrap_or(false);
+    
+    // Parse playlist configuration
+    let config = PlaylistConfig::from_row(q::raw(playlist), q::int_array(playlist, "podcastids"))?;
+    
+    // Determine if this playlist needs user history filtering
+    let needs_user_history = playlist_name == "Currently Listening" || 
+                              playlist_name == "Almost Done" || 
+                              !is_system_playlist;
+    
+    // Check for special optimized queries for partially played
+    if config.include_partially_played && !config.include_unplayed && !config.include_played {
+        return q::pick(Self::execute_partially_played_query_postgres, Self::execute_partially_played_query_lite)(self, pool, playlist_id, user_id, &config).await;
+    }
+    
+    // Build the appropriate base query - FIXED PARAMETER INDEXING
+    let (base_query, params) = if is_system_playlist {
+        if needs_user_history {
+            // System playlist with user history filtering
+            (r#"
+                SELECT e.episodeid, p.podcastid, u.timezone
+                FROM "Episodes" e
+                JOIN "Podcasts" p ON e.feedid = p.feedid
+                LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
+                JOIN "Users" u ON u.userid = $3
+                WHERE p.userid = u.userid
+            "#.to_string(), vec![user_id, user_id])
+        } else {
+            // System playlist without user history filtering (Fresh Releases, etc.)  
+            // But still need user context for history when needed
+            (r#"
+                SELECT e.episodeid, p.podcastid, u.timezone
+                FROM "Episodes" e
+                JOIN "Podcasts" p ON e.feedid = p.feedid
+                LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
+                JOIN "Users" u ON u.userid = $3
+                WHERE p.userid = u.userid
+            "#.to_string(), vec![user_id, user_id])
+        }
+    } else {
+        // User-specific playlist
+        (r#"
+            SELECT e.episodeid, p.podcastid, u.timezone
+            FROM "Episodes" e
+            JOIN "Podcasts" p ON e.feedid = p.feedid
+            LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
+            JOIN "Users" u ON u.userid = $3
+            WHERE p.userid = $4
+        "#.to_string(), vec![user_id, user_id, user_id])
+    };
+    
+    // Build the complete query with all filters
+    let (complete_query, all_params) = self.build_complete_postgres_query(
+        base_query, params, &config, playlist_id
+    )?;
+    
+    // Execute the query and insert episodes
+    q::pick(Self::execute_playlist_query_postgres, Self::execute_playlist_query_lite)(self, pool, &complete_query, &all_params, playlist_id).await
+});
+
+dialect_method!([execute_partially_played_query_postgres, execute_partially_played_query_lite]
+    pub(super) async fn(&self, pool: &q::Pool, playlist_id: i32, user_id: i32, config: &PlaylistConfig) -> AppResult<i32> {
+    // Use direct INSERT without subquery for this optimized case - no alias scoping issues
+    let sort_order = config.get_postgres_sort_order().replace("ORDER BY ", "");
+    
+    // Build base query
+    let mut query = format!(r#"
+        INSERT INTO "PlaylistContents" (playlistid, episodeid, position)
+        SELECT $1, e.episodeid, ROW_NUMBER() OVER (ORDER BY {}) as position
+        FROM "Episodes" e
+        JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
+        JOIN "Podcasts" p ON e.feedid = p.feedid AND p.userid = h.userid
+        WHERE h.listenduration > 0
+        AND h.listenduration < e.episodeduration
+        AND COALESCE((SELECT ues.completed FROM "UserEpisodeState" ues WHERE ues.episodeid = e.episodeid AND ues.userid = p.userid), FALSE) = FALSE
+        AND e.episodeduration > 0
+        AND h.userid = $2
+    "#, sort_order);
+    
+    let params = vec![playlist_id, user_id];
+    
+    // Add progress filters using hardcoded values instead of parameters to avoid type issues
+    if let Some(min_progress) = config.play_progress_min {
+        query.push_str(&format!(" AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) >= {}", min_progress / 100.0));
+    }
+    
+    if let Some(max_progress) = config.play_progress_max {
+        query.push_str(&format!(" AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) <= {}", max_progress / 100.0));
+    }
+    
+    // Add limit
+    if let Some(max_episodes) = config.max_episodes {
+        query.push_str(&format!(" LIMIT {}", max_episodes));
+    }
+    
+    tracing::info!("Executing partially played query with {} parameters", params.len());
+    tracing::debug!("Query: {}", query);
+    
+    // Execute with proper parameter binding
+    let mut sqlx_query = q::query(sqlx::AssertSqlSafe(query.as_str()));
+    for param in &params {
+        sqlx_query = sqlx_query.bind(*param);
+    }
+    
+    let result = sqlx_query.execute(pool).await?;
+    Ok(result.rows_affected() as i32)
+});
+
+dialect_method!([execute_playlist_query_postgres, execute_playlist_query_lite]
+    pub(super) async fn(&self, pool: &q::Pool, query: &str, params: &[i32], _playlist_id: i32) -> AppResult<i32> {
+    info!("PostgreSQL executing playlist query with {} parameters", params.len());
+    info!("PostgreSQL Query: {}", query);
+    info!("PostgreSQL Params: {:?}", params);
+    
+    // Build query with proper parameter binding
+    let query_owned = query.to_owned();
+    let mut sqlx_query = q::query(sqlx::AssertSqlSafe(query_owned.as_str()));
+    for param in params {
+        sqlx_query = sqlx_query.bind(*param);
+    }
+
+    let result = sqlx_query.execute(pool).await?;
+    info!("PostgreSQL playlist query affected {} rows", result.rows_affected());
+    Ok(result.rows_affected() as i32)
+});

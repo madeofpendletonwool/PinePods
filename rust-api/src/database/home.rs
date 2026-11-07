@@ -5,8 +5,8 @@ use super::*;
 impl DatabasePool {
     // Search data - matches Python search_data function (simplified version)
     pub async fn search_data(&self, search_term: &str, user_id: i32, categories: &[String], limit: i64, offset: i64, filter: &str) -> AppResult<(Vec<serde_json::Value>, i64)> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let cat_clause = if categories.is_empty() {
                     String::new()
                 } else {
@@ -74,7 +74,7 @@ impl DatabasePool {
                     cat_clause, filter_clause
                 );
 
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                let mut q = q::query(sqlx::AssertSqlSafe(sql.as_str()))
                     .bind(format!("%{}%", search_term))
                     .bind(user_id)
                     .bind(limit)
@@ -130,8 +130,8 @@ impl DatabasePool {
                     results.push(result);
                 }
                 Ok((results, total))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let cat_clause = if categories.is_empty() {
                     String::new()
                 } else {
@@ -259,17 +259,17 @@ impl DatabasePool {
                     results.push(result);
                 }
                 Ok((results, total))
-            }
-        }
+            },
+        })
     }
 
     // Get home overview data - matches Python get_home_overview function
     pub async fn get_home_overview(&self, user_id: i32) -> AppResult<serde_json::Value> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Shared row -> JSON mapping for the episode-list sections (recent,
                 // in-progress, queue preview). All three queries alias to these columns.
-                let map_episode_row = |row: &sqlx::postgres::PgRow| -> AppResult<serde_json::Value> {
+                let map_episode_row = |row: &q::Row| -> AppResult<serde_json::Value> {
                     let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
                     Ok(serde_json::json!({
                         "episodeid": row.try_get::<i32, _>("episodeid")?,
@@ -334,7 +334,7 @@ impl DatabasePool {
                 "#;
 
                 let recent_fut = async {
-                    let rows = sqlx::query(recent_query)
+                    let rows = q::query(recent_query)
                         .bind(user_id)
                         .bind(user_id)
                         .bind(user_id)
@@ -392,7 +392,7 @@ impl DatabasePool {
                 "#;
 
                 let in_progress_fut = async {
-                    let rows = sqlx::query(in_progress_query)
+                    let rows = q::query(in_progress_query)
                         .bind(user_id)
                         .bind(user_id)
                         .bind(user_id)
@@ -447,7 +447,7 @@ impl DatabasePool {
                 "#;
 
                 let queue_preview_fut = async {
-                    let rows = sqlx::query(queue_preview_query)
+                    let rows = q::query(queue_preview_query)
                         .bind(user_id)
                         .bind(user_id)
                         .bind(user_id)
@@ -496,7 +496,7 @@ impl DatabasePool {
                 "#;
 
                 let top_podcasts_fut = async {
-                    let rows = sqlx::query(top_podcasts_query)
+                    let rows = q::query(top_podcasts_query)
                         .bind(user_id)
                         .bind(user_id)
                         .fetch_all(pool)
@@ -541,7 +541,7 @@ impl DatabasePool {
 
                 // Counts (folded into a single round-trip) and weekly listening stats.
                 let counts_fut = async {
-                    let row = sqlx::query(
+                    let row = q::query(
                         r#"SELECT
                             (SELECT COUNT(*) FROM "SavedEpisodes" WHERE userid = $1) AS saved_count,
                             (SELECT COUNT(*) FROM "DownloadedEpisodes" WHERE userid = $1) AS downloaded_count,
@@ -557,7 +557,7 @@ impl DatabasePool {
                 };
 
                 let weekly_fut = async {
-                    let row = sqlx::query(
+                    let row = q::query(
                         r#"SELECT
                             COALESCE(SUM("UserEpisodeHistory".listenduration), 0)::bigint AS seconds_listened,
                             COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM "UserEpisodeState" ues
@@ -606,8 +606,8 @@ impl DatabasePool {
                     "queue_count": queue_count,
                     "weekly_stats": weekly_stats
                 }))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Shared row -> JSON mapping for the episode-list sections (recent,
                 // in-progress, queue preview). All three queries alias to these columns.
                 let map_episode_row = |row: &sqlx::mysql::MySqlRow| -> AppResult<serde_json::Value> {
@@ -949,7 +949,7 @@ impl DatabasePool {
                     "queue_count": queue_count,
                     "weekly_stats": weekly_stats
                 }))
-            }
-        }
+            },
+        })
     }
 }

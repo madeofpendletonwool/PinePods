@@ -13,6 +13,7 @@ use crate::{
     AppState,
 };
 use tracing::{debug, error, info, warn};
+use crate::database::dialect::dialect_match;
 
 // Request struct for set_theme
 #[derive(Deserialize, utoipa::ToSchema)]
@@ -1753,6 +1754,7 @@ pub async fn backup_server(
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
+    state.db_pool.ensure_server_backups_supported()?;
 
     // For large databases, we'll implement streaming export instead of subprocess
     // This avoids loading the entire database into memory at once
@@ -1773,8 +1775,8 @@ async fn backup_server_streaming(
     use tokio_util::io::ReaderStream;
 
     // Get database connection info from config
-    let mut cmd = match &state.db_pool {
-        crate::database::DatabasePool::Postgres(_) => {
+    let mut cmd = dialect_match!(&state.db_pool, {
+        pg(_) => {
             // Extract connection details from DATABASE_URL or config
             let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
             let port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
@@ -1801,8 +1803,8 @@ async fn backup_server_streaming(
             cmd.env("PGPASSWORD", database_pass);
             
             cmd
-        }
-        crate::database::DatabasePool::MySQL(_) => {
+        },
+        mysql(_) => {
             let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
             let port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
             let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
@@ -1826,8 +1828,8 @@ async fn backup_server_streaming(
                .arg(&database);
             
             cmd
-        }
-    };
+        },
+    });
 
     let mut child = cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -1929,6 +1931,7 @@ pub async fn restore_server(
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
+    state.db_pool.ensure_server_backups_supported()?;
 
     // Refuse to start a second restore while one is already running.
     let restore_guard = RestoreGuard::try_acquire(&state.restore_in_progress)
@@ -5149,6 +5152,7 @@ pub async fn restore_from_backup_file(
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
+    state.db_pool.ensure_server_backups_supported()?;
 
     // Validate filename to prevent path traversal
     let backup_filename = request.backup_filename.clone();
@@ -5290,6 +5294,7 @@ pub async fn manual_backup_to_directory(
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
+    state.db_pool.ensure_server_backups_supported()?;
 
     // Generate filename with timestamp
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");

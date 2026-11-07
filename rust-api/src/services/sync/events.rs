@@ -4,7 +4,8 @@
 // statement would otherwise abort the caller's transaction) and a failure is logged and dropped.
 // A logged event for a user with an enabled external target schedules a push.
 
-use sqlx::{Connection, MySql, MySqlConnection, MySqlPool, PgConnection, Transaction};
+use crate::database::dialect::dialect_fn;
+use sqlx::{Connection, MySql, MySqlConnection, MySqlPool, Transaction};
 
 use super::db;
 use super::{push, sync_enabled, SyncOrigin};
@@ -39,17 +40,18 @@ fn settle(pool: &DatabasePool, user_id: i32, what: &str, result: AppResult<bool>
     }
 }
 
-/// Subscription `add`/`remove` for a shareable feed (the caller checks `shareable_feed`).
-pub async fn subscription_pg(pool: &DatabasePool, conn: &mut PgConnection, user_id: i32, feed_url: &str, action: &str) {
+// Subscription `add`/`remove` for a shareable feed (the caller checks `shareable_feed`).
+dialect_fn!([subscription_pg, subscription_lite]
+    pub async fn(pool: &DatabasePool, conn: &mut q::Conn, user_id: i32, feed_url: &str, action: &str)  {
     let result: AppResult<bool> = async {
         let mut sp = conn.begin().await?;
-        let push = db::pg_log_subscription(&mut sp, user_id, feed_url, action).await?;
+        let push = q::pick(db::pg_log_subscription, db::lite_log_subscription)(&mut sp, user_id, feed_url, action).await?;
         sp.commit().await?;
         Ok(push)
     }
     .await;
     settle(pool, user_id, action, result);
-}
+});
 
 pub async fn subscription_mysql(pool: &DatabasePool, conn: &mut MySqlConnection, user_id: i32, feed_url: &str, action: &str) {
     let result: AppResult<bool> = async {
@@ -70,20 +72,21 @@ fn event_name(event: EpisodeEvent) -> &'static str {
     }
 }
 
-/// Episode event, skipped for episodes of feeds that aren't shared (private, local, YouTube).
-pub async fn episode_pg(pool: &DatabasePool, conn: &mut PgConnection, user_id: i32, episode_id: i32, event: EpisodeEvent) {
+// Episode event, skipped for episodes of feeds that aren't shared (private, local, YouTube).
+dialect_fn!([episode_pg, episode_lite]
+    pub async fn(pool: &DatabasePool, conn: &mut q::Conn, user_id: i32, episode_id: i32, event: EpisodeEvent)  {
     let result: AppResult<bool> = async {
         let mut sp = conn.begin().await?;
         let mut push = false;
-        if let Some(ep) = db::pg_episode_for_event(&mut sp, user_id, episode_id).await?.filter(|e| e.shareable) {
-            push = db::pg_log_episode(&mut sp, user_id, episode_id, &ep, event).await?;
+        if let Some(ep) = q::pick(db::pg_episode_for_event, db::lite_episode_for_event)(&mut sp, user_id, episode_id).await?.filter(|e| e.shareable) {
+            push = q::pick(db::pg_log_episode, db::lite_log_episode)(&mut sp, user_id, episode_id, &ep, event).await?;
         }
         sp.commit().await?;
         Ok(push)
     }
     .await;
     settle(pool, user_id, event_name(event), result);
-}
+});
 
 pub async fn episode_mysql(pool: &DatabasePool, conn: &mut MySqlConnection, user_id: i32, episode_id: i32, event: EpisodeEvent) {
     let result: AppResult<bool> = async {

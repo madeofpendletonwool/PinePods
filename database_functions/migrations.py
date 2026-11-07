@@ -46,6 +46,9 @@ class Migration:
     mysql_sql: Optional[str] = None
     python_func: Optional[Callable] = None
     requires: List[str] = None  # List of migration versions this depends on
+    # SQLite databases start from sqlite_baseline.sql; a migration newer than the baseline
+    # runs on SQLite only when it says it handles db_type == 'sqlite'.
+    sqlite: bool = False
     
     def __post_init__(self):
         if self.requires is None:
@@ -62,7 +65,7 @@ class DatabaseMigrationManager:
         self._connection = None
         
         # Validate database type
-        if self.db_type not in ['postgresql', 'postgres', 'mariadb', 'mysql']:
+        if self.db_type not in ['postgresql', 'postgres', 'mariadb', 'mysql', 'sqlite']:
             raise ValueError(f"Unsupported database type: {db_type}")
             
         # Normalize database type
@@ -93,6 +96,13 @@ class DatabaseMigrationManager:
             if 'collation' in mysql_params:
                 mysql_params.pop('collation')  # MariaDB connector doesn't use collation parameter
             self._connection = mysql_connector.connect(**mysql_params)
+        elif self.db_type == 'sqlite':
+            import sqlite3
+            path = self.connection_params['path']
+            if os.path.dirname(path):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+            self._connection = sqlite3.connect(path)
+            self._connection.execute("PRAGMA journal_mode=WAL")
         
         return self._connection
 
@@ -187,6 +197,11 @@ class DatabaseMigrationManager:
                     INSERT INTO {table_name} (version, name, description, checksum, execution_time_ms)
                     VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (version) DO NOTHING
+                """, (migration.version, migration.name, migration.description, checksum, execution_time_ms))
+            elif self.db_type == 'sqlite':
+                cursor.execute(f"""
+                    INSERT OR IGNORE INTO {table_name} (version, name, description, checksum, execution_time_ms)
+                    VALUES (?, ?, ?, ?, ?)
                 """, (migration.version, migration.name, migration.description, checksum, execution_time_ms))
             else:  # mysql
                 cursor.execute(f"""
@@ -389,8 +404,17 @@ class DatabaseMigrationManager:
             applied_migrations = self.get_applied_migrations()
             logger.info(f"Found {len(applied_migrations)} applied migrations")
             
+            if self.db_type == 'sqlite' and not applied_migrations:
+                from database_functions.sqlite_baseline import apply_baseline, baseline_versions
+                logger.info("New SQLite database: creating the schema from the baseline")
+                apply_baseline(self.get_connection())
+                for version in baseline_versions():
+                    if version in self.migrations:
+                        self.record_migration(self.migrations[version], 0)
+                applied_migrations = self.get_applied_migrations()
+
             # If no migrations are recorded but we have existing schema, detect what's there
-            if not applied_migrations:
+            if not applied_migrations and self.db_type != 'sqlite':
                 detected_migrations = self.detect_existing_schema()
                 if detected_migrations:
                     logger.info(f"Detected existing schema, marking {len(detected_migrations)} migrations as applied")
@@ -419,6 +443,10 @@ class DatabaseMigrationManager:
             
             # Execute pending migrations
             for migration in pending_migrations:
+                if self.db_type == 'sqlite' and not migration.sqlite:
+                    logger.error(f"Migration {migration.version} has no SQLite support (register it with sqlite=True and handle db_type == 'sqlite')")
+                    return False
+
                 # Check dependencies
                 if not self.check_dependencies(migration, applied_migrations):
                     logger.error(f"Dependency check failed for migration {migration.version}")
@@ -485,7 +513,9 @@ def get_migration_manager() -> DatabaseMigrationManager:
         # Get database configuration from environment
         db_type = os.environ.get("DB_TYPE", "postgresql")
         
-        if db_type.lower() in ['postgresql', 'postgres']:
+        if db_type.lower() == 'sqlite':
+            connection_params = {'path': os.environ.get("DB_PATH", "/opt/pinepods/data/pinepods.db")}
+        elif db_type.lower() in ['postgresql', 'postgres']:
             connection_params = {
                 'host': os.environ.get("DB_HOST", "127.0.0.1"),
                 'port': int(os.environ.get("DB_PORT", "5432")),

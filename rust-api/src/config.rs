@@ -166,8 +166,12 @@ impl Config {
             ("DB_NAME", "Database name"),
         ];
 
+        // SQLite needs only DB_TYPE and the database file (DB_PATH).
+        let is_sqlite = env::var("DB_TYPE").is_ok_and(|t| t.eq_ignore_ascii_case("sqlite"));
+        let db_required_vars: &[(&str, &str)] = if is_sqlite { &db_required_vars[..1] } else { &db_required_vars };
+
         let mut missing_db_vars = Vec::new();
-        for (var_name, description) in &db_required_vars {
+        for (var_name, description) in db_required_vars {
             if env::var(var_name).is_err() {
                 missing_db_vars.push(format!("  {} - {}", var_name, description));
             }
@@ -212,7 +216,19 @@ impl Config {
             )));
         }
 
-        let database = DatabaseConfig {
+        let database = if is_sqlite {
+            DatabaseConfig {
+                db_type: "sqlite".to_string(),
+                host: String::new(),
+                port: 0,
+                username: String::new(),
+                password: String::new(),
+                // For SQLite, `name` is the database file.
+                name: env::var("DB_PATH").unwrap_or_else(|_| "/opt/pinepods/data/pinepods.db".to_string()),
+                max_connections: 8,
+                min_connections: 1,
+            }
+        } else { DatabaseConfig {
             db_type: env::var("DB_TYPE").unwrap(),
             host: env::var("DB_HOST").unwrap(),
             port: {
@@ -225,7 +241,7 @@ impl Config {
             name: env::var("DB_NAME").unwrap(),
             max_connections: 32,
             min_connections: 1,
-        };
+        } };
 
         let redis = if let Some(url) = env::var("VALKEY_URL").ok().or_else(|| env::var("REDIS_URL").ok()) {
             // Parse VALKEY_URL or REDIS_URL

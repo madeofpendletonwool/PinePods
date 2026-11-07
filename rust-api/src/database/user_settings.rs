@@ -11,9 +11,9 @@ pub struct UserAutoComplete {
 impl DatabasePool {
     // Get theme - matches Python get_theme function
     pub async fn get_theme(&self, user_id: i32) -> AppResult<String> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT theme FROM "UserSettings" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT theme FROM "UserSettings" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -22,8 +22,8 @@ impl DatabasePool {
                     Some(row) => Ok(row.try_get("theme").unwrap_or_else(|_| "Nordic".to_string())),
                     None => Ok("Nordic".to_string()),
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT Theme FROM UserSettings WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -33,15 +33,15 @@ impl DatabasePool {
                     Some(row) => Ok(row.try_get("Theme").unwrap_or_else(|_| "Nordic".to_string())),
                     None => Ok("Nordic".to_string()),
                 }
-            }
-        }
+            },
+        })
     }
 
     // Setup timezone info - matches Python setup_timezone_info function
     pub async fn setup_timezone_info(&self, user_id: i32, timezone: &str, hour_pref: i32, date_format: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"UPDATE "Users" SET timezone = $1, timeformat = $2, dateformat = $3, firstlogin = $4 WHERE userid = $5"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"UPDATE "Users" SET timezone = $1, timeformat = $2, dateformat = $3, firstlogin = $4 WHERE userid = $5"#)
                     .bind(timezone)
                     .bind(hour_pref)
                     .bind(date_format)
@@ -51,8 +51,8 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("UPDATE Users SET Timezone = ?, TimeFormat = ?, DateFormat = ?, FirstLogin = ? WHERE UserID = ?")
                     .bind(timezone)
                     .bind(hour_pref)
@@ -63,23 +63,23 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-        }
+            },
+        })
     }
 
     // Update user timezone
     pub async fn update_user_timezone(&self, user_id: i32, timezone: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"UPDATE "Users" SET timezone = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"UPDATE "Users" SET timezone = $1 WHERE userid = $2"#)
                     .bind(timezone)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("UPDATE Users SET Timezone = ? WHERE UserID = ?")
                     .bind(timezone)
                     .bind(user_id)
@@ -87,23 +87,23 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-        }
+            },
+        })
     }
 
     // Update user date format
     pub async fn update_user_date_format(&self, user_id: i32, date_format: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"UPDATE "Users" SET dateformat = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"UPDATE "Users" SET dateformat = $1 WHERE userid = $2"#)
                     .bind(date_format)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("UPDATE Users SET DateFormat = ? WHERE UserID = ?")
                     .bind(date_format)
                     .bind(user_id)
@@ -111,23 +111,23 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-        }
+            },
+        })
     }
 
     // Update user time format (hour preference)
     pub async fn update_user_time_format(&self, user_id: i32, hour_pref: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"UPDATE "Users" SET timeformat = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"UPDATE "Users" SET timeformat = $1 WHERE userid = $2"#)
                     .bind(hour_pref)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("UPDATE Users SET TimeFormat = ? WHERE UserID = ?")
                     .bind(hour_pref)
                     .bind(user_id)
@@ -135,8 +135,8 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-        }
+            },
+        })
     }
 
     // Extract audio URL from description/content HTML - matches Python logic
@@ -156,29 +156,29 @@ impl DatabasePool {
 
     // Set user theme - matches Python set_theme function exactly
     pub async fn set_theme(&self, user_id: i32, theme: &str) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "UserSettings" SET theme = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "UserSettings" SET theme = $1 WHERE userid = $2"#)
                     .bind(theme)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE UserSettings SET Theme = ? WHERE UserID = ?")
                     .bind(theme)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     pub async fn get_custom_themes(&self, user_id: i32) -> AppResult<Vec<crate::models::CustomTheme>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT themeid, name, background_color, button_color, container_button_color,
                        button_text_color, text_color, text_secondary_color, border_color, accent_color,
                        prog_bar_color, error_color, bonus_color, secondary_background, container_background,
@@ -216,8 +216,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(themes)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     r#"SELECT ThemeID as themeid, Name as name, BackgroundColor as background_color,
                        ButtonColor as button_color, ContainerButtonColor as container_button_color,
@@ -262,14 +262,14 @@ impl DatabasePool {
                     });
                 }
                 Ok(themes)
-            }
-        }
+            },
+        })
     }
 
     pub async fn create_custom_theme(&self, user_id: i32, req: &crate::models::CreateCustomThemeRequest) -> AppResult<crate::models::CustomTheme> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"INSERT INTO "CustomThemes"
                        (userid, name, background_color, button_color, container_button_color,
                         button_text_color, text_color, text_secondary_color, border_color, accent_color,
@@ -328,8 +328,8 @@ impl DatabasePool {
                     unfilled_color: row.try_get("unfilled_color")?,
                     check_box_color: row.try_get("check_box_color")?,
                 })
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query(
                     r#"INSERT INTO CustomThemes
                        (UserID, Name, BackgroundColor, ButtonColor, ContainerButtonColor,
@@ -403,27 +403,27 @@ impl DatabasePool {
                     unfilled_color: row.try_get("unfilled_color")?,
                     check_box_color: row.try_get("check_box_color")?,
                 })
-            }
-        }
+            },
+        })
     }
 
     pub async fn delete_custom_theme(&self, theme_id: i32, user_id: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"DELETE FROM "CustomThemes" WHERE themeid = $1 AND userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"DELETE FROM "CustomThemes" WHERE themeid = $1 AND userid = $2"#)
                     .bind(theme_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("DELETE FROM CustomThemes WHERE ThemeID = ? AND UserID = ?")
                     .bind(theme_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -431,9 +431,9 @@ impl DatabasePool {
     pub async fn get_user_startpage(&self, user_id: i32) -> AppResult<String> {
         info!("Getting start page for user {}", user_id);
         
-        let startpage = match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT startpage FROM "UserSettings" WHERE userid = $1"#)
+        let startpage = dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT startpage FROM "UserSettings" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -443,8 +443,8 @@ impl DatabasePool {
                 } else {
                     "home".to_string()
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT StartPage FROM UserSettings WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -455,8 +455,8 @@ impl DatabasePool {
                 } else {
                     "home".to_string()
                 }
-            }
-        };
+            },
+        });
         
         Ok(startpage)
     }
@@ -466,9 +466,9 @@ impl DatabasePool {
         info!("Setting start page for user {} to {}", user_id, startpage);
         
         // Check if user settings exist and perform update/insert
-        let success = match self {
-            DatabasePool::Postgres(pool) => {
-                let existing = sqlx::query(r#"SELECT COUNT(*) as count FROM "UserSettings" WHERE userid = $1"#)
+        let success = dialect_match!(self, {
+            pg(pool) => {
+                let existing = q::query(r#"SELECT COUNT(*) as count FROM "UserSettings" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
@@ -477,7 +477,7 @@ impl DatabasePool {
                 
                 if count > 0 {
                     // Update existing record
-                    let result = sqlx::query(r#"UPDATE "UserSettings" SET startpage = $2 WHERE userid = $1"#)
+                    let result = q::query(r#"UPDATE "UserSettings" SET startpage = $2 WHERE userid = $1"#)
                         .bind(user_id)
                         .bind(startpage)
                         .execute(pool)
@@ -485,15 +485,15 @@ impl DatabasePool {
                     result.rows_affected() > 0
                 } else {
                     // Insert new record
-                    let result = sqlx::query(r#"INSERT INTO "UserSettings" (userid, startpage) VALUES ($1, $2)"#)
+                    let result = q::query(r#"INSERT INTO "UserSettings" (userid, startpage) VALUES ($1, $2)"#)
                         .bind(user_id)
                         .bind(startpage)
                         .execute(pool)
                         .await?;
                     result.rows_affected() > 0
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let existing = sqlx::query("SELECT COUNT(*) as count FROM UserSettings WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_one(pool)
@@ -518,8 +518,8 @@ impl DatabasePool {
                         .await?;
                     result.rows_affected() > 0
                 }
-            }
-        };
+            },
+        });
         
         info!("Successfully set start page for user {} to {}: {}", user_id, startpage, success);
         Ok(success)
@@ -539,9 +539,9 @@ impl DatabasePool {
     pub async fn get_user_auto_complete_seconds(&self, user_id: i32) -> AppResult<i32> {
         info!("Getting auto complete seconds for user {}", user_id);
         
-        let auto_complete_seconds = match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT autocompleteseconds FROM "UserSettings" WHERE userid = $1"#)
+        let auto_complete_seconds = dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT autocompleteseconds FROM "UserSettings" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -551,8 +551,8 @@ impl DatabasePool {
                 } else {
                     0
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT AutoCompleteSeconds FROM UserSettings WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -563,8 +563,8 @@ impl DatabasePool {
                 } else {
                     0
                 }
-            }
-        };
+            },
+        });
         
         Ok(auto_complete_seconds)
     }
@@ -574,9 +574,9 @@ impl DatabasePool {
         info!("Setting auto complete seconds for user {} to {}", user_id, seconds);
         
         // Check if user settings exist and perform update/insert
-        let success = match self {
-            DatabasePool::Postgres(pool) => {
-                let existing = sqlx::query(r#"SELECT COUNT(*) as count FROM "UserSettings" WHERE userid = $1"#)
+        let success = dialect_match!(self, {
+            pg(pool) => {
+                let existing = q::query(r#"SELECT COUNT(*) as count FROM "UserSettings" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
@@ -585,7 +585,7 @@ impl DatabasePool {
                 
                 if count > 0 {
                     // Update existing record
-                    let result = sqlx::query(r#"UPDATE "UserSettings" SET autocompleteseconds = $2 WHERE userid = $1"#)
+                    let result = q::query(r#"UPDATE "UserSettings" SET autocompleteseconds = $2 WHERE userid = $1"#)
                         .bind(user_id)
                         .bind(seconds)
                         .execute(pool)
@@ -593,15 +593,15 @@ impl DatabasePool {
                     result.rows_affected() > 0
                 } else {
                     // Insert new record with default theme
-                    let result = sqlx::query(r#"INSERT INTO "UserSettings" (userid, autocompleteseconds, theme) VALUES ($1, $2, 'Nordic')"#)
+                    let result = q::query(r#"INSERT INTO "UserSettings" (userid, autocompleteseconds, theme) VALUES ($1, $2, 'Nordic')"#)
                         .bind(user_id)
                         .bind(seconds)
                         .execute(pool)
                         .await?;
                     result.rows_affected() > 0
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let existing = sqlx::query("SELECT COUNT(*) as count FROM UserSettings WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_one(pool)
@@ -626,8 +626,8 @@ impl DatabasePool {
                         .await?;
                     result.rows_affected() > 0
                 }
-            }
-        };
+            },
+        });
         
         info!("Successfully set auto complete seconds for user {} to {}: {}", user_id, seconds, success);
         Ok(success)
@@ -635,8 +635,8 @@ impl DatabasePool {
 
     // Get playback speed - matches Python get_playback_speed function exactly
     pub async fn get_playback_speed(&self, user_id: i32, _is_youtube: bool, podcast_id: Option<i32>) -> AppResult<f64> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let query = if let Some(_pod_id) = podcast_id {
                     r#"SELECT PlaybackSpeed FROM "Podcasts" WHERE PodcastID = $1"#
                 } else {
@@ -644,7 +644,7 @@ impl DatabasePool {
                 };
                 
                 let param = podcast_id.unwrap_or(user_id);
-                let row = sqlx::query(query)
+                let row = q::query(query)
                     .bind(param)
                     .fetch_one(pool)
                     .await?;
@@ -652,13 +652,13 @@ impl DatabasePool {
                 // PlaybackSpeed is a NUMERIC column in Postgres, which sqlx
                 // decodes to BigDecimal (not f64). The column comes back
                 // lowercased because it was selected unquoted.
-                if let Ok(speed) = row.try_get::<bigdecimal::BigDecimal, _>("playbackspeed") {
-                    Ok(speed.to_f64().unwrap_or(1.0))
+                if let Ok(Some(speed)) = q::decimal(&row, "playbackspeed") {
+                    Ok(speed)
                 } else {
                     Ok(1.0)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let query = if let Some(_pod_id) = podcast_id {
                     "SELECT PlaybackSpeed FROM Podcasts WHERE PodcastID = ?"
                 } else {
@@ -676,18 +676,18 @@ impl DatabasePool {
                 } else {
                     Ok(1.0)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get auto-delete-downloads setting (#655). Returns (days, customized).
     // For the user default (podcast_id None) customized is always false. For a podcast, days is
     // the raw per-podcast value and customized indicates whether it overrides the user default.
     pub async fn get_auto_download_delete_days(&self, user_id: i32, podcast_id: Option<i32>) -> AppResult<(i32, bool)> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 if let Some(pod_id) = podcast_id {
-                    let row = sqlx::query(r#"SELECT autodownloaddeletedays, autodownloaddeletecustomized FROM "Podcasts" WHERE podcastid = $1"#)
+                    let row = q::query(r#"SELECT autodownloaddeletedays, autodownloaddeletecustomized FROM "Podcasts" WHERE podcastid = $1"#)
                         .bind(pod_id)
                         .fetch_one(pool)
                         .await?;
@@ -696,14 +696,14 @@ impl DatabasePool {
                         row.try_get::<bool, _>("autodownloaddeletecustomized").unwrap_or(false),
                     ))
                 } else {
-                    let row = sqlx::query(r#"SELECT autodownloaddeletedays FROM "Users" WHERE userid = $1"#)
+                    let row = q::query(r#"SELECT autodownloaddeletedays FROM "Users" WHERE userid = $1"#)
                         .bind(user_id)
                         .fetch_one(pool)
                         .await?;
                     Ok((row.try_get::<i32, _>("autodownloaddeletedays").unwrap_or(0), false))
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 if let Some(pod_id) = podcast_id {
                     let row = sqlx::query("SELECT AutoDownloadDeleteDays, AutoDownloadDeleteCustomized FROM Podcasts WHERE PodcastID = ?")
                         .bind(pod_id)
@@ -718,43 +718,43 @@ impl DatabasePool {
                         .await?;
                     Ok((row.try_get::<i32, _>("AutoDownloadDeleteDays").unwrap_or(0), false))
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get per-user default playback volume (0-100). Falls back to 100 if unset (#828).
     pub async fn get_default_volume(&self, user_id: i32) -> AppResult<i32> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT defaultvolume FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT defaultvolume FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
                 Ok(row.try_get::<i32, _>("defaultvolume").unwrap_or(100))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT DefaultVolume FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
                 Ok(row.try_get::<i32, _>("DefaultVolume").unwrap_or(100))
-            }
-        }
+            },
+        })
     }
 
     // "Delete downloads when finished": the user's default (podcast_id None), or the podcast's
     // effective value and whether it overrides the default.
     pub async fn get_auto_delete_on_complete(&self, user_id: i32, podcast_id: Option<i32>) -> AppResult<(bool, bool)> {
-        let (default, podcast): (bool, Option<bool>) = match self {
-            DatabasePool::Postgres(pool) => {
-                let default = sqlx::query(r#"SELECT COALESCE(autodeleteoncomplete, FALSE) AS d FROM "Users" WHERE userid = $1"#)
+        let (default, podcast): (bool, Option<bool>) = dialect_match!(self, {
+            pg(pool) => {
+                let default = q::query(r#"SELECT COALESCE(autodeleteoncomplete, FALSE) AS d FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?
                     .and_then(|r| r.try_get::<bool, _>("d").ok())
                     .unwrap_or(false);
                 let podcast = match podcast_id {
-                    Some(pid) => sqlx::query(r#"SELECT autodeleteoncomplete FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    Some(pid) => q::query(r#"SELECT autodeleteoncomplete FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
                         .bind(pid)
                         .bind(user_id)
                         .fetch_optional(pool)
@@ -763,8 +763,8 @@ impl DatabasePool {
                     None => None,
                 };
                 (default, podcast)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let default = sqlx::query("SELECT COALESCE(AutoDeleteOnComplete, 0) AS d FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -783,160 +783,160 @@ impl DatabasePool {
                     None => None,
                 };
                 (default, podcast)
-            }
-        };
+            },
+        });
         Ok((podcast.unwrap_or(default), podcast.is_some()))
     }
 
     pub async fn set_auto_delete_on_complete_user(&self, user_id: i32, enabled: bool) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET autodeleteoncomplete = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET autodeleteoncomplete = $1 WHERE userid = $2"#)
                     .bind(enabled)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET AutoDeleteOnComplete = ? WHERE UserID = ?")
                     .bind(enabled)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     pub async fn set_use_gravatar(&self, user_id: i32, enabled: bool) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET usegravatar = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET usegravatar = $1 WHERE userid = $2"#)
                     .bind(enabled)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET UseGravatar = ? WHERE UserID = ?")
                     .bind(enabled)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Set user playback speed - matches Python set_playback_speed_user function
     pub async fn set_playback_speed_user(&self, user_id: i32, playback_speed: f64) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET playbackspeed = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET playbackspeed = $1 WHERE userid = $2"#)
                     .bind(playback_speed)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET PlaybackSpeed = ? WHERE UserID = ?")
                     .bind(playback_speed)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Set per-user default playback volume (0-100) (#828) - mirrors set_playback_speed_user
     pub async fn set_default_volume(&self, user_id: i32, volume: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET defaultvolume = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET defaultvolume = $1 WHERE userid = $2"#)
                     .bind(volume)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET DefaultVolume = ? WHERE UserID = ?")
                     .bind(volume)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Set per-user default auto-delete-downloads days (#655) - mirrors set_playback_speed_user
     pub async fn set_auto_download_delete_days_user(&self, user_id: i32, days: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET autodownloaddeletedays = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET autodownloaddeletedays = $1 WHERE userid = $2"#)
                     .bind(days)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET AutoDownloadDeleteDays = ? WHERE UserID = ?")
                     .bind(days)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Set user podcast cover preference - global setting
     pub async fn set_global_podcast_cover_preference(&self, user_id: i32, use_podcast_covers: bool) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET usepodcastcovers = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET usepodcastcovers = $1 WHERE userid = $2"#)
                     .bind(use_podcast_covers)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET UsePodcastCovers = ? WHERE UserID = ?")
                     .bind(use_podcast_covers as i32)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Get global podcast cover preference - for settings page
     pub async fn get_global_podcast_cover_preference(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query_scalar::<_, Option<bool>>(r#"SELECT usepodcastcovers FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query_scalar::<Option<bool>>(r#"SELECT usepodcastcovers FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
                 Ok(result.unwrap_or(false))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query_scalar::<_, Option<i32>>("SELECT UsePodcastCovers FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
                 Ok(result.unwrap_or(0) != 0)
-            }
-        }
+            },
+        })
     }
 
     // Get user's language preference
     pub async fn get_user_language(&self, user_id: i32) -> AppResult<String> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT language FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT language FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -946,8 +946,8 @@ impl DatabasePool {
                 } else {
                     Ok("en".to_string())
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT Language FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -958,23 +958,23 @@ impl DatabasePool {
                 } else {
                     Ok("en".to_string())
                 }
-            }
-        }
+            },
+        })
     }
 
     // Update user's language preference
     pub async fn update_user_language(&self, user_id: i32, language: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"UPDATE "Users" SET language = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"UPDATE "Users" SET language = $1 WHERE userid = $2"#)
                     .bind(language)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("UPDATE Users SET Language = ? WHERE UserID = ?")
                     .bind(language)
                     .bind(user_id)
@@ -982,7 +982,7 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-        }
+            },
+        })
     }
 }

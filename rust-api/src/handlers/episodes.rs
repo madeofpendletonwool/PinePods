@@ -8,6 +8,7 @@ use crate::{
     models::{BulkEpisodeActionRequest, BulkEpisodeActionResponse},
     AppState,
 };
+use crate::database::dialect::dialect_match;
 
 // Bulk episode action handlers for efficient mass operations
 
@@ -381,9 +382,9 @@ pub async fn download_episode_file(
     require_episode_owner(&state, user_id, episode_id, false).await?;
     
     // Get episode metadata
-    let episode_info = match &state.db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            let row = sqlx::query(r#"
+    let episode_info = dialect_match!(&state.db_pool, {
+        pg(pool) => {
+            let row = q::query(r#"
                 SELECT e."episodeurl", e."episodetitle", p."podcastname",
                        e."episodepubdate", p."author", e."episodeartwork", p."artworkurl",
                        e."episodedescription", p."username", p."password",
@@ -412,8 +413,8 @@ pub async fn download_episode_file(
                 row.try_get::<Option<String>, _>("episodeguid")?,
                 row.try_get::<Option<i32>, _>("episodeduration")?
             )
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             let row = sqlx::query("
                 SELECT e.EpisodeURL, e.EpisodeTitle, p.PodcastName,
                        e.EpisodePubDate, p.Author, e.EpisodeArtwork, p.ArtworkURL,
@@ -443,8 +444,8 @@ pub async fn download_episode_file(
                 row.try_get::<Option<String>, _>("EpisodeGUID")?,
                 row.try_get::<Option<i32>, _>("EpisodeDuration")?
             )
-        }
-    };
+        },
+    });
 
     let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, description, feed_username, feed_password, feed_url, episode_guid, episode_duration) = episode_info;
 

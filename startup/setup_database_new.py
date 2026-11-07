@@ -135,7 +135,10 @@ def wait_for_mysql_ready():
 def create_database_if_not_exists():
     """Create the database if it doesn't exist and wait for database to be ready"""
     db_type = os.environ.get("DB_TYPE", "postgresql").lower()
-    
+
+    if db_type == 'sqlite':
+        return  # the migration runner creates the file
+
     if db_type in ['postgresql', 'postgres']:
         # First, wait for PostgreSQL to be ready
         if not wait_for_postgresql_ready():
@@ -197,6 +200,7 @@ def ensure_usernames_lowercase():
         
         db_type = manager.db_type
         table_name = '"Users"' if db_type == 'postgresql' else 'Users'
+        ph = '?' if db_type == 'sqlite' else '%s'
         
         try:
             cursor.execute(f'SELECT UserID, Username FROM {table_name}')
@@ -205,7 +209,7 @@ def ensure_usernames_lowercase():
             for user_id, username in users:
                 if username and username != username.lower():
                     cursor.execute(
-                        f'UPDATE {table_name} SET Username = %s WHERE UserID = %s', 
+                        f'UPDATE {table_name} SET Username = {ph} WHERE UserID = {ph}', 
                         (username.lower(), user_id)
                     )
                     logger.info(f"Updated Username for UserID {user_id} to lowercase")

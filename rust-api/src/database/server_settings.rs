@@ -20,63 +20,63 @@ impl DatabasePool {
 
     // Enable/disable downloads - matches Python enable_disable_downloads function exactly
     pub async fn enable_disable_downloads(&self) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "AppSettings" SET downloadenabled = CASE WHEN downloadenabled = true THEN false ELSE true END"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "AppSettings" SET downloadenabled = CASE WHEN downloadenabled = true THEN false ELSE true END"#)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE AppSettings SET DownloadEnabled = CASE WHEN DownloadEnabled = 1 THEN 0 ELSE 1 END")
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Enable/disable self service - matches Python enable_disable_self_service function exactly
     pub async fn enable_disable_self_service(&self) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "AppSettings" SET selfserviceuser = CASE WHEN selfserviceuser = true THEN false ELSE true END"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "AppSettings" SET selfserviceuser = CASE WHEN selfserviceuser = true THEN false ELSE true END"#)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE AppSettings SET SelfServiceUser = CASE WHEN SelfServiceUser = 1 THEN 0 ELSE 1 END")
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Get download status - matches Python download_status function exactly
     pub async fn download_status(&self) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result: Option<bool> = sqlx::query_scalar(r#"SELECT downloadenabled FROM "AppSettings""#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result: Option<bool> = q::query_scalar(r#"SELECT downloadenabled FROM "AppSettings""#)
                     .fetch_optional(pool)
                     .await?;
                 Ok(result.unwrap_or(false))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result: Option<i32> = sqlx::query_scalar("SELECT DownloadEnabled FROM AppSettings")
                     .fetch_optional(pool)
                     .await?;
                 Ok(result.unwrap_or(0) == 1)
-            }
-        }
+            },
+        })
     }
 
     // Get the admin download-metadata settings (#451/#533/#658). Missing row or
     // NULLs fall back to the disabled/default set.
     pub async fn get_download_settings(&self) -> AppResult<crate::services::download_metadata::DownloadSettings> {
         use crate::services::download_metadata::DownloadSettings;
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"
                     SELECT downloadfoldercover, downloadepisodecover, downloadmetadatasidecar,
                            downloadmetadataformat, downloadmetadatasubfolder
                     FROM "AppSettings"
@@ -95,8 +95,8 @@ impl DatabasePool {
                     },
                     None => DownloadSettings::disabled(),
                 })
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("
                     SELECT DownloadFolderCover, DownloadEpisodeCover, DownloadMetadataSidecar,
                            DownloadMetadataFormat, DownloadMetadataSubfolder
@@ -116,8 +116,8 @@ impl DatabasePool {
                     },
                     None => DownloadSettings::disabled(),
                 })
-            }
-        }
+            },
+        })
     }
 
     // Update the admin download-metadata settings (#451/#533/#658).
@@ -130,9 +130,9 @@ impl DatabasePool {
             "json" | "xml" | "ffmetadata" | "both" => settings.metadata_format.as_str(),
             _ => "both",
         };
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"
                     UPDATE "AppSettings"
                     SET downloadfoldercover = $1,
                         downloadepisodecover = $2,
@@ -147,8 +147,8 @@ impl DatabasePool {
                 .bind(settings.metadata_subfolder)
                 .execute(pool)
                 .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("
                     UPDATE AppSettings
                     SET DownloadFolderCover = ?,
@@ -164,17 +164,17 @@ impl DatabasePool {
                 .bind(settings.metadata_subfolder as i32)
                 .execute(pool)
                 .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Save email settings - matches Python save_email_settings function exactly
     pub async fn save_email_settings(&self, email_settings: &crate::handlers::settings::EmailSettings) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let auth_required = email_settings.auth_required != 0;
-                sqlx::query(
+                q::query(
                     r#"UPDATE "EmailSettings" SET 
                        server_name = $1, server_port = $2, from_email = $3, 
                        send_mode = $4, encryption = $5, auth_required = $6, 
@@ -191,8 +191,8 @@ impl DatabasePool {
                 .bind(&email_settings.email_password)
                 .execute(pool)
                 .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query(
                     "UPDATE EmailSettings SET 
                      Server_Name = ?, Server_Port = ?, From_Email = ?, 
@@ -210,16 +210,16 @@ impl DatabasePool {
                 .bind(&email_settings.email_password)
                 .execute(pool)
                 .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Get email settings - matches Python get_email_settings function exactly
     pub async fn get_email_settings(&self) -> AppResult<Option<crate::handlers::settings::EmailSettingsResponse>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"SELECT emailsettingsid, server_name, server_port, from_email, 
                        send_mode, encryption, auth_required, username, password 
                        FROM "EmailSettings""#
@@ -243,8 +243,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT EmailSettingsID, Server_Name, Server_Port, From_Email, 
                      Send_Mode, Encryption, Auth_Required, Username, Password 
@@ -268,7 +268,7 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 }

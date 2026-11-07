@@ -133,6 +133,9 @@ async fn feeds_without_subscribers_are_deleted() {
 #[tokio::test(flavor = "multi_thread")]
 async fn upgrading_creates_feeds_with_the_merged_refresh_state() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let (alice, bob) = (app.user("alice").await, app.user("bob").await);
     let shared = app.feed("shared.xml", &Feed::with_episodes("Shared", 1));
     let other = app.feed("other.xml", &Feed::with_episodes("Other", 1));
