@@ -39,7 +39,14 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
 
         use_effect_with((), move |_| {
             if let Some(window) = web_sys::window() {
-                let current_route = window.location().href().unwrap_or_default();
+                // Use the path (and query) only, not the full URL: in the desktop app the URL is
+                // "tauri://localhost" (no trailing "/"), which is not a route.
+                let location = window.location();
+                let current_route = format!(
+                    "{}{}",
+                    location.pathname().unwrap_or_default(),
+                    location.search().unwrap_or_default()
+                );
 
                 // First check local storage for saved state
                 if let Ok(Some(local_storage)) = window.local_storage() {
