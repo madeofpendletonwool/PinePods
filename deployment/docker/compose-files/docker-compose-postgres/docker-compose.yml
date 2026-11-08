@@ -1,3 +1,5 @@
+# Production setup: Pinepods with its own database server and Valkey. For the easiest
+# single-container install, see docker-compose-sqlite.
 services:
   db:
     container_name: db

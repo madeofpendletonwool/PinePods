@@ -120,7 +120,18 @@ accounts there are wiped periodically, so run your own server for real use.
 
 ## Quick Start :rocket:
 
-The quickest start is one container with a SQLite database:
+There are two ways to run the server:
+
+- **Easiest: one container.** SQLite and the cache live inside the Pinepods container, so a
+  single `docker run` is the whole install. Great for trying Pinepods out or for a household.
+- **Production: PostgreSQL and Valkey.** The recommended setup for a server people rely on:
+  many users, busy libraries, several instances sharing a database, standard PostgreSQL
+  backups and tooling. MySQL/MariaDB works too.
+
+Not sure which? See
+[Choosing a Database and Cache](https://www.pinepods.online/docs/choosing-a-setup).
+
+### Easiest: one container
 
 ```bash
 docker run -d -p 8040:8040 -v /home/user/pinepods/data:/opt/pinepods/data madeofpendletonwool/pinepods:latest
@@ -130,10 +141,14 @@ Open http://localhost:8040 and create the admin account. The volume keeps the da
 `-v /home/user/pinepods/downloads:/opt/pinepods/downloads` (and `.../backups`) to keep
 downloads and backups too. See
 [docker-compose-sqlite](deployment/docker/compose-files/docker-compose-sqlite/docker-compose.yml)
-for the same thing as a compose file.
+for the same thing as a compose file. An existing PostgreSQL or MariaDB server can
+[move to SQLite](https://www.pinepods.online/docs/tutorial-basics/Backup-Restore#moving-to-sqlite);
+there's no tool for the other direction yet, so start on PostgreSQL if you expect to grow.
 
-For more users, run PostgreSQL (or MySQL/MariaDB) with a Valkey or Redis server. The API
-connects to Valkey/Redis before it starts listening. Create a `docker-compose.yml`:
+### Production: PostgreSQL and Valkey
+
+Run PostgreSQL (or MySQL/MariaDB) with a Valkey or Redis server. The API connects to
+Valkey/Redis before it starts listening. Create a `docker-compose.yml`:
 
 ```yaml
 services:
