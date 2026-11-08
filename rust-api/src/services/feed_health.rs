@@ -228,6 +228,7 @@ impl DatabasePool {
                 let rows: Vec<ProblemRow> = q::query_as(
                     r#"UPDATE "Podcasts" SET problemnotified = TRUE
                        WHERE podcastid = ANY($1) AND NOT problemnotified AND failingsince IS NOT NULL
+                         AND COALESCE(refreshpodcast, TRUE)
                          AND COALESCE(lasterrorkind, 'other') <> 'throttled'
                          AND (failingsince <= NOW() - make_interval(hours => $2::INT)
                               OR (lasterrorkind = 'gone' AND consecutivefailures >= $3))
@@ -245,6 +246,7 @@ impl DatabasePool {
                 let sql = format!(
                     "SELECT PodcastID, UserID, PodcastName, ArtworkURL, LastErrorKind FROM Podcasts
                      WHERE PodcastID IN ({placeholders}) AND NOT ProblemNotified AND FailingSince IS NOT NULL
+                       AND COALESCE(RefreshPodcast, 1) = 1
                        AND COALESCE(LastErrorKind, 'other') <> 'throttled'
                        AND (FailingSince <= NOW() - INTERVAL ? HOUR
                             OR (LastErrorKind = 'gone' AND ConsecutiveFailures >= ?))"
@@ -300,7 +302,8 @@ impl DatabasePool {
         Ok(rows.into_iter().map(problem_feed).collect())
     }
 
-    /// The user's podcasts whose last refresh failed, longest-failing first.
+    /// The user's podcasts whose last refresh failed, longest-failing first (not the ones whose
+    /// automatic refreshes are off).
     pub async fn failing_feeds(&self, user_id: i32) -> AppResult<Vec<FailingFeed>> {
         let rows: Vec<FailingRow> = dialect_match!(self, {
             pg(pool) => q::query_as(
@@ -310,7 +313,7 @@ impl DatabasePool {
                           EXTRACT(EPOCH FROM lastrefreshattempt::timestamptz)::BIGINT,
                           problemnotified
                    FROM "Podcasts"
-                   WHERE userid = $1 AND COALESCE(consecutivefailures, 0) > 0
+                   WHERE userid = $1 AND COALESCE(consecutivefailures, 0) > 0 AND COALESCE(refreshpodcast, TRUE)
                    ORDER BY failingsince NULLS LAST, podcastname"#,
             )
             .bind(user_id)
@@ -323,7 +326,7 @@ impl DatabasePool {
                         CAST(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', LastRefreshAttempt) AS SIGNED),
                         ProblemNotified
                  FROM Podcasts
-                 WHERE UserID = ? AND COALESCE(ConsecutiveFailures, 0) > 0
+                 WHERE UserID = ? AND COALESCE(ConsecutiveFailures, 0) > 0 AND COALESCE(RefreshPodcast, 1) = 1
                  ORDER BY FailingSince IS NULL, FailingSince, PodcastName",
             )
             .bind(user_id)

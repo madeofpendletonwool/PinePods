@@ -269,8 +269,7 @@ impl DatabasePool {
             pg(pool) => {
                 q::query(sqlx::AssertSqlSafe(format!(
                     r#"SELECT f.feedid FROM "Feeds" f
-                       WHERE f.feedurl NOT LIKE 'local://%'
-                         AND EXISTS (SELECT 1 FROM "Podcasts" p WHERE p.feedid = f.feedid AND COALESCE(p.refreshpodcast, TRUE))
+                       WHERE EXISTS (SELECT 1 FROM "Podcasts" p WHERE p.feedid = f.feedid AND COALESCE(p.refreshpodcast, TRUE))
                          AND (f.nextrefreshat IS NULL OR f.nextrefreshat <= NOW())
                          AND (f.refreshnotbefore IS NULL OR f.refreshnotbefore <= NOW())
                          AND (f.consecutivefailures = 0 OR f.lastrefreshattempt IS NULL
@@ -288,8 +287,7 @@ impl DatabasePool {
             mysql(pool) => {
                 sqlx::query(sqlx::AssertSqlSafe(format!(
                     "SELECT f.FeedID FROM Feeds f
-                     WHERE f.FeedURL NOT LIKE 'local://%'
-                       AND EXISTS (SELECT 1 FROM Podcasts p WHERE p.FeedID = f.FeedID AND COALESCE(p.RefreshPodcast, 1) = 1)
+                     WHERE EXISTS (SELECT 1 FROM Podcasts p WHERE p.FeedID = f.FeedID AND COALESCE(p.RefreshPodcast, 1) = 1)
                        AND (f.NextRefreshAt IS NULL OR f.NextRefreshAt <= NOW())
                        AND (f.RefreshNotBefore IS NULL OR f.RefreshNotBefore <= NOW())
                        AND (f.ConsecutiveFailures = 0 OR f.LastRefreshAttempt IS NULL

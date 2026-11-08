@@ -190,6 +190,54 @@ impl DatabasePool {
         Ok(())
     }
 
+    /// Whether the scheduled refresh and Refresh all check this podcast. `None` when the user has
+    /// no such podcast.
+    pub async fn get_auto_refresh(&self, podcast_id: i32, user_id: i32) -> AppResult<Option<bool>> {
+        let enabled = dialect_match!(self, {
+            pg(pool) => {
+                q::query_scalar::<Option<bool>>(r#"SELECT refreshpodcast FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+            },
+            mysql(pool) => {
+                sqlx::query_scalar::<_, Option<bool>>("SELECT RefreshPodcast FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?
+            },
+        });
+        Ok(enabled.map(|e| e.unwrap_or(true)))
+    }
+
+    /// Turn a podcast's automatic refreshes on or off. `false` when the user has no such podcast.
+    pub async fn set_auto_refresh(&self, podcast_id: i32, user_id: i32, enabled: bool) -> AppResult<bool> {
+        let updated = dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Podcasts" SET refreshpodcast = $1 WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(enabled)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?
+                    .rows_affected()
+            },
+            mysql(pool) => {
+                // MySQL counts only changed rows: check the row exists instead.
+                sqlx::query("UPDATE Podcasts SET RefreshPodcast = ? WHERE PodcastID = ? AND UserID = ?")
+                    .bind(enabled)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                u64::from(self.get_auto_refresh(podcast_id, user_id).await?.is_some())
+            },
+        });
+        Ok(updated > 0)
+    }
+
     // Toggle podcast notifications - matches Python toggle_podcast_notifications function
     pub async fn toggle_podcast_notifications(&self, user_id: i32, podcast_id: i32, enabled: bool) -> AppResult<bool> {
         dialect_match!(self, {

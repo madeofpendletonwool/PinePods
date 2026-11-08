@@ -104,9 +104,11 @@ impl DatabasePool {
         podcast_id: i32,
         user_id: i32,
         candidates: &[crate::handlers::local_podcast::LocalEpisodeCandidate],
-    ) -> AppResult<()> {
+    ) -> AppResult<Vec<(usize, i32)>> {
         let feed_id = self.feed_of_podcast(podcast_id).await?;
-        for candidate in candidates {
+        // (index into `candidates`, episode id) of the episodes this call inserted.
+        let mut inserted = Vec::new();
+        for (index, candidate) in candidates.iter().enumerate() {
             let episode_url = format!("local://{}", candidate.file_path);
             let artwork = candidate.artwork_url.as_deref().unwrap_or("");
 
@@ -137,7 +139,9 @@ impl DatabasePool {
                         .bind(candidate.duration)
                         .fetch_one(pool)
                         .await?;
-                        row.try_get::<i32, _>("episodeid")?
+                        let id = row.try_get::<i32, _>("episodeid")?;
+                        inserted.push((index, id));
+                        id
                     }
                 },
                 mysql(pool) => {
@@ -165,7 +169,9 @@ impl DatabasePool {
                         .bind(candidate.duration)
                         .execute(pool)
                         .await?;
-                        result.last_insert_id() as i32
+                        let id = result.last_insert_id() as i32;
+                        inserted.push((index, id));
+                        id
                     }
                 },
             });
@@ -214,7 +220,7 @@ impl DatabasePool {
         }
 
         self.update_episode_count(podcast_id).await?;
-        Ok(())
+        Ok(inserted)
     }
 
     pub async fn get_feed_url_for_podcast(

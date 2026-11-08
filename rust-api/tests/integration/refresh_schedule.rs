@@ -194,7 +194,7 @@ async fn a_manual_refresh_fetches_now_and_reschedules() {
     set_next(&app, pod, "2100-01-01 00:00:00").await;
     exec(&app, &format!(r#"UPDATE "Podcasts" SET LastRefreshSuccess = NULL WHERE PodcastID = {pod}"#)).await;
     let before = app.fixtures().hits("show.xml").len();
-    assert!(refresh::refresh_podcast_now(&app.state, user.id, pod).await.unwrap());
+    assert!(matches!(refresh::refresh_podcast_now(&app.state, user.id, pod).await.unwrap(), refresh::PodcastRefresh::Done(_)));
     assert_eq!(app.fixtures().hits("show.xml").len(), before + 1);
     assert_about(due_in(&app, pod).await, 15);
 }
