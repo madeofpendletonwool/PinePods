@@ -5,9 +5,9 @@ use super::*;
 impl DatabasePool {
     // Get user stats - matches Python get_stats function
     pub async fn get_stats(&self, user_id: i32) -> AppResult<Option<serde_json::Value>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"SELECT usercreated, podcastsplayed, timelistened, podcastsadded 
                        FROM "UserStats" WHERE userid = $1"#
                 )
@@ -17,7 +17,7 @@ impl DatabasePool {
 
                 if let Some(row) = row {
                     // Count saved episodes directly from SavedEpisodes table
-                    let saved_count_row = sqlx::query(
+                    let saved_count_row = q::query(
                         r#"SELECT COUNT(*) as saved_count FROM "SavedEpisodes" WHERE userid = $1"#
                     )
                     .bind(user_id)
@@ -25,7 +25,7 @@ impl DatabasePool {
                     .await?;
 
                     // Count downloaded episodes directly from DownloadedEpisodes table  
-                    let downloaded_count_row = sqlx::query(
+                    let downloaded_count_row = q::query(
                         r#"SELECT COUNT(*) as downloaded_count FROM "DownloadedEpisodes" WHERE userid = $1"#
                     )
                     .bind(user_id)
@@ -48,8 +48,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT UserCreated, PodcastsPlayed, TimeListened, PodcastsAdded 
                      FROM UserStats WHERE UserID = ?"
@@ -92,8 +92,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get extended user stats with rich listening insights
@@ -146,10 +146,10 @@ impl DatabasePool {
             }
         }
 
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Top 5 podcasts by listen time
-                let podcast_rows = sqlx::query(r#"
+                let podcast_rows = q::query(r#"
                     SELECT p.podcastid, p.podcastname, COALESCE(p.artworkurl, '') as artworkurl,
                            SUM(ueh.listenduration) AS total_seconds
                     FROM "UserEpisodeHistory" ueh
@@ -170,7 +170,7 @@ impl DatabasePool {
                 }).collect();
 
                 // Categories with listen time (parse in Rust since format varies)
-                let cat_rows = sqlx::query(r#"
+                let cat_rows = q::query(r#"
                     SELECT p.categories, SUM(ueh.listenduration) AS total_seconds
                     FROM "UserEpisodeHistory" ueh
                     INNER JOIN "Episodes" e ON ueh.episodeid = e.episodeid
@@ -199,7 +199,7 @@ impl DatabasePool {
                     .collect();
 
                 // Episode completion rate
-                let comp_row = sqlx::query(r#"
+                let comp_row = q::query(r#"
                     SELECT COUNT(*) AS total,
                            COUNT(CASE WHEN ueh.listenduration >= e.episodeduration * 0.9
                                        AND e.episodeduration > 0 THEN 1 END) AS completed
@@ -215,7 +215,7 @@ impl DatabasePool {
                 } else { 0 };
 
                 // Longest episode listened
-                let longest_row = sqlx::query(r#"
+                let longest_row = q::query(r#"
                     SELECT e.episodeid, e.episodetitle, e.episodeduration, p.podcastname
                     FROM "UserEpisodeHistory" ueh
                     INNER JOIN "Episodes" e ON ueh.episodeid = e.episodeid
@@ -232,7 +232,7 @@ impl DatabasePool {
                 }));
 
                 // Listening personality badge (avg hour of day)
-                let personality_row = sqlx::query(r#"
+                let personality_row = q::query(r#"
                     SELECT AVG(EXTRACT(HOUR FROM listendate))::float8 AS avg_hour
                     FROM "UserEpisodeHistory"
                     WHERE userid = $1 AND listendate IS NOT NULL
@@ -242,7 +242,7 @@ impl DatabasePool {
                 let listening_badge = badge_from_avg_hour(avg_hour);
 
                 // Total data downloaded
-                let dl_row = sqlx::query(r#"
+                let dl_row = q::query(r#"
                     SELECT COALESCE(SUM(downloadedsize), 0)::BIGINT AS total_bytes
                     FROM "DownloadedEpisodes" WHERE userid = $1
                 "#).bind(user_id).fetch_one(pool).await?;
@@ -250,7 +250,7 @@ impl DatabasePool {
                 let total_bytes: i64 = dl_row.try_get("total_bytes").unwrap_or(0);
 
                 // Current streak (distinct calendar days, sorted DESC)
-                let day_rows = sqlx::query(r#"
+                let day_rows = q::query(r#"
                     SELECT DISTINCT DATE(listendate) AS listen_day
                     FROM "UserEpisodeHistory"
                     WHERE userid = $1 AND listendate IS NOT NULL
@@ -266,7 +266,7 @@ impl DatabasePool {
                 // Cast to int because PostgreSQL 14+ changed EXTRACT() return type from
                 // float8 to numeric, which would silently fail try_get::<i64> and map
                 // all rows to Sunday (index 0).
-                let dow_rows = sqlx::query(r#"
+                let dow_rows = q::query(r#"
                     SELECT EXTRACT(DOW FROM listendate)::int AS dow,
                            SUM(listenduration) AS total_seconds
                     FROM "UserEpisodeHistory"
@@ -293,8 +293,8 @@ impl DatabasePool {
                     "current_streak": current_streak,
                     "listening_by_dow": dow_data
                 }))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Top 5 podcasts by listen time
                 let podcast_rows = sqlx::query(
                     "SELECT p.PodcastID as podcastid, p.PodcastName as podcastname,
@@ -443,7 +443,7 @@ impl DatabasePool {
                     "current_streak": current_streak,
                     "listening_by_dow": dow_data
                 }))
-            }
-        }
+            },
+        })
     }
 }

@@ -20,6 +20,7 @@ use crate::{
     services::sync::engine_db::TargetKind,
     AppState,
 };
+use crate::database::dialect::dialect_match;
 
 #[derive(Deserialize)]
 pub struct RefreshQuery {
@@ -611,9 +612,9 @@ async fn load_refresh_items(
     use crate::services::scheduler::{BACKOFF_MAX_STEPS, BACKOFF_STEP_MINUTES};
     let mut refresh_items: Vec<PodcastRefreshItem> = Vec::new();
 
-    match &state.db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+    dialect_match!(&state.db_pool, {
+        pg(pool) => {
+            let rows = q::query(sqlx::AssertSqlSafe(format!(
                 r#"SELECT podcastid, feedid, feedurl, artworkurl, autodownload, autoqueue, username, password,
                           isyoutubechannel, userid, feedcutoffdays, feedetag, feedlastmodified, feedcontenthash,
                           refreshintervalminutes
@@ -652,8 +653,8 @@ async fn load_refresh_items(
                     refresh_interval: result.try_get::<Option<i32>, _>("refreshintervalminutes").ok().flatten(),
                 });
             }
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             let in_list = |column: &str, n: Option<usize>| match n {
                 Some(n) if n > 0 => format!("AND {column} IN ({})", vec!["?"; n].join(", ")),
                 Some(_) => "AND FALSE".to_string(),
@@ -702,8 +703,8 @@ async fn load_refresh_items(
                     refresh_interval: result.try_get::<Option<i32>, _>("RefreshIntervalMinutes").ok().flatten(),
                 });
             }
-        }
-    }
+        },
+    });
 
 
     Ok(refresh_items)

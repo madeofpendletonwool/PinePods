@@ -8,11 +8,11 @@ impl DatabasePool {
         // Position in seconds, stored as-is (same unit record_listen_duration stores).
         let listen_duration = episode_pos.max(0.0) as i32;
 
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 if is_youtube {
                     // Insert or update video history
-                    sqlx::query(
+                    q::query(
                         r#"INSERT INTO "UserVideoHistory" ("videoid", "userid", "listenduration", "listendate")
                            VALUES ($1, $2, $3, NOW())
                            ON CONFLICT ("videoid", "userid") 
@@ -25,7 +25,7 @@ impl DatabasePool {
                     .await?;
                 } else {
                     // Insert or update episode history
-                    sqlx::query(
+                    q::query(
                         r#"INSERT INTO "UserEpisodeHistory" ("episodeid", "userid", "listenduration", "listendate")
                            VALUES ($1, $2, $3, NOW())
                            ON CONFLICT ("episodeid", "userid") 
@@ -38,8 +38,8 @@ impl DatabasePool {
                     .await?;
                 }
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 if is_youtube {
                     // Insert or update video history
                     sqlx::query(
@@ -68,15 +68,15 @@ impl DatabasePool {
                     .await?;
                 }
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     // Get user history - matches Python user_history function
     pub async fn get_user_history(&self, user_id: i32) -> AppResult<Vec<crate::models::HistoryEpisode>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT 
                         e."EpisodeTitle" as episodetitle,
                         p."PodcastName" as podcastname,
@@ -142,8 +142,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(episodes)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Similar MySQL implementation
                 let rows = sqlx::query(
                     "SELECT 
@@ -191,8 +191,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(episodes)
-            }
-        }
+            },
+        })
     }
 
     // Get user history - matches Python user_history function exactly with YouTube UNION
@@ -218,8 +218,8 @@ impl DatabasePool {
             _             => "",
         };
 
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let null_sort_last = if order_col == "listendate" { " NULLS LAST" } else { "" };
                 let sql = format!(
                     r#"SELECT *, COUNT(*) OVER() AS total_count FROM (
@@ -287,7 +287,7 @@ impl DatabasePool {
                     LIMIT $2 OFFSET $3"#
                 );
 
-                let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                let rows = q::query(sqlx::AssertSqlSafe(sql.as_str()))
                     .bind(user_id)
                     .bind(limit)
                     .bind(offset)
@@ -324,8 +324,8 @@ impl DatabasePool {
                     }));
                 }
                 Ok((episodes, total))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mysql_filter = match filter {
                     "completed"   => " WHERE completed = 1",
                     "in_progress" => " WHERE completed = 0 AND listenduration IS NOT NULL AND listenduration > 0",
@@ -441,28 +441,28 @@ impl DatabasePool {
                     }));
                 }
                 Ok((episodes, total))
-            }
-        }
+            },
+        })
     }
 
     // Remove episode from history - used by Nextcloud episode actions
     pub async fn remove_episode_from_history(&self, user_id: i32, episode_id: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"DELETE FROM "UserEpisodeHistory" WHERE userid = $1 AND episodeid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"DELETE FROM "UserEpisodeHistory" WHERE userid = $1 AND episodeid = $2"#)
                     .bind(user_id)
                     .bind(episode_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("DELETE FROM UserEpisodeHistory WHERE UserID = ? AND EpisodeID = ?")
                     .bind(user_id)
                     .bind(episode_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 }

@@ -134,8 +134,12 @@ def wait_for_mysql_ready():
 
 def create_database_if_not_exists():
     """Create the database if it doesn't exist and wait for database to be ready"""
-    db_type = os.environ.get("DB_TYPE", "postgresql").lower()
-    
+    from database_functions.migrations import default_db_type
+    db_type = default_db_type().lower()
+
+    if db_type == 'sqlite':
+        return  # the migration runner creates the file
+
     if db_type in ['postgresql', 'postgres']:
         # First, wait for PostgreSQL to be ready
         if not wait_for_postgresql_ready():
@@ -197,6 +201,7 @@ def ensure_usernames_lowercase():
         
         db_type = manager.db_type
         table_name = '"Users"' if db_type == 'postgresql' else 'Users'
+        ph = '?' if db_type == 'sqlite' else '%s'
         
         try:
             cursor.execute(f'SELECT UserID, Username FROM {table_name}')
@@ -205,7 +210,7 @@ def ensure_usernames_lowercase():
             for user_id, username in users:
                 if username and username != username.lower():
                     cursor.execute(
-                        f'UPDATE {table_name} SET Username = %s WHERE UserID = %s', 
+                        f'UPDATE {table_name} SET Username = {ph} WHERE UserID = {ph}', 
                         (username.lower(), user_id)
                     )
                     logger.info(f"Updated Username for UserID {user_id} to lowercase")
@@ -267,5 +272,13 @@ def main():
 
 
 if __name__ == "__main__":
+    # `--export-sqlite <file>`: write this database out as a SQLite server backup instead.
+    if len(sys.argv) >= 2 and sys.argv[1] == "--export-sqlite":
+        from database_functions import sqlite_export
+        sys.exit(sqlite_export.main(sys.argv[2:]))
+    # `--import-sqlite <file> [--replace]`: fill this database from a SQLite server's data.
+    if len(sys.argv) >= 2 and sys.argv[1] == "--import-sqlite":
+        from database_functions import sqlite_import
+        sys.exit(sqlite_import.main(sys.argv[2:]))
     success = main()
     sys.exit(0 if success else 1)

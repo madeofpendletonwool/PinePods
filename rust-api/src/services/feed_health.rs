@@ -1,6 +1,7 @@
 // Feed health: what kind of failure a refresh or import hit, and telling the user about a feed
 // that keeps failing (once per run of failures) and about it working again.
 
+use crate::database::dialect::dialect_match;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -222,9 +223,9 @@ impl DatabasePool {
             return Ok(Vec::new());
         }
         let hours = (PROBLEM_AFTER.as_secs() / 3600) as i64;
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows: Vec<ProblemRow> = sqlx::query_as(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows: Vec<ProblemRow> = q::query_as(
                     r#"UPDATE "Podcasts" SET problemnotified = TRUE
                        WHERE podcastid = ANY($1) AND NOT problemnotified AND failingsince IS NOT NULL
                          AND COALESCE(lasterrorkind, 'other') <> 'throttled'
@@ -238,8 +239,8 @@ impl DatabasePool {
                 .fetch_all(pool)
                 .await?;
                 Ok(rows.into_iter().map(problem_feed).collect())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let placeholders = vec!["?"; podcast_ids.len()].join(", ");
                 let sql = format!(
                     "SELECT PodcastID, UserID, PodcastName, ArtworkURL, LastErrorKind FROM Podcasts
@@ -266,8 +267,8 @@ impl DatabasePool {
                     }
                 }
                 Ok(reported)
-            }
-        }
+            },
+        })
     }
 
     /// Reported feeds among `podcast_ids` (read before a successful refresh clears the flag).
@@ -275,15 +276,15 @@ impl DatabasePool {
         if podcast_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let rows: Vec<ProblemRow> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query_as(
+        let rows: Vec<ProblemRow> = dialect_match!(self, {
+            pg(pool) => q::query_as(
                 r#"SELECT podcastid, userid, podcastname, artworkurl, lasterrorkind FROM "Podcasts"
                    WHERE podcastid = ANY($1) AND problemnotified"#,
             )
             .bind(podcast_ids)
             .fetch_all(pool)
             .await?,
-            DatabasePool::MySQL(pool) => {
+            mysql(pool) => {
                 let sql = format!(
                     "SELECT PodcastID, UserID, PodcastName, ArtworkURL, LastErrorKind FROM Podcasts
                      WHERE PodcastID IN ({}) AND ProblemNotified",
@@ -294,15 +295,15 @@ impl DatabasePool {
                     q = q.bind(id);
                 }
                 q.fetch_all(pool).await?
-            }
-        };
+            },
+        });
         Ok(rows.into_iter().map(problem_feed).collect())
     }
 
     /// The user's podcasts whose last refresh failed, longest-failing first.
     pub async fn failing_feeds(&self, user_id: i32) -> AppResult<Vec<FailingFeed>> {
-        let rows: Vec<FailingRow> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query_as(
+        let rows: Vec<FailingRow> = dialect_match!(self, {
+            pg(pool) => q::query_as(
                 r#"SELECT podcastid, podcastname, feedurl, artworkurl, lasterrorkind, lasterrormessage,
                           COALESCE(consecutivefailures, 0),
                           EXTRACT(EPOCH FROM failingsince::timestamptz)::BIGINT,
@@ -315,7 +316,7 @@ impl DatabasePool {
             .bind(user_id)
             .fetch_all(pool)
             .await?,
-            DatabasePool::MySQL(pool) => sqlx::query_as::<_, (i32, String, String, Option<String>, Option<String>, Option<String>, i32, Option<i64>, Option<i64>, i8)>(
+            mysql(pool) => sqlx::query_as::<_, (i32, String, String, Option<String>, Option<String>, Option<String>, i32, Option<i64>, Option<i64>, i8)>(
                 "SELECT PodcastID, PodcastName, FeedURL, ArtworkURL, LastErrorKind, LastErrorMessage,
                         COALESCE(ConsecutiveFailures, 0),
                         CAST(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', FailingSince) AS SIGNED),
@@ -331,7 +332,7 @@ impl DatabasePool {
             .into_iter()
             .map(|r| (r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7, r.8, r.9 != 0))
             .collect(),
-        };
+        });
         Ok(rows.into_iter().map(failing_feed).collect())
     }
 }

@@ -120,6 +120,8 @@ impl TestApp {
             .fetch_one(pool)
             .await
             .unwrap(),
+            // One writer at a time, and a transaction left open would block every later write.
+            DatabasePool::Sqlite(_) => 0,
             DatabasePool::MySQL(pool) => sqlx::query_scalar(
                 "SELECT COUNT(*) FROM information_schema.innodb_trx t \
                  JOIN information_schema.processlist p ON p.id = t.trx_mysql_thread_id \

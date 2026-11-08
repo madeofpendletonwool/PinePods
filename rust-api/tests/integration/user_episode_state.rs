@@ -43,6 +43,9 @@ async fn completion_is_recorded_per_user() {
 #[tokio::test(flavor = "multi_thread")]
 async fn upgrading_carries_completed_episodes_over() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let (alice, bob) = (app.user("alice").await, app.user("bob").await);
     let a = app.subscribe(&alice, &app.feed("a.xml", &Feed::with_episodes("A", 2)), 2).await;
     let b = app.subscribe(&bob, &app.feed("b.xml", &Feed::with_episodes("B", 2)), 2).await;

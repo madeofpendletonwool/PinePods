@@ -59,7 +59,7 @@ async fn rss_feeds_are_off_until_the_user_enables_them() {
     }
 
     let only_alpha = feed(&app, s.user.id, &key).query("podcast_id", s.alpha).send().await.text();
-    assert!(only_alpha.contains("Alpha first owner"));
+    assert!(only_alpha.contains("Alpha first owner"), "{only_alpha}");
     assert!(!only_alpha.contains("Beta first owner"), "podcast_id filters the feed:\n{only_alpha}");
 
     let limited = feed(&app, s.user.id, &key).query("limit", 1).send().await.text();

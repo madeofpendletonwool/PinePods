@@ -135,6 +135,9 @@ async fn a_feed_dropping_a_field_does_not_blank_it() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_upgrade_reads_every_feed_in_full_once() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("listener").await;
     let feed = Feed::with_episodes("Current Name", 1);
     let url = app.fixtures().serve("upgrade.xml", Fixture::new("application/rss+xml", feed.to_xml()).etag("\"v1\""));

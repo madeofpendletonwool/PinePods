@@ -1,106 +1,269 @@
-use redis::{aio::ConnectionManager, AsyncCommands, Client};
-use crate::{config::Config, error::AppResult};
+use std::sync::Arc;
 
+use redis::{aio::ConnectionManager, AsyncCommands, Client, FromRedisValue, ToRedisArgs};
+
+use crate::config::Config;
+use crate::error::{AppError, AppResult};
+use crate::memory_store::MemoryStore;
+
+/// Valkey/Redis, or (with no Valkey configured) an in-process store. In-process works for one
+/// server process; several replicas sharing tasks, notifications and now-playing need Valkey.
 #[derive(Clone)]
 pub struct RedisClient {
-    connection: ConnectionManager,
-    /// Kept so we can open dedicated pub/sub connections (a subscribing
-    /// connection can't be shared/multiplexed like the ConnectionManager).
-    client: Client,
+    backend: Backend,
+}
+
+#[derive(Clone)]
+enum Backend {
+    Valkey {
+        connection: ConnectionManager,
+        /// Kept so we can open dedicated pub/sub connections (a subscribing
+        /// connection can't be shared/multiplexed like the ConnectionManager).
+        client: Client,
+    },
+    Memory(Arc<MemoryStore>),
+}
+
+/// A value as Valkey would store it (one argument).
+fn encode<T: ToRedisArgs>(value: &T) -> Vec<u8> {
+    value.to_redis_args().into_iter().next().unwrap_or_default()
+}
+
+/// A stored value read back as Valkey's client would decode it.
+fn decode<T: FromRedisValue>(raw: Option<Vec<u8>>) -> AppResult<Option<T>> {
+    match raw {
+        None => Ok(None),
+        Some(bytes) => T::from_redis_value(redis::Value::BulkString(bytes))
+            .map(Some)
+            .map_err(|e| AppError::internal(format!("decode stored value: {e}"))),
+    }
+}
+
+fn secs(seconds: u64) -> std::time::Duration {
+    std::time::Duration::from_secs(seconds)
 }
 
 impl RedisClient {
     pub async fn new(config: &Config) -> AppResult<Self> {
-        let redis_url = config.redis_url();
+        let Some(redis_url) = config.redis_url() else {
+            tracing::info!("No Valkey configured: caches, task progress and now-playing are kept in memory");
+            return Ok(Self::in_memory());
+        };
 
         let client = Client::open(redis_url)?;
         let connection = ConnectionManager::new(client.clone()).await?;
 
         tracing::info!("Successfully connected to Redis/Valkey");
 
-        Ok(RedisClient {
-            connection,
-            client,
-        })
+        Ok(RedisClient { backend: Backend::Valkey { connection, client } })
+    }
+
+    /// The in-process store.
+    pub fn in_memory() -> Self {
+        RedisClient { backend: Backend::Memory(MemoryStore::new()) }
+    }
+
+    /// Whether this is a Valkey server other processes can share, so the cross-replica
+    /// pub/sub bridges have something to do.
+    pub fn is_shared(&self) -> bool {
+        matches!(self.backend, Backend::Valkey { .. })
     }
 
     /// Publish a message on a channel (fire-and-forget fan-out). Uses the shared
     /// connection — publishing, unlike subscribing, doesn't need a dedicated one.
-    /// Returns the number of subscribers that received it.
+    /// Returns the number of subscribers that received it (none in memory: there are no
+    /// other processes).
     pub async fn publish(&self, channel: &str, payload: &str) -> AppResult<i64> {
-        let mut conn = self.connection.clone();
-        let count: i64 = conn.publish(channel, payload).await?;
-        Ok(count)
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                Ok(conn.publish(channel, payload).await?)
+            }
+            Backend::Memory(_) => Ok(0),
+        }
     }
 
     /// Open a dedicated pub/sub connection for subscribing. Separate from the
     /// multiplexed ConnectionManager because a subscribing connection can't also
     /// serve normal commands.
     pub async fn get_pubsub(&self) -> AppResult<redis::aio::PubSub> {
-        Ok(self.client.get_async_pubsub().await?)
+        match &self.backend {
+            Backend::Valkey { client, .. } => Ok(client.get_async_pubsub().await?),
+            Backend::Memory(_) => Err(AppError::internal("pub/sub needs Valkey")),
+        }
     }
 
     pub async fn health_check(&self) -> AppResult<bool> {
-        let mut conn = self.connection.clone();
-        let result: String = redis::cmd("PING").query_async(&mut conn).await?;
-        Ok(result == "PONG")
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                let result: String = redis::cmd("PING").query_async(&mut conn).await?;
+                Ok(result == "PONG")
+            }
+            Backend::Memory(_) => Ok(true),
+        }
     }
 
     pub async fn get<T>(&self, key: &str) -> AppResult<Option<T>>
     where
-        T: redis::FromRedisValue,
+        T: FromRedisValue,
     {
-        let mut conn = self.connection.clone();
-        let result: Option<T> = conn.get(key).await?;
-        Ok(result)
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                Ok(conn.get(key).await?)
+            }
+            Backend::Memory(m) => decode(m.get(key)),
+        }
     }
 
     pub async fn set<T>(&self, key: &str, value: T) -> AppResult<()>
     where
-        T: redis::ToRedisArgs + redis::ToSingleRedisArg + Send + Sync,
+        T: ToRedisArgs + redis::ToSingleRedisArg + Send + Sync,
     {
-        let mut conn = self.connection.clone();
-        let _: () = conn.set(key, value).await?;
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                let _: () = conn.set(key, value).await?;
+            }
+            Backend::Memory(m) => {
+                m.set(key, encode(&value), None, false);
+            }
+        }
         Ok(())
     }
 
     pub async fn set_ex<T>(&self, key: &str, value: T, seconds: u64) -> AppResult<()>
     where
-        T: redis::ToRedisArgs + redis::ToSingleRedisArg + Send + Sync,
+        T: ToRedisArgs + redis::ToSingleRedisArg + Send + Sync,
     {
-        let mut conn = self.connection.clone();
-        let _: () = conn.set_ex(key, value, seconds).await?;
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                let _: () = conn.set_ex(key, value, seconds).await?;
+            }
+            Backend::Memory(m) => {
+                m.set(key, encode(&value), Some(secs(seconds)), false);
+            }
+        }
         Ok(())
     }
 
+    /// SET NX EX: set only if the key doesn't exist yet. Whether it was set.
+    pub async fn set_nx_ex<T>(&self, key: &str, value: T, seconds: u64) -> AppResult<bool>
+    where
+        T: ToRedisArgs + redis::ToSingleRedisArg + Send + Sync,
+    {
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                let set: Option<String> = redis::cmd("SET")
+                    .arg(key)
+                    .arg(value)
+                    .arg("NX")
+                    .arg("EX")
+                    .arg(seconds)
+                    .query_async(&mut conn)
+                    .await?;
+                Ok(set.is_some())
+            }
+            Backend::Memory(m) => Ok(m.set(key, encode(&value), Some(secs(seconds)), true)),
+        }
+    }
+
     pub async fn delete(&self, key: &str) -> AppResult<bool> {
-        let mut conn = self.connection.clone();
-        let result: bool = conn.del(key).await?;
-        Ok(result)
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                Ok(conn.del(key).await?)
+            }
+            Backend::Memory(m) => Ok(m.del(key)),
+        }
     }
 
     pub async fn exists(&self, key: &str) -> AppResult<bool> {
-        let mut conn = self.connection.clone();
-        let result: bool = conn.exists(key).await?;
-        Ok(result)
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                Ok(conn.exists(key).await?)
+            }
+            Backend::Memory(m) => Ok(m.exists(key)),
+        }
     }
 
     pub async fn expire(&self, key: &str, seconds: u64) -> AppResult<bool> {
-        let mut conn = self.connection.clone();
-        let result: bool = conn.expire(key, seconds as i64).await?;
-        Ok(result)
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                Ok(conn.expire(key, seconds as i64).await?)
+            }
+            Backend::Memory(m) => Ok(m.expire(key, secs(seconds))),
+        }
+    }
+
+    async fn incr_by(&self, key: &str, by: i64) -> AppResult<i64> {
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                Ok(conn.incr(key, by).await?)
+            }
+            Backend::Memory(m) => m.incr_by(key, by).map_err(AppError::internal),
+        }
     }
 
     pub async fn incr(&self, key: &str) -> AppResult<i64> {
-        let mut conn = self.connection.clone();
-        let result: i64 = conn.incr(key, 1).await?;
-        Ok(result)
+        self.incr_by(key, 1).await
     }
 
     pub async fn decr(&self, key: &str) -> AppResult<i64> {
-        let mut conn = self.connection.clone();
-        let result: i64 = conn.decr(key, 1).await?;
-        Ok(result)
+        self.incr_by(key, -1).await
+    }
+
+    pub async fn sadd(&self, key: &str, member: &str) -> AppResult<()> {
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                let _: () = conn.sadd(key, member).await?;
+            }
+            Backend::Memory(m) => {
+                m.sadd(key, member);
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn srem(&self, key: &str, member: &str) -> AppResult<()> {
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                let _: () = conn.srem(key, member).await?;
+            }
+            Backend::Memory(m) => {
+                m.srem(key, member);
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn smembers(&self, key: &str) -> AppResult<Vec<String>> {
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                Ok(conn.smembers(key).await?)
+            }
+            Backend::Memory(m) => Ok(m.smembers(key)),
+        }
+    }
+
+    // Atomic get and delete operation - critical for OIDC state management
+    pub async fn get_del(&self, key: &str) -> AppResult<Option<String>> {
+        match &self.backend {
+            Backend::Valkey { connection, .. } => {
+                let mut conn = connection.clone();
+                Ok(redis::cmd("GETDEL").arg(key).query_async(&mut conn).await?)
+            }
+            Backend::Memory(m) => decode(m.get_del(key)),
+        }
     }
 
     // Session management
@@ -133,14 +296,10 @@ impl RedisClient {
     // Rate limiting
     pub async fn check_rate_limit(&self, identifier: &str, limit: u32, window_seconds: u64) -> AppResult<bool> {
         let rate_key = format!("rate_limit:{}", identifier);
-        
-        let mut conn = self.connection.clone();
-        let current_count: i64 = conn.incr(&rate_key, 1).await?;
-        
+        let current_count = self.incr(&rate_key).await?;
         if current_count == 1 {
-            let _: () = conn.expire(&rate_key, window_seconds as i64).await?;
+            self.expire(&rate_key, window_seconds).await?;
         }
-        
         Ok(current_count <= limit as i64)
     }
 
@@ -171,18 +330,6 @@ impl RedisClient {
         self.delete(&refresh_key).await
     }
 
-    // Atomic get and delete operation - critical for OIDC state management
-    pub async fn get_del(&self, key: &str) -> AppResult<Option<String>> {
-        let mut conn = self.connection.clone();
-        let result: Option<String> = redis::cmd("GETDEL").arg(key).query_async(&mut conn).await?;
-        Ok(result)
-    }
-
-    // Get a connection for direct Redis operations
-    pub async fn get_connection(&self) -> AppResult<ConnectionManager> {
-        Ok(self.connection.clone())
-    }
-
     // ----- Now-playing sessions (ephemeral, best-effort mirror) -----
     //
     // Layout: `nowplaying:{user_id}:{device_id}` holds a JSON snapshot with a short
@@ -211,19 +358,16 @@ impl RedisClient {
         snapshot.updated_at = chrono::Utc::now().timestamp();
         let device_id = snapshot.device_id.clone();
         let json = serde_json::to_string(&snapshot)
-            .map_err(|e| crate::error::AppError::internal(format!("serialize now-playing: {}", e)))?;
+            .map_err(|e| AppError::internal(format!("serialize now-playing: {}", e)))?;
 
         let key = Self::now_playing_key(user_id, &device_id);
         let index = Self::now_playing_index_key(user_id);
-        let mut conn = self.connection.clone();
-        let _: () = conn.set_ex(&key, json, Self::NOW_PLAYING_TTL_SECONDS).await?;
-        let _: () = conn.sadd(&index, &device_id).await?;
+        self.set_ex(&key, json, Self::NOW_PLAYING_TTL_SECONDS).await?;
+        self.sadd(&index, &device_id).await?;
         // Keep the index around a bit longer than a single snapshot so a briefly
         // paused/quiet device isn't dropped from the set prematurely; pruning on
         // read handles genuinely-expired devices.
-        let _: () = conn
-            .expire(&index, (Self::NOW_PLAYING_TTL_SECONDS * 4) as i64)
-            .await?;
+        self.expire(&index, Self::NOW_PLAYING_TTL_SECONDS * 4).await?;
         Ok(())
     }
 
@@ -234,27 +378,22 @@ impl RedisClient {
         user_id: i32,
     ) -> AppResult<Vec<crate::models::NowPlayingSnapshot>> {
         let index = Self::now_playing_index_key(user_id);
-        let mut conn = self.connection.clone();
-        let device_ids: Vec<String> = conn.smembers(&index).await?;
+        let device_ids = self.smembers(&index).await?;
 
         let mut out = Vec::with_capacity(device_ids.len());
         for device_id in device_ids {
             let key = Self::now_playing_key(user_id, &device_id);
-            let raw: Option<String> = conn.get(&key).await?;
+            let raw: Option<String> = self.get(&key).await?;
             match raw {
                 Some(json) => {
                     match serde_json::from_str::<crate::models::NowPlayingSnapshot>(&json) {
                         Ok(snapshot) => out.push(snapshot),
                         // Corrupt/legacy entry: drop it from the index.
-                        Err(_) => {
-                            let _: () = conn.srem(&index, &device_id).await?;
-                        }
+                        Err(_) => self.srem(&index, &device_id).await?,
                     }
                 }
                 // Snapshot expired: prune the stale index member.
-                None => {
-                    let _: () = conn.srem(&index, &device_id).await?;
-                }
+                None => self.srem(&index, &device_id).await?,
             }
         }
         Ok(out)
@@ -271,23 +410,13 @@ impl RedisClient {
         snapshot.updated_at = chrono::Utc::now().timestamp();
         let device_id = snapshot.device_id.clone();
         let json = serde_json::to_string(&snapshot)
-            .map_err(|e| crate::error::AppError::internal(format!("serialize now-playing: {}", e)))?;
+            .map_err(|e| AppError::internal(format!("serialize now-playing: {}", e)))?;
 
         let key = Self::now_playing_key(user_id, &device_id);
         let index = Self::now_playing_index_key(user_id);
-        let mut conn = self.connection.clone();
-        let _: Option<String> = redis::cmd("SET")
-            .arg(&key)
-            .arg(json)
-            .arg("NX")
-            .arg("EX")
-            .arg(Self::NOW_PLAYING_TTL_SECONDS)
-            .query_async(&mut conn)
-            .await?;
-        let _: () = conn.sadd(&index, &device_id).await?;
-        let _: () = conn
-            .expire(&index, (Self::NOW_PLAYING_TTL_SECONDS * 4) as i64)
-            .await?;
+        self.set_nx_ex(&key, json, Self::NOW_PLAYING_TTL_SECONDS).await?;
+        self.sadd(&index, &device_id).await?;
+        self.expire(&index, Self::NOW_PLAYING_TTL_SECONDS * 4).await?;
         Ok(())
     }
 
@@ -296,15 +425,12 @@ impl RedisClient {
     pub async fn touch_now_playing(&self, user_id: i32, device_id: &str) -> AppResult<bool> {
         let key = Self::now_playing_key(user_id, device_id);
         let index = Self::now_playing_index_key(user_id);
-        let mut conn = self.connection.clone();
-        let alive: bool = conn.expire(&key, Self::NOW_PLAYING_TTL_SECONDS as i64).await?;
+        let alive = self.expire(&key, Self::NOW_PLAYING_TTL_SECONDS).await?;
         if alive {
             // Re-index too, in case the index set expired on its own.
-            let _: () = conn.sadd(&index, device_id).await?;
+            self.sadd(&index, device_id).await?;
         }
-        let _: () = conn
-            .expire(&index, (Self::NOW_PLAYING_TTL_SECONDS * 4) as i64)
-            .await?;
+        self.expire(&index, Self::NOW_PLAYING_TTL_SECONDS * 4).await?;
         Ok(alive)
     }
 
@@ -317,9 +443,8 @@ impl RedisClient {
     pub async fn remove_now_playing(&self, user_id: i32, device_id: &str) -> AppResult<()> {
         let key = Self::now_playing_key(user_id, device_id);
         let index = Self::now_playing_index_key(user_id);
-        let mut conn = self.connection.clone();
-        let _: () = conn.del(&key).await?;
-        let _: () = conn.srem(&index, device_id).await?;
+        self.delete(&key).await?;
+        self.srem(&index, device_id).await?;
         Ok(())
     }
 
@@ -341,5 +466,31 @@ impl RedisClient {
                     .max_by_key(|d| d.updated_at)
             });
         Ok(anchor.map(|d| (d.episode_id, d.is_youtube)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RedisClient;
+
+    /// The in-memory store hands values back as Valkey's client would decode them.
+    #[tokio::test]
+    async fn memory_values_round_trip_like_valkey() {
+        let c = RedisClient::in_memory();
+        c.set_ex("b", true, 60).await.unwrap();
+        assert_eq!(c.get::<bool>("b").await.unwrap(), Some(true));
+        c.set("i", 42i32).await.unwrap();
+        assert_eq!(c.get::<i32>("i").await.unwrap(), Some(42));
+        assert_eq!(c.incr("i").await.unwrap(), 43);
+        c.set("bytes", vec![0u8, 255, 7]).await.unwrap();
+        assert_eq!(c.get::<Vec<u8>>("bytes").await.unwrap(), Some(vec![0u8, 255, 7]));
+        c.set("s", "text").await.unwrap();
+        assert_eq!(c.get_del("s").await.unwrap().as_deref(), Some("text"));
+        assert_eq!(c.get::<String>("s").await.unwrap(), None);
+        assert!(c.set_nx_ex("nx", "a", 60).await.unwrap());
+        assert!(!c.set_nx_ex("nx", "b", 60).await.unwrap());
+        assert!(c.check_rate_limit("ip", 2, 60).await.unwrap());
+        assert!(c.check_rate_limit("ip", 2, 60).await.unwrap());
+        assert!(!c.check_rate_limit("ip", 2, 60).await.unwrap());
     }
 }

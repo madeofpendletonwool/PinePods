@@ -14,6 +14,7 @@ async fn exec_per_backend(app: &TestApp, pg: &str, my: &str) {
     match app.backend() {
         Backend::Postgres => exec(app, pg).await,
         Backend::MariaDb => exec(app, my).await,
+        Backend::Sqlite => unreachable!("upgrade tests skip SQLite"),
     }
 }
 
@@ -48,6 +49,9 @@ async fn legacy_hashes(app: &TestApp, user: &TestUser) -> Vec<String> {
 #[tokio::test]
 async fn pod_sync_type_settings_move_to_the_new_sync_model() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let internal = app.user("internal").await;
     let both = app.user("both").await;
     let external = app.user("external").await;
@@ -158,6 +162,9 @@ async fn pod_sync_type_settings_move_to_the_new_sync_model() {
 #[tokio::test]
 async fn sync_logs_survive_device_removal_and_device_lists_are_backfilled() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("logs").await;
     let uid = user.id;
     let feed = Feed::with_episodes("Logged", 2);
@@ -268,6 +275,9 @@ async fn sync_logs_survive_device_removal_and_device_lists_are_backfilled() {
 #[tokio::test]
 async fn the_internal_sync_device_is_marked_as_the_pinepods_device() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("device").await;
     let uid = user.id;
     for name in [format!("pinepods-internal-{uid}"), "pinepods".to_string(), "antennapod".to_string()] {
@@ -284,6 +294,7 @@ async fn the_internal_sync_device_is_marked_as_the_pinepods_device() {
     let second = format!(r#"UPDATE "GpodderDevices" SET SystemRole = 'pinepods' WHERE UserID = {uid} AND DeviceName = 'pinepods'"#);
     let rejected = match app.db() {
         pinepods_api::database::DatabasePool::Postgres(pool) => sqlx::raw_sql(sqlx::AssertSqlSafe(second)).execute(pool).await.is_err(),
+        pinepods_api::database::DatabasePool::Sqlite(pool) => sqlx::raw_sql(sqlx::AssertSqlSafe(second)).execute(pool).await.is_err(),
         pinepods_api::database::DatabasePool::MySQL(pool) => sqlx::raw_sql(sqlx::AssertSqlSafe(second.replace('"', ""))).execute(pool).await.is_err(),
     };
     assert!(rejected, "a second pinepods device must be rejected");
@@ -311,6 +322,9 @@ async fn expired_gpodder_sessions_are_cleaned_up() {
 #[tokio::test(flavor = "multi_thread")]
 async fn listen_history_duplicates_are_merged_and_made_unique() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("dupes").await;
     let url = app.feed("dupes.xml", &Feed::with_episodes("Dupes", 2));
     let pod = app.subscribe(&user, &url, 2).await;
@@ -370,6 +384,9 @@ async fn listen_history_duplicates_are_merged_and_made_unique() {
 #[tokio::test(flavor = "multi_thread")]
 async fn subscription_server_ts_is_backfilled_and_required() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("serverts").await;
     let uid = user.id;
     exec_per_backend(
@@ -399,6 +416,7 @@ async fn subscription_server_ts_is_backfilled_and_required() {
     let nullable = match app.backend() {
         Backend::Postgres => int(&app, "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'GpodderSyncSubscriptions' AND column_name = 'serverts' AND is_nullable = 'YES'").await,
         Backend::MariaDb => int(&app, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'GpodderSyncSubscriptions' AND COLUMN_NAME = 'ServerTs' AND IS_NULLABLE = 'YES'").await,
+        Backend::Sqlite => unreachable!("upgrade tests skip SQLite"),
     };
     assert_eq!(nullable, Some(0), "ServerTs is NOT NULL after 114");
 }
@@ -408,6 +426,9 @@ async fn subscription_server_ts_is_backfilled_and_required() {
 #[tokio::test(flavor = "multi_thread")]
 async fn sessions_end_with_the_app_password_that_opened_them() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("sessions").await;
     let uid = user.id;
     exec_per_backend(
@@ -432,6 +453,7 @@ async fn sessions_end_with_the_app_password_that_opened_them() {
     let expires = match app.backend() {
         Backend::Postgres => "NOW() + INTERVAL '1 day'",
         Backend::MariaDb => "NOW() + INTERVAL 1 DAY",
+        Backend::Sqlite => unreachable!("upgrade tests skip SQLite"),
     };
     exec(&app, &format!(
         r#"INSERT INTO "GpodderSessions" (UserID, SessionToken, ExpiresAt, AppPasswordID)
@@ -447,6 +469,9 @@ async fn sessions_end_with_the_app_password_that_opened_them() {
 #[tokio::test]
 async fn device_names_set_in_pinepods_get_their_own_column() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let user = app.user("captions").await;
     exec(&app, &format!(r#"INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, DeviceCaption) VALUES ({}, 'phone', 'mobile', 'Pixel')"#, user.id)).await;
     exec(&app, r#"ALTER TABLE "GpodderDevices" DROP COLUMN UserCaption"#).await;
@@ -468,6 +493,9 @@ async fn device_names_set_in_pinepods_get_their_own_column() {
 #[tokio::test]
 async fn old_replaced_episode_actions_are_dropped_before_the_action_log_is_rewritten() {
     let app = TestApp::new().await;
+    if app.upgrade_tests_unsupported() {
+        return;
+    }
     let (local, external) = (app.user("compact-local").await, app.user("compact-external").await);
     exec(&app, &format!(
         r#"INSERT INTO "SyncTargets" (UserID, Kind, Url, EncryptedSecret) VALUES ({}, 'gpodder', 'https://gpodder.example', 'x')"#,

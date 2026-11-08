@@ -83,6 +83,11 @@ impl TestApp {
                 .fetch_optional(pool)
                 .await
                 .unwrap(),
+            DatabasePool::Sqlite(pool) => sqlx::query_scalar(r#"SELECT podcasting2hash FROM "Podcasts" WHERE podcastid = $1"#)
+                .bind(podcast_id)
+                .fetch_optional(pool)
+                .await
+                .unwrap(),
             DatabasePool::MySQL(pool) => sqlx::query_scalar("SELECT Podcasting2Hash FROM Podcasts WHERE PodcastID = ?")
                 .bind(podcast_id)
                 .fetch_optional(pool)

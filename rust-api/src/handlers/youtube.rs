@@ -14,6 +14,7 @@ use crate::{
     services::ytdlp::ytdlp_binary,
     AppState,
 };
+use crate::database::dialect::dialect_match;
 
 // Query struct for YouTube channel search
 #[derive(Deserialize, utoipa::IntoParams)]
@@ -714,9 +715,9 @@ async fn heal_channel_metadata(state: &AppState, podcast_id: i32, video: &VideoD
     if video.channel.is_empty() && video.thumbnail.is_empty() {
         return;
     }
-    let result = match &state.db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"
+    let result = dialect_match!(&state.db_pool, {
+        pg(pool) => {
+            q::query(r#"
                 UPDATE "Podcasts"
                 SET podcastname = CASE WHEN podcastname = '' OR podcastname IS NULL THEN $2 ELSE podcastname END,
                     artworkurl   = CASE WHEN artworkurl  = '' OR artworkurl  IS NULL THEN $3 ELSE artworkurl  END,
@@ -729,8 +730,8 @@ async fn heal_channel_metadata(state: &AppState, podcast_id: i32, video: &VideoD
             .execute(pool)
             .await
             .map(|r| r.rows_affected())
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query(r#"
                 UPDATE Podcasts
                 SET PodcastName = CASE WHEN PodcastName = '' OR PodcastName IS NULL THEN ? ELSE PodcastName END,
@@ -745,8 +746,8 @@ async fn heal_channel_metadata(state: &AppState, podcast_id: i32, video: &VideoD
             .execute(pool)
             .await
             .map(|r| r.rows_affected())
-        }
-    };
+        },
+    });
     if let Err(e) = result {
         warn!("Updating metadata of YouTube podcast {} failed: {}", podcast_id, e);
     }

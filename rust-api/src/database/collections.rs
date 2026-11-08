@@ -27,9 +27,9 @@ impl DatabasePool {
 
     /// Look up a collection's owner and default flag. Returns (user_id, is_default).
     pub async fn get_collection_meta(&self, collection_id: i32) -> AppResult<(i32, bool)> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"SELECT userid, isdefault FROM "Collections" WHERE collectionid = $1"#,
                 )
                 .bind(collection_id)
@@ -37,8 +37,8 @@ impl DatabasePool {
                 .await?
                 .ok_or_else(|| AppError::not_found("Collection not found"))?;
                 Ok((row.try_get("userid")?, row.try_get("isdefault")?))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT UserID, IsDefault FROM Collections WHERE CollectionID = ?")
                     .bind(collection_id)
                     .fetch_optional(pool)
@@ -46,8 +46,8 @@ impl DatabasePool {
                     .ok_or_else(|| AppError::not_found("Collection not found"))?;
                 let is_default: i8 = row.try_get("IsDefault")?;
                 Ok((row.try_get("UserID")?, is_default != 0))
-            }
-        }
+            },
+        })
     }
 
     pub async fn create_collection(
@@ -56,10 +56,10 @@ impl DatabasePool {
     ) -> AppResult<i32> {
         let icon = req.icon.clone().unwrap_or_else(|| "ph-bookmark-simple".to_string());
         let categories = serialize_auto_add_categories(req.auto_add_categories.as_deref());
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Surface a clean conflict instead of a 500 on duplicate name
-                let exists = sqlx::query(
+                let exists = q::query(
                     r#"SELECT 1 FROM "Collections" WHERE userid = $1 AND name = $2"#,
                 )
                 .bind(req.user_id)
@@ -70,7 +70,7 @@ impl DatabasePool {
                     return Err(AppError::conflict("A collection with that name already exists"));
                 }
 
-                let row = sqlx::query(
+                let row = q::query(
                     r#"INSERT INTO "Collections" (userid, name, description, icon, isdefault, autoaddcategories)
                        VALUES ($1, $2, $3, $4, FALSE, $5) RETURNING collectionid"#,
                 )
@@ -82,8 +82,8 @@ impl DatabasePool {
                 .fetch_one(pool)
                 .await?;
                 Ok(row.try_get("collectionid")?)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let exists = sqlx::query("SELECT 1 FROM Collections WHERE UserID = ? AND Name = ?")
                     .bind(req.user_id)
                     .bind(&req.name)
@@ -104,16 +104,16 @@ impl DatabasePool {
                 .execute(pool)
                 .await?;
                 Ok(result.last_insert_id() as i32)
-            }
-        }
+            },
+        })
     }
 
     /// Guarantee the user has a default "Saved" collection (users created after the
     /// Collections migration, or any edge case, get one created lazily here).
     pub async fn ensure_default_collection(&self, user_id: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(
                     r#"INSERT INTO "Collections" (userid, name, isdefault, icon)
                        SELECT $1, 'Saved', TRUE, 'ph-bookmark-simple'
                        WHERE NOT EXISTS (
@@ -123,8 +123,8 @@ impl DatabasePool {
                 .bind(user_id)
                 .execute(pool)
                 .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query(
                     "INSERT INTO Collections (UserID, Name, IsDefault, Icon)
                      SELECT ?, 'Saved', TRUE, 'ph-bookmark-simple' FROM DUAL
@@ -136,16 +136,16 @@ impl DatabasePool {
                 .bind(user_id)
                 .execute(pool)
                 .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     pub async fn get_collections(&self, user_id: i32) -> AppResult<Vec<crate::models::Collection>> {
         self.ensure_default_collection(user_id).await?;
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT
                         c.collectionid,
                         c.userid,
@@ -193,8 +193,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(collections)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT
                         c.CollectionID as collectionid,
@@ -245,8 +245,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(collections)
-            }
-        }
+            },
+        })
     }
 
     pub async fn update_collection(
@@ -265,9 +265,9 @@ impl DatabasePool {
 
         // Guard against renaming onto an existing name
         if let Some(ref new_name) = req.name {
-            match self {
-                DatabasePool::Postgres(pool) => {
-                    let clash = sqlx::query(
+            dialect_match!(self, {
+                pg(pool) => {
+                    let clash = q::query(
                         r#"SELECT 1 FROM "Collections" WHERE userid = $1 AND name = $2 AND collectionid <> $3"#,
                     )
                     .bind(user_id)
@@ -278,8 +278,8 @@ impl DatabasePool {
                     if clash.is_some() {
                         return Err(AppError::conflict("A collection with that name already exists"));
                     }
-                }
-                DatabasePool::MySQL(pool) => {
+                },
+                mysql(pool) => {
                     let clash = sqlx::query(
                         "SELECT 1 FROM Collections WHERE UserID = ? AND Name = ? AND CollectionID <> ?",
                     )
@@ -291,13 +291,13 @@ impl DatabasePool {
                     if clash.is_some() {
                         return Err(AppError::conflict("A collection with that name already exists"));
                     }
-                }
-            }
+                },
+            })
         }
 
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(
                     r#"UPDATE "Collections" SET
                         name = COALESCE($1, name),
                         description = COALESCE($2, description),
@@ -312,8 +312,8 @@ impl DatabasePool {
                 .bind(user_id)
                 .execute(pool)
                 .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query(
                     "UPDATE Collections SET
                         Name = COALESCE(?, Name),
@@ -329,16 +329,16 @@ impl DatabasePool {
                 .bind(user_id)
                 .execute(pool)
                 .await?;
-            }
-        }
+            },
+        });
 
         // Auto-add categories are set explicitly (an empty list clears the rule), so they can't
         // use the COALESCE-ignore-NULL pattern above — only touch the column when provided.
         if req.auto_add_categories.is_some() {
             let categories = serialize_auto_add_categories(req.auto_add_categories.as_deref());
-            match self {
-                DatabasePool::Postgres(pool) => {
-                    sqlx::query(
+            dialect_match!(self, {
+                pg(pool) => {
+                    q::query(
                         r#"UPDATE "Collections" SET autoaddcategories = $1, lastupdated = CURRENT_TIMESTAMP
                            WHERE collectionid = $2 AND userid = $3 AND isdefault = FALSE"#,
                     )
@@ -347,8 +347,8 @@ impl DatabasePool {
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-                }
-                DatabasePool::MySQL(pool) => {
+                },
+                mysql(pool) => {
                     sqlx::query(
                         "UPDATE Collections SET AutoAddCategories = ?, LastUpdated = CURRENT_TIMESTAMP
                          WHERE CollectionID = ? AND UserID = ? AND IsDefault = FALSE",
@@ -358,8 +358,8 @@ impl DatabasePool {
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-                }
-            }
+                },
+            })
         }
         Ok(())
     }
@@ -367,17 +367,17 @@ impl DatabasePool {
     /// Distinct podcast category names across the user's subscriptions, sorted alphabetically.
     /// Feeds the auto-add category picker in the collection edit modal.
     pub async fn get_user_categories(&self, user_id: i32) -> AppResult<Vec<String>> {
-        let raw_rows: Vec<String> = match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query_scalar(
+        let raw_rows: Vec<String> = dialect_match!(self, {
+            pg(pool) => {
+                q::query_scalar(
                     r#"SELECT categories FROM "Podcasts"
                        WHERE userid = $1 AND categories IS NOT NULL AND categories <> ''"#,
                 )
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query_scalar(
                     "SELECT Categories FROM Podcasts
                      WHERE UserID = ? AND Categories IS NOT NULL AND Categories <> ''",
@@ -385,8 +385,8 @@ impl DatabasePool {
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?
-            }
-        };
+            },
+        });
 
         let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         for raw in &raw_rows {
@@ -408,9 +408,9 @@ impl DatabasePool {
     /// substrings.
     pub async fn auto_add_category_episodes(&self, collection_id: i32) -> AppResult<()> {
         // Load the collection's owner, default flag, and category rule in one shot.
-        let (is_default, categories, owner) = match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        let (is_default, categories, owner) = dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"SELECT isdefault, autoaddcategories, userid FROM "Collections" WHERE collectionid = $1"#,
                 )
                 .bind(collection_id)
@@ -424,8 +424,8 @@ impl DatabasePool {
                     ),
                     None => return Ok(()),
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT IsDefault, AutoAddCategories as autoaddcategories, UserID FROM Collections WHERE CollectionID = ?",
                 )
@@ -440,8 +440,8 @@ impl DatabasePool {
                     ),
                     None => return Ok(()),
                 }
-            }
-        };
+            },
+        });
 
         if is_default {
             return Ok(());
@@ -451,8 +451,8 @@ impl DatabasePool {
             _ => return Ok(()),
         };
 
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Category placeholders start at $2 ($1 is collection_id).
                 let cat_clause: String = (0..categories.len())
                     .map(|i| format!("LOWER(p.categories) LIKE LOWER(${})", i + 2))
@@ -471,18 +471,18 @@ impl DatabasePool {
                              WHERE ce.collectionid = $1 AND ce.episodeid = e.episodeid
                          )"#,
                 );
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(collection_id);
+                let mut q = q::query(sqlx::AssertSqlSafe(sql.as_str())).bind(collection_id);
                 for cat in &categories {
                     q = q.bind(format!("%{}%", cat));
                 }
                 q.bind(owner).execute(pool).await?;
 
-                sqlx::query(r#"UPDATE "Collections" SET lastupdated = CURRENT_TIMESTAMP WHERE collectionid = $1"#)
+                q::query(r#"UPDATE "Collections" SET lastupdated = CURRENT_TIMESTAMP WHERE collectionid = $1"#)
                     .bind(collection_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let cat_clause: String = std::iter::repeat("LOWER(p.Categories) LIKE LOWER(?)")
                     .take(categories.len())
                     .collect::<Vec<_>>()
@@ -510,8 +510,8 @@ impl DatabasePool {
                     .bind(collection_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -522,23 +522,23 @@ impl DatabasePool {
         if episode_ids.is_empty() {
             return Ok(());
         }
-        let (rules, categories): (Vec<(i32, Option<String>)>, Option<String>) = match self {
-            DatabasePool::Postgres(pool) => (
-                sqlx::query_as(
+        let (rules, categories): (Vec<(i32, Option<String>)>, Option<String>) = dialect_match!(self, {
+            pg(pool) => (
+                q::query_as(
                     r#"SELECT collectionid, autoaddcategories FROM "Collections"
                        WHERE userid = $1 AND isdefault = FALSE AND autoaddcategories IS NOT NULL AND autoaddcategories <> ''"#,
                 )
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?,
-                sqlx::query_scalar(r#"SELECT categories FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                q::query_scalar(r#"SELECT categories FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
                     .bind(podcast_id)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?
                     .flatten(),
             ),
-            DatabasePool::MySQL(pool) => (
+            mysql(pool) => (
                 sqlx::query_as(
                     "SELECT CollectionID, AutoAddCategories FROM Collections
                      WHERE UserID = ? AND IsDefault = FALSE AND AutoAddCategories IS NOT NULL AND AutoAddCategories <> ''",
@@ -553,15 +553,15 @@ impl DatabasePool {
                     .await?
                     .flatten(),
             ),
-        };
+        });
         let podcast_categories = categories.unwrap_or_default().to_lowercase();
         let matching = rules.into_iter().filter_map(|(id, rule)| {
             parse_auto_add_categories(rule)?.iter().any(|c| podcast_categories.contains(&c.to_lowercase())).then_some(id)
         });
         for collection_id in matching {
-            match self {
-                DatabasePool::Postgres(pool) => {
-                    sqlx::query(
+            dialect_match!(self, {
+                pg(pool) => {
+                    q::query(
                         r#"INSERT INTO "CollectionEpisodes" (collectionid, episodeid)
                            SELECT $1, e.episodeid FROM "Episodes" e
                            WHERE e.episodeid = ANY($2) AND e.feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $3)
@@ -572,12 +572,12 @@ impl DatabasePool {
                     .bind(podcast_id)
                     .execute(pool)
                     .await?;
-                    sqlx::query(r#"UPDATE "Collections" SET lastupdated = CURRENT_TIMESTAMP WHERE collectionid = $1"#)
+                    q::query(r#"UPDATE "Collections" SET lastupdated = CURRENT_TIMESTAMP WHERE collectionid = $1"#)
                         .bind(collection_id)
                         .execute(pool)
                         .await?;
-                }
-                DatabasePool::MySQL(pool) => {
+                },
+                mysql(pool) => {
                     let ids = vec!["?"; episode_ids.len()].join(", ");
                     let sql = format!(
                         "INSERT INTO CollectionEpisodes (CollectionID, EpisodeID)
@@ -594,8 +594,8 @@ impl DatabasePool {
                         .bind(collection_id)
                         .execute(pool)
                         .await?;
-                }
-            }
+                },
+            })
         }
         Ok(())
     }
@@ -608,22 +608,22 @@ impl DatabasePool {
         if is_default {
             return Err(AppError::bad_request("The default Saved collection cannot be deleted"));
         }
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"DELETE FROM "Collections" WHERE collectionid = $1 AND userid = $2 AND isdefault = FALSE"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"DELETE FROM "Collections" WHERE collectionid = $1 AND userid = $2 AND isdefault = FALSE"#)
                     .bind(collection_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("DELETE FROM Collections WHERE CollectionID = ? AND UserID = ? AND IsDefault = FALSE")
                     .bind(collection_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -644,23 +644,23 @@ impl DatabasePool {
         }
 
         let (ep_col, vid_col) = if is_youtube { (None, Some(episode_id)) } else { (Some(episode_id), None) };
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let existing = if is_youtube {
-                    sqlx::query(r#"SELECT 1 FROM "CollectionEpisodes" WHERE collectionid = $1 AND videoid = $2"#)
+                    q::query(r#"SELECT 1 FROM "CollectionEpisodes" WHERE collectionid = $1 AND videoid = $2"#)
                         .bind(collection_id).bind(episode_id).fetch_optional(pool).await?
                 } else {
-                    sqlx::query(r#"SELECT 1 FROM "CollectionEpisodes" WHERE collectionid = $1 AND episodeid = $2"#)
+                    q::query(r#"SELECT 1 FROM "CollectionEpisodes" WHERE collectionid = $1 AND episodeid = $2"#)
                         .bind(collection_id).bind(episode_id).fetch_optional(pool).await?
                 };
                 if existing.is_none() {
-                    sqlx::query(r#"INSERT INTO "CollectionEpisodes" (collectionid, episodeid, videoid) VALUES ($1, $2, $3)"#)
+                    q::query(r#"INSERT INTO "CollectionEpisodes" (collectionid, episodeid, videoid) VALUES ($1, $2, $3)"#)
                         .bind(collection_id).bind(ep_col).bind(vid_col).execute(pool).await?;
-                    sqlx::query(r#"UPDATE "Collections" SET lastupdated = CURRENT_TIMESTAMP WHERE collectionid = $1"#)
+                    q::query(r#"UPDATE "Collections" SET lastupdated = CURRENT_TIMESTAMP WHERE collectionid = $1"#)
                         .bind(collection_id).execute(pool).await?;
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let existing = if is_youtube {
                     sqlx::query("SELECT 1 FROM CollectionEpisodes WHERE CollectionID = ? AND VideoID = ?")
                         .bind(collection_id).bind(episode_id).fetch_optional(pool).await?
@@ -674,8 +674,8 @@ impl DatabasePool {
                     sqlx::query("UPDATE Collections SET LastUpdated = CURRENT_TIMESTAMP WHERE CollectionID = ?")
                         .bind(collection_id).execute(pool).await?;
                 }
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -693,17 +693,17 @@ impl DatabasePool {
         if is_default {
             return self.remove_saved_episode(episode_id, user_id, is_youtube).await;
         }
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 if is_youtube {
-                    sqlx::query(r#"DELETE FROM "CollectionEpisodes" WHERE collectionid = $1 AND videoid = $2"#)
+                    q::query(r#"DELETE FROM "CollectionEpisodes" WHERE collectionid = $1 AND videoid = $2"#)
                         .bind(collection_id).bind(episode_id).execute(pool).await?;
                 } else {
-                    sqlx::query(r#"DELETE FROM "CollectionEpisodes" WHERE collectionid = $1 AND episodeid = $2"#)
+                    q::query(r#"DELETE FROM "CollectionEpisodes" WHERE collectionid = $1 AND episodeid = $2"#)
                         .bind(collection_id).bind(episode_id).execute(pool).await?;
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 if is_youtube {
                     sqlx::query("DELETE FROM CollectionEpisodes WHERE CollectionID = ? AND VideoID = ?")
                         .bind(collection_id).bind(episode_id).execute(pool).await?;
@@ -711,8 +711,8 @@ impl DatabasePool {
                     sqlx::query("DELETE FROM CollectionEpisodes WHERE CollectionID = ? AND EpisodeID = ?")
                         .bind(collection_id).bind(episode_id).execute(pool).await?;
                 }
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -738,17 +738,17 @@ impl DatabasePool {
         is_youtube: bool,
     ) -> AppResult<Vec<i32>> {
         let mut ids: Vec<i32> = Vec::new();
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let rows = if is_youtube {
-                    sqlx::query(
+                    q::query(
                         r#"SELECT ce.collectionid FROM "CollectionEpisodes" ce
                            JOIN "Collections" c ON ce.collectionid = c.collectionid
                            WHERE c.userid = $1 AND ce.videoid = $2"#,
                     )
                     .bind(user_id).bind(episode_id).fetch_all(pool).await?
                 } else {
-                    sqlx::query(
+                    q::query(
                         r#"SELECT ce.collectionid FROM "CollectionEpisodes" ce
                            JOIN "Collections" c ON ce.collectionid = c.collectionid
                            WHERE c.userid = $1 AND ce.episodeid = $2"#,
@@ -761,21 +761,21 @@ impl DatabasePool {
 
                 // Include the default collection if the episode is saved
                 let saved = if is_youtube {
-                    sqlx::query(r#"SELECT 1 FROM "SavedVideos" WHERE userid = $1 AND videoid = $2"#)
+                    q::query(r#"SELECT 1 FROM "SavedVideos" WHERE userid = $1 AND videoid = $2"#)
                         .bind(user_id).bind(episode_id).fetch_optional(pool).await?
                 } else {
-                    sqlx::query(r#"SELECT 1 FROM "SavedEpisodes" WHERE userid = $1 AND episodeid = $2"#)
+                    q::query(r#"SELECT 1 FROM "SavedEpisodes" WHERE userid = $1 AND episodeid = $2"#)
                         .bind(user_id).bind(episode_id).fetch_optional(pool).await?
                 };
                 if saved.is_some() {
-                    if let Some(row) = sqlx::query(r#"SELECT collectionid FROM "Collections" WHERE userid = $1 AND isdefault = TRUE"#)
+                    if let Some(row) = q::query(r#"SELECT collectionid FROM "Collections" WHERE userid = $1 AND isdefault = TRUE"#)
                         .bind(user_id).fetch_optional(pool).await?
                     {
                         ids.push(row.try_get("collectionid")?);
                     }
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = if is_youtube {
                     sqlx::query(
                         "SELECT ce.CollectionID as collectionid FROM CollectionEpisodes ce
@@ -809,8 +809,8 @@ impl DatabasePool {
                         ids.push(row.try_get("collectionid")?);
                     }
                 }
-            }
-        }
+            },
+        });
         Ok(ids)
     }
 
@@ -834,8 +834,8 @@ impl DatabasePool {
         };
         let order_dir = if sort_order == "asc" { "ASC" } else { "DESC" };
 
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let filter_clause = match filter {
                     "completed"   => " WHERE completed = true",
                     "in_progress" => " WHERE completed = false AND listenduration IS NOT NULL AND listenduration > 0",
@@ -929,7 +929,7 @@ impl DatabasePool {
                     LIMIT $10 OFFSET $11"#
                 );
 
-                let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                let rows = q::query(sqlx::AssertSqlSafe(sql.as_str()))
                     .bind(user_id)
                     .bind(user_id)
                     .bind(user_id)
@@ -975,8 +975,8 @@ impl DatabasePool {
                     });
                 }
                 Ok((episodes, total))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mysql_filter = match filter {
                     "completed"   => " WHERE completed = 1",
                     "in_progress" => " WHERE completed = 0 AND listenduration IS NOT NULL AND listenduration > 0",
@@ -1116,60 +1116,60 @@ impl DatabasePool {
                     });
                 }
                 Ok((episodes, total))
-            }
-        }
+            },
+        })
     }
 
     // Get the user's collection_add_ui preference ('modal' or 'submenu')
     pub async fn get_collection_add_ui(&self, user_id: i32) -> AppResult<String> {
-        let mode = match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT collection_add_ui FROM "UserSettings" WHERE userid = $1"#)
+        let mode = dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT collection_add_ui FROM "UserSettings" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
                 row.and_then(|r| r.try_get::<Option<String>, _>("collection_add_ui").ok().flatten())
                     .unwrap_or_else(|| "modal".to_string())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT CollectionAddUI FROM UserSettings WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
                 row.and_then(|r| r.try_get::<Option<String>, _>("CollectionAddUI").ok().flatten())
                     .unwrap_or_else(|| "modal".to_string())
-            }
-        };
+            },
+        });
         Ok(mode)
     }
 
     // Set the user's collection_add_ui preference
     pub async fn set_collection_add_ui(&self, user_id: i32, mode: &str) -> AppResult<bool> {
         let mode = if mode == "submenu" { "submenu" } else { "modal" };
-        let success = match self {
-            DatabasePool::Postgres(pool) => {
-                let existing = sqlx::query(r#"SELECT COUNT(*) as count FROM "UserSettings" WHERE userid = $1"#)
+        let success = dialect_match!(self, {
+            pg(pool) => {
+                let existing = q::query(r#"SELECT COUNT(*) as count FROM "UserSettings" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
                 let count: i64 = existing.try_get("count")?;
                 if count > 0 {
-                    let result = sqlx::query(r#"UPDATE "UserSettings" SET collection_add_ui = $2 WHERE userid = $1"#)
+                    let result = q::query(r#"UPDATE "UserSettings" SET collection_add_ui = $2 WHERE userid = $1"#)
                         .bind(user_id)
                         .bind(mode)
                         .execute(pool)
                         .await?;
                     result.rows_affected() > 0
                 } else {
-                    let result = sqlx::query(r#"INSERT INTO "UserSettings" (userid, collection_add_ui, theme) VALUES ($1, $2, 'Nordic')"#)
+                    let result = q::query(r#"INSERT INTO "UserSettings" (userid, collection_add_ui, theme) VALUES ($1, $2, 'Nordic')"#)
                         .bind(user_id)
                         .bind(mode)
                         .execute(pool)
                         .await?;
                     result.rows_affected() > 0
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let existing = sqlx::query("SELECT COUNT(*) as count FROM UserSettings WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_one(pool)
@@ -1190,8 +1190,8 @@ impl DatabasePool {
                         .await?;
                     result.rows_affected() > 0
                 }
-            }
-        };
+            },
+        });
         Ok(success)
     }
 }

@@ -19,6 +19,7 @@ use super::fixtures::FixtureServer;
 pub enum Backend {
     Postgres,
     MariaDb,
+    Sqlite,
 }
 
 impl Backend {
@@ -27,6 +28,7 @@ impl Backend {
         match self {
             Backend::Postgres => "postgresql",
             Backend::MariaDb => "mariadb",
+            Backend::Sqlite => "sqlite",
         }
     }
 }
@@ -72,11 +74,13 @@ fn init() -> TestEnv {
     let backend = match var("PINEPODS_TEST_DB_TYPE", "postgresql").to_lowercase().as_str() {
         "postgresql" | "postgres" => Backend::Postgres,
         "mariadb" | "mysql" => Backend::MariaDb,
-        other => panic!("PINEPODS_TEST_DB_TYPE={other}: expected postgresql or mariadb"),
+        "sqlite" => Backend::Sqlite,
+        other => panic!("PINEPODS_TEST_DB_TYPE={other}: expected postgresql, mariadb or sqlite"),
     };
     let (default_port, default_user) = match backend {
         Backend::Postgres => ("55433", "pinepods"),
         Backend::MariaDb => ("33307", "root"),
+        Backend::Sqlite => ("0", ""),
     };
 
     let mut env = TestEnv {
@@ -130,6 +134,8 @@ fn schema_fingerprint() -> String {
         "database_functions/migration_definitions.py",
         "database_functions/migrations.py",
         "startup/setup_database_new.py",
+        "database_functions/sqlite_baseline.py",
+        "database_functions/sqlite_baseline.sql",
     ] {
         std::fs::read(root.join(rel))
             .unwrap_or_else(|e| panic!("read {rel}: {e}"))
@@ -165,9 +171,32 @@ pub fn mysql_url(env: &TestEnv, db: Option<&str>) -> String {
     )
 }
 
+/// Where SQLite test databases live: the template under target/, per-test copies in a temp dir.
+pub fn sqlite_dir() -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("pinepods-sqlite-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
 async fn ensure_template(env: &TestEnv) -> String {
     let name = format!("pinepods_tmpl_{}", schema_fingerprint());
     match env.backend {
+        Backend::Sqlite => {
+            let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/sqlite-templates");
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join(format!("{name}.db"));
+            if !path.exists() {
+                let building = dir.join(format!("{name}.{}.building.db", std::process::id()));
+                let _ = std::fs::remove_file(&building);
+                run_migrations(env, building.to_str().unwrap());
+                // Fold the WAL into the main file so a plain copy is the whole database.
+                let mut c = sqlx::SqliteConnection::connect(&format!("sqlite://{}", building.display())).await.unwrap();
+                c.execute("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE").await.unwrap();
+                c.close().await.unwrap();
+                std::fs::rename(&building, &path).unwrap();
+            }
+            return path.to_string_lossy().into_owned();
+        }
         Backend::Postgres => {
             let mut conn = PgConnection::connect(&pg_url(env, "postgres"))
                 .await
@@ -249,6 +278,7 @@ pub fn run_migrations(env: &TestEnv, db_name: &str) {
         .env("DB_USER", &env.db_user)
         .env("DB_PASSWORD", &env.db_password)
         .env("DB_NAME", db_name)
+        .env("DB_PATH", db_name)
         .output()
         .unwrap_or_else(|e| {
             panic!(

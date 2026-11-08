@@ -7,33 +7,33 @@ impl DatabasePool {
 
     // Verify API key - matches Python verify_api_key function
     pub async fn verify_api_key(&self, api_key: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT * FROM "APIKeys" WHERE apikey = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT * FROM "APIKeys" WHERE apikey = $1"#)
                     .bind(api_key)
                     .fetch_optional(pool)
                     .await?;
                 
                 Ok(row.is_some())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT * FROM APIKeys WHERE APIKey = ?")
                     .bind(api_key)
                     .fetch_optional(pool)
                     .await?;
                 
                 Ok(row.is_some())
-            }
-        }
+            },
+        })
     }
 
     // Verify password - matches Python verify_password function
     pub async fn verify_password(&self, username: &str, password: &str) -> AppResult<bool> {
         use crate::services::auth::verify_password;
         
-        let stored_hash = match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT hashed_pw FROM "Users" WHERE username = $1"#)
+        let stored_hash = dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT hashed_pw FROM "Users" WHERE username = $1"#)
                     .bind(username)
                     .fetch_optional(pool)
                     .await?;
@@ -43,8 +43,8 @@ impl DatabasePool {
                 } else {
                     return Ok(false);
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT Hashed_PW FROM Users WHERE Username = ?")
                     .bind(username)
                     .fetch_optional(pool)
@@ -55,18 +55,18 @@ impl DatabasePool {
                 } else {
                     return Ok(false);
                 }
-            }
-        };
+            },
+        });
 
         verify_password(password, &stored_hash)
     }
 
     // Get API key for user - matches Python get_api_key function  
     pub async fn get_api_key(&self, username: &str) -> AppResult<String> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // First get UserID
-                let user_row = sqlx::query(r#"SELECT userid FROM "Users" WHERE username = $1"#)
+                let user_row = q::query(r#"SELECT userid FROM "Users" WHERE username = $1"#)
                     .bind(username)
                     .fetch_optional(pool)
                     .await?;
@@ -77,7 +77,7 @@ impl DatabasePool {
                 };
                 
                 // Then get API key
-                let api_row = sqlx::query(r#"SELECT apikey FROM "APIKeys" WHERE userid = $1 LIMIT 1"#)
+                let api_row = q::query(r#"SELECT apikey FROM "APIKeys" WHERE userid = $1 LIMIT 1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -86,8 +86,8 @@ impl DatabasePool {
                     Some(row) => Ok(row.try_get("apikey")?),
                     None => Err(AppError::not_found("API key not found for user")),
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // First get UserID
                 let user_row = sqlx::query("SELECT UserID FROM Users WHERE Username = ?")
                     .bind(username)
@@ -109,39 +109,39 @@ impl DatabasePool {
                     Some(row) => Ok(row.try_get("APIKey")?),
                     None => Err(AppError::not_found("API key not found for user")),
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get user ID from API key - matches Python get_api_user function
     /// Owner of `api_key`. An unknown key is an auth failure (401), not a database error.
     pub async fn get_user_id_from_api_key(&self, api_key: &str) -> AppResult<i32> {
-        let user_id = match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"SELECT userid FROM "APIKeys" WHERE apikey = $1 LIMIT 1"#)
+        let user_id = dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"SELECT userid FROM "APIKeys" WHERE apikey = $1 LIMIT 1"#)
                     .bind(api_key)
                     .fetch_optional(pool)
                     .await?
                     .map(|row| row.try_get("userid"))
                     .transpose()?
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("SELECT UserID FROM APIKeys WHERE APIKey = ? LIMIT 1")
                     .bind(api_key)
                     .fetch_optional(pool)
                     .await?
                     .map(|row| row.try_get("UserID"))
                     .transpose()?
-            }
-        };
+            },
+        });
         user_id.ok_or_else(|| AppError::unauthorized("Invalid API key"))
     }
 
     // Get user ID from username - for login and key creation
     pub async fn get_user_id_from_username(&self, username: &str) -> AppResult<i32> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT userid FROM "Users" WHERE username = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT userid FROM "Users" WHERE username = $1"#)
                     .bind(username)
                     .fetch_optional(pool)
                     .await?;
@@ -150,8 +150,8 @@ impl DatabasePool {
                     Some(row) => Ok(row.try_get("userid")?),
                     None => Err(AppError::not_found("User not found")),
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT UserID FROM Users WHERE Username = ?")
                     .bind(username)
                     .fetch_optional(pool)
@@ -161,30 +161,30 @@ impl DatabasePool {
                     Some(row) => Ok(row.try_get("UserID")?),
                     None => Err(AppError::not_found("User not found")),
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get user ID by API key - matches Python get_api_user function
     pub async fn get_api_user(&self, api_key: &str) -> AppResult<i32> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT userid FROM "APIKeys" WHERE apikey = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT userid FROM "APIKeys" WHERE apikey = $1"#)
                     .bind(api_key)
                     .fetch_one(pool)
                     .await?;
                 
                 Ok(row.try_get("userid")?)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT UserID FROM APIKeys WHERE APIKey = ?")
                     .bind(api_key)
                     .fetch_one(pool)
                     .await?;
                 
                 Ok(row.try_get("UserID")?)
-            }
-        }
+            },
+        })
     }
 
     // Generate API key - matches Python create_api_key function
@@ -202,9 +202,9 @@ impl DatabasePool {
 
     // User admin check - matches Python user_admin_check function
     pub async fn user_admin_check(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT isadmin FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT isadmin FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -214,8 +214,8 @@ impl DatabasePool {
                 } else {
                     Ok(false)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT IsAdmin FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -227,8 +227,8 @@ impl DatabasePool {
                 } else {
                     Ok(false)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Legacy web key check - no longer used but kept for compatibility
@@ -240,10 +240,10 @@ impl DatabasePool {
 
     // Get API info - matches Python get_api_info function exactly
     pub async fn get_api_info(&self, user_id: i32) -> AppResult<Option<Vec<crate::handlers::settings::ApiInfo>>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Check if user is admin
-                let is_admin: Option<bool> = sqlx::query_scalar(r#"SELECT isadmin FROM "Users" WHERE userid = $1"#)
+                let is_admin: Option<bool> = q::query_scalar(r#"SELECT isadmin FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -266,9 +266,9 @@ impl DatabasePool {
                 };
 
                 let rows = if is_admin {
-                    sqlx::query(query).fetch_all(pool).await?
+                    q::query(query).fetch_all(pool).await?
                 } else {
-                    sqlx::query(query).bind(user_id).fetch_all(pool).await?
+                    q::query(query).bind(user_id).fetch_all(pool).await?
                 };
 
                 let mut api_infos = Vec::new();
@@ -288,8 +288,8 @@ impl DatabasePool {
                 } else {
                     Ok(Some(api_infos))
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Check if user is admin
                 let is_admin: Option<i32> = sqlx::query_scalar("SELECT IsAdmin FROM Users WHERE UserID = ?")
                     .bind(user_id)
@@ -336,8 +336,8 @@ impl DatabasePool {
                 } else {
                     Ok(Some(api_infos))
                 }
-            }
-        }
+            },
+        })
     }
 
     // Create API key - matches Python create_api_key function exactly
@@ -358,116 +358,116 @@ impl DatabasePool {
                 .collect()
         };
 
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"INSERT INTO "APIKeys" (userid, apikey) VALUES ($1, $2)"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"INSERT INTO "APIKeys" (userid, apikey) VALUES ($1, $2)"#)
                     .bind(user_id)
                     .bind(&api_key)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("INSERT INTO APIKeys (UserID, APIKey) VALUES (?, ?)")
                     .bind(user_id)
                     .bind(&api_key)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
 
         Ok(api_key)
     }
 
     // Count user API keys excluding a specific one - safety check for final API key
     pub async fn count_user_api_keys_excluding(&self, user_id: i32, exclude_api_id: i32) -> AppResult<i32> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT COUNT(*) as count FROM "APIKeys" WHERE userid = $1 AND apikeyid != $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT COUNT(*) as count FROM "APIKeys" WHERE userid = $1 AND apikeyid != $2"#)
                     .bind(user_id)
                     .bind(exclude_api_id)
                     .fetch_one(pool)
                     .await?;
                 Ok(row.try_get::<i64, _>("count")? as i32)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT COUNT(*) as count FROM APIKeys WHERE UserID = ? AND APIKeyID != ?")
                     .bind(user_id)
                     .bind(exclude_api_id)
                     .fetch_one(pool)
                     .await?;
                 Ok(row.try_get::<i64, _>("count")? as i32)
-            }
-        }
+            },
+        })
     }
 
     // Delete API key - matches Python delete_api function exactly
     pub async fn delete_api_key(&self, api_id: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"DELETE FROM "APIKeys" WHERE apikeyid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"DELETE FROM "APIKeys" WHERE apikeyid = $1"#)
                     .bind(api_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("DELETE FROM APIKeys WHERE APIKeyID = ?")
                     .bind(api_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Check if API key is the same as the one being deleted - matches Python is_same_api_key function exactly
     pub async fn is_same_api_key(&self, api_id: i32, api_key: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result: Option<String> = sqlx::query_scalar(r#"SELECT apikey FROM "APIKeys" WHERE apikeyid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result: Option<String> = q::query_scalar(r#"SELECT apikey FROM "APIKeys" WHERE apikeyid = $1"#)
                     .bind(api_id)
                     .fetch_optional(pool)
                     .await?;
                 
                 Ok(result.map(|key| key == api_key).unwrap_or(false))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result: Option<String> = sqlx::query_scalar("SELECT APIKey FROM APIKeys WHERE APIKeyID = ?")
                     .bind(api_id)
                     .fetch_optional(pool)
                     .await?;
                 
                 Ok(result.map(|key| key == api_key).unwrap_or(false))
-            }
-        }
+            },
+        })
     }
 
     // Get the owner user ID of an API key by API key ID - for authorization checks
     pub async fn get_api_key_owner(&self, api_id: i32) -> AppResult<Option<i32>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result: Option<i32> = sqlx::query_scalar(r#"SELECT userid FROM "APIKeys" WHERE apikeyid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result: Option<i32> = q::query_scalar(r#"SELECT userid FROM "APIKeys" WHERE apikeyid = $1"#)
                     .bind(api_id)
                     .fetch_optional(pool)
                     .await?;
                 
                 Ok(result)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result: Option<i32> = sqlx::query_scalar("SELECT UserID FROM APIKeys WHERE APIKeyID = ?")
                     .bind(api_id)
                     .fetch_optional(pool)
                     .await?;
                 
                 Ok(result)
-            }
-        }
+            },
+        })
     }
 
     // Get user API key - matches Python get_user_api_key function EXACTLY
     pub async fn get_user_api_key(&self, user_id: i32) -> AppResult<Option<String>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"
                     SELECT apikey FROM "APIKeys" 
                     WHERE userid = $1 
                     ORDER BY created DESC 
@@ -483,7 +483,7 @@ impl DatabasePool {
                     Ok(None)
                 }
             },
-            DatabasePool::MySQL(pool) => {
+            mysql(pool) => {
                 let result = sqlx::query(r#"
                     SELECT APIKey FROM APIKeys 
                     WHERE UserID = ? 
@@ -499,16 +499,16 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Create or get API key for user - for OIDC login completion
     pub async fn create_or_get_api_key(&self, user_id: i32) -> AppResult<String> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Check for existing API key
-                let existing_key = sqlx::query(r#"SELECT apikey FROM "APIKeys" WHERE userid = $1 LIMIT 1"#)
+                let existing_key = q::query(r#"SELECT apikey FROM "APIKeys" WHERE userid = $1 LIMIT 1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -520,15 +520,15 @@ impl DatabasePool {
                 // Generate new API key
                 let api_key = format!("pk_{}", uuid::Uuid::new_v4().simple());
                 
-                sqlx::query(r#"INSERT INTO "APIKeys" (userid, apikey) VALUES ($1, $2)"#)
+                q::query(r#"INSERT INTO "APIKeys" (userid, apikey) VALUES ($1, $2)"#)
                     .bind(user_id)
                     .bind(&api_key)
                     .execute(pool)
                     .await?;
 
                 Ok(api_key)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let existing_key = sqlx::query("SELECT APIKey FROM APIKeys WHERE UserID = ? LIMIT 1")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -547,30 +547,30 @@ impl DatabasePool {
                     .await?;
 
                 Ok(api_key)
-            }
-        }
+            },
+        })
     }
 
     // Check if a user exists with the given username and email
     pub async fn check_reset_user(&self, username: &str, email: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"SELECT userid FROM "Users" WHERE username = $1 AND email = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"SELECT userid FROM "Users" WHERE username = $1 AND email = $2"#)
                     .bind(username)
                     .bind(email)
                     .fetch_optional(pool)
                     .await?;
                 Ok(result.is_some())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("SELECT UserID FROM Users WHERE Username = ? AND Email = ?")
                     .bind(username)
                     .bind(email)
                     .fetch_optional(pool)
                     .await?;
                 Ok(result.is_some())
-            }
-        }
+            },
+        })
     }
 
     // Create a password reset code for the user
@@ -588,10 +588,10 @@ impl DatabasePool {
 
         let reset_expiry: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc> = (Utc::now() + Duration::hours(1)).into();
 
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Check if user exists first
-                let user_exists = sqlx::query(r#"SELECT userid FROM "Users" WHERE email = $1"#)
+                let user_exists = q::query(r#"SELECT userid FROM "Users" WHERE email = $1"#)
                     .bind(user_email)
                     .fetch_optional(pool)
                     .await?;
@@ -601,7 +601,7 @@ impl DatabasePool {
                 }
 
                 // Update reset code and expiry
-                let result = sqlx::query(r#"
+                let result = q::query(r#"
                     UPDATE "Users"
                     SET reset_code = $1, reset_expiry = $2
                     WHERE email = $3
@@ -617,8 +617,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Check if user exists first
                 let user_exists = sqlx::query("SELECT UserID FROM Users WHERE Email = ?")
                     .bind(user_email)
@@ -646,26 +646,26 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Remove reset code from user (used when email sending fails)
     pub async fn reset_password_remove_code(&self, email: &str) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET reset_code = NULL, reset_expiry = NULL WHERE email = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Users" SET reset_code = NULL, reset_expiry = NULL WHERE email = $1"#)
                     .bind(email)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Users SET Reset_Code = NULL, Reset_Expiry = NULL WHERE Email = ?")
                     .bind(email)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -673,9 +673,9 @@ impl DatabasePool {
     pub async fn verify_reset_code(&self, user_email: &str, reset_code: &str) -> AppResult<Option<bool>> {
         use chrono::Utc;
         
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"SELECT reset_code, reset_expiry FROM "Users" WHERE email = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"SELECT reset_code, reset_expiry FROM "Users" WHERE email = $1"#)
                     .bind(user_email)
                     .fetch_optional(pool)
                     .await?;
@@ -695,8 +695,8 @@ impl DatabasePool {
                 } else {
                     Ok(None) // User not found
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("SELECT Reset_Code, Reset_Expiry FROM Users WHERE Email = ?")
                     .bind(user_email)
                     .fetch_optional(pool)
@@ -714,15 +714,15 @@ impl DatabasePool {
                 } else {
                     Ok(None) // User not found
                 }
-            }
-        }
+            },
+        })
     }
 
     // Reset password and clear reset code/expiry
     pub async fn reset_password_prompt(&self, user_email: &str, hashed_password: &str) -> AppResult<Option<String>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"
                     UPDATE "Users"
                     SET hashed_pw = $1, reset_code = NULL, reset_expiry = NULL
                     WHERE email = $2
@@ -737,8 +737,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query(r#"
                     UPDATE Users
                     SET Hashed_PW = ?, Reset_Code = NULL, Reset_Expiry = NULL
@@ -754,7 +754,7 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 }

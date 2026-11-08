@@ -16,10 +16,10 @@ pub(super) struct RssEpisode {
 impl DatabasePool {
     // Toggle RSS feeds - matches Python toggle_rss_feeds function exactly
     pub async fn toggle_rss_feeds(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Get current status
-                let current_status: Option<bool> = sqlx::query_scalar(r#"SELECT enablerssfeeds FROM "Users" WHERE userid = $1"#)
+                let current_status: Option<bool> = q::query_scalar(r#"SELECT enablerssfeeds FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -27,15 +27,15 @@ impl DatabasePool {
                 let new_status = !current_status.unwrap_or(false);
 
                 // Update status
-                sqlx::query(r#"UPDATE "Users" SET enablerssfeeds = $1 WHERE userid = $2"#)
+                q::query(r#"UPDATE "Users" SET enablerssfeeds = $1 WHERE userid = $2"#)
                     .bind(new_status)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
 
                 Ok(new_status)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Get current status
                 let current_status: Option<i32> = sqlx::query_scalar("SELECT EnableRSSFeeds FROM Users WHERE UserID = ?")
                     .bind(user_id)
@@ -52,8 +52,8 @@ impl DatabasePool {
                     .await?;
 
                 Ok(new_status)
-            }
-        }
+            },
+        })
     }
 
     // Create RSS key - matches Python create_rss_key function exactly
@@ -68,10 +68,10 @@ impl DatabasePool {
             .map(char::from)
             .collect();
 
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
-                let key_id: i32 = sqlx::query_scalar(r#"INSERT INTO "RssKeys" (userid, rsskey) VALUES ($1, $2) RETURNING rsskeyid"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
+                let key_id: i32 = q::query_scalar(r#"INSERT INTO "RssKeys" (userid, rsskey) VALUES ($1, $2) RETURNING rsskeyid"#)
                     .bind(user_id)
                     .bind(&rss_key)
                     .fetch_one(&mut *tx)
@@ -80,7 +80,7 @@ impl DatabasePool {
                 // Handle podcast IDs if provided
                 if let Some(podcast_ids) = podcast_ids {
                     for podcast_id in podcast_ids {
-                        sqlx::query(r#"INSERT INTO "RssKeyMap" (rsskeyid, podcastid) VALUES ($1, $2)"#)
+                        q::query(r#"INSERT INTO "RssKeyMap" (rsskeyid, podcastid) VALUES ($1, $2)"#)
                             .bind(key_id)
                             .bind(podcast_id)
                             .execute(&mut *tx)
@@ -88,8 +88,8 @@ impl DatabasePool {
                     }
                 }
                 tx.commit().await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut tx = pool.begin().await?;
                 let result = sqlx::query("INSERT INTO RssKeys (UserID, RssKey) VALUES (?, ?)")
                     .bind(user_id)
@@ -110,8 +110,8 @@ impl DatabasePool {
                     }
                 }
                 tx.commit().await?;
-            }
-        }
+            },
+        });
 
         Ok(rss_key)
     }
@@ -119,8 +119,8 @@ impl DatabasePool {
     /// The user's RSS key covering only `podcast_id`, created on first use. Single-podcast feed
     /// links use it, so sharing one podcast's feed doesn't expose the user's other feeds.
     pub async fn get_or_create_podcast_rss_key(&self, user_id: i32, podcast_id: i32) -> AppResult<String> {
-        let existing: Option<String> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query_scalar(
+        let existing: Option<String> = dialect_match!(self, {
+            pg(pool) => q::query_scalar(
                 r#"SELECT k.rsskey FROM "RssKeys" k
                    WHERE k.userid = $1
                      AND EXISTS (SELECT 1 FROM "RssKeyMap" m WHERE m.rsskeyid = k.rsskeyid AND m.podcastid = $2)
@@ -131,7 +131,7 @@ impl DatabasePool {
             .bind(podcast_id)
             .fetch_optional(pool)
             .await?,
-            DatabasePool::MySQL(pool) => sqlx::query_scalar(
+            mysql(pool) => sqlx::query_scalar(
                 "SELECT k.RssKey FROM RssKeys k
                  WHERE k.UserID = ?
                    AND EXISTS (SELECT 1 FROM RssKeyMap m WHERE m.RssKeyID = k.RssKeyID AND m.PodcastID = ?)
@@ -143,7 +143,7 @@ impl DatabasePool {
             .bind(podcast_id)
             .fetch_optional(pool)
             .await?,
-        };
+        });
         match existing {
             Some(key) => Ok(key),
             None => self.create_rss_key(user_id, Some(vec![podcast_id])).await,
@@ -156,9 +156,9 @@ impl DatabasePool {
         
         let filter_podcast_ids = podcast_ids.map_or(false, |ids| !ids.is_empty() && !ids.contains(&-1));
         
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"
                     SELECT fk.userid, STRING_AGG(CAST(fkm.podcastid AS TEXT), ',') as podcastids
                     FROM "RssKeys" fk
                     LEFT JOIN "RssKeyMap" fkm ON fk.rsskeyid = fkm.rsskeyid
@@ -202,8 +202,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(r#"
                     SELECT fk.UserID, GROUP_CONCAT(fkm.PodcastID) as podcastids
                     FROM RssKeys fk
@@ -248,15 +248,15 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get RSS feed status - matches Python get_rss_feed_status function
     pub async fn get_rss_feed_status(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT enablerssfeeds FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT enablerssfeeds FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -267,8 +267,8 @@ impl DatabasePool {
                 } else {
                     Ok(false)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT EnableRSSFeeds FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -280,8 +280,8 @@ impl DatabasePool {
                 } else {
                     Ok(false)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Generate podcast RSS feed - matches Python generate_podcast_rss function
@@ -314,9 +314,9 @@ impl DatabasePool {
         }
         
         // Get user info for feed metadata
-        let username = match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT username FROM "Users" WHERE userid = $1"#)
+        let username = dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT username FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -326,8 +326,8 @@ impl DatabasePool {
                 } else {
                     return Err(AppError::not_found("User not found"));
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT Username FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -338,14 +338,14 @@ impl DatabasePool {
                 } else {
                     return Err(AppError::not_found("User not found"));
                 }
-            }
-        };
+            },
+        });
         
         // Get podcast details for feed metadata - exact Python logic
         let (podcast_name, feed_image, feed_description) = if podcast_filter {
-            match self {
-                DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(r#"SELECT podcastname, artworkurl, description FROM "Podcasts" WHERE podcastid = ANY($1) AND userid = $2"#)
+            dialect_match!(self, {
+                pg(pool) => {
+                    let row = q::query(r#"SELECT podcastname, artworkurl, description FROM "Podcasts" WHERE podcastid = ANY($1) AND userid = $2"#)
                         .bind(&effective_podcast_ids)
                         .bind(user_id)
                         .fetch_optional(pool)
@@ -360,8 +360,8 @@ impl DatabasePool {
                     } else {
                         ("Unknown Podcast".to_string(), format!("{}/static/assets/favicon.png", domain), "No description available".to_string())
                     }
-                }
-                DatabasePool::MySQL(pool) => {
+                },
+                mysql(pool) => {
                     if effective_podcast_ids.len() == 1 {
                         let row = sqlx::query("SELECT PodcastName, ArtworkURL, Description FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
                             .bind(effective_podcast_ids[0])
@@ -398,8 +398,8 @@ impl DatabasePool {
                             ("Unknown Podcast".to_string(), format!("{}/static/assets/favicon.png", domain), "No description available".to_string())
                         }
                     }
-                }
-            }
+                },
+            })
         } else {
             ("All Podcasts".to_string(), format!("{}/static/assets/favicon.png", domain), "RSS feed for all podcasts from Pinepods".to_string())
         };
@@ -677,9 +677,9 @@ impl DatabasePool {
         let take_n: usize = if limit > 0 { limit as usize } else { usize::MAX };
 
         // Username for channel <itunes:author>
-        let username = match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT username FROM "Users" WHERE userid = $1"#)
+        let username = dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT username FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -687,8 +687,8 @@ impl DatabasePool {
                     Some(row) => row.try_get::<String, _>("username").unwrap_or_else(|_| "Unknown User".to_string()),
                     None => return Err(AppError::not_found("User not found")),
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT Username FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -697,8 +697,8 @@ impl DatabasePool {
                     Some(row) => row.try_get::<String, _>("Username").unwrap_or_else(|_| "Unknown User".to_string()),
                     None => return Err(AppError::not_found("User not found")),
                 }
-            }
-        };
+            },
+        });
 
         // User RSS key for authenticated stream URLs on downloaded episodes
         let user_rss_key = self.get_or_create_user_rss_key(user_id).await?;
@@ -800,9 +800,9 @@ impl DatabasePool {
 
     // Get user RSS key - matches Python get_user_rss_key function
     pub async fn get_user_rss_key(&self, user_id: i32) -> AppResult<Option<String>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT k.rsskey FROM "RssKeys" k
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT k.rsskey FROM "RssKeys" k
                     WHERE k.userid = $1 AND NOT EXISTS (SELECT 1 FROM "RssKeyMap" m WHERE m.rsskeyid = k.rsskeyid)
                     ORDER BY k.rsskeyid LIMIT 1"#)
                     .bind(user_id)
@@ -814,8 +814,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT k.RssKey FROM RssKeys k
                     WHERE k.UserID = ? AND NOT EXISTS (SELECT 1 FROM RssKeyMap m WHERE m.RssKeyID = k.RssKeyID)
                     ORDER BY k.RssKeyID LIMIT 1")
@@ -828,17 +828,17 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get or create RSS key for user - ensures user always has an RSS key for stream URLs
     pub async fn get_or_create_user_rss_key(&self, user_id: i32) -> AppResult<String> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Try to get existing RSS key
                 // Only a universal key (no podcast scope) can stand in as "the user's RSS key".
-                let existing_key = sqlx::query(r#"SELECT k.rsskey FROM "RssKeys" k
+                let existing_key = q::query(r#"SELECT k.rsskey FROM "RssKeys" k
                     WHERE k.userid = $1 AND NOT EXISTS (SELECT 1 FROM "RssKeyMap" m WHERE m.rsskeyid = k.rsskeyid)
                     ORDER BY k.rsskeyid LIMIT 1"#)
                     .bind(user_id)
@@ -851,15 +851,15 @@ impl DatabasePool {
                 } else {
                     // Create new RSS key
                     let new_key = uuid::Uuid::new_v4().to_string();
-                    sqlx::query(r#"INSERT INTO "RssKeys" (userid, rsskey) VALUES ($1, $2)"#)
+                    q::query(r#"INSERT INTO "RssKeys" (userid, rsskey) VALUES ($1, $2)"#)
                         .bind(user_id)
                         .bind(&new_key)
                         .execute(pool)
                         .await?;
                     Ok(new_key)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Try to get existing RSS key
                 let existing_key = sqlx::query("SELECT k.RssKey FROM RssKeys k
                     WHERE k.UserID = ? AND NOT EXISTS (SELECT 1 FROM RssKeyMap m WHERE m.RssKeyID = k.RssKeyID)
@@ -881,8 +881,8 @@ impl DatabasePool {
                         .await?;
                     Ok(new_key)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Helper function to get RSS episodes
@@ -898,8 +898,8 @@ impl DatabasePool {
     ) -> AppResult<Vec<RssEpisode>> {
         use chrono::{DateTime, Utc};
         
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let mut base_query = r#"
                     SELECT
                         e.episodeid,
@@ -963,7 +963,7 @@ impl DatabasePool {
                 }
 
                 // Execute query
-                let mut query = sqlx::query(sqlx::AssertSqlSafe(base_query.as_str()))
+                let mut query = q::query(sqlx::AssertSqlSafe(base_query.as_str()))
                     .bind(domain)
                     .bind(api_key)
                     .bind(user_id);
@@ -1005,8 +1005,8 @@ impl DatabasePool {
                 }
                 
                 Ok(episodes)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut base_query = r#"
                     SELECT
                         e.EpisodeID,
@@ -1123,7 +1123,7 @@ impl DatabasePool {
                 }
                 
                 Ok(episodes)
-            }
-        }
+            },
+        })
     }
 }

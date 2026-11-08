@@ -5,12 +5,29 @@ use crate::error::{AppError, AppResult};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub database: DatabaseConfig,
-    pub redis: RedisConfig,
+    /// Valkey/Redis; `None` keeps that state in memory (one server process only).
+    pub redis: Option<RedisConfig>,
     pub server: ServerConfig,
     pub security: SecurityConfig,
     pub email: EmailConfig,
     pub oidc: OIDCConfig,
     pub api: ApiConfig,
+}
+
+/// The hosted search and podcast-people services, used unless SEARCH_API_URL / PEOPLE_API_URL
+/// point elsewhere.
+pub const DEFAULT_SEARCH_API_URL: &str = "https://search.pinepods.online/api/search";
+pub const DEFAULT_PEOPLE_API_URL: &str = "https://people.pinepods.online";
+
+/// An environment variable, treating blank as unset (the process supervisor passes unset
+/// variables through as empty strings).
+pub fn env_value(name: &str) -> Option<String> {
+    env::var(name).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+}
+
+/// VALKEY_<suffix>, else REDIS_<suffix>.
+fn valkey_env(suffix: &str) -> Option<String> {
+    env_value(&format!("VALKEY_{suffix}")).or_else(|| env_value(&format!("REDIS_{suffix}")))
 }
 
 pub const YOUTUBE_FEED_URL: &str = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}";
@@ -166,9 +183,15 @@ impl Config {
             ("DB_NAME", "Database name"),
         ];
 
+        // SQLite needs only DB_TYPE and the database file (DB_PATH). With no database server
+        // configured at all, SQLite is the default.
+        let db_type = env_value("DB_TYPE").or_else(|| env_value("DB_HOST").is_none().then(|| "sqlite".to_string()));
+        let is_sqlite = db_type.as_deref().is_some_and(|t| t.eq_ignore_ascii_case("sqlite"));
+        let db_required_vars: &[(&str, &str)] = if is_sqlite { &[] } else { &db_required_vars };
+
         let mut missing_db_vars = Vec::new();
-        for (var_name, description) in &db_required_vars {
-            if env::var(var_name).is_err() {
+        for (var_name, description) in db_required_vars {
+            if env_value(var_name).is_none() {
                 missing_db_vars.push(format!("  {} - {}", var_name, description));
             }
         }
@@ -180,105 +203,34 @@ impl Config {
             )));
         }
 
-        // Validate required API URLs
-        let api_required_vars = [
-            ("SEARCH_API_URL", "Search API URL (e.g., https://search.pinepods.online/api/search)"),
-            ("PEOPLE_API_URL", "People API URL (e.g., https://people.pinepods.online)"),
-        ];
-
-        let mut missing_api_vars = Vec::new();
-        for (var_name, description) in &api_required_vars {
-            if env::var(var_name).is_err() {
-                missing_api_vars.push(format!("  {} - {}", var_name, description));
+        let database = if is_sqlite {
+            DatabaseConfig {
+                db_type: "sqlite".to_string(),
+                host: String::new(),
+                port: 0,
+                username: String::new(),
+                password: String::new(),
+                // For SQLite, `name` is the database file.
+                name: env_value("DB_PATH").unwrap_or_else(|| "/opt/pinepods/data/pinepods.db".to_string()),
+                max_connections: 8,
+                min_connections: 1,
             }
-        }
-
-        if !missing_api_vars.is_empty() {
-            return Err(AppError::Config(format!(
-                "Missing required API environment variables:\n{}\n\nPlease set these variables in your docker-compose.yml or environment.",
-                missing_api_vars.join("\n")
-            )));
-        }
-
-        // Validate Valkey/Redis configuration - either URL or individual variables (support both VALKEY_* and REDIS_* naming)
-        let has_valkey_url = env::var("VALKEY_URL").is_ok();
-        let has_redis_url = env::var("REDIS_URL").is_ok();
-        let has_valkey_vars = env::var("VALKEY_HOST").is_ok() && env::var("VALKEY_PORT").is_ok();
-        let has_redis_vars = env::var("REDIS_HOST").is_ok() && env::var("REDIS_PORT").is_ok();
-
-        if !has_valkey_url && !has_redis_url && !has_valkey_vars && !has_redis_vars {
-            return Err(AppError::Config(format!(
-                "Missing required Valkey/Redis configuration. Please provide either:\n  Option 1: VALKEY_URL or REDIS_URL - Complete connection URL\n  Option 2: VALKEY_HOST/VALKEY_PORT or REDIS_HOST/REDIS_PORT - Individual connection parameters\n\nExample URL: VALKEY_URL=redis://localhost:6379\nExample individual: VALKEY_HOST=localhost, VALKEY_PORT=6379"
-            )));
-        }
-
-        let database = DatabaseConfig {
-            db_type: env::var("DB_TYPE").unwrap(),
-            host: env::var("DB_HOST").unwrap(),
+        } else { DatabaseConfig {
+            db_type: env_value("DB_TYPE").unwrap(),
+            host: env_value("DB_HOST").unwrap(),
             port: {
-                let port_str = env::var("DB_PORT").unwrap();
+                let port_str = env_value("DB_PORT").unwrap();
                 port_str.trim().parse()
                     .map_err(|_e| AppError::Config(format!("Invalid DB_PORT '{}': Must be a valid port number (e.g., 5432 for PostgreSQL, 3306 for MariaDB)", port_str)))?
             },
-            username: env::var("DB_USER").unwrap(),
-            password: env::var("DB_PASSWORD").unwrap(),
-            name: env::var("DB_NAME").unwrap(),
+            username: env_value("DB_USER").unwrap(),
+            password: env_value("DB_PASSWORD").unwrap(),
+            name: env_value("DB_NAME").unwrap(),
             max_connections: 32,
             min_connections: 1,
-        };
+        } };
 
-        let redis = if let Some(url) = env::var("VALKEY_URL").ok().or_else(|| env::var("REDIS_URL").ok()) {
-            // Parse VALKEY_URL or REDIS_URL
-            match url::Url::parse(&url) {
-                Ok(parsed_url) => {
-                    let host = parsed_url.host_str().unwrap_or("localhost").to_string();
-                    let port = parsed_url.port().unwrap_or(6379);
-                    let username = if parsed_url.username().is_empty() { 
-                        None 
-                    } else { 
-                        Some(parsed_url.username().to_string()) 
-                    };
-                    let password = parsed_url.password().map(|p| p.to_string());
-                    let database = if parsed_url.path().len() > 1 {
-                        parsed_url.path().trim_start_matches('/').parse().ok()
-                    } else {
-                        None
-                    };
-
-                    RedisConfig {
-                        host,
-                        port,
-                        max_connections: 32,
-                        password,
-                        username,
-                        database,
-                    }
-                }
-                Err(e) => {
-                    return Err(AppError::Config(format!("Invalid URL format: {}", e)));
-                }
-            }
-        } else {
-            // Use individual variables - support both VALKEY_* and REDIS_* (VALKEY_* takes precedence)
-            let host = env::var("VALKEY_HOST").or_else(|_| env::var("REDIS_HOST")).unwrap();
-            let port_str = env::var("VALKEY_PORT").or_else(|_| env::var("REDIS_PORT")).unwrap();
-            let port = port_str.trim().parse()
-                .map_err(|_e| AppError::Config(format!("Invalid port '{}': Must be a valid port number (e.g., 6379)", port_str)))?;
-            let password = env::var("VALKEY_PASSWORD").ok().or_else(|| env::var("REDIS_PASSWORD").ok());
-            let username = env::var("VALKEY_USERNAME").ok().or_else(|| env::var("REDIS_USERNAME").ok());
-            let database = env::var("VALKEY_DATABASE").ok()
-                .or_else(|| env::var("REDIS_DATABASE").ok())
-                .and_then(|d| d.parse().ok());
-
-            RedisConfig {
-                host,
-                port,
-                max_connections: 32,
-                password,
-                username,
-                database,
-            }
-        };
+        let redis = Self::redis_from_env(is_sqlite)?;
 
         let server = ServerConfig {
             port: 8032, // Fixed port for internal API
@@ -339,8 +291,8 @@ impl Config {
         };
 
         let api = ApiConfig {
-            search_api_url: env::var("SEARCH_API_URL").unwrap(),
-            people_api_url: env::var("PEOPLE_API_URL").unwrap(),
+            search_api_url: env_value("SEARCH_API_URL").unwrap_or_else(|| DEFAULT_SEARCH_API_URL.to_string()),
+            people_api_url: env_value("PEOPLE_API_URL").unwrap_or_else(|| DEFAULT_PEOPLE_API_URL.to_string()),
             youtube_feed_url: YOUTUBE_FEED_URL.to_string(),
         };
 
@@ -360,27 +312,107 @@ impl Config {
         })
     }
 
-    pub fn redis_url(&self) -> String {
+    /// Valkey/Redis settings, from VALKEY_* (or REDIS_*; VALKEY_* wins). `VALKEY_MODE` is
+    /// `memory` or `valkey`; unset, a configured URL or host means Valkey, and otherwise SQLite
+    /// installs keep this state in memory while the others require Valkey.
+    fn redis_from_env(is_sqlite: bool) -> AppResult<Option<RedisConfig>> {
+        let configured = valkey_env("URL").is_some() || valkey_env("HOST").is_some();
+        let mode = valkey_env("MODE").map(|m| m.to_ascii_lowercase());
+        match mode.as_deref() {
+            Some("memory") => return Ok(None),
+            Some("valkey") | Some("redis") => {}
+            Some(other) => {
+                return Err(AppError::Config(format!("Invalid VALKEY_MODE '{other}': use 'memory' or 'valkey'")));
+            }
+            None if !configured && is_sqlite => return Ok(None),
+            None => {}
+        }
+        if !configured {
+            return Err(AppError::Config(
+                "Missing Valkey/Redis configuration. Set VALKEY_URL (e.g. redis://valkey:6379) or VALKEY_HOST \
+                 (and VALKEY_PORT, default 6379), or VALKEY_MODE=memory to keep that state in memory \
+                 (a single server process only)."
+                    .to_string(),
+            ));
+        }
+
+        let config = if let Some(url) = valkey_env("URL") {
+            // Parse VALKEY_URL or REDIS_URL
+            match url::Url::parse(&url) {
+                Ok(parsed_url) => {
+                    let host = parsed_url.host_str().unwrap_or("localhost").to_string();
+                    let port = parsed_url.port().unwrap_or(6379);
+                    let username = if parsed_url.username().is_empty() { 
+                        None 
+                    } else { 
+                        Some(parsed_url.username().to_string()) 
+                    };
+                    let password = parsed_url.password().map(|p| p.to_string());
+                    let database = if parsed_url.path().len() > 1 {
+                        parsed_url.path().trim_start_matches('/').parse().ok()
+                    } else {
+                        None
+                    };
+
+                    RedisConfig {
+                        host,
+                        port,
+                        max_connections: 32,
+                        password,
+                        username,
+                        database,
+                    }
+                }
+                Err(e) => {
+                    return Err(AppError::Config(format!("Invalid URL format: {}", e)));
+                }
+            }
+        } else {
+            // Use individual variables - support both VALKEY_* and REDIS_* (VALKEY_* takes precedence)
+            let host = valkey_env("HOST").expect("checked above");
+            let port_str = valkey_env("PORT").unwrap_or_else(|| "6379".to_string());
+            let port = port_str.trim().parse()
+                .map_err(|_e| AppError::Config(format!("Invalid port '{}': Must be a valid port number (e.g., 6379)", port_str)))?;
+            let password = valkey_env("PASSWORD");
+            let username = valkey_env("USERNAME");
+            let database = valkey_env("DATABASE").and_then(|d| d.parse().ok());
+
+            RedisConfig {
+                host,
+                port,
+                max_connections: 32,
+                password,
+                username,
+                database,
+            }
+        };
+
+        Ok(Some(config))
+    }
+
+    /// `None` without Valkey (the in-memory store).
+    pub fn redis_url(&self) -> Option<String> {
+        let redis = self.redis.as_ref()?;
         let mut url = String::from("redis://");
         
         // Add authentication if provided
-        if let (Some(username), Some(password)) = (&self.redis.username, &self.redis.password) {
+        if let (Some(username), Some(password)) = (&redis.username, &redis.password) {
             url.push_str(&format!("{}:{}@", 
                 urlencoding::encode(username), 
                 urlencoding::encode(password)
             ));
-        } else if let Some(password) = &self.redis.password {
+        } else if let Some(password) = &redis.password {
             url.push_str(&format!(":{}@", urlencoding::encode(password)));
         }
         
         // Add host and port
-        url.push_str(&format!("{}:{}", self.redis.host, self.redis.port));
+        url.push_str(&format!("{}:{}", redis.host, redis.port));
         
         // Add database if specified
-        if let Some(database) = self.redis.database {
+        if let Some(database) = redis.database {
             url.push_str(&format!("/{}", database));
         }
         
-        url
+        Some(url)
     }
 }

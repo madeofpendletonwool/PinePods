@@ -5,9 +5,9 @@ use super::*;
 impl DatabasePool {
     // Get downloaded episodes - matches Python download_episode_list function
     pub async fn download_episode_list(&self, user_id: i32) -> AppResult<Vec<crate::handlers::podcasts::DownloadedEpisode>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT * FROM (
                         SELECT
                             "Podcasts".podcastid as podcastid,
@@ -130,8 +130,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(episodes)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT * FROM (
                         SELECT
@@ -255,8 +255,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(episodes)
-            }
-        }
+            },
+        })
     }
 
     pub async fn get_podcast_download_summary(
@@ -271,8 +271,8 @@ impl DatabasePool {
         // out podcasts whose episodes aren't loaded yet.
         let has_search = !search.is_empty();
         let search_pattern = format!("%{}%", search);
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Search matches episode/video title OR the podcast name (a name match surfaces the
                 // whole podcast). Bound once as $3 and referenced from both UNION branches.
                 let ep_search = if has_search {
@@ -324,7 +324,7 @@ impl DatabasePool {
 
                 // SAFETY: sql is built from static literals plus the validated has_search/filter
                 // dispatch above. User-supplied search text is bound as $3, never interpolated.
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                let mut q = q::query(sqlx::AssertSqlSafe(sql.as_str()))
                     .bind(user_id)
                     .bind(user_id);
                 if has_search {
@@ -342,8 +342,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(summaries)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // MySQL has no `$n` reuse, so the search pattern is bound once per `?` in textual
                 // order: branch 1 (title, name), then branch 2 (title, name).
                 let ep_search = if has_search {
@@ -415,8 +415,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(summaries)
-            }
-        }
+            },
+        })
     }
 
     pub async fn get_podcast_downloads_paged(
@@ -430,8 +430,8 @@ impl DatabasePool {
     ) -> AppResult<(Vec<crate::handlers::podcasts::DownloadedEpisode>, i64)> {
         let has_search = !search.is_empty();
         let search_pattern = format!("%{}%", search);
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Search ($11, bound after limit/offset) matches title OR podcast name; the
                 // completion filter is applied to the merged `combined` set so its `completed`
                 // and `listenduration` aliases cover both episodes and youtube videos.
@@ -540,7 +540,7 @@ impl DatabasePool {
 
                 // SAFETY: sql is built from static literals plus the validated has_search/filter
                 // dispatch; the search text is bound as $11, never interpolated.
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                let mut q = q::query(sqlx::AssertSqlSafe(sql.as_str()))
                     .bind(user_id)    // $1 SavedEpisodes join
                     .bind(user_id)    // $2 EpisodeQueue join
                     .bind(user_id)    // $3 DownloadedEpisodes WHERE
@@ -591,8 +591,8 @@ impl DatabasePool {
                     });
                 }
                 Ok((episodes, total))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Search patterns are bound in textual order: episode branch (title, name) then
                 // youtube branch (title, name). The completion filter is applied to the merged
                 // `combined` set (lowercase `completed`/`listenduration` aliases).
@@ -755,21 +755,21 @@ impl DatabasePool {
                     });
                 }
                 Ok((episodes, total))
-            }
-        }
+            },
+        })
     }
 
     // Check if episode is already downloaded
     pub async fn check_downloaded(&self, user_id: i32, episode_id: i32, is_youtube: bool) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let query = if is_youtube {
                     r#"SELECT COUNT(*) as count FROM "DownloadedVideos" WHERE userid = $1 AND videoid = $2"#
                 } else {
                     r#"SELECT COUNT(*) as count FROM "DownloadedEpisodes" WHERE userid = $1 AND episodeid = $2"#
                 };
                 
-                let row = sqlx::query(query)
+                let row = q::query(query)
                     .bind(user_id)
                     .bind(episode_id)
                     .fetch_one(pool)
@@ -777,8 +777,8 @@ impl DatabasePool {
                     
                 let count: i64 = row.try_get("count")?;
                 Ok(count > 0)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let query = if is_youtube {
                     "SELECT COUNT(*) as count FROM DownloadedVideos WHERE UserID = ? AND VideoID = ?"
                 } else {
@@ -793,39 +793,39 @@ impl DatabasePool {
                     
                 let count: i64 = row.try_get("count")?;
                 Ok(count > 0)
-            }
-        }
+            },
+        })
     }
 
     // Fetch the filesystem path stored for a downloaded video before deleting it
     pub async fn get_video_download_location(&self, user_id: i32, video_id: i32) -> AppResult<Option<String>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT downloadedlocation FROM "DownloadedVideos" WHERE userid = $1 AND videoid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT downloadedlocation FROM "DownloadedVideos" WHERE userid = $1 AND videoid = $2"#)
                     .bind(user_id)
                     .bind(video_id)
                     .fetch_optional(pool)
                     .await?;
                 Ok(row.and_then(|r| r.try_get::<Option<String>, _>("downloadedlocation").ok().flatten()))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT DownloadedLocation FROM DownloadedVideos WHERE UserID = ? AND VideoID = ?")
                     .bind(user_id)
                     .bind(video_id)
                     .fetch_optional(pool)
                     .await?;
                 Ok(row.and_then(|r| r.try_get::<Option<String>, _>("DownloadedLocation").ok().flatten()))
-            }
-        }
+            },
+        })
     }
 
     // Delete downloaded episode
     // Returns whether a download row was removed.
     pub async fn delete_episode(&self, user_id: i32, episode_id: i32, is_youtube: bool) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let deleted = if is_youtube {
-                    let result = sqlx::query(r#"DELETE FROM "DownloadedVideos" WHERE userid = $1 AND videoid = $2"#)
+                    let result = q::query(r#"DELETE FROM "DownloadedVideos" WHERE userid = $1 AND videoid = $2"#)
                         .bind(user_id)
                         .bind(episode_id)
                         .execute(pool)
@@ -833,14 +833,14 @@ impl DatabasePool {
 
                     // Only update UserStats if a row was actually deleted
                     if result.rows_affected() > 0 {
-                        sqlx::query(r#"UPDATE "UserStats" SET episodesdownloaded = episodesdownloaded - 1 WHERE userid = $1"#)
+                        q::query(r#"UPDATE "UserStats" SET episodesdownloaded = episodesdownloaded - 1 WHERE userid = $1"#)
                             .bind(user_id)
                             .execute(pool)
                             .await?;
                     }
                     result.rows_affected() > 0
                 } else {
-                    let result = sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE userid = $1 AND episodeid = $2"#)
+                    let result = q::query(r#"DELETE FROM "DownloadedEpisodes" WHERE userid = $1 AND episodeid = $2"#)
                         .bind(user_id)
                         .bind(episode_id)
                         .execute(pool)
@@ -848,7 +848,7 @@ impl DatabasePool {
 
                     // Only update UserStats if a row was actually deleted
                     if result.rows_affected() > 0 {
-                        sqlx::query(r#"UPDATE "UserStats" SET episodesdownloaded = episodesdownloaded - 1 WHERE userid = $1"#)
+                        q::query(r#"UPDATE "UserStats" SET episodesdownloaded = episodesdownloaded - 1 WHERE userid = $1"#)
                             .bind(user_id)
                             .execute(pool)
                             .await?;
@@ -856,8 +856,8 @@ impl DatabasePool {
                     result.rows_affected() > 0
                 };
                 Ok(deleted)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let deleted = if is_youtube {
                     let result = sqlx::query("DELETE FROM DownloadedVideos WHERE UserID = ? AND VideoID = ?")
                         .bind(user_id)
@@ -890,16 +890,16 @@ impl DatabasePool {
                     result.rows_affected() > 0
                 };
                 Ok(deleted)
-            }
-        }
+            },
+        })
     }
 
     // Get download status for user
     pub async fn get_download_status(&self, user_id: i32) -> AppResult<serde_json::Value> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Get active download tasks
-                let rows = sqlx::query(
+                let rows = q::query(
                     r#"SELECT taskid, tasktype, progress, status FROM "UserTasks" 
                        WHERE userid = $1 AND tasktype IN ('download_episode', 'download_video', 'download_all_episodes', 'download_all_videos') 
                        AND status IN ('pending', 'running')"#
@@ -919,8 +919,8 @@ impl DatabasePool {
                 }
                 
                 Ok(serde_json::json!({ "active_downloads": tasks }))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Get active download tasks
                 let rows = sqlx::query(
                     "SELECT TaskID, TaskType, Progress, Status FROM UserTasks 
@@ -942,8 +942,8 @@ impl DatabasePool {
                 }
                 
                 Ok(serde_json::json!({ "active_downloads": tasks }))
-            }
-        }
+            },
+        })
     }
 
     // Add news feed if not already added - matches Python add_news_feed_if_not_added function exactly
@@ -996,8 +996,8 @@ impl DatabasePool {
     // downloads made before the episode was finished count, so re-downloading a finished episode
     // to hear it again keeps it, and an hour's grace lets the last minutes play out first.
     pub async fn auto_delete_finished_downloads(&self) -> AppResult<()> {
-        let rows: Vec<(i32, i32, Option<String>)> = match self {
-            DatabasePool::Postgres(pool) => sqlx::query(
+        let rows: Vec<(i32, i32, Option<String>)> = dialect_match!(self, {
+            pg(pool) => q::query(
                 r#"SELECT de.userid, de.episodeid, de.downloadedlocation
                    FROM "DownloadedEpisodes" de
                    JOIN "UserEpisodeState" s ON s.userid = de.userid AND s.episodeid = de.episodeid AND s.completed
@@ -1018,7 +1018,7 @@ impl DatabasePool {
                 r.try_get("downloadedlocation").unwrap_or(None),
             ))
             .collect(),
-            DatabasePool::MySQL(pool) => sqlx::query(
+            mysql(pool) => sqlx::query(
                 "SELECT de.UserID, de.EpisodeID, de.DownloadedLocation
                  FROM DownloadedEpisodes de
                  JOIN UserEpisodeState s ON s.UserID = de.UserID AND s.EpisodeID = de.EpisodeID AND s.Completed = 1
@@ -1039,7 +1039,7 @@ impl DatabasePool {
                 r.try_get("DownloadedLocation").unwrap_or(None),
             ))
             .collect(),
-        };
+        });
 
         let mut deleted = 0;
         for (user_id, episode_id, location) in rows {
@@ -1089,9 +1089,9 @@ impl DatabasePool {
         &self,
     ) -> AppResult<Vec<(i32, i32, Option<String>, Option<chrono::NaiveDateTime>, Option<String>, i32)>> {
         let mut out = Vec::new();
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT de.userid AS user_id, de.episodeid AS content_id,
                               de.downloadedlocation AS location, de.downloadeddate AS downloaded_date,
                               p.feedurl AS feed_url,
@@ -1114,8 +1114,8 @@ impl DatabasePool {
                         row.try_get::<i32, _>("effective_days").unwrap_or(0),
                     ));
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT de.UserID AS user_id, de.EpisodeID AS content_id,
                             de.DownloadedLocation AS location, de.DownloadedDate AS downloaded_date,
@@ -1139,8 +1139,8 @@ impl DatabasePool {
                         row.try_get::<i64, _>("effective_days").map(|v| v as i32).unwrap_or(0),
                     ));
                 }
-            }
-        }
+            },
+        });
         Ok(out)
     }
 
@@ -1150,9 +1150,9 @@ impl DatabasePool {
         &self,
     ) -> AppResult<Vec<(i32, i32, Option<String>, Option<chrono::NaiveDateTime>, Option<String>, i32)>> {
         let mut out = Vec::new();
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT dv.userid AS user_id, dv.videoid AS content_id,
                               dv.downloadedlocation AS location, dv.downloadeddate AS downloaded_date,
                               p.feedurl AS feed_url,
@@ -1175,8 +1175,8 @@ impl DatabasePool {
                         row.try_get::<i32, _>("effective_days").unwrap_or(0),
                     ));
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT dv.UserID AS user_id, dv.VideoID AS content_id,
                             dv.DownloadedLocation AS location, dv.DownloadedDate AS downloaded_date,
@@ -1200,8 +1200,8 @@ impl DatabasePool {
                         row.try_get::<i64, _>("effective_days").map(|v| v as i32).unwrap_or(0),
                     ));
                 }
-            }
-        }
+            },
+        });
         Ok(out)
     }
 
@@ -1213,9 +1213,9 @@ impl DatabasePool {
     ) -> AppResult<Option<String>> {
         info!("Looking up YouTube video location for episode_id: {}, user_id: {}", episode_id, user_id);
         
-        let youtube_id = match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"
+        let youtube_id = dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"
                     SELECT "YouTubeVideos".youtubevideoid
                     FROM "YouTubeVideos"
                     INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
@@ -1231,8 +1231,8 @@ impl DatabasePool {
                 } else {
                     return Ok(None);
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(r#"
                     SELECT YouTubeVideos.YouTubeVideoID
                     FROM YouTubeVideos
@@ -1249,8 +1249,8 @@ impl DatabasePool {
                 } else {
                     return Ok(None);
                 }
-            }
-        };
+            },
+        });
 
         debug!("Found YouTube ID: {}", youtube_id);
 
@@ -1279,9 +1279,9 @@ impl DatabasePool {
     ) -> AppResult<Option<String>> {
         info!("Looking up download location for episode_id: {}, user_id: {}", episode_id, user_id);
         
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT downloadedlocation FROM "DownloadedEpisodes" WHERE episodeid = $1 AND userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT downloadedlocation FROM "DownloadedEpisodes" WHERE episodeid = $1 AND userid = $2"#)
                     .bind(episode_id)
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -1295,8 +1295,8 @@ impl DatabasePool {
                     debug!("No DownloadedLocation found for the given EpisodeID and UserID");
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT DownloadedLocation FROM DownloadedEpisodes WHERE EpisodeID = ? AND UserID = ?")
                     .bind(episode_id)
                     .bind(user_id)
@@ -1311,7 +1311,7 @@ impl DatabasePool {
                     debug!("No DownloadedLocation found for the given EpisodeID and UserID");
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 }

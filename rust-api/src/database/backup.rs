@@ -161,11 +161,20 @@ where
 }
 
 impl DatabasePool {
+    /// Write a SQLite server backup to `path`; `None` when this isn't a SQLite database
+    /// (the others are backed up with pg_dump / mysqldump).
+    pub async fn sqlite_backup_to(&self, path: &std::path::Path) -> Option<AppResult<()>> {
+        match self {
+            DatabasePool::Sqlite(pool) => Some(super::sqlite_backup::dump(pool, path).await),
+            _ => None,
+        }
+    }
+
     // Backup user data - matches Python backup_user function exactly
     pub async fn backup_user(&self, user_id: i32) -> AppResult<String> {
-        let podcasts = match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        let podcasts = dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT podcastname, feedurl FROM "Podcasts" WHERE userid = $1 AND (username IS NULL OR username = '') AND (password IS NULL OR password = '')"#
                 )
                 .bind(user_id)
@@ -180,8 +189,8 @@ impl DatabasePool {
                     ));
                 }
                 podcasts
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT PodcastName, FeedURL FROM Podcasts WHERE UserID = ? AND (Username IS NULL OR Username = '') AND (Password IS NULL OR Password = '')"
                 )
@@ -197,8 +206,8 @@ impl DatabasePool {
                     ));
                 }
                 podcasts
-            }
-        };
+            },
+        });
 
         // Generate OPML content
         let mut opml_content = String::from(
@@ -249,6 +258,20 @@ impl DatabasePool {
     // appears empty mid-restore (which previously triggered the "create first user" flow
     // and a write race that corrupted the restore).
     pub async fn restore_server_data_from_path(&self, path: &std::path::Path) -> AppResult<()> {
+        // A SQLite backup only restores on SQLite, and SQLite only restores its own backups.
+        let sqlite_file = super::sqlite_backup::is_sqlite_backup(path).await?;
+        if let DatabasePool::Sqlite(pool) = self {
+            if !sqlite_file {
+                return Err(AppError::bad_request(
+                    "This backup came from a PostgreSQL or MySQL server. A SQLite server can only restore its own backups.",
+                ));
+            }
+            return super::sqlite_backup::restore(pool, path).await;
+        }
+        if sqlite_file {
+            return Err(AppError::bad_request("This is a SQLite backup and can only be restored on a SQLite server."));
+        }
+
         // Transient auth tables that hold only disposable login tokens. They are never worth
         // restoring, and historically their schema has drifted (e.g. an upgraded instance can
         // still carry the legacy `Sessions(sessionid, userid, value, expire)` layout while a
@@ -270,8 +293,8 @@ impl DatabasePool {
             ));
         }
 
-        match self {
-            DatabasePool::Postgres(_) => {
+        dialect_match!(self, {
+            pg(_) => {
                 let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
                 let port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
                 let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
@@ -368,8 +391,8 @@ impl DatabasePool {
                     tracing::warn!("psql restore reported messages: {}", stderr.trim());
                 }
                 tracing::info!("psql restore completed successfully");
-            }
-            DatabasePool::MySQL(_) => {
+            },
+            mysql(_) => {
                 // MySQL TRUNCATE/DDL auto-commits, so the load can't be a single atomic
                 // transaction like Postgres. Clear via transactional DELETE (FK checks
                 // off) first, then stream the dump; mysql stops on the first error.
@@ -448,21 +471,21 @@ impl DatabasePool {
                     tracing::warn!("mysql restore reported messages: {}", stderr.trim());
                 }
                 tracing::info!("mysql restore completed successfully");
-            }
-        }
+            },
+        });
 
         Ok(())
     }
 
     // Clear all data from tables while preserving schema
     pub(super) async fn clear_all_data(&self) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Disable foreign key constraints temporarily
-                sqlx::query("SET session_replication_role = replica;").execute(pool).await?;
+                q::query("SET session_replication_role = replica;").execute(pool).await?;
                 
                 // Get all table names
-                let tables = sqlx::query(r#"
+                let tables = q::query(r#"
                     SELECT tablename FROM pg_tables 
                     WHERE schemaname = 'public' 
                     AND tablename NOT LIKE '%_seq'
@@ -474,13 +497,13 @@ impl DatabasePool {
                 for table in tables {
                     let table_name: String = table.try_get("tablename")?;
                     let query = format!(r#"TRUNCATE TABLE "{}" RESTART IDENTITY CASCADE"#, table_name);
-                    sqlx::query(sqlx::AssertSqlSafe(query.as_str())).execute(pool).await?;
+                    q::query(sqlx::AssertSqlSafe(query.as_str())).execute(pool).await?;
                 }
                 
                 // Re-enable foreign key constraints
-                sqlx::query("SET session_replication_role = DEFAULT;").execute(pool).await?;
-            }
-            DatabasePool::MySQL(pool) => {
+                q::query("SET session_replication_role = DEFAULT;").execute(pool).await?;
+            },
+            mysql(pool) => {
                 // Run the whole clear on ONE pinned connection. `SET FOREIGN_KEY_CHECKS = 0` is
                 // a session variable, so issuing each statement via `.execute(pool)` (which can
                 // hand back a different pooled connection each time) leaves FK checks ON for the
@@ -519,16 +542,16 @@ impl DatabasePool {
 
                 // Re-enable foreign key checks
                 sqlx::query("SET FOREIGN_KEY_CHECKS = 1;").execute(&mut *conn).await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Set scheduled backup configuration. retention_count: None/Some(0) = keep all backups.
     pub async fn set_scheduled_backup(&self, user_id: i32, cron_schedule: &str, enabled: bool, retention_count: Option<i32>) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"
                     INSERT INTO "ScheduledBackups" (userid, cron_schedule, enabled, retention_count, created_at, updated_at)
                     VALUES ($1, $2, $3, $4, NOW(), NOW())
                     ON CONFLICT (userid)
@@ -544,8 +567,8 @@ impl DatabasePool {
                 .bind(retention_count)
                 .execute(pool)
                 .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query(r#"
                     INSERT INTO ScheduledBackups (UserID, CronSchedule, Enabled, RetentionCount, CreatedAt, UpdatedAt)
                     VALUES (?, ?, ?, ?, NOW(), NOW())
@@ -561,16 +584,16 @@ impl DatabasePool {
                 .bind(retention_count)
                 .execute(pool)
                 .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Get scheduled backup configuration
     pub async fn get_scheduled_backup(&self, user_id: i32) -> AppResult<serde_json::Value> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"
                     SELECT cron_schedule, enabled, retention_count, created_at, updated_at
                     FROM "ScheduledBackups"
                     WHERE userid = $1
@@ -596,8 +619,8 @@ impl DatabasePool {
                         "updated_at": null
                     }))
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(r#"
                     SELECT CronSchedule, Enabled, RetentionCount, CreatedAt, UpdatedAt
                     FROM ScheduledBackups
@@ -627,16 +650,16 @@ impl DatabasePool {
                         "updated_at": null
                     }))
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get all enabled scheduled backups (used by the background scheduler to decide what is due)
     pub async fn get_enabled_scheduled_backups(&self) -> AppResult<Vec<ScheduledBackupRow>> {
         let mut backups = Vec::new();
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(r#"
                     SELECT userid, cron_schedule, retention_count, last_run
                     FROM "ScheduledBackups"
                     WHERE enabled = TRUE
@@ -653,8 +676,8 @@ impl DatabasePool {
                             .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc)),
                     });
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(r#"
                     SELECT UserID, CronSchedule, RetentionCount, LastRun
                     FROM ScheduledBackups
@@ -671,29 +694,29 @@ impl DatabasePool {
                         last_run: row.try_get::<Option<DateTime<Utc>>, _>("LastRun")?,
                     });
                 }
-            }
-        }
+            },
+        });
         Ok(backups)
     }
 
     // Record the time the scheduler last ran a given user's scheduled backup
     pub async fn update_scheduled_backup_last_run(&self, user_id: i32, ts: DateTime<Utc>) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "ScheduledBackups" SET last_run = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "ScheduledBackups" SET last_run = $1 WHERE userid = $2"#)
                     .bind(ts.naive_utc())
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query(r#"UPDATE ScheduledBackups SET LastRun = ? WHERE UserID = ?"#)
                     .bind(ts)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -712,12 +735,16 @@ impl DatabasePool {
             return Err(AppError::internal(&format!("Failed to create backup directory: {}", e)));
         }
 
+        if let Some(result) = self.sqlite_backup_to(std::path::Path::new(&backup_path)).await {
+            return result.map(|_| backup_filename);
+        }
+
         // Get database password from environment
         let db_password = std::env::var("DB_PASSWORD")
             .map_err(|_| AppError::internal("Database password not found in environment"))?;
 
-        match self {
-            DatabasePool::Postgres(_) => {
+        dialect_match!(self, {
+            pg(_) => {
                 let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
                 let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
                 let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
@@ -748,8 +775,8 @@ impl DatabasePool {
                     let error_msg = String::from_utf8_lossy(&output.stderr);
                     return Err(AppError::internal(&format!("Backup failed: {}", error_msg)));
                 }
-            }
-            DatabasePool::MySQL(_) => {
+            },
+            mysql(_) => {
                 let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
                 let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
                 let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "mysql".to_string());
@@ -777,8 +804,8 @@ impl DatabasePool {
                     let error_msg = String::from_utf8_lossy(&output.stderr);
                     return Err(AppError::internal(&format!("Backup failed: {}", error_msg)));
                 }
-            }
-        }
+            },
+        });
 
         Ok(backup_filename)
     }

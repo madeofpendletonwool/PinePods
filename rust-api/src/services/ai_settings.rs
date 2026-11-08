@@ -10,6 +10,7 @@ use crate::database::DatabasePool;
 use crate::services::ai_client::LlmSpec;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
+use crate::database::dialect::dialect_match;
 
 /// AI config as shown to (and updated from) the AI Settings page. Never carries the API key —
 /// only whether one is set.
@@ -67,9 +68,9 @@ impl Default for RawAiSettings {
 async fn read_row(db_pool: &DatabasePool) -> Result<RawAiSettings, String> {
     // The two SELECTs differ only by table-name quoting; mapping happens per-arm because the
     // Postgres and MySQL row types are distinct.
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            let row = sqlx::query(r#"
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            let row = q::query(r#"
                 SELECT TranscriptionModel AS transcription_model, LlmBackend AS llm_backend,
                        LlmModel AS llm_model, LlmUrl AS llm_url, LlmApiKey AS llm_api_key,
                        WhisperDevice AS whisper_device, WhisperComputeType AS whisper_compute_type
@@ -88,8 +89,8 @@ async fn read_row(db_pool: &DatabasePool) -> Result<RawAiSettings, String> {
                 whisper_device: r.try_get("whisper_device").unwrap_or_else(|_| "cpu".into()),
                 whisper_compute_type: r.try_get("whisper_compute_type").unwrap_or_else(|_| "int8".into()),
             })
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             let row = sqlx::query(r#"
                 SELECT TranscriptionModel AS transcription_model, LlmBackend AS llm_backend,
                        LlmModel AS llm_model, LlmUrl AS llm_url, LlmApiKey AS llm_api_key,
@@ -109,8 +110,8 @@ async fn read_row(db_pool: &DatabasePool) -> Result<RawAiSettings, String> {
                 whisper_device: r.try_get("whisper_device").unwrap_or_else(|_| "cpu".into()),
                 whisper_compute_type: r.try_get("whisper_compute_type").unwrap_or_else(|_| "int8".into()),
             })
-        }
-    }
+        },
+    })
 }
 
 /// AI config for the settings page (API key redacted).
@@ -161,11 +162,11 @@ pub async fn set_ai_settings(db_pool: &DatabasePool, update: AiSettingsUpdate) -
     let device = update.whisper_device.unwrap_or_else(|| "cpu".to_string());
     let compute = update.whisper_compute_type.unwrap_or_else(|| "int8".to_string());
 
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
+    dialect_match!(db_pool, {
+        pg(pool) => {
             match &new_key {
                 Some(key) => {
-                    sqlx::query(r#"
+                    q::query(r#"
                         UPDATE "AISettings" SET TranscriptionModel=$1, LlmBackend=$2, LlmModel=$3,
                             LlmUrl=$4, LlmApiKey=$5, WhisperDevice=$6, WhisperComputeType=$7,
                             UpdatedAt=CURRENT_TIMESTAMP WHERE AISettingsID = 1
@@ -175,7 +176,7 @@ pub async fn set_ai_settings(db_pool: &DatabasePool, update: AiSettingsUpdate) -
                     .execute(pool).await.map_err(|e| e.to_string())?;
                 }
                 None => {
-                    sqlx::query(r#"
+                    q::query(r#"
                         UPDATE "AISettings" SET TranscriptionModel=$1, LlmBackend=$2, LlmModel=$3,
                             LlmUrl=$4, WhisperDevice=$5, WhisperComputeType=$6,
                             UpdatedAt=CURRENT_TIMESTAMP WHERE AISettingsID = 1
@@ -185,8 +186,8 @@ pub async fn set_ai_settings(db_pool: &DatabasePool, update: AiSettingsUpdate) -
                     .execute(pool).await.map_err(|e| e.to_string())?;
                 }
             }
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             match &new_key {
                 Some(key) => {
                     sqlx::query(r#"
@@ -209,7 +210,7 @@ pub async fn set_ai_settings(db_pool: &DatabasePool, update: AiSettingsUpdate) -
                     .execute(pool).await.map_err(|e| e.to_string())?;
                 }
             }
-        }
-    }
+        },
+    });
     Ok(())
 }

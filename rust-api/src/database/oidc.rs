@@ -18,9 +18,9 @@ pub struct PublicOidcProvider {
 impl DatabasePool {
     // Get public OIDC providers - matches Python get_public_oidc_providers function
     pub async fn get_public_oidc_providers(&self) -> AppResult<Vec<PublicOidcProvider>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT
                         providerid,
                         providername,
@@ -52,8 +52,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(providers)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT
                         ProviderID as providerid,
@@ -86,17 +86,17 @@ impl DatabasePool {
                     });
                 }
                 Ok(providers)
-            }
-        }
+            },
+        })
     }
 
     // Add OIDC provider - matches Python add_oidc_provider function exactly
     pub async fn add_oidc_provider(&self, provider_name: &str, client_id: &str, client_secret: &str, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str, initialized_from_env: bool) -> AppResult<i32> {
         debug!("Adding OIDC provider: {}", provider_name);
         
-        let provider_id = match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"
+        let provider_id = dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"
                     INSERT INTO "OIDCProviders" (
                         providername, clientid, clientsecret, authorizationurl,
                         tokenurl, userinfourl, buttontext, scope,
@@ -127,8 +127,8 @@ impl DatabasePool {
                     .await?;
                 
                 row.try_get("providerid")?
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("
                     INSERT INTO OIDCProviders (
                         ProviderName, ClientID, ClientSecret, AuthorizationURL,
@@ -159,8 +159,8 @@ impl DatabasePool {
                     .await?;
                 
                 result.last_insert_id() as i32
-            }
-        };
+            },
+        });
         
         debug!("Successfully added OIDC provider with ID: {}", provider_id);
         Ok(provider_id)
@@ -170,9 +170,9 @@ impl DatabasePool {
     pub async fn list_oidc_providers(&self) -> AppResult<Vec<serde_json::Value>> {
         info!("Listing all OIDC providers");
         
-        let providers = match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"
+        let providers = dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(r#"
                     SELECT providerid, providername, clientid, authorizationurl,
                            tokenurl, userinfourl, buttontext, scope, buttoncolor,
                            buttontextcolor, iconsvg, nameclaim, emailclaim, usernameclaim,
@@ -211,8 +211,8 @@ impl DatabasePool {
                     providers.push(provider);
                 }
                 providers
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query("
                     SELECT ProviderID, ProviderName, ClientID, AuthorizationURL,
                            TokenURL, UserInfoURL, ButtonText, Scope, ButtonColor,
@@ -252,8 +252,8 @@ impl DatabasePool {
                     providers.push(provider);
                 }
                 providers
-            }
-        };
+            },
+        });
         
         debug!("Found {} OIDC providers", providers.len());
         Ok(providers)
@@ -263,24 +263,24 @@ impl DatabasePool {
     pub async fn remove_oidc_provider(&self, provider_id: i32) -> AppResult<bool> {
         info!("Removing OIDC provider with ID: {}", provider_id);
         
-        let rows_affected = match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"DELETE FROM "OIDCProviders" WHERE ProviderID = $1"#)
+        let rows_affected = dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"DELETE FROM "OIDCProviders" WHERE ProviderID = $1"#)
                     .bind(provider_id)
                     .execute(pool)
                     .await?;
                 
                 result.rows_affected()
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("DELETE FROM OIDCProviders WHERE ProviderID = ?")
                     .bind(provider_id)
                     .execute(pool)
                     .await?;
                 
                 result.rows_affected()
-            }
-        };
+            },
+        });
         
         let success = rows_affected > 0;
         if success {
@@ -354,9 +354,9 @@ impl DatabasePool {
 
     // Check if OIDC provider was initialized from environment variables
     pub async fn is_oidc_provider_env_initialized(&self, provider_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"
                     SELECT initializedfromenv FROM "OIDCProviders" WHERE providerid = $1
                 "#)
                     .bind(provider_id)
@@ -364,8 +364,8 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.map(|row| row.try_get::<bool, _>("initializedfromenv").unwrap_or(false)).unwrap_or(false))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query(r#"
                     SELECT InitializedFromEnv FROM OIDCProviders WHERE ProviderID = ?
                 "#)
@@ -374,8 +374,8 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.map(|row| row.try_get::<bool, _>("InitializedFromEnv").unwrap_or(false)).unwrap_or(false))
-            }
-        }
+            },
+        })
     }
 
     // Update OIDC provider - updates an existing provider with new values
@@ -383,11 +383,11 @@ impl DatabasePool {
     pub async fn update_oidc_provider(&self, provider_id: i32, provider_name: &str, client_id: &str, client_secret: Option<&str>, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str) -> AppResult<bool> {
         info!("Updating OIDC provider with ID: {}", provider_id);
 
-        let rows_affected = match self {
-            DatabasePool::Postgres(pool) => {
+        let rows_affected = dialect_match!(self, {
+            pg(pool) => {
                 // Build query dynamically based on whether client_secret is provided
                 if let Some(secret) = client_secret {
-                    let result = sqlx::query(r#"
+                    let result = q::query(r#"
                         UPDATE "OIDCProviders" SET
                             providername = $2, clientid = $3, clientsecret = $4,
                             authorizationurl = $5, tokenurl = $6, userinfourl = $7,
@@ -420,7 +420,7 @@ impl DatabasePool {
                     result.rows_affected()
                 } else {
                     // Don't update client_secret if not provided
-                    let result = sqlx::query(r#"
+                    let result = q::query(r#"
                         UPDATE "OIDCProviders" SET
                             providername = $2, clientid = $3,
                             authorizationurl = $4, tokenurl = $5, userinfourl = $6,
@@ -451,8 +451,8 @@ impl DatabasePool {
                         .await?;
                     result.rows_affected()
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 if let Some(secret) = client_secret {
                     let result = sqlx::query("
                         UPDATE OIDCProviders SET
@@ -518,8 +518,8 @@ impl DatabasePool {
                         .await?;
                     result.rows_affected()
                 }
-            }
-        };
+            },
+        });
         
         let success = rows_affected > 0;
         if success {
@@ -534,9 +534,9 @@ impl DatabasePool {
 
     // Get OIDC provider by client ID - for callback processing
     pub async fn get_oidc_provider_by_client_id(&self, client_id: &str) -> AppResult<Option<serde_json::Value>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"
                     SELECT providerid, providername, clientid, clientsecret, authorizationurl, 
                            tokenurl, userinfourl, scope, buttoncolor, buttontext, buttontextcolor, 
                            iconsvg, enabled, nameclaim, emailclaim, usernameclaim, rolesclaim, 
@@ -573,8 +573,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(r#"
                     SELECT ProviderID, ProviderName, ClientID, ClientSecret, AuthorizationURL, 
                            TokenURL, UserInfoURL, Scope, ButtonColor, ButtonText, ButtonTextColor, 
@@ -612,15 +612,15 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get OIDC provider - matches Python get_oidc_provider function EXACTLY
     pub async fn get_oidc_provider(&self, client_id: &str) -> AppResult<Option<(i32, String, String, String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"
                     SELECT providerid, clientid, clientsecret, tokenurl, userinfourl, nameclaim, emailclaim, usernameclaim, rolesclaim, userrole, adminrole
                     FROM "OIDCProviders"
                     WHERE clientid = $1 AND enabled = true
@@ -647,7 +647,7 @@ impl DatabasePool {
                     Ok(None)
                 }
             },
-            DatabasePool::MySQL(pool) => {
+            mysql(pool) => {
                 let result = sqlx::query(r#"
                     SELECT ProviderID, ClientID, ClientSecret, TokenURL, UserInfoURL, NameClaim, EmailClaim, UsernameClaim, RolesClaim, UserRole, AdminRole
                     FROM OIDCProviders
@@ -674,8 +674,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Create OIDC user - matches Python create_oidc_user function EXACTLY
@@ -688,9 +688,9 @@ impl DatabasePool {
         let hashed_password = format!("$argon2id$v=19$m=65536,t=3,p=4${}${}_OIDC_ACCOUNT_NO_PASSWORD", 
                                     salt, "X".repeat(43));
 
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"
                     INSERT INTO "Users" (fullname, username, email, hashed_pw, isadmin)
                     VALUES ($1, $2, $3, $4, false)
                     RETURNING userid
@@ -705,21 +705,21 @@ impl DatabasePool {
                 let user_id: i32 = result.try_get("userid")?;
 
                 // Add default user settings
-                sqlx::query(r#"INSERT INTO "UserSettings" (userid, theme) VALUES ($1, $2)"#)
+                q::query(r#"INSERT INTO "UserSettings" (userid, theme) VALUES ($1, $2)"#)
                     .bind(user_id)
                     .bind("Nordic")
                     .execute(pool)
                     .await?;
 
                 // Add default user stats
-                sqlx::query(r#"INSERT INTO "UserStats" (userid) VALUES ($1)"#)
+                q::query(r#"INSERT INTO "UserStats" (userid) VALUES ($1)"#)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
 
                 Ok(user_id)
             },
-            DatabasePool::MySQL(pool) => {
+            mysql(pool) => {
                 let result = sqlx::query(r#"
                     INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
                     VALUES (?, ?, ?, ?, 0)
@@ -747,7 +747,7 @@ impl DatabasePool {
                     .await?;
 
                 Ok(user_id)
-            }
-        }
+            },
+        })
     }
 }

@@ -12,6 +12,7 @@
 use crate::database::DatabasePool;
 use sqlx::Row;
 use tracing::{debug, warn};
+use crate::database::dialect::dialect_match;
 
 /// Source tag written to `EpisodeSkipSegments.Source` for auto-detected silence.
 pub const SOURCE_SILENCE: &str = "auto-silence";
@@ -97,24 +98,24 @@ fn parse_silencedetect(stderr: &str) -> Vec<(f64, f64)> {
 
 /// Look up a locally downloaded file path for an episode (any user — the file content is the same).
 pub async fn downloaded_location(db_pool: &DatabasePool, episode_id: i32) -> Result<Option<String>, String> {
-    let loc = match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"SELECT downloadedlocation FROM "DownloadedEpisodes" WHERE episodeid = $1 LIMIT 1"#)
+    let loc = dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"SELECT downloadedlocation FROM "DownloadedEpisodes" WHERE episodeid = $1 LIMIT 1"#)
                 .bind(episode_id)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| e.to_string())?
                 .and_then(|row| row.try_get::<String, _>("downloadedlocation").ok())
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("SELECT DownloadedLocation FROM DownloadedEpisodes WHERE EpisodeID = ? LIMIT 1")
                 .bind(episode_id)
                 .fetch_optional(pool)
                 .await
                 .map_err(|e| e.to_string())?
                 .and_then(|row| row.try_get::<String, _>("DownloadedLocation").ok())
-        }
-    };
+        },
+    });
     Ok(loc)
 }
 
@@ -188,8 +189,8 @@ pub struct EpisodeDownload {
 
 /// Every server download of an episode whose file is still on disk.
 pub async fn episode_downloads(db_pool: &DatabasePool, episode_id: i32) -> Result<Vec<EpisodeDownload>, String> {
-    let rows: Vec<EpisodeDownload> = match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(
+    let rows: Vec<EpisodeDownload> = dialect_match!(db_pool, {
+        pg(pool) => q::query(
             r#"SELECT userid, downloadedlocation, audiofingerprint FROM "DownloadedEpisodes" WHERE episodeid = $1"#,
         )
         .bind(episode_id)
@@ -203,7 +204,7 @@ pub async fn episode_downloads(db_pool: &DatabasePool, episode_id: i32) -> Resul
             fingerprint: r.try_get("audiofingerprint").ok().flatten(),
         }))
         .collect(),
-        DatabasePool::MySQL(pool) => sqlx::query(
+        mysql(pool) => sqlx::query(
             "SELECT UserID, DownloadedLocation, AudioFingerprint FROM DownloadedEpisodes WHERE EpisodeID = ?",
         )
         .bind(episode_id)
@@ -217,7 +218,7 @@ pub async fn episode_downloads(db_pool: &DatabasePool, episode_id: i32) -> Resul
             fingerprint: r.try_get("AudioFingerprint").ok().flatten(),
         }))
         .collect(),
-    };
+    });
     Ok(rows.into_iter().filter(|d| std::path::Path::new(&d.path).exists()).collect())
 }
 
@@ -228,17 +229,17 @@ pub async fn set_download_fingerprint(
     user_id: i32,
     fingerprint: &str,
 ) -> Result<(), String> {
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"UPDATE "DownloadedEpisodes" SET audiofingerprint = $1 WHERE episodeid = $2 AND userid = $3"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"UPDATE "DownloadedEpisodes" SET audiofingerprint = $1 WHERE episodeid = $2 AND userid = $3"#)
                 .bind(fingerprint)
                 .bind(episode_id)
                 .bind(user_id)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("UPDATE DownloadedEpisodes SET AudioFingerprint = ? WHERE EpisodeID = ? AND UserID = ?")
                 .bind(fingerprint)
                 .bind(episode_id)
@@ -246,8 +247,8 @@ pub async fn set_download_fingerprint(
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(())
 }
 
@@ -323,9 +324,9 @@ pub async fn reuse_download(
 /// Read a podcast's silence-trim settings for the podcast owning `episode_id`.
 /// Returns `(trim_enabled, threshold_level)`.
 async fn podcast_silence_settings(db_pool: &DatabasePool, episode_id: i32) -> Result<(bool, i32), String> {
-    let row = match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"
+    let row = dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"
                 SELECT COALESCE(p.trimsilence, FALSE) AS trim, COALESCE(p.silencethreshold, 2) AS thr
                 FROM "Episodes" e JOIN "Podcasts" p ON e.feedid = p.feedid
                 WHERE e.episodeid = $1
@@ -339,8 +340,8 @@ async fn podcast_silence_settings(db_pool: &DatabasePool, episode_id: i32) -> Re
                 r.try_get::<bool, _>("trim").unwrap_or(false),
                 r.try_get::<i32, _>("thr").unwrap_or(2),
             ))
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("
                 SELECT COALESCE(p.TrimSilence, 0) AS trim, COALESCE(p.SilenceThreshold, 2) AS thr
                 FROM Episodes e JOIN Podcasts p ON e.FeedID = p.FeedID
@@ -355,8 +356,8 @@ async fn podcast_silence_settings(db_pool: &DatabasePool, episode_id: i32) -> Re
                 r.try_get::<i8, _>("trim").unwrap_or(0) != 0,
                 r.try_get::<i32, _>("thr").unwrap_or(2),
             ))
-        }
-    };
+        },
+    });
     Ok(row.unwrap_or((false, 2)))
 }
 
@@ -367,16 +368,16 @@ async fn store_silence_segments(
     episode_id: i32,
     segments: &[(f64, f64)],
 ) -> Result<usize, String> {
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"DELETE FROM "EpisodeSkipSegments" WHERE episodeid = $1 AND source = $2"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"DELETE FROM "EpisodeSkipSegments" WHERE episodeid = $1 AND source = $2"#)
                 .bind(episode_id)
                 .bind(SOURCE_SILENCE)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
             for (start, end) in segments {
-                sqlx::query(r#"
+                q::query(r#"
                     INSERT INTO "EpisodeSkipSegments" (episodeid, kind, starttime, endtime, source)
                     VALUES ($1, $2, $3, $4, $5)
                 "#)
@@ -389,13 +390,13 @@ async fn store_silence_segments(
                 .await
                 .map_err(|e| e.to_string())?;
             }
-            sqlx::query(r#"UPDATE "Episodes" SET silencedetected = TRUE WHERE episodeid = $1"#)
+            q::query(r#"UPDATE "Episodes" SET silencedetected = TRUE WHERE episodeid = $1"#)
                 .bind(episode_id)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("DELETE FROM EpisodeSkipSegments WHERE EpisodeID = ? AND Source = ?")
                 .bind(episode_id)
                 .bind(SOURCE_SILENCE)
@@ -421,15 +422,15 @@ async fn store_silence_segments(
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(segments.len())
 }
 
 /// Whether an episode has already been analyzed for silence.
 async fn already_detected(db_pool: &DatabasePool, episode_id: i32) -> bool {
-    match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(
+    dialect_match!(db_pool, {
+        pg(pool) => q::query(
             r#"SELECT COALESCE(silencedetected, FALSE) AS d FROM "Episodes" WHERE episodeid = $1"#,
         )
         .bind(episode_id)
@@ -439,7 +440,7 @@ async fn already_detected(db_pool: &DatabasePool, episode_id: i32) -> bool {
         .flatten()
         .and_then(|r| r.try_get::<bool, _>("d").ok())
         .unwrap_or(false),
-        DatabasePool::MySQL(pool) => sqlx::query(
+        mysql(pool) => sqlx::query(
             "SELECT COALESCE(SilenceDetected, 0) AS d FROM Episodes WHERE EpisodeID = ?",
         )
         .bind(episode_id)
@@ -450,7 +451,7 @@ async fn already_detected(db_pool: &DatabasePool, episode_id: i32) -> bool {
         .and_then(|r| r.try_get::<i8, _>("d").ok())
         .map(|d| d != 0)
         .unwrap_or(false),
-    }
+    })
 }
 
 /// Analyze one episode's downloaded file for silence and persist the result.
@@ -492,8 +493,8 @@ pub async fn get_trim_silence(
     db_pool: &DatabasePool,
     podcast_id: i32,
 ) -> Result<(bool, i32), String> {
-    let row = match db_pool {
-        DatabasePool::Postgres(pool) => sqlx::query(
+    let row = dialect_match!(db_pool, {
+        pg(pool) => q::query(
             r#"SELECT COALESCE(trimsilence, FALSE) AS trim, COALESCE(silencethreshold, 2) AS thr FROM "Podcasts" WHERE podcastid = $1"#,
         )
         .bind(podcast_id)
@@ -504,7 +505,7 @@ pub async fn get_trim_silence(
             r.try_get::<bool, _>("trim").unwrap_or(false),
             r.try_get::<i32, _>("thr").unwrap_or(2),
         )),
-        DatabasePool::MySQL(pool) => sqlx::query(
+        mysql(pool) => sqlx::query(
             "SELECT COALESCE(TrimSilence, 0) AS trim, COALESCE(SilenceThreshold, 2) AS thr FROM Podcasts WHERE PodcastID = ?",
         )
         .bind(podcast_id)
@@ -515,7 +516,7 @@ pub async fn get_trim_silence(
             r.try_get::<i8, _>("trim").unwrap_or(0) != 0,
             r.try_get::<i32, _>("thr").unwrap_or(2),
         )),
-    };
+    });
     Ok(row.unwrap_or((false, 2)))
 }
 
@@ -528,9 +529,9 @@ pub async fn set_trim_silence(
     threshold: i32,
 ) -> Result<(), String> {
     let threshold = threshold.clamp(1, 3);
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"UPDATE "Podcasts" SET trimsilence = $1, silencethreshold = $2 WHERE podcastid = $3 AND userid = $4"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"UPDATE "Podcasts" SET trimsilence = $1, silencethreshold = $2 WHERE podcastid = $3 AND userid = $4"#)
                 .bind(enabled)
                 .bind(threshold)
                 .bind(podcast_id)
@@ -538,8 +539,8 @@ pub async fn set_trim_silence(
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("UPDATE Podcasts SET TrimSilence = ?, SilenceThreshold = ? WHERE PodcastID = ? AND UserID = ?")
                 .bind(enabled)
                 .bind(threshold)
@@ -548,8 +549,8 @@ pub async fn set_trim_silence(
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(())
 }
 

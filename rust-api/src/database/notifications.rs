@@ -32,9 +32,9 @@ impl DatabasePool {
     /// if notifications are on for this podcast. Loaded once per refresh of the podcast.
     pub(super) async fn load_notification_targets(&self, podcast_id: i32) -> AppResult<Vec<NotificationTarget>> {
         let mut targets = Vec::new();
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT p.podcastname, uns.platform, uns.ntfytopic, uns.ntfyserverurl,
                            uns.ntfyusername, uns.ntfypassword, uns.ntfyaccesstoken,
                            uns.gotifyurl, uns.gotifytoken, uns.httpurl, uns.httptoken, uns.httpmethod
@@ -61,8 +61,8 @@ impl DatabasePool {
                         http_method: row.try_get("httpmethod").ok(),
                     });
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT p.PodcastName, uns.Platform, uns.NtfyTopic, uns.NtfyServerUrl,
                             uns.NtfyUsername, uns.NtfyPassword, uns.NtfyAccessToken,
@@ -90,8 +90,8 @@ impl DatabasePool {
                         http_method: row.try_get("HttpMethod").ok(),
                     });
                 }
-            }
-        }
+            },
+        });
         Ok(targets)
     }
 
@@ -412,9 +412,9 @@ impl DatabasePool {
     pub async fn get_notification_settings(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
         info!("Getting notification settings for user {}", user_id);
         
-        let settings = match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"
+        let settings = dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(r#"
                     SELECT platform, enabled, ntfytopic, ntfyserverurl, ntfyusername, ntfypassword, ntfyaccesstoken, gotifyurl, gotifytoken, httpurl, httptoken, httpmethod
                     FROM "UserNotificationSettings" 
                     WHERE userid = $1
@@ -442,8 +442,8 @@ impl DatabasePool {
                     settings.push(setting);
                 }
                 settings
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query("
                     SELECT Platform, Enabled, NtfyTopic, NtfyServerURL, NtfyUsername, NtfyPassword, NtfyAccessToken, GotifyURL, GotifyToken, HttpUrl, HttpToken, HttpMethod
                     FROM UserNotificationSettings 
@@ -473,8 +473,8 @@ impl DatabasePool {
                     settings.push(setting);
                 }
                 settings
-            }
-        };
+            },
+        });
         
         debug!("Found {} notification settings for user {}", settings.len(), user_id);
         Ok(settings)
@@ -485,9 +485,9 @@ impl DatabasePool {
         info!("Updating notification settings for user {} platform {}", user_id, platform);
         
         // Check if settings exist for this user/platform combination and perform update/insert
-        let success = match self {
-            DatabasePool::Postgres(pool) => {
-                let existing = sqlx::query(r#"SELECT COUNT(*) as count FROM "UserNotificationSettings" WHERE userid = $1 AND platform = $2"#)
+        let success = dialect_match!(self, {
+            pg(pool) => {
+                let existing = q::query(r#"SELECT COUNT(*) as count FROM "UserNotificationSettings" WHERE userid = $1 AND platform = $2"#)
                     .bind(user_id)
                     .bind(platform)
                     .fetch_one(pool)
@@ -497,7 +497,7 @@ impl DatabasePool {
                 
                 if count > 0 {
                     // Update existing record
-                    let result = sqlx::query(r#"
+                    let result = q::query(r#"
                         UPDATE "UserNotificationSettings" 
                         SET enabled = $3, ntfytopic = $4, ntfyserverurl = $5, ntfyusername = $6, ntfypassword = $7, ntfyaccesstoken = $8, gotifyurl = $9, gotifytoken = $10, httpurl = $11, httptoken = $12, httpmethod = $13
                         WHERE userid = $1 AND platform = $2
@@ -520,7 +520,7 @@ impl DatabasePool {
                     result.rows_affected() > 0
                 } else {
                     // Insert new record
-                    let result = sqlx::query(r#"
+                    let result = q::query(r#"
                         INSERT INTO "UserNotificationSettings" 
                         (userid, platform, enabled, ntfytopic, ntfyserverurl, ntfyusername, ntfypassword, ntfyaccesstoken, gotifyurl, gotifytoken, httpurl, httptoken, httpmethod)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -542,8 +542,8 @@ impl DatabasePool {
                         .await?;
                     result.rows_affected() > 0
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let existing = sqlx::query("SELECT COUNT(*) as count FROM UserNotificationSettings WHERE UserID = ? AND Platform = ?")
                     .bind(user_id)
                     .bind(platform)
@@ -599,8 +599,8 @@ impl DatabasePool {
                         .await?;
                     result.rows_affected() > 0
                 }
-            }
-        };
+            },
+        });
         
         debug!("Successfully updated notification settings for user {} platform {}: {}", user_id, platform, success);
         Ok(success)

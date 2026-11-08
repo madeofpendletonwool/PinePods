@@ -9,6 +9,7 @@ use tracing::{debug, warn};
 
 use crate::database::DatabasePool;
 use crate::error::AppResult;
+use crate::database::dialect::dialect_match;
 
 /// The fields a refresh keeps in step with the feed, by their `Podcasts` column (lowercase).
 /// `Podcasts.EditedMetadata` lists the ones the user edited, comma-separated.
@@ -318,10 +319,10 @@ impl DatabasePool {
 
         let mut changed = 0u64;
         for (column, value) in meta.fields() {
-            changed += match self {
-                DatabasePool::Postgres(pool) => {
+            changed += dialect_match!(self, {
+                pg(pool) => {
                     // Column names come from FIELDS, never from input.
-                    sqlx::query(sqlx::AssertSqlSafe(format!(
+                    q::query(sqlx::AssertSqlSafe(format!(
                         r#"UPDATE "Podcasts" SET {column} = $1
                            WHERE podcastid = ANY($2)
                              AND {column} IS DISTINCT FROM $1
@@ -333,8 +334,8 @@ impl DatabasePool {
                     .execute(pool)
                     .await?
                     .rows_affected()
-                }
-                DatabasePool::MySQL(pool) => {
+                },
+                mysql(pool) => {
                     let marks = vec!["?"; podcast_ids.len()].join(", ");
                     let sql = format!(
                         "UPDATE Podcasts SET {column} = ? \
@@ -347,22 +348,22 @@ impl DatabasePool {
                         q = q.bind(id);
                     }
                     q.bind(value).bind(column).execute(pool).await?.rows_affected()
-                }
-            };
+                },
+            });
         }
 
         if let (Some(feed_id), Some(new), false) = (feed_id, &meta.artwork, old_artwork.is_empty()) {
-            let n = match self {
-                DatabasePool::Postgres(pool) => {
-                    sqlx::query(r#"UPDATE "Episodes" SET episodeartwork = $1 WHERE feedid = $2 AND episodeartwork = ANY($3)"#)
+            let n = dialect_match!(self, {
+                pg(pool) => {
+                    q::query(r#"UPDATE "Episodes" SET episodeartwork = $1 WHERE feedid = $2 AND episodeartwork = ANY($3)"#)
                         .bind(new)
                         .bind(feed_id)
                         .bind(&old_artwork)
                         .execute(pool)
                         .await?
                         .rows_affected()
-                }
-                DatabasePool::MySQL(pool) => {
+                },
+                mysql(pool) => {
                     let marks = vec!["?"; old_artwork.len()].join(", ");
                     let sql = format!("UPDATE Episodes SET EpisodeArtwork = ? WHERE FeedID = ? AND EpisodeArtwork IN ({marks})");
                     let mut q = sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(new).bind(feed_id);
@@ -370,8 +371,8 @@ impl DatabasePool {
                         q = q.bind(a);
                     }
                     q.execute(pool).await?.rows_affected()
-                }
-            };
+                },
+            });
             debug!("Feed {}: {} episodes moved to the new podcast artwork", feed_id, n);
         }
         if changed > 0 {
@@ -381,14 +382,14 @@ impl DatabasePool {
     }
 
     async fn podcast_artworks(&self, podcast_ids: &[i32]) -> AppResult<Vec<String>> {
-        Ok(match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query_scalar(r#"SELECT DISTINCT artworkurl FROM "Podcasts" WHERE podcastid = ANY($1) AND artworkurl IS NOT NULL"#)
+        Ok(dialect_match!(self, {
+            pg(pool) => {
+                q::query_scalar(r#"SELECT DISTINCT artworkurl FROM "Podcasts" WHERE podcastid = ANY($1) AND artworkurl IS NOT NULL"#)
                     .bind(podcast_ids)
                     .fetch_all(pool)
                     .await?
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let marks = vec!["?"; podcast_ids.len()].join(", ");
                 let sql = format!("SELECT DISTINCT ArtworkURL FROM Podcasts WHERE PodcastID IN ({marks}) AND ArtworkURL IS NOT NULL");
                 let mut q = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()));
@@ -396,8 +397,8 @@ impl DatabasePool {
                     q = q.bind(id);
                 }
                 q.fetch_all(pool).await?
-            }
-        })
+            },
+        }))
     }
 
     /// Mark the details a user is about to change by hand as theirs, so refreshes keep them.
@@ -406,9 +407,9 @@ impl DatabasePool {
         if edits.is_empty() {
             return Ok(());
         }
-        let current = match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(
+        let current = dialect_match!(self, {
+            pg(pool) => {
+                q::query(
                     r#"SELECT podcastname, description, author, artworkurl, websiteurl, editedmetadata
                        FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#,
                 )
@@ -420,8 +421,8 @@ impl DatabasePool {
                     let cols: Vec<Option<String>> = (0..6).map(|i| r.try_get::<Option<String>, _>(i).ok().flatten()).collect();
                     cols
                 })
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query(
                     "SELECT PodcastName, Description, Author, ArtworkURL, WebsiteURL, EditedMetadata
                      FROM Podcasts WHERE PodcastID = ? AND UserID = ?",
@@ -431,8 +432,8 @@ impl DatabasePool {
                 .fetch_optional(pool)
                 .await?
                 .map(|r| (0..6).map(|i| r.try_get::<Option<String>, _>(i).ok().flatten()).collect())
-            }
-        };
+            },
+        });
         let Some(current) = current else { return Ok(()) };
         let edited: Vec<&str> = edits
             .iter()
@@ -457,24 +458,24 @@ impl DatabasePool {
     }
 
     async fn set_edited_metadata(&self, podcast_id: i32, user_id: i32, value: Option<&str>) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Podcasts" SET editedmetadata = $1 WHERE podcastid = $2 AND userid = $3"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "Podcasts" SET editedmetadata = $1 WHERE podcastid = $2 AND userid = $3"#)
                     .bind(value)
                     .bind(podcast_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Podcasts SET EditedMetadata = ? WHERE PodcastID = ? AND UserID = ?")
                     .bind(value)
                     .bind(podcast_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 }

@@ -10,6 +10,7 @@ use super::{
 use crate::database::DatabasePool;
 use crate::error::{AppError, AppResult};
 use crate::services::podcasting2::{normalize_name, normalize_role, FeedPerson, FeedTags};
+use crate::database::dialect::dialect_match;
 
 /// Bump to make every podcast re-apply its stored tags on the next refresh (when the way tags
 /// are written changes).
@@ -44,8 +45,8 @@ pub struct PersonSeed {
 async fn insert_person(db: &DatabasePool, seed: &PersonSeed, norm: &str) -> AppResult<i32> {
     let name = cut(&seed.name, 255);
     let norm = cut(norm, 255);
-    match db {
-        DatabasePool::Postgres(pool) => Ok(sqlx::query_scalar::<_, i32>(
+    dialect_match!(db, {
+        pg(pool) => Ok(q::query_scalar::<i32>(
             r#"INSERT INTO "Persons" (name, namenormalized, img, href, podpeopleid) VALUES ($1, $2, $3, $4, $5) RETURNING personid"#,
         )
         .bind(name)
@@ -55,7 +56,7 @@ async fn insert_person(db: &DatabasePool, seed: &PersonSeed, norm: &str) -> AppR
         .bind(seed.podpeople_id)
         .fetch_one(pool)
         .await?),
-        DatabasePool::MySQL(pool) => {
+        mysql(pool) => {
             let res = sqlx::query("INSERT INTO Persons (Name, NameNormalized, Img, Href, PodPeopleID) VALUES (?, ?, ?, ?, ?)")
                 .bind(name)
                 .bind(norm)
@@ -65,8 +66,8 @@ async fn insert_person(db: &DatabasePool, seed: &PersonSeed, norm: &str) -> AppR
                 .execute(pool)
                 .await?;
             Ok(res.last_insert_id() as i32)
-        }
-    }
+        },
+    })
 }
 
 struct ExistingPerson {
@@ -733,10 +734,10 @@ pub async fn library_episodes(
     offset: i64,
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
     // The one column named differently per backend.
-    let is_video = match db {
-        DatabasePool::Postgres(_) => "e.is_video",
-        DatabasePool::MySQL(_) => "e.IsVideo",
-    };
+    let is_video = dialect_match!(db, {
+        pg(_) => "e.is_video",
+        mysql(_) => "e.IsVideo",
+    });
     Ok(fetch_all!(
         db,
         format!(r#"SELECT e.episodeid AS episodeid, p.podcastid AS podcastid, p.podcastname AS podcastname,

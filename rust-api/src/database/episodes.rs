@@ -4,8 +4,9 @@ use super::*;
 
 // Whether a user finished episodes, kept per user in UserEpisodeState. Only episodes of feeds
 // the user subscribes to change; returns how many those were.
-pub(super) async fn set_completed_pg(conn: &mut sqlx::PgConnection, user_id: i32, episode_ids: &[i32], completed: bool) -> AppResult<u64> {
-    let changed = sqlx::query(
+dialect_fn!([set_completed_pg, set_completed_lite]
+    pub(super) async fn(conn: &mut q::Conn, user_id: i32, episode_ids: &[i32], completed: bool) -> AppResult<u64> {
+    let changed = q::query(
         r#"INSERT INTO "UserEpisodeState" (userid, episodeid, completed, completedat)
            SELECT DISTINCT $1, e.episodeid, $3, CASE WHEN $3 THEN NOW() END
            FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid AND p.userid = $1
@@ -18,7 +19,7 @@ pub(super) async fn set_completed_pg(conn: &mut sqlx::PgConnection, user_id: i32
     .execute(&mut *conn)
     .await?;
     Ok(changed.rows_affected())
-}
+});
 
 pub(super) async fn set_completed_mysql(conn: &mut sqlx::MySqlConnection, user_id: i32, episode_ids: &[i32], completed: bool) -> AppResult<u64> {
     if episode_ids.is_empty() {
@@ -59,11 +60,11 @@ impl DatabasePool {
         offset: i64,
         since: chrono::NaiveDateTime,
     ) -> AppResult<(Vec<crate::handlers::podcasts::Episode>, i64)> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // COUNT(*) OVER() returns the pre-LIMIT total in every row — no second query needed.
                 // Since is always bound; epoch (1970-01-01) makes the clause a no-op when omitted.
-                let rows = sqlx::query(
+                let rows = q::query(
                     r#"SELECT *, COUNT(*) OVER() AS total_count FROM (
                         SELECT
                             "Podcasts".podcastid as podcastid,
@@ -190,8 +191,8 @@ impl DatabasePool {
                     });
                 }
                 Ok((episodes, total))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // MySQL: use SQL_CALC_FOUND_ROWS + FOUND_ROWS() for total count.
                 // FOUND_ROWS() only reflects the previous query on the SAME connection,
                 // so acquire one connection and run both queries on it.
@@ -329,16 +330,16 @@ impl DatabasePool {
                     });
                 }
                 Ok((episodes, total))
-            }
-        }
+            },
+        })
     }
 
     /// True if `episode_id` (a `YouTubeVideos.videoid` when `is_youtube`) sits in one of
     /// `user_id`'s podcasts. Every podcast/episode row is per-user, so this is the ownership
     /// test for anything addressed by episode id.
     pub async fn episode_belongs_to_user(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<bool> {
-        let found = match self {
-            DatabasePool::Postgres(pool) => {
+        let found = dialect_match!(self, {
+            pg(pool) => {
                 let sql = if is_youtube {
                     r#"SELECT 1 FROM "YouTubeVideos" v JOIN "Podcasts" p ON p.podcastid = v.podcastid
                        WHERE v.videoid = $1 AND p.userid = $2 LIMIT 1"#
@@ -346,9 +347,9 @@ impl DatabasePool {
                     r#"SELECT 1 FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid
                        WHERE e.episodeid = $1 AND p.userid = $2 LIMIT 1"#
                 };
-                sqlx::query(sql).bind(episode_id).bind(user_id).fetch_optional(pool).await?.is_some()
-            }
-            DatabasePool::MySQL(pool) => {
+                q::query(sql).bind(episode_id).bind(user_id).fetch_optional(pool).await?.is_some()
+            },
+            mysql(pool) => {
                 let sql = if is_youtube {
                     "SELECT 1 FROM YouTubeVideos v JOIN Podcasts p ON p.PodcastID = v.PodcastID
                      WHERE v.VideoID = ? AND p.UserID = ? LIMIT 1"
@@ -357,16 +358,16 @@ impl DatabasePool {
                      WHERE e.EpisodeID = ? AND p.UserID = ? LIMIT 1"
                 };
                 sqlx::query(sql).bind(episode_id).bind(user_id).fetch_optional(pool).await?.is_some()
-            }
-        };
+            },
+        });
         Ok(found)
     }
 
     // Get time info for user - matches Python get_time_info function
     pub async fn get_time_info(&self, user_id: i32) -> AppResult<crate::models::TimeInfoResponse> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"SELECT COALESCE(timezone, 'UTC') as timezone, 
                               COALESCE(timeformat, 12) as hour_pref,
                               dateformat as date_format
@@ -381,8 +382,8 @@ impl DatabasePool {
                     hour_pref: row.try_get("hour_pref")?,
                     date_format: row.try_get("date_format").ok(),
                 })
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT COALESCE(Timezone, 'UTC') as timezone, 
                             COALESCE(TimeFormat, 12) as hour_pref,
@@ -398,15 +399,15 @@ impl DatabasePool {
                     hour_pref: row.try_get("hour_pref")?,
                     date_format: row.try_get("date_format").ok(),
                 })
-            }
-        }
+            },
+        })
     }
 
     // Check if episode exists in database - matches Python check_episode_exists function
     pub async fn check_episode_exists(&self, user_id: i32, episode_title: &str, episode_url: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"SELECT EXISTS(
                         SELECT 1 FROM "Episodes"
                         JOIN "Podcasts" ON "Episodes".feedid = "Podcasts".feedid
@@ -422,8 +423,8 @@ impl DatabasePool {
                 .await?;
                 
                 Ok(row.try_get("episode_exists")?)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT EXISTS(
                         SELECT 1 FROM Episodes
@@ -442,28 +443,28 @@ impl DatabasePool {
                 // MySQL returns integer (0 or 1) for EXISTS
                 let exists_int: i32 = row.try_get("episode_exists")?;
                 Ok(exists_int == 1)
-            }
-        }
+            },
+        })
     }
 
     pub async fn update_episode_duration(&self, episode_id: i32, new_duration: i32, is_youtube: bool) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 if is_youtube {
-                    sqlx::query(r#"UPDATE "YouTubeVideos" SET duration = $1 WHERE videoid = $2"#)
+                    q::query(r#"UPDATE "YouTubeVideos" SET duration = $1 WHERE videoid = $2"#)
                         .bind(new_duration)
                         .bind(episode_id)
                         .execute(pool)
                         .await?;
                 } else {
-                    sqlx::query(r#"UPDATE "Episodes" SET episodeduration = $1 WHERE episodeid = $2"#)
+                    q::query(r#"UPDATE "Episodes" SET episodeduration = $1 WHERE episodeid = $2"#)
                         .bind(new_duration)
                         .bind(episode_id)
                         .execute(pool)
                         .await?;
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 if is_youtube {
                     sqlx::query(r#"UPDATE YouTubeVideos SET duration = ? WHERE videoid = ?"#)
                         .bind(new_duration)
@@ -477,8 +478,8 @@ impl DatabasePool {
                         .execute(pool)
                         .await?;
                 }
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -491,11 +492,11 @@ impl DatabasePool {
         self.remove_queued_episode(episode_id, user_id, is_youtube).await?;
         let log = !is_youtube && crate::services::sync::events::should_log(self, user_id, origin).await;
 
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 if is_youtube {
                     // Get YouTube video duration
-                    let duration_row = sqlx::query(
+                    let duration_row = q::query(
                         r#"SELECT duration FROM "YouTubeVideos" WHERE videoid = $1"#
                     )
                     .bind(episode_id)
@@ -507,7 +508,7 @@ impl DatabasePool {
                         
                         if let Some(duration) = duration {
                             // Update completion status
-                            sqlx::query(
+                            q::query(
                                 r#"UPDATE "YouTubeVideos" SET completed = TRUE WHERE videoid = $1"#
                             )
                             .bind(episode_id)
@@ -515,7 +516,7 @@ impl DatabasePool {
                             .await?;
 
                             // Update history
-                            sqlx::query(
+                            q::query(
                                 r#"INSERT INTO "UserVideoHistory" (userid, videoid, listendate, listenduration)
                                    VALUES ($1, $2, NOW(), $3)
                                    ON CONFLICT (userid, videoid)
@@ -531,7 +532,7 @@ impl DatabasePool {
                     }
                 } else {
                     // Get episode duration
-                    let duration_row = sqlx::query(
+                    let duration_row = q::query(
                         r#"SELECT episodeduration FROM "Episodes" WHERE episodeid = $1"#
                     )
                     .bind(episode_id)
@@ -542,12 +543,12 @@ impl DatabasePool {
                         let duration: Option<i32> = row.try_get("episodeduration").ok();
                         
                         if let Some(duration) = duration {
-                            let mut tx = pool.begin().await?;
+                            let mut tx = q::begin(pool).await?;
                             // Update completion status
-                            set_completed_pg(&mut tx, user_id, &[episode_id], true).await?;
+                            q::pick(set_completed_pg, set_completed_lite)(&mut tx, user_id, &[episode_id], true).await?;
 
                             // Update history
-                            sqlx::query(
+                            q::query(
                                 r#"INSERT INTO "UserEpisodeHistory" (userid, episodeid, listendate, listenduration)
                                    VALUES ($1, $2, NOW(), $3)
                                    ON CONFLICT (userid, episodeid)
@@ -560,15 +561,15 @@ impl DatabasePool {
                             .execute(&mut *tx)
                             .await?;
                             if log {
-                                crate::services::sync::events::episode_pg(self, &mut tx, user_id, episode_id, crate::services::sync::events::EpisodeEvent::Completed).await;
+                                q::pick(crate::services::sync::events::episode_pg, crate::services::sync::events::episode_lite)(self, &mut tx, user_id, episode_id, crate::services::sync::events::EpisodeEvent::Completed).await;
                             }
                             tx.commit().await?;
                         }
                     }
                 }
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 if is_youtube {
                     // Get YouTube video duration
                     let duration_row = sqlx::query(
@@ -645,23 +646,23 @@ impl DatabasePool {
                     }
                 }
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     // Increment played count - matches Python increment_played function
     pub async fn increment_played(&self, user_id: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(
                     r#"UPDATE "UserStats" SET podcastsplayed = podcastsplayed + 1 WHERE userid = $1"#
                 )
                 .bind(user_id)
                 .execute(pool)
                 .await?;
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query(
                     "UPDATE UserStats SET PodcastsPlayed = PodcastsPlayed + 1 WHERE UserID = ?"
                 )
@@ -669,14 +670,14 @@ impl DatabasePool {
                 .execute(pool)
                 .await?;
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     // Get podcast ID from episode ID - matches Python get_podcast_id_from_episode function
     pub async fn get_podcast_id_from_episode(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<Option<i32>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let query = if is_youtube {
                     r#"SELECT "YouTubeVideos".podcastid
                        FROM "YouTubeVideos"
@@ -690,7 +691,7 @@ impl DatabasePool {
                 };
 
                 // First try with provided user_id
-                let row = sqlx::query(query)
+                let row = q::query(query)
                     .bind(episode_id)
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -701,7 +702,7 @@ impl DatabasePool {
                 }
 
                 // If not found, try with system user (1)
-                let row = sqlx::query(query)
+                let row = q::query(query)
                     .bind(episode_id)
                     .bind(1)
                     .fetch_optional(pool)
@@ -712,8 +713,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let query = if is_youtube {
                     "SELECT YouTubeVideos.PodcastID
                      FROM YouTubeVideos
@@ -749,8 +750,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get episode ID from episode URL - public version of find_episode_by_url
@@ -761,40 +762,40 @@ impl DatabasePool {
     // Mark episode as uncompleted - matches Python mark_episode_uncompleted function
     pub async fn mark_episode_uncompleted(&self, episode_id: i32, user_id: i32, is_youtube: bool, origin: crate::services::sync::SyncOrigin) -> AppResult<()> {
         let log = !is_youtube && crate::services::sync::events::should_log(self, user_id, origin).await;
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut transaction = pool.begin().await?;
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut transaction = q::begin(pool).await?;
                 
                 if is_youtube {
                     // Handle YouTube video
-                    sqlx::query(r#"UPDATE "YouTubeVideos" SET completed = FALSE WHERE videoid = $1"#)
+                    q::query(r#"UPDATE "YouTubeVideos" SET completed = FALSE WHERE videoid = $1"#)
                         .bind(episode_id)
                         .execute(&mut *transaction)
                         .await?;
                     
-                    sqlx::query(r#"UPDATE "UserVideoHistory" SET listenduration = 0, listendate = NOW() WHERE userid = $1 AND videoid = $2"#)
+                    q::query(r#"UPDATE "UserVideoHistory" SET listenduration = 0, listendate = NOW() WHERE userid = $1 AND videoid = $2"#)
                         .bind(user_id)
                         .bind(episode_id)
                         .execute(&mut *transaction)
                         .await?;
                 } else {
                     // Handle regular episode
-                    set_completed_pg(&mut transaction, user_id, &[episode_id], false).await?;
+                    q::pick(set_completed_pg, set_completed_lite)(&mut transaction, user_id, &[episode_id], false).await?;
                     
-                    sqlx::query(r#"UPDATE "UserEpisodeHistory" SET listenduration = 0, listendate = NOW() WHERE userid = $1 AND episodeid = $2"#)
+                    q::query(r#"UPDATE "UserEpisodeHistory" SET listenduration = 0, listendate = NOW() WHERE userid = $1 AND episodeid = $2"#)
                         .bind(user_id)
                         .bind(episode_id)
                         .execute(&mut *transaction)
                         .await?;
                 }
                 if log {
-                    crate::services::sync::events::episode_pg(self, &mut transaction, user_id, episode_id, crate::services::sync::events::EpisodeEvent::New).await;
+                    q::pick(crate::services::sync::events::episode_pg, crate::services::sync::events::episode_lite)(self, &mut transaction, user_id, episode_id, crate::services::sync::events::EpisodeEvent::New).await;
                 }
                 
                 transaction.commit().await?;
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut transaction = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
                 
                 if is_youtube {
@@ -825,21 +826,21 @@ impl DatabasePool {
                 
                 transaction.commit().await?;
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     // Get first episode ID - matches Python get_first_episode_id function
     pub async fn get_first_episode_id(&self, podcast_id: i32, is_youtube: bool) -> AppResult<Option<i32>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let query = if is_youtube {
                     r#"SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1 ORDER BY publishedat ASC LIMIT 1"#
                 } else {
                     r#"SELECT episodeid FROM "Episodes" WHERE feedid = (SELECT feedid FROM "Podcasts" WHERE podcastid = $1) ORDER BY episodepubdate ASC LIMIT 1"#
                 };
                 
-                let row = sqlx::query(query)
+                let row = q::query(query)
                     .bind(podcast_id)
                     .fetch_optional(pool)
                     .await?;
@@ -853,8 +854,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let query = if is_youtube {
                     "SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ? ORDER BY PublishedAt ASC LIMIT 1"
                 } else {
@@ -875,15 +876,15 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get episodes for a specific podcast - matches Python return_podcast_episodes function
     pub async fn return_podcast_episodes(&self, user_id: i32, podcast_id: i32) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT 
                         "Podcasts".podcastid, "Podcasts".podcastname, "Episodes".episodeid,
                         "Episodes".episodetitle, "Episodes".episodepubdate, "Episodes".episodedescription,
@@ -933,8 +934,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(episodes)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT
                         Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID,
@@ -985,16 +986,16 @@ impl DatabasePool {
                     });
                 }
                 Ok(episodes)
-            }
-        }
+            },
+        })
     }
 
     // Get podcast ID from episode name and URL - matches Python get_podcast_id_from_episode_name function
     pub async fn get_podcast_id_from_episode_name(&self, episode_name: &str, episode_url: &str, user_id: i32) -> AppResult<Option<i32>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Use UNION query exactly like Python version
-                let row = sqlx::query(
+                let row = q::query(
                     r#"SELECT podcast_id FROM (
                         SELECT "Podcasts".podcastid as podcast_id
                         FROM "Episodes"
@@ -1028,8 +1029,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Use UNION query exactly like Python version
                 let row = sqlx::query(
                     "SELECT podcast_id FROM (
@@ -1065,17 +1066,17 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get episode metadata - matches Python get_episode_metadata function exactly
     pub async fn get_episode_metadata(&self, episode_id: i32, user_id: i32, _person_episode: bool, is_youtube: bool) -> AppResult<serde_json::Value> {
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 if is_youtube {
                     // Query for YouTube videos
-                    let row = sqlx::query(
+                    let row = q::query(
                         r#"SELECT "Podcasts".podcastid, "Podcasts".podcastindexid, "Podcasts".feedurl,
                                 "Podcasts".podcastname, "Podcasts".artworkurl,
                                 "YouTubeVideos".videotitle as episodetitle,
@@ -1131,7 +1132,7 @@ impl DatabasePool {
                 }
                 
                 // Query for regular episodes
-                let row = sqlx::query(
+                let row = q::query(
                     r#"SELECT "Podcasts".podcastid, "Podcasts".podcastindexid, "Podcasts".feedurl,
                             "Podcasts".podcastname, "Podcasts".artworkurl,
                             "Episodes".episodetitle,
@@ -1187,8 +1188,8 @@ impl DatabasePool {
                 } else {
                     Err(AppError::not_found("Episode not found"))
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 if is_youtube {
                     // Query for YouTube videos — mirrors the Postgres branch. Saved/queued/
                     // downloaded state lives in the YouTube-specific tables, keyed on VideoID.
@@ -1316,8 +1317,8 @@ impl DatabasePool {
                 } else {
                     Err(AppError::not_found("Episode not found"))
                 }
-            }
-        }
+            },
+        })
     }
 
     // Fetch podcasting 2.0 data for episode
@@ -1348,9 +1349,9 @@ impl DatabasePool {
     /// Feed URL and credentials of an episode's podcast (chapters on the feed's host get the
     /// same auth).
     pub(super) async fn episode_feed_credentials(&self, episode_id: i32) -> AppResult<(String, Option<String>, Option<String>)> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"SELECT p.feedurl, p.username, p.password FROM "Episodes" e JOIN "Podcasts" p ON p.feedid = e.feedid WHERE e.episodeid = $1 LIMIT 1"#,
                 )
                 .bind(episode_id)
@@ -1358,8 +1359,8 @@ impl DatabasePool {
                 .await?
                 .ok_or_else(|| AppError::not_found("Episode not found"))?;
                 Ok((row.try_get("feedurl")?, row.try_get("username")?, row.try_get("password")?))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT p.FeedURL, p.Username, p.Password FROM Episodes e JOIN Podcasts p ON p.FeedID = e.FeedID WHERE e.EpisodeID = ? LIMIT 1",
                 )
@@ -1368,8 +1369,8 @@ impl DatabasePool {
                 .await?
                 .ok_or_else(|| AppError::not_found("Episode not found"))?;
                 Ok((row.try_get("FeedURL")?, row.try_get("Username")?, row.try_get("Password")?))
-            }
-        }
+            },
+        })
     }
 
     // Fetch chapters data from external JSON URL - matches Python chapter fetching logic
@@ -1421,9 +1422,9 @@ impl DatabasePool {
     // Get the next episode in a podcast (chronologically after the given episode)
     // The episode after `episode_id` in its podcast, skipping ones the user already finished.
     pub async fn get_next_podcast_episode(&self, episode_id: i32, user_id: i32) -> AppResult<Option<crate::models::QueuedEpisode>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(
                     r#"SELECT
                         e.episodetitle,
                         p.podcastname,
@@ -1491,8 +1492,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(
                     "SELECT
                         e.EpisodeTitle as episodetitle,
@@ -1566,15 +1567,15 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Resolve account defaults and podcast overrides in one database round trip.
     pub async fn get_play_episode_details(&self, user_id: i32, podcast_id: i32, _is_youtube: bool) -> AppResult<(f64, i32, i32, bool)> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"
                     SELECT COALESCE(
                         CASE WHEN p.playbackspeedcustomized THEN p.playbackspeed END,
                         u.playbackspeed, 1.0
@@ -1592,15 +1593,15 @@ impl DatabasePool {
                     .await?;
                 match row {
                     Some(row) => Ok((
-                        row.try_get::<bigdecimal::BigDecimal, _>("playback_speed")?.to_f64().unwrap_or(1.0),
+                        q::decimal(&row, "playback_speed")?.unwrap_or(1.0),
                         row.try_get("start_skip")?,
                         row.try_get("end_skip")?,
                         row.try_get("customized")?,
                     )),
                     None => Ok((1.0, 0, 0, false)),
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("
                     SELECT COALESCE(
                         CASE WHEN p.PlaybackSpeedCustomized THEN p.PlaybackSpeed END,
@@ -1626,8 +1627,8 @@ impl DatabasePool {
                     )),
                     None => Ok((1.0, 0, 0, false)),
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get podcast episodes with capitalized field names for frontend compatibility.
@@ -1667,8 +1668,8 @@ impl DatabasePool {
         // as the outer query. The completed/in-progress filter runs on the combined rows, so a
         // filtered page needs every row.
         let filter_is_all = !matches!(filter, "completed" | "in_progress" | "incomplete");
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 let lim: i64 = limit.unwrap_or(i64::MAX);
                 let off: i64 = offset.unwrap_or(0);
                 // Per-branch cap: each branch must keep at least (offset + limit) rows so the
@@ -1680,7 +1681,7 @@ impl DatabasePool {
                 // query is just `podcastid = ANY($2)` instead of the per-row JSON unpacking the
                 // original query did.
                 let mut podcast_ids: Vec<i32> = vec![podcast_id];
-                let merged_row = sqlx::query(
+                let merged_row = q::query(
                     r#"SELECT mergedpodcastids FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#
                 )
                 .bind(podcast_id)
@@ -1818,7 +1819,7 @@ impl DatabasePool {
                 // SAFETY: rows_sql is built from static literals plus the validated
                 // sort_by/sort_order/filter/has_search dispatch above. User-supplied search text
                 // is bound as $3, never interpolated.
-                let mut q = sqlx::query(sqlx::AssertSqlSafe(rows_sql.as_str()))
+                let mut q = q::query(sqlx::AssertSqlSafe(rows_sql.as_str()))
                     .bind(user_id)
                     .bind(&podcast_ids);
                 if has_search {
@@ -1862,7 +1863,7 @@ impl DatabasePool {
                     yt_search_clause = yt_search_clause,
                     filter_clause = filter_clause,
                 );
-                let mut count_q = sqlx::query(sqlx::AssertSqlSafe(count_sql.as_str()))
+                let mut count_q = q::query(sqlx::AssertSqlSafe(count_sql.as_str()))
                     .bind(user_id)
                     .bind(&podcast_ids);
                 if has_search {
@@ -1895,8 +1896,8 @@ impl DatabasePool {
                 }
 
                 Ok((episodes, total))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let lim: i64 = limit.unwrap_or(i64::MAX);
                 let off: i64 = offset.unwrap_or(0);
                 let per_branch_limit: i64 = if filter_is_all { lim.saturating_add(off) } else { i64::MAX };
@@ -2129,8 +2130,8 @@ impl DatabasePool {
                 }
 
                 Ok((episodes, total))
-            }
-        }
+            },
+        })
     }
 
     // Record listen duration - matches Python record_listen_duration function exactly
@@ -2146,11 +2147,11 @@ impl DatabasePool {
         let listen_duration_int = listen_duration as i32;
         let log = events::should_log(self, user_id, origin).await;
         
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
                 // Check if record exists and get existing duration
-                let existing_row = sqlx::query(r#"SELECT listenduration FROM "UserEpisodeHistory" WHERE userid = $1 AND episodeid = $2"#)
+                let existing_row = q::query(r#"SELECT listenduration FROM "UserEpisodeHistory" WHERE userid = $1 AND episodeid = $2"#)
                     .bind(user_id)
                     .bind(episode_id)
                     .fetch_optional(&mut *tx)
@@ -2162,7 +2163,7 @@ impl DatabasePool {
                     
                     // Update only if new duration is greater than existing
                     if listen_duration_int > existing_duration {
-                        sqlx::query(r#"UPDATE "UserEpisodeHistory" SET listenduration = $1, listendate = NOW() WHERE userid = $2 AND episodeid = $3"#)
+                        q::query(r#"UPDATE "UserEpisodeHistory" SET listenduration = $1, listendate = NOW() WHERE userid = $2 AND episodeid = $3"#)
                             .bind(listen_duration_int)
                             .bind(user_id)
                             .bind(episode_id)
@@ -2176,7 +2177,7 @@ impl DatabasePool {
                     }
                 } else {
                     // Insert new record
-                    sqlx::query(r#"INSERT INTO "UserEpisodeHistory" (userid, episodeid, listendate, listenduration) VALUES ($1, $2, NOW(), $3)"#)
+                    q::query(r#"INSERT INTO "UserEpisodeHistory" (userid, episodeid, listendate, listenduration) VALUES ($1, $2, NOW(), $3)"#)
                         .bind(user_id)
                         .bind(episode_id)
                         .bind(listen_duration_int)
@@ -2186,11 +2187,11 @@ impl DatabasePool {
                     true
                 };
                 if changed && log {
-                    events::episode_pg(self, &mut tx, user_id, episode_id, EpisodeEvent::Progress(listen_duration_int)).await;
+                    q::pick(events::episode_pg, events::episode_lite)(self, &mut tx, user_id, episode_id, EpisodeEvent::Progress(listen_duration_int)).await;
                 }
                 tx.commit().await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut tx = crate::services::sync::events::begin_mysql(pool, user_id, log).await?;
                 // Check if record exists and get existing duration
                 let existing_row = sqlx::query("SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = ? AND EpisodeID = ?")
@@ -2232,8 +2233,8 @@ impl DatabasePool {
                     events::episode_mysql(self, &mut tx, user_id, episode_id, EpisodeEvent::Progress(listen_duration_int)).await;
                 }
                 tx.commit().await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -2248,10 +2249,10 @@ impl DatabasePool {
         
         let listen_duration_int = listen_duration as i32;
         
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Check if record exists and get existing duration
-                let existing_row = sqlx::query(r#"SELECT listenduration FROM "UserVideoHistory" WHERE userid = $1 AND videoid = $2"#)
+                let existing_row = q::query(r#"SELECT listenduration FROM "UserVideoHistory" WHERE userid = $1 AND videoid = $2"#)
                     .bind(user_id)
                     .bind(video_id)
                     .fetch_optional(pool)
@@ -2263,7 +2264,7 @@ impl DatabasePool {
                     
                     // Update only if new duration is greater than existing
                     if listen_duration_int > existing_duration {
-                        sqlx::query(r#"UPDATE "UserVideoHistory" SET listenduration = $1, listendate = NOW() WHERE userid = $2 AND videoid = $3"#)
+                        q::query(r#"UPDATE "UserVideoHistory" SET listenduration = $1, listendate = NOW() WHERE userid = $2 AND videoid = $3"#)
                             .bind(listen_duration_int)
                             .bind(user_id)
                             .bind(video_id)
@@ -2275,7 +2276,7 @@ impl DatabasePool {
                     }
                 } else {
                     // Insert new record
-                    sqlx::query(r#"INSERT INTO "UserVideoHistory" (userid, videoid, listendate, listenduration) VALUES ($1, $2, NOW(), $3)"#)
+                    q::query(r#"INSERT INTO "UserVideoHistory" (userid, videoid, listendate, listenduration) VALUES ($1, $2, NOW(), $3)"#)
                         .bind(user_id)
                         .bind(video_id)
                         .bind(listen_duration_int)
@@ -2283,8 +2284,8 @@ impl DatabasePool {
                         .await?;
                     debug!("Inserted new YouTube listen duration record for user {} video {} with duration {}", user_id, video_id, listen_duration_int);
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Check if record exists and get existing duration
                 let existing_row = sqlx::query("SELECT ListenDuration FROM UserVideoHistory WHERE UserID = ? AND VideoID = ?")
                     .bind(user_id)
@@ -2318,16 +2319,16 @@ impl DatabasePool {
                         .await?;
                     debug!("Inserted new YouTube listen duration record for user {} video {} with duration {}", user_id, video_id, listen_duration_int);
                 }
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     // Get episode duration in seconds
     pub async fn get_episode_duration(&self, episode_id: i32) -> AppResult<i32> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT episodeduration FROM "Episodes" WHERE episodeid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT episodeduration FROM "Episodes" WHERE episodeid = $1"#)
                     .bind(episode_id)
                     .fetch_optional(pool)
                     .await?;
@@ -2337,8 +2338,8 @@ impl DatabasePool {
                 } else {
                     Ok(0)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT EpisodeDuration FROM Episodes WHERE EpisodeID = ?")
                     .bind(episode_id)
                     .fetch_optional(pool)
@@ -2349,15 +2350,15 @@ impl DatabasePool {
                 } else {
                     Ok(0)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get YouTube episode duration in seconds
     pub async fn get_youtube_episode_duration(&self, episode_id: i32) -> AppResult<i32> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT duration FROM "YouTubeVideos" WHERE videoid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT duration FROM "YouTubeVideos" WHERE videoid = $1"#)
                     .bind(episode_id)
                     .fetch_optional(pool)
                     .await?;
@@ -2367,8 +2368,8 @@ impl DatabasePool {
                 } else {
                     Ok(0)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT Duration FROM YouTubeVideos WHERE VideoID = ?")
                     .bind(episode_id)
                     .fetch_optional(pool)
@@ -2379,15 +2380,15 @@ impl DatabasePool {
                 } else {
                     Ok(0)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Get users who have auto-complete enabled (auto_complete_seconds > 0)
     pub async fn get_users_with_auto_complete_enabled(&self) -> AppResult<Vec<UserAutoComplete>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(r#"
                     SELECT us.userid, us.autocompleteseconds 
                     FROM "UserSettings" us 
                     WHERE us.autocompleteseconds > 0
@@ -2403,8 +2404,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(users)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query("
                     SELECT UserID, AutoCompleteSeconds 
                     FROM UserSettings 
@@ -2421,8 +2422,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(users)
-            }
-        }
+            },
+        })
     }
 
     // Auto-complete episodes listened to in the last 7 days (the nightly sweep; progress saves
@@ -2434,10 +2435,10 @@ impl DatabasePool {
 
         let mut completed_count = 0;
 
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // Handle regular episodes
-                let episode_rows = sqlx::query(r#"
+                let episode_rows = q::query(r#"
                     SELECT e.episodeid, e.episodeduration, COALESCE(h.listenduration, 0) as listenduration
                     FROM "Episodes" e
                     LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $1
@@ -2459,7 +2460,7 @@ impl DatabasePool {
                 }
 
                 // Handle YouTube episodes
-                let youtube_rows = sqlx::query(r#"
+                let youtube_rows = q::query(r#"
                     SELECT v.videoid, v.duration, COALESCE(h.listenduration, 0) as listenduration
                     FROM "YouTubeVideos" v
                     LEFT JOIN "UserVideoHistory" h ON v.videoid = h.videoid AND h.userid = $1
@@ -2479,8 +2480,8 @@ impl DatabasePool {
                     let _ = self.mark_episode_completed(video_id, user_id, true, crate::services::sync::SyncOrigin::Pinepods).await;
                     completed_count += 1;
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Handle regular episodes
                 let episode_rows = sqlx::query("
                     SELECT e.EpisodeID, e.EpisodeDuration, COALESCE(h.ListenDuration, 0) as ListenDuration
@@ -2524,30 +2525,30 @@ impl DatabasePool {
                     let _ = self.mark_episode_completed(video_id, user_id, true, crate::services::sync::SyncOrigin::Pinepods).await;
                     completed_count += 1;
                 }
-            }
-        }
+            },
+        });
 
         Ok(completed_count)
     }
 
     // Increment listen time - matches Python increment_listen_time function exactly
     pub async fn increment_listen_time(&self, user_id: i32) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "UserStats" SET TimeListened = TimeListened + 1 WHERE UserID = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"UPDATE "UserStats" SET TimeListened = TimeListened + 1 WHERE UserID = $1"#)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 Ok(())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE UserStats SET TimeListened = TimeListened + 1 WHERE UserID = ?")
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 Ok(())
-            }
-        }
+            },
+        })
     }
 
     // Get an episode's URL (verifying the user owns the podcast). Used by the stream
@@ -2557,9 +2558,9 @@ impl DatabasePool {
         episode_id: i32,
         user_id: i32,
     ) -> AppResult<Option<String>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"
                     SELECT e.episodeurl AS episodeurl
                     FROM "Episodes" e
                     JOIN "Podcasts" p ON e.feedid = p.feedid
@@ -2570,8 +2571,8 @@ impl DatabasePool {
                     .fetch_optional(pool)
                     .await?;
                 Ok(row.map(|r| r.try_get::<String, _>("episodeurl")).transpose()?)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("
                     SELECT e.EpisodeURL AS episodeurl
                     FROM Episodes e
@@ -2583,8 +2584,8 @@ impl DatabasePool {
                     .fetch_optional(pool)
                     .await?;
                 Ok(row.map(|r| r.try_get::<String, _>("episodeurl")).transpose()?)
-            }
-        }
+            },
+        })
     }
 
     // Bulk episode operations for efficient batch processing
@@ -2596,9 +2597,9 @@ impl DatabasePool {
         let mut processed = 0;
         let mut failed = 0;
 
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
+        dialect_match!(self, {
+            pg(pool) => {
+                let mut tx = q::begin(pool).await?;
                 
                 if is_youtube {
                     for episode_id in episode_ids {
@@ -2608,12 +2609,12 @@ impl DatabasePool {
                         }
                     }
                 } else {
-                    processed = set_completed_pg(&mut tx, user_id, &episode_ids, true).await? as i32;
+                    processed = q::pick(set_completed_pg, set_completed_lite)(&mut tx, user_id, &episode_ids, true).await? as i32;
                 }
                 
                 tx.commit().await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let mut tx = pool.begin().await?;
                 
                 if is_youtube {
@@ -2628,8 +2629,8 @@ impl DatabasePool {
                 }
                 
                 tx.commit().await?;
-            }
-        }
+            },
+        });
 
         Ok((processed, failed))
     }

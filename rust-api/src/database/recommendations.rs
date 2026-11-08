@@ -6,9 +6,9 @@ impl DatabasePool {
     // Return the cached recommendations JSON for a user if present and newer than
     // max_age_hours; otherwise None (signals the caller to regenerate). See migration 058.
     pub async fn get_recommendation_cache(&self, user_id: i32, max_age_hours: i32) -> AppResult<Option<String>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"
                     SELECT resultsjson FROM "RecommendationCache"
                     WHERE userid = $1 AND generatedat > CURRENT_TIMESTAMP - make_interval(hours => $2)
                 "#)
@@ -17,8 +17,8 @@ impl DatabasePool {
                 .fetch_optional(pool)
                 .await?;
                 Ok(row.map(|r| r.try_get::<String, _>("resultsjson").unwrap_or_default()))
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query(r#"
                     SELECT ResultsJSON FROM RecommendationCache
                     WHERE UserID = ? AND GeneratedAt > (NOW() - INTERVAL ? HOUR)
@@ -28,15 +28,15 @@ impl DatabasePool {
                 .fetch_optional(pool)
                 .await?;
                 Ok(row.map(|r| r.try_get::<String, _>("ResultsJSON").unwrap_or_default()))
-            }
-        }
+            },
+        })
     }
 
     // Upsert a user's recommendations JSON, stamping GeneratedAt to now. One row per user.
     pub async fn upsert_recommendation_cache(&self, user_id: i32, results_json: &str) -> AppResult<()> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(r#"
                     INSERT INTO "RecommendationCache" (userid, generatedat, resultsjson)
                     VALUES ($1, CURRENT_TIMESTAMP, $2)
                     ON CONFLICT (userid) DO UPDATE SET generatedat = CURRENT_TIMESTAMP, resultsjson = EXCLUDED.resultsjson
@@ -45,8 +45,8 @@ impl DatabasePool {
                 .bind(results_json)
                 .execute(pool)
                 .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query(r#"
                     INSERT INTO RecommendationCache (UserID, GeneratedAt, ResultsJSON)
                     VALUES (?, NOW(), ?)
@@ -56,8 +56,8 @@ impl DatabasePool {
                 .bind(results_json)
                 .execute(pool)
                 .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -65,20 +65,20 @@ impl DatabasePool {
     // page). The scheduler refreshes these nightly so return visits are instant; brand-new
     // users are handled on demand by the endpoint.
     pub async fn get_recommendation_cache_user_ids(&self) -> AppResult<Vec<i32>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"SELECT userid FROM "RecommendationCache""#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(r#"SELECT userid FROM "RecommendationCache""#)
                     .fetch_all(pool)
                     .await?;
                 Ok(rows.iter().filter_map(|r| r.try_get::<i32, _>("userid").ok()).collect())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query("SELECT UserID FROM RecommendationCache")
                     .fetch_all(pool)
                     .await?;
                 Ok(rows.iter().filter_map(|r| r.try_get::<i32, _>("UserID").ok()).collect())
-            }
-        }
+            },
+        })
     }
 
     // Lean per-subscription inputs for the recommendation taste profile (#103). Only touches
@@ -88,9 +88,9 @@ impl DatabasePool {
         &self,
         user_id: i32,
     ) -> AppResult<Vec<crate::models::RecommendationTasteInput>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(r#"
                     SELECT p.podcastname, p.author, p.description, p.categories,
                            p.podcastindexid, p.feedurl,
                            COALESCE(p.isfavorite, false) AS isfavorite,
@@ -118,8 +118,8 @@ impl DatabasePool {
                         play_count: row.try_get::<i64, _>("play_count").unwrap_or(0),
                     }
                 }).collect())
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(r#"
                     SELECT p.PodcastName, p.Author, p.Description, p.Categories,
                            p.PodcastIndexID, p.FeedURL,
@@ -149,7 +149,7 @@ impl DatabasePool {
                         play_count: row.try_get::<i64, _>("play_count").unwrap_or(0),
                     }
                 }).collect())
-            }
-        }
+            },
+        })
     }
 }

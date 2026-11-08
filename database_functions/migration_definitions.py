@@ -7891,6 +7891,59 @@ def migration_087_reread_feeds_for_episode_urls(conn, db_type: str) -> None:
         cursor.close()
 
 
+@register_migration("088", "in_app_notifications", "InAppNotifications: in-app notifications are kept in the database, not in Valkey", requires=["001"], sqlite=True)
+def migration_088_in_app_notifications(conn, db_type: str) -> None:
+    """InAppNotifications: one row per in-app notification, the notification as JSON in Payload.
+    They used to live in Valkey, which a server can now run without. Notifications already in
+    Valkey aren't moved; they're short-lived.
+    """
+    cursor = conn.cursor()
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "InAppNotifications" (
+                    NotificationID VARCHAR(64) PRIMARY KEY,
+                    UserID INT NOT NULL REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    Payload TEXT NOT NULL,
+                    IsRead BOOLEAN NOT NULL DEFAULT FALSE,
+                    CreatedAt TIMESTAMP NOT NULL,
+                    ExpiresAt TIMESTAMP NOT NULL
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_inappnotifications_user ON "InAppNotifications"(UserID, ExpiresAt)')
+        elif db_type == "sqlite":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "InAppNotifications" (
+                    notificationid TEXT PRIMARY KEY,
+                    userid INTEGER NOT NULL REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    payload TEXT NOT NULL,
+                    isread BOOLEAN NOT NULL DEFAULT 0,
+                    createdat TIMESTAMP NOT NULL,
+                    expiresat TIMESTAMP NOT NULL
+                )
+            """)
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_inappnotifications_user ON "InAppNotifications"(userid, expiresat)')
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS InAppNotifications (
+                    NotificationID VARCHAR(64) NOT NULL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Payload TEXT NOT NULL,
+                    IsRead TINYINT(1) NOT NULL DEFAULT 0,
+                    CreatedAt DATETIME NOT NULL,
+                    ExpiresAt DATETIME NOT NULL,
+                    KEY idx_inappnotifications_user (UserID, ExpiresAt),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
 @register_migration("118", "gpodder_actions_follow_merged_episodes", "Episode actions point at the shared episode their merged copy became; the copies are deleted", requires=["082", "111"])
 def migration_118_gpodder_actions_follow_merged_episodes(conn, db_type: str) -> None:
     """GpodderSyncEpisodeActions.EpisodeID of actions on an episode copy merged by 082 now points

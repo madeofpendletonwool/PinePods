@@ -1,16 +1,21 @@
 //! Raw SQL helpers for tests that seed or inspect rows the API doesn't expose (migration
 //! tests, refresh internals).
 
+use pinepods_api::database::dialect::translate;
 use pinepods_api::database::DatabasePool;
 
 use super::TestApp;
 
-/// Run `sql` on the test database. Write table names double-quoted (Postgres style); the quotes
-/// are dropped for MariaDB. Only inline literals, no binds.
+/// Run `sql` on the test database. Write it Postgres style with table names double-quoted; the
+/// quotes are dropped for MariaDB and SQLite gets it translated. Only inline literals, no binds.
 pub async fn exec(app: &TestApp, sql: &str) {
     match app.db() {
         DatabasePool::Postgres(pool) => {
             sqlx::raw_sql(sqlx::AssertSqlSafe(sql.to_string())).execute(pool).await.unwrap_or_else(|e| panic!("{sql}: {e}"));
+        }
+        DatabasePool::Sqlite(pool) => {
+            let sql = translate(sql);
+            sqlx::raw_sql(sqlx::AssertSqlSafe(sql.clone())).execute(pool).await.unwrap_or_else(|e| panic!("{sql}: {e}"));
         }
         DatabasePool::MySQL(pool) => {
             let sql = sql.replace('"', "");
@@ -43,6 +48,14 @@ pub async fn int(app: &TestApp, sql: &str) -> Option<i64> {
             .await
             .unwrap_or_else(|e| panic!("{sql}: {e}"))
             .and_then(|r| get(&r)),
+        DatabasePool::Sqlite(pool) => {
+            let sql = translate(sql);
+            sqlx::query(sqlx::AssertSqlSafe(sql.clone()))
+                .fetch_optional(pool)
+                .await
+                .unwrap_or_else(|e| panic!("{sql}: {e}"))
+                .and_then(|r| get(&r))
+        }
         DatabasePool::MySQL(pool) => {
             let sql = sql.replace('"', "");
             sqlx::query(sqlx::AssertSqlSafe(sql.clone()))
@@ -63,6 +76,14 @@ pub async fn text(app: &TestApp, sql: &str) -> Option<String> {
             .await
             .unwrap_or_else(|e| panic!("{sql}: {e}"))
             .and_then(|r| r.try_get::<Option<String>, _>(0).unwrap()),
+        DatabasePool::Sqlite(pool) => {
+            let sql = translate(sql);
+            sqlx::query(sqlx::AssertSqlSafe(sql.clone()))
+                .fetch_optional(pool)
+                .await
+                .unwrap_or_else(|e| panic!("{sql}: {e}"))
+                .and_then(|r| r.try_get::<Option<String>, _>(0).unwrap())
+        }
         DatabasePool::MySQL(pool) => {
             let sql = sql.replace('"', "");
             sqlx::query(sqlx::AssertSqlSafe(sql.clone()))

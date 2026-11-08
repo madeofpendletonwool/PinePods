@@ -37,22 +37,22 @@ impl DatabasePool {
         };
         
         // Get user email for provisioning URI
-        let email = match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT email FROM "Users" WHERE userid = $1"#)
+        let email = dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT email FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
                 row.try_get::<String, _>("email")?
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT Email FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
                 row.try_get::<String, _>("Email")?
-            }
-        };
+            },
+        });
         
         // Create TOTP instance and provisioning URI
         let totp = build_totp(&secret, &email)?;
@@ -123,9 +123,9 @@ impl DatabasePool {
 
     // Check if MFA is enabled - matches Python check_mfa_enabled function exactly
     pub async fn check_mfa_enabled(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT mfa_secret FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT mfa_secret FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -136,8 +136,8 @@ impl DatabasePool {
                 } else {
                     Ok(false)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT MFA_Secret FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -149,23 +149,23 @@ impl DatabasePool {
                 } else {
                     Ok(false)
                 }
-            }
-        }
+            },
+        })
     }
 
     // Save MFA secret - matches Python save_mfa_secret function exactly
     pub async fn save_mfa_secret(&self, user_id: i32, mfa_secret: &str) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"UPDATE "Users" SET mfa_secret = $1 WHERE userid = $2"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"UPDATE "Users" SET mfa_secret = $1 WHERE userid = $2"#)
                     .bind(mfa_secret)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("UPDATE Users SET MFA_Secret = ? WHERE UserID = ?")
                     .bind(mfa_secret)
                     .bind(user_id)
@@ -173,37 +173,37 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-        }
+            },
+        })
     }
 
     // Delete MFA secret - matches Python delete_mfa_secret function exactly
     pub async fn delete_mfa_secret(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"UPDATE "Users" SET mfa_secret = NULL WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"UPDATE "Users" SET mfa_secret = NULL WHERE userid = $1"#)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("UPDATE Users SET MFA_Secret = NULL WHERE UserID = ?")
                     .bind(user_id)
                     .execute(pool)
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
-            }
-        }
+            },
+        })
     }
 
     // Get MFA secret - matches Python get_mfa_secret function
     pub async fn get_mfa_secret(&self, user_id: i32) -> AppResult<Option<String>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT mfa_secret FROM "Users" WHERE userid = $1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let row = q::query(r#"SELECT mfa_secret FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
@@ -213,8 +213,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let row = sqlx::query("SELECT MFA_Secret FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -225,8 +225,8 @@ impl DatabasePool {
                 } else {
                     Ok(None)
                 }
-            }
-        }
+            },
+        })
     }
 }
 

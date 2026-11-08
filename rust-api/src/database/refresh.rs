@@ -112,7 +112,8 @@ pub(super) struct ExistingEpisodes {
     by_id: std::collections::HashMap<i32, ExistingEp>,
 }
 
-pub(super) fn pg_existing_from_row(row: &sqlx::postgres::PgRow) -> ExistingEp {
+dialect_fn!([pg_existing_from_row, lite_existing_from_row]
+    pub(super) fn(row: &q::Row) -> ExistingEp {
     ExistingEp {
         guid: row.try_get::<Option<String>, _>("episodeguid").ok().flatten(),
         title: row.try_get::<Option<String>, _>("episodetitle").ok().flatten().unwrap_or_default(),
@@ -122,7 +123,7 @@ pub(super) fn pg_existing_from_row(row: &sqlx::postgres::PgRow) -> ExistingEp {
         duration: row.try_get::<Option<i32>, _>("episodeduration").ok().flatten().unwrap_or(0),
         is_video: row.try_get::<Option<bool>, _>("is_video").ok().flatten().unwrap_or(false),
     }
-}
+});
 
 pub(super) fn mysql_existing_from_row(row: &sqlx::mysql::MySqlRow) -> ExistingEp {
     ExistingEp {
@@ -139,9 +140,9 @@ pub(super) fn mysql_existing_from_row(row: &sqlx::mysql::MySqlRow) -> ExistingEp
 impl DatabasePool {
     // Get user podcasts for refresh - matches Python refresh logic
     pub async fn get_user_podcasts_for_refresh(&self, user_id: i32) -> AppResult<Vec<crate::handlers::refresh::PodcastForRefresh>> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                let rows = q::query(
                     r#"SELECT 
                         podcastid as id,
                         feedid as feed_id,
@@ -192,8 +193,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(podcasts)
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let rows = sqlx::query(
                     "SELECT 
                         PodcastID as id,
@@ -245,8 +246,8 @@ impl DatabasePool {
                     });
                 }
                 Ok(podcasts)
-            }
-        }
+            },
+        })
     }
 
     // Add episodes - matches Python add_episodes function exactly
@@ -442,9 +443,9 @@ impl DatabasePool {
                 };
 
                 if needs_update {
-                    match self {
-                        DatabasePool::Postgres(pool) => {
-                            sqlx::query(
+                    dialect_match!(self, {
+                        pg(pool) => {
+                            q::query(
                                 r#"UPDATE "Episodes"
                                    SET episodetitle = $1, episodedescription = $2, episodeurl = $3,
                                        episodeartwork = $4, episodepubdate = $5, episodeduration = $6,
@@ -462,8 +463,8 @@ impl DatabasePool {
                             .bind(episode_id)
                             .execute(pool)
                             .await?;
-                        }
-                        DatabasePool::MySQL(pool) => {
+                        },
+                        mysql(pool) => {
                             sqlx::query(
                                 "UPDATE Episodes
                                  SET EpisodeTitle = ?, EpisodeDescription = ?, EpisodeURL = ?,
@@ -482,8 +483,8 @@ impl DatabasePool {
                             .bind(episode_id)
                             .execute(pool)
                             .await?;
-                        }
-                    }
+                        },
+                    });
                     updated_count += 1;
                 }
                 // Existing episode — never returned as "new".
@@ -616,8 +617,8 @@ impl DatabasePool {
 
     pub(super) async fn insert_new_episodes_once(&self, podcast_id: i32, feed_id: i32, rows: &[NewEpisodeRow<'_>]) -> AppResult<Vec<(usize, i32)>> {
         let mut inserted = Vec::with_capacity(rows.len());
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 // RETURNING can't carry the input position, so match rows back by GUID (unique
                 // per feed, and deduplicated above) or, without one, by URL + title.
                 let mut by_guid: HashMap<&str, usize> = HashMap::new();
@@ -628,9 +629,9 @@ impl DatabasePool {
                         None => by_url_title.entry((r.ep.url.clone(), r.ep.title.clone())).or_default().push(i),
                     }
                 }
-                let mut tx = pool.begin().await?;
+                let mut tx = q::begin(pool).await?;
                 for chunk in rows.chunks(EPISODE_INSERT_CHUNK) {
-                    let returned = sqlx::query(
+                    let returned = q::query(
                         r#"INSERT INTO "Episodes"
                            (podcastid, feedid, episodetitle, episodedescription, episodeurl, episodeartwork,
                             episodepubdate, episodeduration, is_video, episodeguid)
@@ -669,8 +670,8 @@ impl DatabasePool {
                     }
                 }
                 tx.commit().await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 // Row by row inside one transaction: a multi-row INSERT IGNORE can't say which rows
                 // were skipped or which ids the others got (auto-increment may interleave with a
                 // concurrent refresh), and the transaction makes per-row cost small.
@@ -698,8 +699,8 @@ impl DatabasePool {
                     }
                 }
                 tx.commit().await?;
-            }
-        }
+            },
+        });
         if inserted.len() < rows.len() {
             debug!(
                 "Podcast {}: {} new episodes were already inserted by a concurrent refresh",
@@ -732,9 +733,9 @@ impl DatabasePool {
         if duration <= 0 {
             return Ok(());
         }
-        match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query(
+        dialect_match!(self, {
+            pg(pool) => {
+                q::query(
                     r#"UPDATE "Episodes" SET episodeduration = $1
                        WHERE episodeid = $2 AND COALESCE(episodeduration, 0) = 0"#,
                 )
@@ -742,15 +743,15 @@ impl DatabasePool {
                 .bind(episode_id)
                 .execute(pool)
                 .await?;
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query("UPDATE Episodes SET EpisodeDuration = ? WHERE EpisodeID = ? AND COALESCE(EpisodeDuration, 0) = 0")
                     .bind(duration)
                     .bind(episode_id)
                     .execute(pool)
                     .await?;
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -766,10 +767,10 @@ impl DatabasePool {
     ) -> AppResult<ExistingEpisodes> {
         let mut out = ExistingEpisodes::default();
 
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 if !guids.is_empty() {
-                    let rows = sqlx::query(
+                    let rows = q::query(
                         r#"SELECT episodeid, episodeguid, episodetitle, episodedescription, episodeurl,
                                   episodeartwork, episodeduration, is_video
                            FROM "Episodes"
@@ -781,14 +782,14 @@ impl DatabasePool {
                     .await?;
                     for row in rows {
                         if let Ok(id) = row.try_get::<i32, _>("episodeid") {
-                            let ex = pg_existing_from_row(&row);
+                            let ex = q::pick(pg_existing_from_row, lite_existing_from_row)(&row);
                             if let Some(g) = ex.guid.clone() { out.guid_to_id.insert(g, id); }
                             out.by_id.insert(id, ex);
                         }
                     }
                 }
                 if !url_bases.is_empty() {
-                    let rows = sqlx::query(
+                    let rows = q::query(
                         r#"SELECT episodeid, episodeguid, episodetitle, episodedescription, episodeurl,
                                   episodeartwork, episodeduration, is_video,
                                   split_part(episodeurl, '?', 1) AS url_base
@@ -802,12 +803,12 @@ impl DatabasePool {
                     for row in rows {
                         if let (Ok(id), Ok(base)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("url_base")) {
                             out.url_to_id.insert(base, id);
-                            out.by_id.entry(id).or_insert_with(|| pg_existing_from_row(&row));
+                            out.by_id.entry(id).or_insert_with(|| q::pick(pg_existing_from_row, lite_existing_from_row)(&row));
                         }
                     }
                 }
                 if !titles_no_url.is_empty() {
-                    let rows = sqlx::query(
+                    let rows = q::query(
                         r#"SELECT episodeid, episodeguid, episodetitle, episodedescription, episodeurl,
                                   episodeartwork, episodeduration, is_video
                            FROM "Episodes"
@@ -820,12 +821,12 @@ impl DatabasePool {
                     for row in rows {
                         if let (Ok(id), Ok(t)) = (row.try_get::<i32, _>("episodeid"), row.try_get::<String, _>("episodetitle")) {
                             out.title_to_id.insert(t, id);
-                            out.by_id.entry(id).or_insert_with(|| pg_existing_from_row(&row));
+                            out.by_id.entry(id).or_insert_with(|| q::pick(pg_existing_from_row, lite_existing_from_row)(&row));
                         }
                     }
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 if !guids.is_empty() {
                     let placeholders = guids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
                     let sql = format!(
@@ -882,8 +883,8 @@ impl DatabasePool {
                         }
                     }
                 }
-            }
-        }
+            },
+        });
 
         Ok(out)
     }
@@ -983,10 +984,10 @@ impl DatabasePool {
         if podcast_ids.is_empty() {
             return Ok(());
         }
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 for (table, rows) in pg_refresh_targets(4) {
-                    sqlx::query(sqlx::AssertSqlSafe(format!(
+                    q::query(sqlx::AssertSqlSafe(format!(
                         r#"UPDATE {table} SET feedetag = $1, feedlastmodified = $2,
                                   feedcontenthash = COALESCE($3, feedcontenthash)
                            WHERE {rows}"#
@@ -998,8 +999,8 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 for (table, rows) in mysql_refresh_targets(podcast_ids.len()) {
                     let sql = format!(
                         "UPDATE {table} SET FeedETag = ?, FeedLastModified = ?, \
@@ -1012,8 +1013,8 @@ impl DatabasePool {
                     for id in podcast_ids { q = q.bind(id); }
                     q.execute(pool).await?;
                 }
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -1024,11 +1025,11 @@ impl DatabasePool {
         if podcast_ids.is_empty() {
             return Ok(());
         }
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 for (table, rows) in pg_refresh_targets(1) {
                     let notified = if table == PG_PODCASTS { ", problemnotified = FALSE" } else { "" };
-                    sqlx::query(sqlx::AssertSqlSafe(format!(
+                    q::query(sqlx::AssertSqlSafe(format!(
                         r#"UPDATE {table}
                            SET lastrefreshattempt = NOW(), lastrefreshsuccess = NOW(),
                                consecutivefailures = 0, lasterrormessage = NULL, refreshnotbefore = NULL,
@@ -1042,8 +1043,8 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 for (table, rows) in mysql_refresh_targets(podcast_ids.len()) {
                     let notified = if table == "Podcasts" { "ProblemNotified = FALSE, " } else { "" };
                     let sql = format!(
@@ -1057,8 +1058,8 @@ impl DatabasePool {
                     for id in podcast_ids { q = q.bind(id); }
                     q.execute(pool).await?;
                 }
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -1068,10 +1069,10 @@ impl DatabasePool {
         if podcast_ids.is_empty() {
             return Ok(());
         }
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 for (table, rows) in pg_refresh_targets(1) {
-                    sqlx::query(sqlx::AssertSqlSafe(format!(
+                    q::query(sqlx::AssertSqlSafe(format!(
                         r#"UPDATE {table} SET refreshintervalminutes = $2, nextrefreshat = NOW() + make_interval(secs => $3::BIGINT)
                            WHERE {rows}"#
                     )))
@@ -1081,8 +1082,8 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 for (table, rows) in mysql_refresh_targets(podcast_ids.len()) {
                     let sql = format!(
                         "UPDATE {table} SET RefreshIntervalMinutes = ?, NextRefreshAt = NOW() + INTERVAL ? SECOND WHERE {rows}"
@@ -1091,25 +1092,25 @@ impl DatabasePool {
                     for id in podcast_ids { q = q.bind(id); }
                     q.execute(pool).await?;
                 }
-            }
-        }
+            },
+        });
         Ok(())
     }
 
     /// Publishing dates of a podcast's newest episodes (videos for a YouTube channel).
     pub async fn recent_pub_dates(&self, podcast_id: i32, youtube: bool, limit: i64) -> AppResult<Vec<DateTime<Utc>>> {
         let (table, column) = if youtube { ("YouTubeVideos", "PublishedAt") } else { ("Episodes", "EpisodePubDate") };
-        let dates: Vec<chrono::NaiveDateTime> = match self {
-            DatabasePool::Postgres(pool) => {
-                sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        let dates: Vec<chrono::NaiveDateTime> = dialect_match!(self, {
+            pg(pool) => {
+                q::query_scalar(sqlx::AssertSqlSafe(format!(
                     r#"SELECT {column} FROM "{table}" WHERE podcastid = $1 AND {column} IS NOT NULL ORDER BY {column} DESC LIMIT $2"#
                 )))
                 .bind(podcast_id)
                 .bind(limit)
                 .fetch_all(pool)
                 .await?
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
                     "SELECT {column} FROM {table} WHERE PodcastID = ? AND {column} IS NOT NULL ORDER BY {column} DESC LIMIT ?"
                 )))
@@ -1117,8 +1118,8 @@ impl DatabasePool {
                 .bind(limit)
                 .fetch_all(pool)
                 .await?
-            }
-        };
+            },
+        });
         Ok(dates.into_iter().map(|d| d.and_utc()).collect())
     }
 
@@ -1145,10 +1146,10 @@ impl DatabasePool {
         // The next refresh waits out the feed's interval, the failure backoff and any hold.
         use crate::services::scheduler::{BACKOFF_MAX_STEPS, BACKOFF_STEP_MINUTES};
         const DEFAULT_MINUTES: i64 = 60;
-        match self {
-            DatabasePool::Postgres(pool) => {
+        dialect_match!(self, {
+            pg(pool) => {
                 for (table, rows) in pg_refresh_targets(3) {
-                    sqlx::query(sqlx::AssertSqlSafe(format!(
+                    q::query(sqlx::AssertSqlSafe(format!(
                         r#"UPDATE {table}
                            SET nextrefreshat = NOW() + make_interval(secs => GREATEST(
                                    COALESCE(refreshintervalminutes, {DEFAULT_MINUTES}) * 60,
@@ -1169,8 +1170,8 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 for (table, rows) in mysql_refresh_targets(podcast_ids.len()) {
                     // NextRefreshAt first: MySQL assigns left to right, so it still sees the old count.
                     let sql = format!(
@@ -1189,8 +1190,8 @@ impl DatabasePool {
                     for id in podcast_ids { q = q.bind(id); }
                     q.execute(pool).await?;
                 }
-            }
-        }
+            },
+        });
         Ok(())
     }
 
@@ -1272,9 +1273,9 @@ impl DatabasePool {
 
     // Get stored authentication credentials for a feed URL
     pub async fn get_feed_auth_credentials(&self, feed_url: &str, user_id: i32) -> AppResult<(Option<String>, Option<String>)> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"SELECT username, password FROM "Podcasts" WHERE feedurl = $1 AND userid = $2 LIMIT 1"#)
+        dialect_match!(self, {
+            pg(pool) => {
+                let result = q::query(r#"SELECT username, password FROM "Podcasts" WHERE feedurl = $1 AND userid = $2 LIMIT 1"#)
                     .bind(feed_url)
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -1287,8 +1288,8 @@ impl DatabasePool {
                 } else {
                     Ok((None, None))
                 }
-            }
-            DatabasePool::MySQL(pool) => {
+            },
+            mysql(pool) => {
                 let result = sqlx::query("SELECT Username, Password FROM Podcasts WHERE FeedURL = ? AND UserID = ? LIMIT 1")
                     .bind(feed_url)
                     .bind(user_id)
@@ -1302,7 +1303,7 @@ impl DatabasePool {
                 } else {
                     Ok((None, None))
                 }
-            }
-        }
+            },
+        })
     }
 }

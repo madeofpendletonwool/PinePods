@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use tokio::process::Command;
 use tracing::{info, warn};
+use crate::database::dialect::dialect_match;
 
 /// Path to the yt-dlp binary. `YTDLP_PATH` points at the persistent, uid-911-writable managed
 /// copy (seeded under the downloads volume by `startup.sh`) so `--update-to` can replace it in
@@ -74,9 +75,9 @@ pub struct YtDlpSettingsUpdate {
 
 /// Read the yt-dlp management settings from the `AppSettings` singleton.
 pub async fn get_settings(db_pool: &DatabasePool) -> Result<YtDlpSettings, String> {
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            let row = sqlx::query(r#"
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            let row = q::query(r#"
                 SELECT ytdlpautoupdate AS auto_update, ytdlpchannel AS channel,
                        ytdlplastupdated::text AS last_updated, ytdlplastresult AS last_result
                 FROM "AppSettings" LIMIT 1
@@ -91,8 +92,8 @@ pub async fn get_settings(db_pool: &DatabasePool) -> Result<YtDlpSettings, Strin
                 last_updated: r.try_get::<Option<String>, _>("last_updated").ok().flatten(),
                 last_result: r.try_get::<Option<String>, _>("last_result").ok().flatten(),
             })
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             let row = sqlx::query(r#"
                 SELECT YtDlpAutoUpdate AS auto_update, YtDlpChannel AS channel,
                        CAST(YtDlpLastUpdated AS CHAR) AS last_updated, YtDlpLastResult AS last_result
@@ -108,53 +109,53 @@ pub async fn get_settings(db_pool: &DatabasePool) -> Result<YtDlpSettings, Strin
                 last_updated: r.try_get::<Option<String>, _>("last_updated").ok().flatten(),
                 last_result: r.try_get::<Option<String>, _>("last_result").ok().flatten(),
             })
-        }
-    }
+        },
+    })
 }
 
 /// Persist the two user-editable settings (auto-update toggle + channel). The channel is
 /// normalized so only `stable`/`nightly` can be stored.
 pub async fn set_settings(db_pool: &DatabasePool, update: &YtDlpSettingsUpdate) -> Result<(), String> {
     let channel = normalize_channel(&update.channel);
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"UPDATE "AppSettings" SET ytdlpautoupdate = $1, ytdlpchannel = $2"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"UPDATE "AppSettings" SET ytdlpautoupdate = $1, ytdlpchannel = $2"#)
                 .bind(update.auto_update)
                 .bind(channel)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("UPDATE AppSettings SET YtDlpAutoUpdate = ?, YtDlpChannel = ?")
                 .bind(update.auto_update as i32)
                 .bind(channel)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(())
 }
 
 /// Record the outcome of an update attempt (timestamp + human-readable result) for the UI.
 async fn record_result(db_pool: &DatabasePool, result: &str) -> Result<(), String> {
-    match db_pool {
-        DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"UPDATE "AppSettings" SET ytdlplastupdated = CURRENT_TIMESTAMP, ytdlplastresult = $1"#)
+    dialect_match!(db_pool, {
+        pg(pool) => {
+            q::query(r#"UPDATE "AppSettings" SET ytdlplastupdated = CURRENT_TIMESTAMP, ytdlplastresult = $1"#)
                 .bind(result)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-        DatabasePool::MySQL(pool) => {
+        },
+        mysql(pool) => {
             sqlx::query("UPDATE AppSettings SET YtDlpLastUpdated = CURRENT_TIMESTAMP, YtDlpLastResult = ?")
                 .bind(result)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;
-        }
-    }
+        },
+    });
     Ok(())
 }
 

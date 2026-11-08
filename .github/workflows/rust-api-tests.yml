@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        db: [postgresql, mariadb]
+        db: [postgresql, mariadb, sqlite]
 
     services:
       postgres:
