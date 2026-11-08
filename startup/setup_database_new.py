@@ -276,5 +276,9 @@ if __name__ == "__main__":
     if len(sys.argv) >= 2 and sys.argv[1] == "--export-sqlite":
         from database_functions import sqlite_export
         sys.exit(sqlite_export.main(sys.argv[2:]))
+    # `--import-sqlite <file> [--replace]`: fill this database from a SQLite server's data.
+    if len(sys.argv) >= 2 and sys.argv[1] == "--import-sqlite":
+        from database_functions import sqlite_import
+        sys.exit(sqlite_import.main(sys.argv[2:]))
     success = main()
     sys.exit(0 if success else 1)

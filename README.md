@@ -141,9 +141,9 @@ Open http://localhost:8040 and create the admin account. The volume keeps the da
 `-v /home/user/pinepods/downloads:/opt/pinepods/downloads` (and `.../backups`) to keep
 downloads and backups too. See
 [docker-compose-sqlite](deployment/docker/compose-files/docker-compose-sqlite/docker-compose.yml)
-for the same thing as a compose file. An existing PostgreSQL or MariaDB server can
-[move to SQLite](https://www.pinepods.online/docs/tutorial-basics/Backup-Restore#moving-to-sqlite);
-there's no tool for the other direction yet, so start on PostgreSQL if you expect to grow.
+for the same thing as a compose file. Outgrow it later and you can
+[move to PostgreSQL or MariaDB](https://www.pinepods.online/docs/tutorial-basics/Backup-Restore#moving-from-sqlite-to-postgresql-or-mariadb)
+with your data (or [the other way](https://www.pinepods.online/docs/tutorial-basics/Backup-Restore#moving-to-sqlite)).
 
 ### Production: PostgreSQL and Valkey
 

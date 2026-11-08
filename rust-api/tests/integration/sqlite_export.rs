@@ -1,5 +1,7 @@
-//! Moving a PostgreSQL or MariaDB server to SQLite: `database_functions.sqlite_export` writes a
-//! SQLite backup, which a new SQLite server restores, and the library looks the same there.
+//! Moving a PostgreSQL or MariaDB server to SQLite and back: `database_functions.sqlite_export`
+//! writes a SQLite backup, which a new SQLite server restores; `database_functions.sqlite_import`
+//! fills a new PostgreSQL or MariaDB server from a SQLite database or backup. The library looks
+//! the same each time.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -63,7 +65,7 @@ async fn library(app: &TestApp, u: &TestUser, playlist: i32) -> Value {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_server_moves_to_sqlite_through_an_export() {
+async fn a_server_moves_to_sqlite_and_back() {
     let source = TestApp::new().await;
     if source.backend() == Backend::Sqlite {
         return;
@@ -156,12 +158,61 @@ async fn a_server_moves_to_sqlite_through_an_export() {
         .unwrap(),
         _ => unreachable!(),
     };
-    for table in tables {
+    for table in &tables {
         let count = format!(r#"SELECT COUNT(*) FROM "{table}""#);
         assert_eq!(int(&target, &count).await, int(&source, &count).await, "rows in {table}");
     }
     // New rows still get fresh ids after the move.
     target.subscribe(&user, &target.feed("after.xml", &Feed::with_episodes("After Show", 1)), 1).await;
+    let on_sqlite = library(&target, &user, playlist).await;
+
+    // Back to PostgreSQL or MariaDB, from the database file and from a backup.
+    let backup = dir.join("sqlite_backup.sql");
+    target.db().sqlite_backup_to(&backup).await.unwrap().unwrap();
+    let back = TestApp::new().await;
+    for (source_file, replace) in [(&target_db, false), (&backup, true)] {
+        let mut cmd = Command::new(python());
+        cmd.args(["-m", "database_functions.sqlite_import"])
+            .arg(source_file)
+            .env("DB_TYPE", test_env.backend.db_type())
+            .env("DB_HOST", &test_env.db_host)
+            .env("DB_PORT", test_env.db_port.to_string())
+            .env("DB_USER", &test_env.db_user)
+            .env("DB_PASSWORD", &test_env.db_password)
+            .env("DB_NAME", &back.db_name);
+        if replace {
+            cmd.arg("--replace");
+        }
+        run(&mut cmd, "import");
+
+        assert_eq!(library(&back, &user, playlist).await, on_sqlite);
+        let settings = format!(
+            r#"SELECT COUNT(*) FROM "Users" WHERE UserID = {} AND PlaybackSpeed = 1.5 AND LastSyncTime IS NOT NULL"#,
+            user.id
+        );
+        assert_eq!(int(&back, &settings).await, Some(1));
+        for table in &tables {
+            let count = format!(r#"SELECT COUNT(*) FROM "{table}""#);
+            assert_eq!(int(&back, &count).await, int(&target, &count).await, "rows in {table} after import");
+        }
+        back.subscribe(&user, &back.feed("later.xml", &Feed::with_episodes("Later Show", 1)), 1).await;
+        // The next import replaces everything again, including this podcast.
+    }
+    // Without --replace, an import won't overwrite a server that has podcasts.
+    let out = Command::new(python())
+        .args(["-m", "database_functions.sqlite_import"])
+        .arg(&backup)
+        .current_dir(repo_root())
+        .env("DB_TYPE", test_env.backend.db_type())
+        .env("DB_HOST", &test_env.db_host)
+        .env("DB_PORT", test_env.db_port.to_string())
+        .env("DB_USER", &test_env.db_user)
+        .env("DB_PASSWORD", &test_env.db_password)
+        .env("DB_NAME", &back.db_name)
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--replace"));
 
     let _ = std::fs::remove_dir_all(&dir);
 }
