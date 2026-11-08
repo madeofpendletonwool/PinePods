@@ -2785,6 +2785,23 @@ class PinepodsService {
     }
   }
 
+  /// Search inside the transcripts of the user's episodes. Throws
+  /// [TranscriptSearchUnsupported] when the server predates transcript search.
+  Future<TranscriptSearchPage> searchTranscripts(String query, {int limit = 20, int offset = 0}) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+    final url = Uri.parse('$_server/api/data/transcripts/search').replace(
+      queryParameters: {'q': query, 'limit': '$limit', 'offset': '$offset'},
+    );
+    final response = await _get(url, headers: {'Api-Key': _apiKey!});
+    if (response.statusCode == 404) throw TranscriptSearchUnsupported();
+    if (response.statusCode != 200) {
+      throw Exception('Failed to search transcripts: ${response.statusCode}');
+    }
+    return TranscriptSearchPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   // Fetch podcast 2.0 data for a specific episode
   Future<Map<String, dynamic>?> fetchPodcasting2Data(
     int episodeId,
@@ -3638,6 +3655,64 @@ class SearchResultPage {
   final int total;
 
   SearchResultPage({required this.results, required this.total});
+}
+
+class TranscriptSearchUnsupported implements Exception {}
+
+/// A place in a transcript where the search was said.
+class TranscriptMoment {
+  /// Seconds into the episode; null for transcripts without timings.
+  final double? start;
+  final String text;
+
+  TranscriptMoment({this.start, required this.text});
+
+  factory TranscriptMoment.fromJson(Map<String, dynamic> json) => TranscriptMoment(
+        start: (json['start'] as num?)?.toDouble(),
+        text: json['text'] as String? ?? '',
+      );
+}
+
+class TranscriptHit {
+  final SearchEpisodeResult episode;
+
+  /// `generated` (AI, made on the server) or `feed` (published by the podcast).
+  final String source;
+  final int mentions;
+  final List<TranscriptMoment> moments;
+
+  TranscriptHit({required this.episode, required this.source, required this.mentions, required this.moments});
+
+  factory TranscriptHit.fromJson(Map<String, dynamic> json) => TranscriptHit(
+        episode: SearchEpisodeResult.fromJson(json['episode'] as Map<String, dynamic>),
+        source: json['source'] as String? ?? 'feed',
+        mentions: (json['mentions'] as num?)?.toInt() ?? 0,
+        moments: (json['moments'] as List<dynamic>? ?? [])
+            .map((m) => TranscriptMoment.fromJson(m as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+class TranscriptSearchPage {
+  final List<TranscriptHit> results;
+  final int total;
+
+  /// Lowercased words and phrases to highlight.
+  final List<String> terms;
+
+  /// How many of the user's episodes have a searchable transcript.
+  final int searchableEpisodes;
+
+  TranscriptSearchPage({required this.results, required this.total, required this.terms, required this.searchableEpisodes});
+
+  factory TranscriptSearchPage.fromJson(Map<String, dynamic> json) => TranscriptSearchPage(
+        results: (json['results'] as List<dynamic>? ?? [])
+            .map((r) => TranscriptHit.fromJson(r as Map<String, dynamic>))
+            .toList(),
+        total: (json['total'] as num?)?.toInt() ?? 0,
+        terms: (json['terms'] as List<dynamic>? ?? []).map((t) => t.toString()).toList(),
+        searchableEpisodes: (json['searchable_episodes'] as num?)?.toInt() ?? 0,
+      );
 }
 
 class DownloadTask {

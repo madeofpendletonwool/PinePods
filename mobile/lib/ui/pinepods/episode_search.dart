@@ -15,6 +15,8 @@ import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/ui/icons/phosphor_icons.dart';
 import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
 import 'package:pinepods_mobile/ui/widgets/soft_ui.dart';
+import 'package:pinepods_mobile/ui/widgets/transcript_hit_card.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum _StatusFilter { all, unplayed, inProgress, saved, downloaded }
 
@@ -57,6 +59,15 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
 
   int? _contextMenuEpisodeIndex;
 
+  // Search inside transcripts too (remembered).
+  static const _transcriptsPref = 'search_include_transcripts';
+  bool _includeTranscripts = false;
+  TranscriptSearchPage? _transcriptPage;
+  bool _transcriptLoading = false;
+  bool _transcriptUnsupported = false;
+  bool _transcriptFailed = false;
+  String _transcriptQuery = '';
+
   // Animation controllers
   late AnimationController _fadeAnimationController;
   late AnimationController _slideAnimationController;
@@ -69,6 +80,59 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
     _setupAnimations();
     _setupSearch();
     _loadDiscoveryData();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) setState(() => _includeTranscripts = prefs.getBool(_transcriptsPref) ?? false);
+    });
+  }
+
+  Future<void> _toggleTranscripts() async {
+    final on = !_includeTranscripts;
+    setState(() => _includeTranscripts = on);
+    (await SharedPreferences.getInstance()).setBool(_transcriptsPref, on);
+    if (on && _currentQuery.isNotEmpty) _searchTranscripts(_currentQuery);
+  }
+
+  Future<void> _searchTranscripts(String query, {bool more = false}) async {
+    if (query.isEmpty) return;
+    final offset = more ? _transcriptPage?.results.length ?? 0 : 0;
+    setState(() {
+      _transcriptQuery = query;
+      _transcriptLoading = true;
+      _transcriptFailed = false;
+      if (!more) _transcriptPage = null;
+    });
+    try {
+      final page = await _pinepodsService.searchTranscripts(query, offset: offset);
+      if (!mounted || _transcriptQuery != query) return;
+      setState(() {
+        _transcriptUnsupported = false;
+        _transcriptPage = more && _transcriptPage != null
+            ? TranscriptSearchPage(
+                results: [..._transcriptPage!.results, ...page.results],
+                total: page.total,
+                terms: page.terms,
+                searchableEpisodes: page.searchableEpisodes,
+              )
+            : page;
+      });
+    } on TranscriptSearchUnsupported {
+      if (mounted) setState(() => _transcriptUnsupported = true);
+    } catch (_) {
+      if (mounted && _transcriptQuery == query) setState(() => _transcriptFailed = true);
+    } finally {
+      if (mounted && _transcriptQuery == query) setState(() => _transcriptLoading = false);
+    }
+  }
+
+  void _playFrom(SearchEpisodeResult result, double seconds) {
+    final service = _audioService;
+    if (service == null) {
+      _showSnackBar('Audio service not available', Colors.red);
+      return;
+    }
+    service.playFrom(result.toPinepodsEpisode(), seconds).catchError((e) {
+      _showSnackBar('Failed to play episode: $e', Colors.red);
+    });
   }
 
   void _setupAnimations() {
@@ -463,6 +527,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
     }
 
     _slideAnimationController.forward();
+    if (_includeTranscripts && query.isNotEmpty) _searchTranscripts(query);
 
     try {
       final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
@@ -534,6 +599,9 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
       _activeStatusFilter = _StatusFilter.all;
       _searchTotal = 0;
       _searchOffset = 0;
+      _transcriptPage = null;
+      _transcriptQuery = '';
+      _transcriptLoading = false;
     });
     _fadeAnimationController.reset();
     _slideAnimationController.reverse();
@@ -619,6 +687,10 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
         children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _transcriptsPill(),
+          ),
           for (final (filter, label, icon) in chips)
             Padding(
               padding: const EdgeInsets.only(right: 8),
@@ -631,6 +703,80 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
             ),
         ],
       ),
+    );
+  }
+
+  Widget _transcriptsPill() => FilterPill(
+        label: 'Transcripts',
+        icon: _includeTranscripts ? PhosphorIconsRegular.checkSquare : PhosphorIconsRegular.square,
+        selected: _includeTranscripts,
+        onTap: _toggleTranscripts,
+      );
+
+  Widget _buildTranscriptSection() {
+    final theme = Theme.of(context);
+    final page = _transcriptPage;
+    Widget body;
+    if (_transcriptUnsupported) {
+      body = _note('Your server needs an update to search inside transcripts.');
+    } else if (_transcriptFailed) {
+      body = _note("Couldn't search transcripts. Try again in a moment.");
+    } else if (page == null) {
+      body = const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5))),
+      );
+    } else if (page.results.isEmpty) {
+      body = _note(page.searchableEpisodes == 0
+          ? "No transcripts to search yet. They come from podcasts that publish them and from AI transcription, if it's set up on your server."
+          : 'Not said in any of your ${page.searchableEpisodes} episodes with transcripts.');
+    } else {
+      body = Column(
+        children: [
+          for (final hit in page.results)
+            TranscriptHitCard(
+              key: ValueKey('transcript-${hit.episode.episodeId}'),
+              hit: hit,
+              terms: page.terms,
+              onOpen: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => PinepodsEpisodeDetails(initialEpisode: hit.episode.toPinepodsEpisode())),
+              ),
+              onPlayFrom: (t) => _playFrom(hit.episode, t),
+            ),
+          if (page.results.length < page.total)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _transcriptLoading
+                  ? const CircularProgressIndicator()
+                  : OutlinedButton.icon(
+                      onPressed: () => _searchTranscripts(_transcriptQuery, more: true),
+                      icon: const Icon(PhosphorIconsRegular.caretDown),
+                      label: const Text('More episodes'),
+                    ),
+            ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SoftSectionHeader(
+          title: 'Said in episodes',
+          count: page != null && page.total > 0 ? page.total : null,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          trailing: [Icon(PhosphorIconsRegular.scroll, size: 18, color: theme.hintColor)],
+        ),
+        body,
+      ],
+    );
+  }
+
+  Widget _note(String text) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Text(text, style: theme.textTheme.bodyMedium!.copyWith(color: theme.hintColor)),
     );
   }
 
@@ -877,6 +1023,8 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
 
     final showDiscovery = _currentQuery.isEmpty && _selectedCategories.isEmpty && !_hasSearched;
     final showFilterBar = _hasSearched || _selectedCategories.isNotEmpty;
+    final showTranscripts = _includeTranscripts && _currentQuery.isNotEmpty;
+    final transcriptHits = showTranscripts && (_transcriptPage?.results.isNotEmpty ?? false);
 
     return SliverFillRemaining(
       child: GestureDetector(
@@ -887,18 +1035,33 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
           children: [
             _buildSearchBar(),
             if (_selectedCategories.isNotEmpty) _buildActiveCategories(),
-            if (showFilterBar) _buildStatusFilterChips(),
+            if (showFilterBar)
+              _buildStatusFilterChips()
+            else
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 4), child: _transcriptsPill()),
+              ),
             Expanded(
               child: SingleChildScrollView(
                 child: showDiscovery
                     ? _buildDiscoverySurface()
-                    : _isLoading
-                        ? _buildLoadingIndicator()
-                        : _errorMessage != null
-                            ? _buildErrorState()
-                            : _visibleResults.isEmpty
-                                ? _buildEmptyState()
-                                : _buildResults(),
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (showTranscripts) _buildTranscriptSection(),
+                          if (_isLoading)
+                            _buildLoadingIndicator()
+                          else if (_errorMessage != null)
+                            _buildErrorState()
+                          else if (_visibleResults.isEmpty)
+                            transcriptHits ? _note('No matches in episode titles or show notes.') : _buildEmptyState()
+                          else ...[
+                            if (showTranscripts) _buildSectionHeader('Titles and show notes'),
+                            _buildResults(),
+                          ],
+                        ],
+                      ),
               ),
             ),
           ],

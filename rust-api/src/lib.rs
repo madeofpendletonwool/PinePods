@@ -298,6 +298,7 @@ fn create_data_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::people::podcast_people))
         .routes(routes!(handlers::people::episode_people))
         .routes(routes!(handlers::people::search_people))
+        .routes(routes!(handlers::transcript_search::search_transcripts))
         .routes(routes!(handlers::people::lookup_person))
         .routes(routes!(handlers::people::followed_people))
         .routes(routes!(handlers::people::contribute_people))

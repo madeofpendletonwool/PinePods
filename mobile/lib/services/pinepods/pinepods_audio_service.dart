@@ -143,12 +143,25 @@ class PinepodsAudioService {
   /// playback settings before starting from what it already knows.
   static const startWait = Duration(milliseconds: 1500);
 
-  /// Play a PinePods episode with full server integration
+  /// Play [episode] from [seconds] (a transcript search hit): a seek when it's
+  /// the episode loaded now, otherwise a start at that point.
+  Future<void> playFrom(PinepodsEpisode episode, double seconds) async {
+    if (_currentEpisodeId == episode.episodeId && _audioPlayerService.nowPlaying != null) {
+      await _audioPlayerService.seek(position: seconds.floor());
+      await _audioPlayerService.play();
+      return;
+    }
+    await playPinepodsEpisode(pinepodsEpisode: episode, startAt: seconds);
+  }
+
+  /// Play a PinePods episode with full server integration. [startAt] (seconds)
+  /// starts there instead of at the saved position.
   Future<void> playPinepodsEpisode({
     required PinepodsEpisode pinepodsEpisode,
     bool resume = true,
     bool skipQueue = false,
     int? playlistId,
+    double? startAt,
   }) async {
     _currentPlaylistId = playlistId;
     _audioPlayerService.setPlaylistContext(playlistId);
@@ -218,10 +231,10 @@ class PinepodsAudioService {
         localEpisode.transcriptId = localDownload.transcriptId;
         log.info('Playing local download for episode $episodeId (offline fast path)');
 
-        final initialPosition = resume ? await _resolveResumePosition(pinepodsEpisode) : 0.0;
-        if (resume) localEpisode.position = (initialPosition * 1000).round();
+        final initialPosition = startAt ?? (resume ? await _resolveResumePosition(pinepodsEpisode) : 0.0);
+        if (resume || startAt != null) localEpisode.position = (initialPosition * 1000).round();
 
-        await _audioPlayerService.playEpisode(episode: localEpisode, resume: resume, playbackSpeed: null);
+        await _audioPlayerService.playEpisode(episode: localEpisode, resume: resume || startAt != null, playbackSpeed: null);
         await _onStarted(
           pinepodsEpisode: pinepodsEpisode,
           episode: localEpisode,
@@ -246,7 +259,7 @@ class PinepodsAudioService {
       });
       final playDetailsFetch = _fetchPlayDetails(pinepodsEpisode, userId);
       final startData = await Future.wait<dynamic>([
-        (resume
+        (resume && startAt == null
                 ? getServerPositionForEpisode(episodeId, userId, pinepodsEpisode.isYoutube)
                 : Future<double?>.value(null))
             .timeout(startWait, onTimeout: () {
@@ -255,9 +268,10 @@ class PinepodsAudioService {
         }),
         playDetailsFetch.timeout(startWait, onTimeout: () => null),
       ]);
-      final initialPosition = resume
-          ? await _resolveResumePosition(pinepodsEpisode, serverPosition: startData[0] as double?)
-          : 0.0;
+      final initialPosition = startAt ??
+          (resume
+              ? await _resolveResumePosition(pinepodsEpisode, serverPosition: startData[0] as double?)
+              : 0.0);
       final playDetails = startData[1] as PlayEpisodeDetails?;
 
       // Convert PinepodsEpisode to Episode for the audio player
@@ -266,10 +280,10 @@ class PinepodsAudioService {
         playDetails ?? PlayEpisodeDetails(playbackSpeed: 1.0, startSkip: 0, endSkip: 0),
         null,
       );
-      if (resume) episode.position = (initialPosition * 1000).round();
+      if (resume || startAt != null) episode.position = (initialPosition * 1000).round();
 
       // Skip the intro by starting past it rather than seeking once it plays.
-      final introSkip = !resume ? playDetails?.startSkip ?? 0 : 0;
+      final introSkip = !resume && startAt == null ? playDetails?.startSkip ?? 0 : 0;
       if (introSkip > 0) episode.position = introSkip * 1000;
 
       log.info('Streamed start ready to play after ${prepWatch.elapsedMilliseconds}ms of server lookups');
@@ -277,7 +291,7 @@ class PinepodsAudioService {
       // Only apply the server speed if it's a real per-podcast override, not the echoed-back default (#882, #963).
       await _audioPlayerService.playEpisode(
         episode: episode,
-        resume: resume || introSkip > 0,
+        resume: resume || startAt != null || introSkip > 0,
         playbackSpeed: playDetails != null && playDetails.playbackSpeedCustomized ? playDetails.playbackSpeed : null,
       );
 
