@@ -10717,3 +10717,178 @@ body.search-takeover-open .drawer-icon { display: none; }
 .player-fs-people { margin: 4px auto 12px; max-width: 560px; }
 .player-fs-people .pp-head { display: none; }
 .player-fs-people .ep-mobile-hosts-scroll { justify-content: safe center; }
+
+/* ---- Search inside transcripts ---- */
+.sp-chip-sep {
+    width: 1px; align-self: stretch; margin: 4px 2px;
+    background: var(--border-color); opacity: .7;
+}
+.sp-no-title-matches {
+    margin: 22px 0 0; font-size: 13px; color: var(--text-secondary-color);
+}
+
+.ts-section { margin-bottom: 8px; }
+.ts-head h3 { display: inline-flex; align-items: center; gap: 7px; }
+.ts-head h3 i { font-size: 15px; color: var(--accent-color); }
+.ts-head-count { font-size: 12.5px; color: var(--text-secondary-color); font-variant-numeric: tabular-nums; }
+
+.ts-hits { display: flex; flex-direction: column; gap: 10px; }
+.ts-hit {
+    display: flex; gap: 14px; align-items: flex-start;
+    padding: 14px; border-radius: var(--radius-md, 10px);
+    background: var(--container-background);
+    border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+}
+.ts-hit-art {
+    flex-shrink: 0; width: 64px; height: 64px; padding: 0;
+    border: none; border-radius: var(--radius-sm, 6px); overflow: hidden;
+    background: var(--secondary-background); cursor: pointer;
+}
+.ts-hit-art-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ts-hit-body { flex: 1; min-width: 0; }
+.ts-hit-title {
+    display: block; width: 100%; padding: 0; border: none; background: none;
+    text-align: left; cursor: pointer; color: var(--text-color);
+    font-size: 15px; font-weight: 600; line-height: 1.3;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ts-hit-title:hover { color: var(--accent-color); }
+.ts-hit-meta {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+    margin-top: 3px; font-size: 12px; color: var(--text-secondary-color);
+}
+.ts-hit-meta > span + span::before {
+    content: ""; display: inline-block; width: 3px; height: 3px; border-radius: 50%;
+    background: currentColor; opacity: .5; margin-right: 10px; vertical-align: middle;
+}
+.ts-source {
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+}
+.ts-source.is-ai { color: var(--accent-color); }
+
+.ts-moments { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ts-moment {
+    display: flex; gap: 10px; align-items: baseline;
+    padding-left: 10px; border-left: 2px solid color-mix(in srgb, var(--accent-color) 45%, transparent);
+}
+.ts-moment-time {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px 3px 7px; border-radius: 999px; cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--accent-color) 40%, transparent);
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    color: var(--accent-color);
+    font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px; font-variant-numeric: tabular-nums;
+    transition: background-color 150ms, transform 100ms;
+}
+.ts-moment-time:hover { background: color-mix(in srgb, var(--accent-color) 20%, transparent); }
+.ts-moment-time:active { transform: scale(.96); }
+.ts-moment-time i { font-size: 10px; }
+.ts-moment-quote { flex-shrink: 0; color: var(--text-secondary-color); opacity: .7; }
+.ts-moment-text { font-size: 13.5px; line-height: 1.5; color: var(--text-color); overflow-wrap: anywhere; }
+.ts-moment-text mark, .ep-transcript-cue-text mark {
+    background: color-mix(in srgb, var(--accent-color) 28%, transparent); color: inherit;
+    padding: 0 2px; border-radius: 3px;
+}
+.ts-more {
+    margin-top: 8px; padding: 2px 0; border: none; background: none; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12.5px; color: var(--text-secondary-color);
+}
+.ts-more:hover { color: var(--accent-color); }
+.ts-load-more {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; margin-top: 10px; padding: 10px; cursor: pointer;
+    border-radius: var(--radius-md, 10px); border: 1px dashed var(--border-color);
+    background: none; color: var(--text-color); font-size: 13px;
+}
+.ts-load-more:hover { border-color: var(--accent-color); color: var(--accent-color); }
+.ts-load-more:disabled { opacity: .6; cursor: default; }
+.ts-spin { animation: sp-spin 700ms linear infinite; }
+
+.ts-empty {
+    display: flex; gap: 14px; align-items: flex-start;
+    padding: 16px; border-radius: var(--radius-md, 10px);
+    background: var(--container-background); color: var(--text-secondary-color);
+}
+.ts-empty > i { font-size: 26px; opacity: .6; }
+.ts-empty h4 { margin: 0 0 3px; font-size: 14px; font-weight: 600; color: var(--text-color); }
+.ts-empty p { margin: 0; font-size: 13px; line-height: 1.45; }
+
+.ts-skeleton { display: flex; flex-direction: column; gap: 10px; }
+.ts-skeleton-row {
+    height: 96px; border-radius: var(--radius-md, 10px);
+    background: linear-gradient(90deg, var(--container-background) 0%,
+        color-mix(in srgb, var(--container-background) 70%, var(--text-secondary-color)) 50%,
+        var(--container-background) 100%);
+    background-size: 200% 100%;
+    animation: ts-shimmer 1.2s ease-in-out infinite;
+    opacity: .7;
+}
+@keyframes ts-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+    .ts-skeleton-row, .ts-spin { animation: none; }
+}
+
+@media (max-width: 500px) {
+    .ts-hit { padding: 12px; gap: 10px; }
+    .ts-hit-art { width: 48px; height: 48px; }
+    .ts-moment { flex-direction: column; gap: 4px; }
+    .ts-hit-meta > span:first-child { flex-basis: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ts-hit-meta > span:nth-child(2)::before { display: none; }
+}
+
+/* Transcript tab: find, linked cue, the line playing now */
+.ep-transcript-find {
+    position: sticky; top: 0; z-index: 2;
+    display: flex; align-items: center; gap: 6px;
+    margin: 0 0 10px; padding: 6px 8px 6px 12px;
+    border-radius: var(--radius-md, 10px);
+    background: var(--container-background);
+    border: 1px solid var(--border-color);
+}
+.ep-transcript-find:focus-within { border-color: var(--accent-color); }
+.ep-transcript-find > i { color: var(--text-secondary-color); }
+.ep-transcript-find input {
+    flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+    color: var(--text-color); font-size: 13.5px; padding: 4px 0;
+}
+.ep-transcript-find-count {
+    font-size: 12px; color: var(--text-secondary-color); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.ep-transcript-find button {
+    width: 28px; height: 28px; border-radius: 6px; border: none; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--text-color);
+}
+.ep-transcript-find button:hover:not(:disabled) { background: var(--hover-color); }
+.ep-transcript-find button:disabled { opacity: .35; cursor: default; }
+
+.ep-transcript-jump {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    margin: 0 0 10px; padding: 8px 10px 8px 12px; border-radius: var(--radius-md, 10px);
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    color: var(--text-color); font-size: 13px;
+}
+.ep-transcript-jump > i { color: var(--accent-color); }
+.ep-transcript-jump span { flex: 1; min-width: 0; }
+.ep-transcript-jump button {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 999px; border: none; cursor: pointer;
+    background: var(--button-color); color: var(--button-text-color); font-size: 12.5px; font-weight: 500;
+}
+.ep-transcript-jump button:hover { background: var(--hover-color); }
+
+.ep-transcript-cue { scroll-margin: 80px; transition: background-color 200ms; }
+.ep-transcript-cue.is-current {
+    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent-color);
+}
+.ep-transcript-cue.is-focus { animation: ep-cue-flash 2.4s ease-out 1; }
+.ep-transcript-cue.is-found { box-shadow: inset 3px 0 0 var(--accent-color); }
+@keyframes ep-cue-flash {
+    0%, 30% { background: color-mix(in srgb, var(--accent-color) 26%, transparent); }
+    100% { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ep-transcript-cue.is-focus { animation: none; background: color-mix(in srgb, var(--accent-color) 16%, transparent); }
+}

@@ -38,6 +38,8 @@ mod notifications;
 mod in_app_notifications;
 pub use in_app_notifications::StoredInAppNotification;
 mod downloads;
+mod transcripts;
+pub use transcripts::{TranscriptMatch, TranscriptSearchEpisode};
 mod youtube;
 mod rss;
 mod gpodder;
